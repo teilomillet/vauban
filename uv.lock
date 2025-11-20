@@ -3978,6 +3978,7 @@ dependencies = [
     { name = "logfire" },
     { name = "numpy" },
     { name = "openai" },
+    { name = "pandas" },
     { name = "pydantic-ai" },
     { name = "scikit-learn" },
 ]
@@ -3996,6 +3997,7 @@ requires-dist = [
     { name = "logfire" },
     { name = "numpy" },
     { name = "openai" },
+    { name = "pandas" },
     { name = "pydantic-ai" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-asyncio", marker = "extra == 'dev'" },

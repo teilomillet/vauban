@@ -12,7 +12,8 @@ dependencies = [
     "openai",
     "numpy",
     "embedding-atlas",
-    "anywidget"
+    "anywidget",
+    "pandas"
 ]
 
 [project.optional-dependencies]

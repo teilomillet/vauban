@@ -57,6 +57,13 @@ class SiegeResult:
     def cost(self) -> float:
         return self.stats.get("estimated_cost", 0.0)
 
+    def to_pandas(self):
+        """
+        Convert history to DataFrame.
+        """
+        import pandas as pd
+        return pd.DataFrame(self.history)
+
 # --- Protocols ---
 
 @runtime_checkable
