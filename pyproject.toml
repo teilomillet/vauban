@@ -4,4 +4,13 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pydantic-ai",
+    "logfire",
+    "lancedb",
+    "scikit-learn",
+    "openai",
+    "numpy",
+    "embedding-atlas",
+    "anywidget"
+]
