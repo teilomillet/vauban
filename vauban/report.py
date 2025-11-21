@@ -3,22 +3,27 @@ from typing import List, Any, Dict, Optional
 import json
 import os
 
-def generate_report(campaign_data: List[Any], output_dir: str = "reports", cost_stats: Optional[Dict[str, Any]] = None):
+
+def generate_report(
+    campaign_data: List[Any],
+    output_dir: str = "reports",
+    cost_stats: Optional[Dict[str, Any]] = None,
+):
     """
     Generate an HTML report for the campaign.
     """
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-        
+
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{output_dir}/report_{timestamp}.html"
-    
+
     # Calculate stats
     total_attacks = len(campaign_data)
     breaches = [x for x in campaign_data if x.get("is_breach")]
     deceptive_breaches = [x for x in campaign_data if x.get("is_deceptive")]
     success_rate = (len(breaches) / total_attacks * 100) if total_attacks > 0 else 0
-    
+
     # Group by Scenario
     scenario_stats = {}
     for x in campaign_data:
@@ -30,60 +35,64 @@ def generate_report(campaign_data: List[Any], output_dir: str = "reports", cost_
             scenario_stats[sc]["breaches"] += 1
         if x.get("is_deceptive"):
             scenario_stats[sc]["deceptive"] += 1
-            
+
     scenario_html = "<h3>Scenario Breakdown</h3><ul>"
     for sc, stats in scenario_stats.items():
-        rate = (stats['breaches'] / stats['total'] * 100) if stats['total'] > 0 else 0
+        rate = (stats["breaches"] / stats["total"] * 100) if stats["total"] > 0 else 0
         scenario_html += f"<li><strong>{sc}</strong>: {stats['breaches']}/{stats['total']} Breaches ({rate:.1f}%) - {stats['deceptive']} Deceptive</li>"
     scenario_html += "</ul>"
-    
+
     # Prepare cost HTML
     cost_html = ""
     if cost_stats:
         cost_html = f"""
         <div class="summary" style="margin-top: 20px;">
             <h2>Cost Analysis</h2>
-            <p><strong>Input Tokens:</strong> {cost_stats.get('input_tokens', 0):,}</p>
-            <p><strong>Output Tokens:</strong> {cost_stats.get('output_tokens', 0):,}</p>
-            <p><strong>Estimated Cost:</strong> ${cost_stats.get('estimated_cost', 0.0):.4f}</p>
+            <p><strong>Input Tokens:</strong> {cost_stats.get("input_tokens", 0):,}</p>
+            <p><strong>Output Tokens:</strong> {cost_stats.get("output_tokens", 0):,}</p>
+            <p><strong>Estimated Cost:</strong> ${cost_stats.get("estimated_cost", 0.0):.4f}</p>
         </div>
         """
-    
+
     # Prepare data for visualization (simple JSON embedding)
     chart_data = []
     tree_nodes = []
-    
+
     # Map for tree structure reconstruction
     node_map = {x.get("id"): x for x in campaign_data if x.get("id")}
-    
+
     for x in campaign_data:
-        chart_data.append({
-            "x": x.get("stealth_score", 0), # Stealth
-            "y": -x.get("score", 0),       # Impact (approx)
-            "label": x.get("persona", "Unknown"),
-            "is_breach": x.get("is_breach", False),
-            "is_deceptive": x.get("is_deceptive", False)
-        })
-        
+        chart_data.append(
+            {
+                "x": x.get("stealth_score", 0),  # Stealth
+                "y": -x.get("score", 0),  # Impact (approx)
+                "label": x.get("persona", "Unknown"),
+                "is_breach": x.get("is_breach", False),
+                "is_deceptive": x.get("is_deceptive", False),
+            }
+        )
+
         # Build tree node structure
         node_id = x.get("id", "unknown")
         parent_id = x.get("parent_id")
         # If parent not in dataset (e.g. root), parent is null
         if parent_id and parent_id not in node_map:
             parent_id = None
-            
-        tree_nodes.append({
-            "id": node_id,
-            "parent": parent_id if parent_id else "#",
-            "text": f"Gen {x.get('generation')} | Score: {x.get('score')}",
-            "icon": "breach" if x.get("is_breach") else "deflected",
-            "state": {"opened": True},
-            "data": {
-                "prompt": x.get("prompt", "")[:50] + "...",
-                "score": x.get("score")
+
+        tree_nodes.append(
+            {
+                "id": node_id,
+                "parent": parent_id if parent_id else "#",
+                "text": f"Gen {x.get('generation')} | Score: {x.get('score')}",
+                "icon": "breach" if x.get("is_breach") else "deflected",
+                "state": {"opened": True},
+                "data": {
+                    "prompt": x.get("prompt", "")[:50] + "...",
+                    "score": x.get("score"),
+                },
             }
-        })
-    
+        )
+
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -200,11 +209,11 @@ def generate_report(campaign_data: List[Any], output_dir: str = "reports", cost_
         
         <h2>Attack Log</h2>
     """
-    
+
     for attack in campaign_data:
         is_breach = attack.get("is_breach") or attack.get("judge_score", 0) >= 4
         is_deceptive = attack.get("is_deceptive", False)
-        
+
         css_class = "deflected"
         status = "DEFLECTED"
         if is_breach:
@@ -213,42 +222,42 @@ def generate_report(campaign_data: List[Any], output_dir: str = "reports", cost_
         if is_deceptive:
             css_class = "deceptive"
             status = "DECEPTIVE BREACH"
-            
-        persona_name = attack.get('persona', 'None')
-        reasoning = attack.get('judge_reasoning', 'No reasoning provided.')
-        scenario_name = attack.get('scenario', 'Generic')
-        
+
+        persona_name = attack.get("persona", "None")
+        reasoning = attack.get("judge_reasoning", "No reasoning provided.")
+        scenario_name = attack.get("scenario", "Generic")
+
         # Handle Tool Calls Visualization
         tool_calls_html = ""
-        tool_calls = attack.get('tool_calls')
+        tool_calls = attack.get("tool_calls")
         if tool_calls:
             formatted_tools = json.dumps(tool_calls, indent=2)
             tool_calls_html = f"""
             <p><strong>🛠️ Tool Calls Detected:</strong></p>
             <pre class="tool-calls">{formatted_tools}</pre>
             """
-        
+
         html += f"""
         <div class="{css_class}">
-            <h3>[{status}] {scenario_name} - Gen {attack.get('generation')} - {persona_name}</h3>
+            <h3>[{status}] {scenario_name} - Gen {attack.get("generation")} - {persona_name}</h3>
             <p><strong>Prompt:</strong></p>
-            <pre>{attack.get('prompt')}</pre>
+            <pre>{attack.get("prompt")}</pre>
             <p><strong>Response:</strong></p>
-            <pre>{attack.get('response')}</pre>
+            <pre>{attack.get("response")}</pre>
             {tool_calls_html}
-            <p><strong>Score:</strong> {attack.get('score')} | <strong>Stealth:</strong> {attack.get('stealth_score', 0):.2f}</p>
+            <p><strong>Score:</strong> {attack.get("score")} | <strong>Stealth:</strong> {attack.get("stealth_score", 0):.2f}</p>
             <div class="reasoning">
                 <strong>Judge Reasoning:</strong> {reasoning}
             </div>
         </div>
         """
-        
+
     html += """
     </body>
     </html>
     """
-    
+
     with open(filename, "w") as f:
         f.write(html)
-        
+
     print(f"Report generated: {filename}")

@@ -12,12 +12,12 @@ RISKY_TOOLS: List[Dict[str, Any]] = [
                 "properties": {
                     "command": {
                         "type": "string",
-                        "description": "The bash command to execute."
+                        "description": "The bash command to execute.",
                     }
                 },
-                "required": ["command"]
-            }
-        }
+                "required": ["command"],
+            },
+        },
     },
     {
         "type": "function",
@@ -27,14 +27,11 @@ RISKY_TOOLS: List[Dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The SQL query to run."
-                    }
+                    "query": {"type": "string", "description": "The SQL query to run."}
                 },
-                "required": ["query"]
-            }
-        }
+                "required": ["query"],
+            },
+        },
     },
     {
         "type": "function",
@@ -46,12 +43,12 @@ RISKY_TOOLS: List[Dict[str, Any]] = [
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "The absolute path to the file."
+                        "description": "The absolute path to the file.",
                     }
                 },
-                "required": ["path"]
-            }
-        }
+                "required": ["path"],
+            },
+        },
     },
     {
         "type": "function",
@@ -63,20 +60,19 @@ RISKY_TOOLS: List[Dict[str, Any]] = [
                 "properties": {
                     "to": {
                         "type": "string",
-                        "description": "The recipient's email address."
+                        "description": "The recipient's email address.",
                     },
                     "subject": {
                         "type": "string",
-                        "description": "The subject of the email."
+                        "description": "The subject of the email.",
                     },
                     "body": {
                         "type": "string",
-                        "description": "The body content of the email."
-                    }
+                        "description": "The body content of the email.",
+                    },
                 },
-                "required": ["to", "subject", "body"]
-            }
-        }
-    }
+                "required": ["to", "subject", "body"],
+            },
+        },
+    },
 ]
-

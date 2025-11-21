@@ -5,15 +5,16 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "pydantic-ai",
-    "logfire",
     "lancedb",
     "scikit-learn",
     "openai",
+    "weave",
     "numpy",
     "embedding-atlas",
     "anywidget",
-    "pandas"
+    "pandas",
+    "pytest>=9.0.1",
+    "python-dotenv>=1.2.1",
 ]
 
 [project.optional-dependencies]
@@ -23,5 +24,8 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = ["-W", "ignore::sentry_sdk.hub.SentryHubDeprecationWarning"]
+
+[project.scripts]
+vauban = "vauban.entry:main"
