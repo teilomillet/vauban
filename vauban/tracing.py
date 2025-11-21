@@ -28,33 +28,62 @@ def init_weave(project_name: Optional[str] = None) -> None:
             weave.init(project)
             _WEAVE_INITIALIZED = True
         except Exception as e:
-            print(f"Warning: Failed to initialize Weave: {e}")
+            # Propagate so callers can abort instead of running unlogged traces
+            raise RuntimeError(f"Failed to initialize Weave project '{project}': {e}") from e
 
 
-def trace(func_or_name: Optional[Any] = None) -> Callable:
+def require_weave_project() -> Optional[str]:
     """
-    Decorator to trace functions with Weave if available.
-    Usage:
-        @trace
-        def my_func(...): ...
-        
-        @trace("custom_name")
-        def my_func(...): ...
+    Ensure a project is configured before tracing; fail fast if missing.
     """
     if not WEAVE_AVAILABLE:
-        # If called as @trace(name="foo") or @trace("foo")
-        if isinstance(func_or_name, str):
-            def decorator(func):
-                return func
-            return decorator
-        # If called as @trace
-        return func_or_name if callable(func_or_name) else (lambda x: x)
+        return None
+    project = os.getenv("WEAVE_PROJECT")
+    if not project:
+        raise RuntimeError("WEAVE_PROJECT is required to log traces; set env before running.")
+    init_weave(project)
+    return project
 
-    # Weave is available, use weave.op()
-    if isinstance(func_or_name, str):
-        return weave.op(name=func_or_name)
-    elif callable(func_or_name):
-        return weave.op()(func_or_name)
-    else:
-        return weave.op()
 
+def trace(func_or_name: Optional[Any] = None, *, name: Optional[str] = None) -> Callable:
+    """
+    Decorator to trace functions with Weave if available.
+    Supports usages:
+        @trace
+        @trace("custom_name")
+        @trace(name="custom_name")
+    """
+    # Resolve desired span name regardless of how caller passed it.
+    resolved_name = name if name is not None else (func_or_name if isinstance(func_or_name, str) else None)
+
+    if not WEAVE_AVAILABLE:
+        # TODO: Add tests covering @trace, @trace("name"), and @trace(name="name") without Weave.
+        # No-op decorator when Weave is absent; must still accept name kwarg to match call sites.
+        if callable(func_or_name) and not isinstance(func_or_name, str) and name is None:
+            return func_or_name  # @trace directly on a function
+
+        def decorator(func):
+            return func
+
+        return decorator
+
+    # Weave is present. Build the op with the resolved name if provided.
+    def _op():
+        return weave.op(name=resolved_name) if resolved_name else weave.op()
+
+    def _wrap_with_init(op_func):
+        """Ensure Weave project is configured before each traced call."""
+        def wrapper(*args, **kwargs):
+            require_weave_project()
+            return op_func(*args, **kwargs)
+        return wrapper
+
+    if callable(func_or_name) and not isinstance(func_or_name, str):
+        # Usage: @trace
+        return _wrap_with_init(_op()(func_or_name))
+
+    # Usage: @trace("name") or @trace(name="name")
+    def decorator(func):
+        return _wrap_with_init(_op()(func))
+
+    return decorator

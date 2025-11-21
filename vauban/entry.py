@@ -199,6 +199,59 @@ def show_history():
         hist_table.add_row(entry["model"], entry["goal"][:30]+"...", f"{entry['score']:.1f}")
     print(hist_table)
 
+def _ensure_weave_configured() -> bool:
+    """
+    Ensure Weave project is set and initialized before running attacks.
+    Prompts once in CLI; aborts attack if user declines.
+    """
+    project_env = os.getenv("WEAVE_PROJECT")
+    project = project_env
+    if not project:
+        project = Prompt.ask(
+            "[yellow]Weave project not set. Enter project name to enable logging[/yellow]",
+            default="",
+        ).strip()
+        if not project:
+            print("[red]Cannot launch attack without WEAVE_PROJECT for logging.[/red]")
+            return False
+
+    from vauban.tracing import init_weave
+
+    def _try_init(name: str) -> bool:
+        try:
+            init_weave(name)
+            save_env_var("WEAVE_PROJECT", name)
+            return True
+        except Exception as e:
+            print(f"[red]Weave init failed for '{name}': {e}[/red]")
+            return False
+
+    if _try_init(project):
+        return True
+
+    # If user supplied an entity/project that doesn't exist, offer fallback to default entity.
+    if "/" in project:
+        fallback_project = project.split("/")[-1]
+        if Confirm.ask(
+            "[yellow]Project not accessible. Create under your default W&B entity?[/yellow]",
+            default=True,
+        ):
+            if _try_init(fallback_project):
+                return True
+
+    # As final attempt, let user enter a different name (keeps existing entity if they include one).
+    retry = Prompt.ask(
+        "[yellow]Enter another project name (or leave blank to cancel)[/yellow]",
+        default="",
+    ).strip()
+    if retry and _try_init(retry):
+        return True
+
+    # Leave env unchanged; exit without running unlogged
+    print("[red]Cannot launch attack without an accessible Weave project.[/red]")
+    return False
+
+
 async def handle_attack_command(args: List[str]):
     if not args:
         # Interactive fallback
@@ -242,6 +295,9 @@ async def handle_attack_command(args: List[str]):
     print(f"Goal: {goal}")
     print(f"Embedding: {embedding_model}")
     
+    if not _ensure_weave_configured():
+        return
+
     # Check keys
     if not (os.getenv("OPENAI_API_KEY") or os.getenv("OPENROUTER_API_KEY")):
         print("[red]No API Key configured! Run 'config' first.[/red]")
@@ -346,6 +402,9 @@ async def start_new_siege_interactive():
     embedding_api_key = os.getenv("EMBEDDING_API_KEY")
     embedding_base_url = os.getenv("EMBEDDING_BASE_URL")
     
+    if not _ensure_weave_configured():
+        return
+    
     with Console().status("[bold green]Initializing Siege Engine...[/bold green]"):
         from vauban.api import prepare_siege
         engine = prepare_siege(
@@ -392,8 +451,9 @@ async def resume_session():
 async def run_engine_ui(engine, model_name: str, goal: str):
     from vauban.cli import VaubanCLI, save_session
     
-    # Pass history to CLI
-    cli = VaubanCLI(engine, history=SESSION_HISTORY)
+    # Pass history and model context to CLI for visuals
+    target_model = getattr(engine.target, "model_name", model_name)
+    cli = VaubanCLI(engine, target_model=target_model, goal=goal, history=SESSION_HISTORY)
     
     try:
         result = await cli.run()
@@ -436,10 +496,15 @@ async def async_main():
         os.environ["EMBEDDING_MODEL"] = args.embedding
         os.environ["_CLI_EMBEDDING_SET"] = "1"
         
-    # Auto-init Weave if configured
+    # Auto-init Weave if configured; fall back to interactive guard on failure.
     if weave_project := os.getenv("WEAVE_PROJECT"):
         from vauban.tracing import init_weave
-        init_weave(weave_project)
+        try:
+            init_weave(weave_project)
+        except Exception as e:
+            # If env points to an inaccessible W&B entity, drop it so the CLI guard can re-prompt and avoid unlogged runs.
+            print(f"[red]Auto Weave init failed for '{weave_project}': {e}[/red]")
+            os.environ.pop("WEAVE_PROJECT", None)
     
     # Direct Command Execution
     if args.command == "attack":

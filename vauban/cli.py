@@ -51,9 +51,19 @@ def load_session(filename: str = SESSION_FILE) -> Optional[SiegeEngine]:
         return None
 
 class VaubanCLI:
-    def __init__(self, engine: SiegeEngine, history: List[Any] = []):
+    def __init__(
+        self,
+        engine: SiegeEngine,
+        target_model: str,
+        goal: str,
+        history: Optional[List[Any]] = None,
+    ):
+        # Keep references for UI labels and telemetry
         self.engine = engine
-        self.history = history
+        self.target_model = target_model
+        self.goal = goal
+        self.history = history or []
+
         self.console = Console()
         self.layout = self.make_layout()
         self.live = Live(self.layout, refresh_per_second=4, screen=True)
@@ -67,8 +77,12 @@ class VaubanCLI:
             "breaches": 0,
             "cost": 0.0,
             "attacks": 0,
-            "successes": 0
+            "successes": 0,
         }
+
+        # Animation state for attack vector lane
+        self._vector_len = 22
+        self._vector_step = 0
 
     def make_layout(self) -> Layout:
         layout = Layout()
@@ -86,8 +100,9 @@ class VaubanCLI:
             Layout(name="main"),
         )
 
-        # Split Main into Stats (Top) and Log (Bottom)
+        # Split Main into Attack Vector, Stats, Log
         layout["main"].split_column(
+            Layout(name="vector", size=5),
             Layout(name="stats", size=10),
             Layout(name="log"),
         )
@@ -98,8 +113,28 @@ class VaubanCLI:
         grid = Table.grid(expand=True)
         grid.add_column(justify="center", ratio=1)
         grid.add_row(f"[bold cyan]{LOGO}[/bold cyan]")
-        grid.add_row(f"[dim]Target Goal: {self.engine.goal}[/dim]")
+        grid.add_row(f"[dim]Target Goal: {self.goal}[/dim]")
         return Panel(grid, style="white on black")
+
+    def generate_attack_vector(self) -> Panel:
+        """Show a single point traversing the lane to depict live traffic."""
+        bar = ["-"] * self._vector_len
+        pos = self._vector_step % self._vector_len
+        bar[pos] = "[yellow]o[/yellow]"
+        lane = "".join(bar)
+
+        source = "[green]Vauban[/green]"
+        destination = f"[magenta]{self.target_model}[/magenta]"
+        line = f"{source} |{lane}| {destination}"
+
+        details = Table.grid(expand=True)
+        details.add_column(ratio=1)
+        details.add_row(line)
+        details.add_row(
+            f"[dim]Wave {self.stats['generation']}/{self.engine.max_generations} · Attacks {self.stats['attacks']} · Goal: {self.goal}[/dim]"
+        )
+
+        return Panel(details, title="[bold]Attack Vector[/bold]", border_style="cyan", padding=(0, 1))
 
     def generate_log(self) -> Panel:
         table = Table(box=box.SIMPLE, expand=True, show_header=False)
@@ -184,9 +219,13 @@ class VaubanCLI:
     def update_ui(self):
         self.layout["header"].update(self.generate_header())
         self.layout["history"].update(self.generate_history())
+        self.layout["vector"].update(self.generate_attack_vector())
         self.layout["stats"].update(self.generate_stats())
         self.layout["log"].update(self.generate_log())
         self.layout["footer"].update(self.generate_footer())
+
+        # Advance animation frame so the lane moves each refresh
+        self._vector_step = (self._vector_step + 1) % self._vector_len
 
     async def run(self):
         with Live(self.layout, refresh_per_second=4, screen=True) as live:
@@ -205,6 +244,7 @@ class VaubanCLI:
                             "is_breach": event.is_breach,
                             "prompt": event.attack.prompt
                         })
+                        self.stats["attacks"] += 1
                         if event.is_breach:
                             self.stats["breaches"] += 1
                         

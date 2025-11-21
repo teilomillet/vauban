@@ -83,3 +83,4 @@ def generate_many_shot_messages(prompt: str, n_shots: int = 5) -> List[Dict[str,
 
     messages.append({"role": "user", "content": prompt})
     return messages
+

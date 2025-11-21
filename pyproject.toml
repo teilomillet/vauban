@@ -15,7 +15,16 @@ dependencies = [
     "pandas",
     "pytest>=9.0.1",
     "python-dotenv>=1.2.1",
+    "rich>=14.2.0",
 ]
+
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["vauban"]
+exclude = ["reports", "reports.*"]
 
 [project.optional-dependencies]
 dev = [
