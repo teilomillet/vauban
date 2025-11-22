@@ -8,19 +8,21 @@ from vauban.config import resolve_api_config
 from vauban.tracing import trace
 
 
-class OpenAITarget(Target):
+class ModelTarget(Target):
     """
-    Default target implementation using OpenAI-compatible API (defaults to OpenRouter).
+    Default target for any OpenAI-compatible API (defaults to OpenRouter via resolve_api_config).
     """
 
     def __init__(
         self,
-        model_name: str = "gpt-4o",
+        model_name: str,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
+        max_tokens: int = 1024,
     ):
         self.model_name = model_name
         self.api_key, self.base_url = resolve_api_config(api_key, base_url)
+        self.max_tokens = max_tokens
         self._client: Optional[OpenAI] = None
         self._aclient: Optional[AsyncOpenAI] = None
 
@@ -42,7 +44,7 @@ class OpenAITarget(Target):
             response = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=100,
+                max_tokens=self.max_tokens,
             )
             return response.choices[0].message.content or ""
         except Exception as e:
@@ -54,11 +56,15 @@ class OpenAITarget(Target):
             response = await self.aclient.chat.completions.create(
                 model=self.model_name,
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=100,
+                max_tokens=self.max_tokens,
             )
             return response.choices[0].message.content or ""
         except Exception as e:
             return f"ERROR: {e}"
+
+
+# Alias kept so existing imports of OpenAITarget remain functional while the class is vendor-neutral.
+OpenAITarget = ModelTarget
 
 
 class MockAgentTarget(Target):
@@ -68,13 +74,14 @@ class MockAgentTarget(Target):
 
     def __init__(
         self,
-        model_name: str = "gpt-4o",
+        model_name: str,
         tools: Optional[List[Dict[str, Any]]] = None,
         system_prompt: Optional[str] = None,
         injection_payload: Optional[str] = None,
         mock_behaviors: Optional[Dict[str, Any]] = None,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
+        max_tokens: int = 1024,
     ):
         self.model_name = model_name
         self.tools = tools if tools is not None else RISKY_TOOLS
@@ -82,6 +89,7 @@ class MockAgentTarget(Target):
         self.injection_payload = injection_payload
         self.mock_behaviors = mock_behaviors or {}
         self.api_key, self.base_url = resolve_api_config(api_key, base_url)
+        self.max_tokens = max_tokens
         self._client: Optional[OpenAI] = None
         self._aclient: Optional[AsyncOpenAI] = None
 
@@ -156,7 +164,7 @@ class MockAgentTarget(Target):
                     messages=messages,
                     tools=self.tools,
                     tool_choice="auto",
-                    max_tokens=200,
+                    max_tokens=self.max_tokens,
                 )
                 return response.choices[0].message
             except Exception:
@@ -177,7 +185,7 @@ class MockAgentTarget(Target):
                 messages=messages,
                 tools=self.tools,
                 tool_choice="auto",
-                max_tokens=200,
+                max_tokens=self.max_tokens,
             )
             msg = response.choices[0].message
 

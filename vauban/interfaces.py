@@ -181,6 +181,7 @@ class WaveStartEvent(Event):
 @dataclass
 class AttackResultEvent(Event):
     attack: AttackPrompt
+    generation: int
     response: str
     score: float
     is_breach: bool

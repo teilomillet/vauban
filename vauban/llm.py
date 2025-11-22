@@ -14,8 +14,11 @@ from typing import Any, Callable, Optional
 
 from openai import AsyncOpenAI
 
+
+from pydantic import PrivateAttr, Field
+
 from vauban.config import resolve_api_config
-from vauban.tracing import trace, init_weave
+from vauban.tracing import trace, init_weave, WeaveModel
 
 
 @dataclass
@@ -44,46 +47,51 @@ def parse_bool(text: str) -> bool:
     return str(text).strip().lower() in {"true", "1", "yes", "y"}
 
 
-def parse_float(text: str) -> float:
+def parse_float(text: str, default: Optional[float] = None) -> float:
+    """Parse a float from arbitrary model output with a safe fallback."""
+
+    source = str(text).strip()
     try:
-        return float(str(text).strip())
+        return float(source)
     except Exception:
         # Grab first number in the string
         import re
 
-        match = re.search(r"[-+]?[0-9]*\\.?[0-9]+", str(text))
+        match = re.search(r"[-+]?[0-9]*\\.?[0-9]+", source)
         if match:
             return float(match.group())
-        raise
+        if default is not None:
+            return default
+        raise ValueError(f"Could not parse float from: {text}")
 
 
-class LLM:
+class LLM(WeaveModel):
     """
     Minimal async LLM client that wraps OpenAI chat completions.
     - Uses response_format=json_object when force_json is True so parsing stays deterministic.
     - Accepts a parser callable to turn the raw content into a domain object.
     - Traced via Weave.
     """
+    model_name: str
+    system_prompt: str = ""
+    force_json: bool = False
+    api_key: Optional[str] = Field(default=None, exclude=True)
+    base_url: Optional[str] = None
+    weave_project: Optional[str] = Field(default=None, exclude=True)
+    trace_label: Optional[str] = None
+    
+    # Exclude parser from serialization as it's a callable
+    parser: Parser = Field(default=_default_parser, exclude=True)
+    
+    _client: Optional[AsyncOpenAI] = PrivateAttr(default=None)
 
-    def __init__(
-        self,
-        model_name: str,
-        system_prompt: str = "",
-        parser: Parser = _default_parser,
-        force_json: bool = False,
-        api_key: Optional[str] = None,
-        base_url: Optional[str] = None,
-        weave_project: Optional[str] = None,
-    ):
-        self.model_name = model_name.replace("openai:", "")
-        self.system_prompt = system_prompt.strip()
-        self.parser = parser
-        self.force_json = force_json
-        self.api_key, self.base_url = resolve_api_config(api_key, base_url)
-        self._client: Optional[AsyncOpenAI] = None
-
-        if weave_project:
-            init_weave(weave_project)
+    def model_post_init(self, __context: Any) -> None:
+        self.model_name = self.model_name.replace("openai:", "")
+        self.system_prompt = self.system_prompt.strip()
+        self.api_key, self.base_url = resolve_api_config(self.api_key, self.base_url)
+        
+        if self.weave_project:
+            init_weave(self.weave_project)
 
     @property
     def client(self) -> AsyncOpenAI:
@@ -91,8 +99,7 @@ class LLM:
             self._client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
         return self._client
 
-    @trace
-    async def run(self, prompt: str) -> MiniResult:
+    async def _run_impl(self, prompt: str) -> MiniResult:
         messages = []
         if self.system_prompt:
             messages.append({"role": "system", "content": self.system_prompt})
@@ -115,8 +122,20 @@ class LLM:
         )
 
         data = self._parse_content(content)
-        # No manual logging here - @trace handles inputs (prompt) and output (MiniResult)
+        # No manual logging here - tracing wrapper handles inputs/outputs
         return MiniResult(data=data, usage=usage)
+
+    @trace
+    async def run(self, prompt: str) -> MiniResult:
+        # Name spans with role + model for readability in Weave/trace buffer
+        # Note: With weave.Model, the method call is automatically traced with inputs/outputs
+        # But we keep @trace for our custom span naming and fallback support
+        span_name = self.trace_label or "LLM"
+        span_name = f"{span_name}[{self.model_name}]"
+        
+        # We call the implementation directly. 
+        # Since 'run' is decorated with @trace, it will create the span.
+        return await self._run_impl(prompt)
 
     def _parse_content(self, content: str) -> Any:
         if not self.force_json:
@@ -131,12 +150,3 @@ class LLM:
             match = re.search(r"\\{.*\\}", content, flags=re.S)
             payload = json.loads(match.group()) if match else {}
         return self.parser(payload)  # parser can accept dict as well
-
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        state["_client"] = None
-        return state
-
-    def __setstate__(self, state):
-        self.__dict__.update(state)
-

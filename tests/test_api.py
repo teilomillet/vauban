@@ -3,7 +3,7 @@ import vauban
 from vauban.interfaces import Target
 
 
-@patch("vauban.api.OpenAITarget")
+@patch("vauban.api.ModelTarget")
 def test_scout_default(mock_openai_class):
     # Setup
     mock_instance = MagicMock()

@@ -4,7 +4,7 @@ import asyncio
 
 from vauban.tracing import trace
 from vauban.interfaces import Target, SiegeResult
-from vauban.target import OpenAITarget, MockAgentTarget
+from vauban.target import ModelTarget, MockAgentTarget
 from vauban.engine import SiegeEngine
 from vauban.strategies.gepa import GEPAStrategy
 from vauban.judge import LLMJudge
@@ -42,12 +42,13 @@ def scout(
     target: Optional[Target] = None,
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
+    max_tokens: int = 1024,
 ) -> str:
     """
     Send a single scout to the target.
     Atomic Operation: Infiltrate.
     """
-    target = target or OpenAITarget(api_key=api_key, base_url=base_url)
+    target = target or ModelTarget(api_key=api_key, base_url=base_url, max_tokens=max_tokens)
     # Invoke sync wrapper if available, else run async
     if hasattr(target, "invoke"):
         return target.invoke(prompt)
@@ -75,12 +76,13 @@ def attack(
     target: Optional[Target] = None,
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
+    max_tokens: int = 1024,
 ) -> AttackResult:
     """
     Convenience wrapper for Atomic Scout + Assess.
     Single-shot attack.
     """
-    resp = scout(payload, target=target, api_key=api_key, base_url=base_url)
+    resp = scout(payload, target=target, api_key=api_key, base_url=base_url, max_tokens=max_tokens)
     score, breach = assess(str(resp), api_key=api_key, base_url=base_url)
     return AttackResult(str(resp), score, breach)
 
@@ -90,6 +92,7 @@ def baseline(
     embedding_model: str = "text-embedding-3-small",
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
+    max_tokens: int = 1024,
 ):
     """
     Establish the baseline defenses (sync helper).
@@ -97,7 +100,7 @@ def baseline(
     - If already inside a loop (e.g., Jupyter), this schedules the task and returns it; prefer await baseline_async instead.
     """
     sys = _get_intel(api_key=api_key, base_url=base_url)
-    target = target or OpenAITarget(api_key=api_key, base_url=base_url)
+    target = target or ModelTarget(api_key=api_key, base_url=base_url, max_tokens=max_tokens)
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
@@ -112,12 +115,13 @@ async def baseline_async(
     embedding_model: str = "text-embedding-3-small",
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
+    max_tokens: int = 1024,
 ):
     """
     Notebook-friendly baseline; await this inside async contexts.
     """
     sys = _get_intel(api_key=api_key, base_url=base_url)
-    target = target or OpenAITarget(api_key=api_key, base_url=base_url)
+    target = target or ModelTarget(api_key=api_key, base_url=base_url, max_tokens=max_tokens)
     await sys.establish_baseline_async(target)
 
 # ...
@@ -128,10 +132,11 @@ def prepare_siege(
     squad_size: int = 5,
     target: Optional[Target] = None,
     scenario: Optional[str] = None,
-    attacker_model: str = "openai:gpt-4o",
-    reflection_model: str = "openai:gpt-4o",
-    mutation_model: str = "openai:gpt-4o",
-    stealth_model: str = "openai:gpt-4o-mini",
+    attacker_model: Optional[str] = None,
+    reflection_model: Optional[str] = None,
+    mutation_model: Optional[str] = None,
+    stealth_model: Optional[str] = None,
+    scorer_model: Optional[str] = None,
     embedding_model: str = "text-embedding-3-small",
     use_tools: bool = False,
     target_tools: Optional[List[Dict[str, Any]]] = None,
@@ -139,10 +144,23 @@ def prepare_siege(
     base_url: Optional[str] = None,
     embedding_api_key: Optional[str] = None,
     embedding_base_url: Optional[str] = None,
+    max_tokens: int = 1024,
 ) -> SiegeEngine:
     """
     Prepare a SiegeEngine without running it.
+    scorer_model mirrors the FerRet reward scorer; when omitted we reuse stealth_model
+    for backward compatibility with older CLI/API callers.
     """
+    # Validate required models
+    if not attacker_model:
+        raise ValueError("attacker_model is required")
+    if not reflection_model:
+        raise ValueError("reflection_model is required")
+    if not mutation_model:
+        raise ValueError("mutation_model is required")
+    if not stealth_model:
+        raise ValueError("stealth_model is required")
+
     # 1. Setup Intel
     intel_system = create_default_intel(
         embedding_model=embedding_model, 
@@ -178,16 +196,22 @@ def prepare_siege(
                 mock_behaviors=mock_behaviors,
                 api_key=api_key,
                 base_url=base_url,
+                max_tokens=max_tokens,
             )
         else:
-            target = OpenAITarget(
-                model_name=attacker_model, api_key=api_key, base_url=base_url
+            target = ModelTarget(
+                model_name=attacker_model, api_key=api_key, base_url=base_url, max_tokens=max_tokens
             )
 
     # 4. Setup Judge
     judge = LLMJudge(
         model_name=attacker_model
     )  # Agent will use env vars or can be updated
+
+    # 4b. Resolve scorer model (FerRet reward). Reuse stealth model if caller
+    #     did not supply a dedicated scorer to keep older CLI/API usage working.
+    if scorer_model is None:
+        scorer_model = stealth_model
 
     # 5. Setup Strategy
     strategy = GEPAStrategy(
@@ -196,6 +220,7 @@ def prepare_siege(
         reflection_model=reflection_model,
         mutation_model=mutation_model,
         stealth_model=stealth_model,
+        scorer_model=scorer_model,
         attack_model=attacker_model,
         squad_size=squad_size,
         max_generations=generations,
@@ -222,10 +247,11 @@ async def siege(
     squad_size: int = 5,
     target: Optional[Target] = None,
     scenario: Optional[str] = None,
-    attacker_model: str = "openai:gpt-4o",
-    reflection_model: str = "openai:gpt-4o",
-    mutation_model: str = "openai:gpt-4o",
-    stealth_model: str = "openai:gpt-4o-mini",
+    attacker_model: Optional[str] = None,
+    reflection_model: Optional[str] = None,
+    mutation_model: Optional[str] = None,
+    stealth_model: Optional[str] = None,
+    scorer_model: Optional[str] = None,
     embedding_model: str = "text-embedding-3-small",
     use_tools: bool = False,
     target_tools: Optional[List[Dict[str, Any]]] = None,
@@ -234,6 +260,7 @@ async def siege(
     base_url: Optional[str] = None,
     embedding_api_key: Optional[str] = None,
     embedding_base_url: Optional[str] = None,
+    max_tokens: int = 1024,
 ) -> SiegeResult:
     """
     Launch a full Siege Campaign.
@@ -249,6 +276,7 @@ async def siege(
         reflection_model=reflection_model,
         mutation_model=mutation_model,
         stealth_model=stealth_model,
+        scorer_model=scorer_model,
         embedding_model=embedding_model,
         use_tools=use_tools,
         target_tools=target_tools,
@@ -256,6 +284,7 @@ async def siege(
         base_url=base_url,
         embedding_base_url=embedding_base_url,
         embedding_api_key=embedding_api_key,
+        max_tokens=max_tokens,
     )
 
     return await engine.run(rate_limit_delay=rate_limit_delay)

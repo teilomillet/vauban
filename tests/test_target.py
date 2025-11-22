@@ -1,5 +1,5 @@
 import pytest
-from vauban.target import Target, OpenAITarget
+from vauban.target import Target, ModelTarget, OpenAITarget
 
 
 class CustomTarget:
@@ -25,5 +25,10 @@ async def test_target_protocol_async():
 
 
 def test_openai_target_init():
-    target = OpenAITarget(model_name="gpt-3.5-turbo")
+    target = ModelTarget(model_name="gpt-3.5-turbo")
     assert target.model_name == "gpt-3.5-turbo"
+
+
+def test_openai_target_alias():
+    # Ensure the legacy name still resolves to the renamed class
+    assert OpenAITarget is ModelTarget

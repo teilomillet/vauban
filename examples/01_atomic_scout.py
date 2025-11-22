@@ -17,13 +17,13 @@ def main():
         return
 
     # 1. Single Probe (Infiltrate)
-    # Uses the default OpenAITarget (which we configured to point to OpenRouter)
+    # Uses the vendor-neutral ModelTarget (configured here for OpenRouter)
     # Vauban's default is currently gpt-4o, which works on OpenRouter as 'openai/gpt-4o'.
 
     # We can also explicitly pass the target if we want a specific model
-    from vauban.target import OpenAITarget
+    from vauban.target import ModelTarget
 
-    target = OpenAITarget(
+    target = ModelTarget(
         model_name="openai/gpt-4o-mini", api_key=api_key, base_url=base_url
     )
 

@@ -1,6 +1,7 @@
 import asyncio
 import pickle
 import os
+from statistics import mean
 from typing import Optional, List, Any, Dict
 from datetime import datetime
 
@@ -63,15 +64,20 @@ class VaubanCLI:
         self.target_model = target_model
         self.goal = goal
         self.history = history or []
+        self.restart_requested = False
+        self.command_request: Optional[str] = None
 
         self.console = Console()
         self.layout = self.make_layout()
-        self.live = Live(self.layout, refresh_per_second=4, screen=True)
-        
+        # Live screen is constructed per run() to keep setup lightweight
+        self.live = None
+
         # State for UI
         self.attacks: List[Dict] = []
         self.stats = {
-            "generation": 0,
+            "generation": 0,  # current wave index
+            "total_waves": engine.max_generations,
+            "waves_remaining": engine.max_generations,
             "best_score": 0.0,
             "survivors": 0,
             "breaches": 0,
@@ -83,6 +89,9 @@ class VaubanCLI:
         # Animation state for attack vector lane
         self._vector_len = 22
         self._vector_step = 0
+        self._stop_event: Optional[asyncio.Event] = None
+        self._ticker_task: Optional[asyncio.Task] = None
+        self._input_task: Optional[asyncio.Task] = None
 
     def make_layout(self) -> Layout:
         layout = Layout()
@@ -127,11 +136,13 @@ class VaubanCLI:
         destination = f"[magenta]{self.target_model}[/magenta]"
         line = f"{source} |{lane}| {destination}"
 
+        total_waves = self.stats.get("total_waves", self.engine.max_generations)
+        remaining = max(total_waves - self.stats["generation"], 0)
         details = Table.grid(expand=True)
         details.add_column(ratio=1)
         details.add_row(line)
         details.add_row(
-            f"[dim]Wave {self.stats['generation']}/{self.engine.max_generations} · Attacks {self.stats['attacks']} · Goal: {self.goal}[/dim]"
+            f"[dim]Wave {self.stats['generation']}/{total_waves} (left {remaining}) · Attacks {self.stats['attacks']} · Goal: {self.goal}[/dim]"
         )
 
         return Panel(details, title="[bold]Attack Vector[/bold]", border_style="cyan", padding=(0, 1))
@@ -139,6 +150,7 @@ class VaubanCLI:
     def generate_log(self) -> Panel:
         table = Table(box=box.SIMPLE, expand=True, show_header=False)
         table.add_column("Time", style="dim", width=8)
+        table.add_column("Wave", width=6, justify="right")
         table.add_column("Status", width=10)
         table.add_column("Score", width=6)
         table.add_column("Details")
@@ -146,6 +158,7 @@ class VaubanCLI:
         # Show last 10 attacks
         for attack in self.attacks[-10:]:
             time_str = attack["time"]
+            wave = attack.get("wave", "-")
             score = attack["score"]
             is_breach = attack["is_breach"]
             prompt = attack["prompt"][:50] + "..."
@@ -155,6 +168,7 @@ class VaubanCLI:
             
             table.add_row(
                 time_str,
+                str(wave),
                 f"[{status_color}]{status_text}[/{status_color}]",
                 f"{score:.1f}",
                 f"{prompt}"
@@ -171,8 +185,12 @@ class VaubanCLI:
         grid = Table.grid(expand=True)
         grid.add_column(justify="left")
         grid.add_column(justify="right")
+
+        total_waves = self.stats.get("total_waves", self.engine.max_generations)
+        remaining = max(total_waves - self.stats["generation"], 0)
         
-        grid.add_row("Generation", f"[bold]{self.stats['generation']}/{self.engine.max_generations}[/bold]")
+        grid.add_row("Generation", f"[bold]{self.stats['generation']}/{total_waves}[/bold]")
+        grid.add_row("Waves Left", f"{remaining}")
         grid.add_row("Best Score", f"[bold yellow]{self.stats['best_score']:.2f}[/bold yellow]")
         grid.add_row("Survivors", f"{self.stats['survivors']}")
         grid.add_row("Total Breaches", f"[red]{self.stats['breaches']}[/red]")
@@ -185,9 +203,36 @@ class VaubanCLI:
             padding=(1, 2)
         )
 
+    def _sparkline(self, scores: List[float]) -> str:
+        """
+        ASCII sparkline mapping scores (0-5) into . - = * # for quick trend scan.
+        """
+        levels = [".", "-", "=", "*", "#", "#"]
+        return "".join(levels[min(5, max(0, int(round(s))))] for s in scores) or "-"
+
+    def _render_campaign_summary(self, result):
+        history = result.history if hasattr(result, "history") else []
+        scores = [r.get("score", 0) for r in history]
+        breaches = sum(1 for r in history if r.get("is_breach"))
+        best = max(scores) if scores else 0.0
+        last = scores[-1] if scores else 0.0
+        avg = mean(scores) if scores else 0.0
+        goal_hit = best >= 4.0
+        reasoning = history[-1].get("judge_reasoning", "") if history else ""
+        trend = self._sparkline(scores)
+
+        lines = [
+            f"Goal achieved: {'YES' if goal_hit else 'NO'} (best={best:.1f}, last={last:.1f}, avg={avg:.1f})",
+            f"Breaches: {breaches} / {len(history)}",
+            f"Trend: {trend}",
+        ]
+        if reasoning:
+            lines.append(f"Last reasoning: {reasoning[:180]}{'...' if len(reasoning) > 180 else ''}")
+        return "\n".join(lines)
+
     def generate_footer(self) -> Panel:
         return Panel(
-            "Press [bold]Ctrl+C[/bold] to pause/quit. Session will be saved automatically.",
+            "Type commands in the line below (again | attack <...> | :q). Ctrl+C pauses and saves.",
             style="white on blue",
         )
 
@@ -227,19 +272,68 @@ class VaubanCLI:
         # Advance animation frame so the lane moves each refresh
         self._vector_step = (self._vector_step + 1) % self._vector_len
 
+    async def _ticker(self, stop_event: asyncio.Event):
+        """Periodic refresh so the attack lane moves even when no events arrive."""
+        try:
+            while not stop_event.is_set():
+                self.update_ui()
+                await asyncio.sleep(0.25)
+        except asyncio.CancelledError:
+            pass
+
+    async def _watch_commands(self, stop_event: asyncio.Event, live: Live):
+        """Listen for user commands; uses live console so prompt renders on the alt-screen."""
+        # TODO: Replace blocking stdin with a non-blocking input widget so keystrokes echo inside Live without flicker.
+        try:
+            while not stop_event.is_set():
+                # Use live.console.input so the prompt is drawn even while Live owns the screen.
+                cmd = await asyncio.to_thread(lambda: live.console.input("command> "))
+                cmd = cmd.strip()
+                if not cmd:
+                    # Stay in the UI; ignore empty lines
+                    continue
+
+                lowered = cmd.lower()
+                if lowered in {":q", "quit", "exit"}:
+                    self.command_request = "__exit__"
+                    stop_event.set()
+                    break
+
+                if lowered == "again":
+                    self.restart_requested = True
+                    stop_event.set()
+                    break
+
+                # Any other text is treated as an inline command for a new attack
+                self.command_request = cmd
+                stop_event.set()
+                break
+        except asyncio.CancelledError:
+            pass
+
     async def run(self):
-        with Live(self.layout, refresh_per_second=4, screen=True) as live:
+        self._stop_event = asyncio.Event()
+        with Live(self.layout, refresh_per_second=8, screen=True) as live:
+            # Start background ticker and command listener
+            self._ticker_task = asyncio.create_task(self._ticker(self._stop_event))
+            self._input_task = asyncio.create_task(self._watch_commands(self._stop_event, live))
+
             try:
                 async for event in self.engine.run_stream():
                     if isinstance(event, CampaignStartEvent):
-                        pass
+                        # Sync configured total waves so remaining math is accurate even if engine overrides
+                        self.stats["total_waves"] = getattr(event, "max_generations", self.engine.max_generations)
+                        self.stats["waves_remaining"] = self.stats["total_waves"]
                     
                     elif isinstance(event, WaveStartEvent):
                         self.stats["generation"] = event.generation
+                        self.stats["waves_remaining"] = max(self.stats["total_waves"] - event.generation, 0)
                     
                     elif isinstance(event, AttackResultEvent):
+                        wave_idx = getattr(event, "generation", event.metadata.get("wave", 0))
                         self.attacks.append({
                             "time": datetime.now().strftime("%H:%M:%S"),
+                            "wave": wave_idx,
                             "score": event.score,
                             "is_breach": event.is_breach,
                             "prompt": event.attack.prompt
@@ -259,23 +353,35 @@ class VaubanCLI:
                     elif isinstance(event, CampaignEndEvent):
                         live.console.print("\n[bold green]Campaign Complete![/bold green]")
                         live.console.print(f"Result: {event.result}")
+                        summary = self._render_campaign_summary(event.result)
+                        live.console.print(Panel(summary, title="Outcome Summary", border_style="green", padding=(1, 2)))
                         
-                        # Update footer to prompt user
+                        # Update footer to prompt user; offer rerun to stay in UI and launch again
                         self.layout["footer"].update(Panel(
-                            "Campaign Complete. Press [bold]Enter[/bold] to return to War Room.",
+                            "Campaign Complete. Type ':q' to exit, 'again' to rerun, or enter 'attack <model> [siege|scout] [gens] [squad] [goal=...]' to launch a new one.",
                             style="white on green",
                         ))
                         live.refresh()
-                        
-                        # Wait for user input to dismiss
-                        await asyncio.to_thread(input)
-                        
+                        # Wait here until the command watcher captures user intent
+                        while not self._stop_event.is_set():
+                            await asyncio.sleep(0.1)
                         # Delete session file on successful completion
                         if os.path.exists(SESSION_FILE):
                             os.remove(SESSION_FILE)
-                        return
+                        return event.result
 
-                    self.update_ui()
-                    
+                    if self._stop_event.is_set():
+                        # User requested command/restart; bail out to outer loop
+                        return None
+                
+                # If the stream ends unexpectedly, fall through to wait for user command/enter
+                while not self._stop_event.is_set():
+                    await asyncio.sleep(0.1)
+                return None
             except asyncio.CancelledError:
                 pass
+            finally:
+                self._stop_event.set()
+                for task in (self._ticker_task, self._input_task):
+                    if task:
+                        task.cancel()

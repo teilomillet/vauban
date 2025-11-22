@@ -1,6 +1,6 @@
 import os
 import vauban
-from vauban.target import OpenAITarget
+from vauban.target import ModelTarget
 
 
 def main():
@@ -16,7 +16,7 @@ def main():
     # 1. Establish Baseline (if not already done)
     # This trains the anomaly detector on "safe" refusal responses from the target.
     print("Establishing defense baseline (this may take a moment)...")
-    target = OpenAITarget(
+    target = ModelTarget(
         model_name="openai/gpt-4o-mini", api_key=api_key, base_url=base_url
     )
 
