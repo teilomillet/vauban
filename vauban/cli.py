@@ -18,8 +18,10 @@ from vauban.interfaces import (
     WaveStartEvent,
     AttackResultEvent,
     WaveSummaryEvent,
+    WaveSummaryEvent,
     CampaignEndEvent,
 )
+from vauban.formatting import AttackFormatter
 
 LOGO = """
 ╦  ╦╔═╗╦ ╦╔╗ ╔═╗╔╗╔
@@ -112,7 +114,7 @@ class VaubanCLI:
         # Split Main into Attack Vector, Stats, Log
         layout["main"].split_column(
             Layout(name="vector", size=5),
-            Layout(name="stats", size=10),
+            Layout(name="stats", size=8),
             Layout(name="log"),
         )
         
@@ -148,30 +150,39 @@ class VaubanCLI:
         return Panel(details, title="[bold]Attack Vector[/bold]", border_style="cyan", padding=(0, 1))
 
     def generate_log(self) -> Panel:
-        table = Table(box=box.SIMPLE, expand=True, show_header=False)
+        table = Table(box=box.ROUNDED, expand=True, show_header=True, header_style="bold white")
         table.add_column("Time", style="dim", width=8)
         table.add_column("Wave", width=6, justify="right")
-        table.add_column("Status", width=10)
-        table.add_column("Score", width=6)
+        table.add_column("Status", width=12)
+        table.add_column("Score", width=6, justify="right")
         table.add_column("Details")
 
-        # Show last 10 attacks
-        for attack in self.attacks[-10:]:
+        # Show last 20 attacks (newest on top)
+        for attack in reversed(self.attacks[-20:]):
             time_str = attack["time"]
             wave = attack.get("wave", "-")
             score = attack["score"]
             is_breach = attack["is_breach"]
-            prompt = attack["prompt"][:50] + "..."
+            prompt = attack["prompt"]
+            strategy = attack.get("strategy", "Unknown")
+            tool_calls = attack.get("tool_calls", [])
+            metadata = attack.get("metadata", {})
             
-            status_color = "red" if is_breach else "green"
-            status_text = "BREACH" if is_breach else "DEFLECTED"
+            # Format details
+            prompt_display = prompt[:60] + "..." if len(prompt) > 60 else prompt
+            tools_str = AttackFormatter.format_tools(tool_calls)
+            meta_str = AttackFormatter.format_metadata(metadata)
+            
+            details = f"[{strategy}] {prompt_display}{tools_str}{meta_str}"
+            
+            label, color = AttackFormatter.get_status_label(is_breach)
             
             table.add_row(
                 time_str,
                 str(wave),
-                f"[{status_color}]{status_text}[/{status_color}]",
+                f"[{color}]{label}[/{color}]",
                 f"{score:.1f}",
-                f"{prompt}"
+                details
             )
             
         return Panel(
@@ -226,6 +237,10 @@ class VaubanCLI:
             f"Breaches: {breaches} / {len(history)}",
             f"Trend: {trend}",
         ]
+        
+        if result.termination_reason:
+            lines.insert(0, f"[bold red]STOPPED: {result.termination_reason}[/bold red]")
+            
         if reasoning:
             lines.append(f"Last reasoning: {reasoning[:180]}{'...' if len(reasoning) > 180 else ''}")
         return "\n".join(lines)
@@ -313,7 +328,7 @@ class VaubanCLI:
 
     async def run(self):
         self._stop_event = asyncio.Event()
-        with Live(self.layout, refresh_per_second=8, screen=True) as live:
+        with Live(self.layout, refresh_per_second=4, screen=True) as live:
             # Start background ticker and command listener
             self._ticker_task = asyncio.create_task(self._ticker(self._stop_event))
             self._input_task = asyncio.create_task(self._watch_commands(self._stop_event, live))
@@ -336,7 +351,11 @@ class VaubanCLI:
                             "wave": wave_idx,
                             "score": event.score,
                             "is_breach": event.is_breach,
-                            "prompt": event.attack.prompt
+                            "prompt": event.attack.prompt,
+                            "strategy": getattr(event.attack, "strategy", "Unknown"),
+                            "tool_calls": event.tool_calls,
+                            "metadata": event.metadata,
+                            "judge_reasoning": event.judge_reasoning
                         })
                         self.stats["attacks"] += 1
                         if event.is_breach:

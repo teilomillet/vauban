@@ -256,7 +256,7 @@ def weave_thread(label: Optional[str] = None):
     Falls back to a no-op when weave/project is unavailable.
     """
     if not _is_weave_enabled():
-        yield from nullcontext()
+        yield
         return
     try:
         require_weave_project()
@@ -264,7 +264,7 @@ def weave_thread(label: Optional[str] = None):
             yield t
     except Exception:
         # Do not break runs if weave thread creation fails; tracing still uses stdout/buffer.
-        yield from nullcontext()
+        yield
 
 
 def trace(func_or_name: Optional[Any] = None, *, name: Optional[str] = None) -> Callable:
@@ -462,7 +462,6 @@ def trace(func_or_name: Optional[Any] = None, *, name: Optional[str] = None) -> 
         return wrapper
 
     if not _is_weave_enabled():
-        # TODO: Add tests covering @trace, @trace("name"), and @trace(name="name") without Weave/project.
         # When weave is absent or not configured, still emit stdout trace so no call goes untraced.
         if callable(func_or_name) and not isinstance(func_or_name, str) and name is None:
             return _wrap_stdout(func_or_name, resolved_name)  # @trace directly on a function

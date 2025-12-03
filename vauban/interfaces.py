@@ -68,6 +68,7 @@ class SiegeResult:
     max_score: float
     history: List[Dict[str, Any]]
     stats: Dict[str, Any] = field(default_factory=dict)
+    termination_reason: Optional[str] = None
 
     @property
     def cost(self) -> float:
