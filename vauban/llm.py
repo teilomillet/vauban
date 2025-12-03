@@ -125,16 +125,11 @@ class LLM(WeaveModel):
         # No manual logging here - tracing wrapper handles inputs/outputs
         return MiniResult(data=data, usage=usage)
 
-    @trace
+    @trace(name="LLM.Run")
     async def run(self, prompt: str) -> MiniResult:
-        # Name spans with role + model for readability in Weave/trace buffer
-        # Note: With weave.Model, the method call is automatically traced with inputs/outputs
-        # But we keep @trace for our custom span naming and fallback support
-        span_name = self.trace_label or "LLM"
-        span_name = f"{span_name}[{self.model_name}]"
-        
         # We call the implementation directly. 
         # Since 'run' is decorated with @trace, it will create the span.
+        # 'self' is captured as an input, so model_name and trace_label are visible in Weave.
         return await self._run_impl(prompt)
 
     def _parse_content(self, content: str) -> Any:

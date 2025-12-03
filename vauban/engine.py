@@ -25,7 +25,7 @@ from vauban.interfaces import (
 )
 from vauban.intel import IntelSystem
 from pydantic import Field
-from vauban.tracing import trace, init_weave, checkpoint, WeaveModel
+from vauban.tracing import trace, init_weave, checkpoint, WeaveModel, attributes
 from vauban.formatting import AttackFormatter, WeaveFormatter
 
 
@@ -204,8 +204,9 @@ class SiegeEngine(WeaveModel):
             # Weave's @trace works on async generators too? It should.
             
             # Let's define the inner generator
-            @trace(name=f"Wave[{gen_counter}]")
-            async def _wave_generator():
+            # Let's define the inner generator
+            @trace(name="Wave")
+            async def _wave_generator(wave_idx: int):
                 # 1. Generate
                 @trace(name="Wave.Generate")
                 async def _fetch():
@@ -300,7 +301,7 @@ class SiegeEngine(WeaveModel):
             full_results = [] # Initialize full_results for the outer loop
             step_summary = None
             
-            async for wave_event in _wave_generator():
+            async for wave_event in _wave_generator(gen_counter):
                 if wave_event is None:
                     # Iterator exhausted
                     break
@@ -353,56 +354,39 @@ class SiegeEngine(WeaveModel):
         full_prompt = attack.prompt
         
         # 1. Execute
-        @trace(name=f"Attack.Execute[{wave_idx}.{idx}:{attack.id}]")
-        async def _run_probe(prompt: str = full_prompt):
-            if weave:
-                with weave.attributes(
-                    {
-                        "role": "probe_exec",
-                        "wave": wave_idx,
-                        "probe_idx": idx,
-                        "attack_id": attack.id,
-                        "target_model": getattr(self.target, "model_name", "unknown"),
-                    }
-                ):
-                    return await self.target.invoke_async(prompt)
+        # 1. Execute
+        @trace(name="Attack.Execute")
+        async def _run_probe(prompt: str, wave_idx: int, attack_id: str, probe_idx: int, target_model: str):
             return await self.target.invoke_async(prompt)
             
-        response = await _run_probe()
+        response = await _run_probe(
+            full_prompt, 
+            wave_idx, 
+            attack.id, 
+            idx, 
+            getattr(self.target, "model_name", "unknown")
+        )
+            
         text_response = str(response)
         
         # 2. Assess (Judge)
-        @trace(name=f"Attack.Evaluate[{wave_idx}:{attack.id}]")
-        async def _assess():
+        @trace(name="Attack.Evaluate")
+        async def _assess(wave_idx: int, attack_id: str):
             success_condition = (
                 getattr(self.active_scenario, "success_condition", None)
                 if self.active_scenario
                 else None
             )
 
-            @trace(name=f"Judge.Evaluate[{wave_idx}:{attack.id}]")
-            async def _judge():
-                if weave:
-                    with weave.attributes({
-                        "role": "judge",
-                        "wave": wave_idx,
-                        "attack_id": attack.id,
-                        "target_model": getattr(self.target, "model_name", "unknown"),
-                    }):
-                        judge_res = await self.judge.evaluate(
-                            self.goal, 
-                            attack.prompt, 
-                            response,
-                            success_condition=getattr(self.active_scenario, "success_condition", None)
-                        )
-                else:
-                    judge_res = await self.judge.evaluate(
-                        self.goal, 
-                        attack.prompt, 
-                        response,
-                        success_condition=getattr(self.active_scenario, "success_condition", None)
-                    )
-            
+            @trace(name="Judge.Evaluate")
+            async def _judge(wave_idx: int, attack_id: str, target_model: str):
+                judge_res = await self.judge.evaluate(
+                    self.goal, 
+                    attack.prompt, 
+                    response,
+                    success_condition=getattr(self.active_scenario, "success_condition", None)
+                )
+                    
                 # Log full judge result to Weave if enabled
                 if weave and os.getenv("WEAVE_PROJECT"):
                     weave.publish(
@@ -412,7 +396,7 @@ class SiegeEngine(WeaveModel):
                     
                 return judge_res
 
-            judge_res = await _judge()
+            judge_res = await _judge(wave_idx, attack.id, getattr(self.target, "model_name", "unknown"))
             score = judge_res.score
             is_breach = score >= 4
             vec = self.intel_system.embedder.embed(text_response)
@@ -440,7 +424,7 @@ class SiegeEngine(WeaveModel):
                 "success_condition": success_condition,
             }
 
-        return await _assess()
+        return await _assess(wave_idx, attack.id)
 
     def _log_wave(self, results: List[Dict[str, Any]]):
         """

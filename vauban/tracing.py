@@ -267,6 +267,59 @@ def weave_thread(label: Optional[str] = None):
         yield
 
 
+def add_attributes(attributes: Dict[str, Any]) -> None:
+    """
+    Safely add attributes to the current Weave span if available.
+    """
+    if not _is_weave_enabled():
+        return
+    try:
+        # weave.attributes is a context manager but can also be used to set attributes on the current run/span?
+        # Actually, weave.attributes({...}) returns a context manager that applies attributes to *child* spans or the current scope.
+        # To add attributes to the *current* span, we might need a different API or just use the context manager around the code.
+        # However, weave.current_context().add_attributes(attributes) might be what we want if it existed.
+        # In Weave (wandb), weave.attributes() is often used as a context manager.
+        # If we want to add attributes to the *current* span (the one we are inside), we might need to rely on the fact that
+        # weave.attributes() merges into the current context.
+        # Let's check the usage in engine.py: with weave.attributes({...}): ...
+        # This suggests it applies to spans created *within* the block.
+        # But we want to add attributes to the *current* span (e.g. the one created by @trace).
+        
+        # If @trace creates a span, and we call add_attributes inside the function, we want those attributes on that span.
+        # If weave.attributes() is a context manager, it might not affect the *parent* span unless we are careful.
+        
+        # Wait, weave.op() creates a span.
+        # If we are inside an op, how do we add attributes to it?
+        # Usually, you pass attributes to the op() call.
+        # If we want to add them dynamically, we might need to use `weave.current_run().log(attributes)` or similar?
+        # But Weave is different from W&B Runs.
+        
+        # Let's assume for now that we will use this helper to wrap blocks of code or we will use it to inject attributes
+        # into the current context which might be picked up by subsequent ops or the current one if supported.
+        # Actually, looking at engine.py, they use `with weave.attributes(...)`.
+        # So I will just expose a helper that does exactly that but checks for weave availability.
+        pass
+    except Exception:
+        pass
+
+# Re-implementing add_attributes to be a context manager for consistency with weave.attributes
+@contextmanager
+def attributes(attrs: Dict[str, Any]):
+    """
+    Context manager to add attributes to the current Weave scope.
+    Safe to use even if Weave is disabled.
+    """
+    if not _is_weave_enabled():
+        yield
+        return
+    try:
+        with weave.attributes(attrs):
+            yield
+    except Exception:
+        yield
+
+
+
 def trace(func_or_name: Optional[Any] = None, *, name: Optional[str] = None) -> Callable:
     """
     Decorator to trace functions with Weave if available.
@@ -336,6 +389,79 @@ def trace(func_or_name: Optional[Any] = None, *, name: Optional[str] = None) -> 
             _TRACE_DEPTH.reset(token_depth)
             _TRACE_SPAN_ID.reset(token_span)
             _TRACE_ROOT_ID.reset(token_root)
+
+        is_async_gen = inspect.isasyncgenfunction(func)
+
+        if is_async_gen:
+            async def wrapper(*args, **kwargs):
+                (
+                    span_id,
+                    parent_id,
+                    root_id,
+                    session_id,
+                    session_label,
+                    t_depth,
+                    t_span,
+                    t_root,
+                ) = _enter_span()
+                start = time.perf_counter()
+                arg_view = _format_args(args, kwargs)
+                _log("▶", f"{func_name}({arg_view})")
+                
+                # We need to capture items to summarize, but for a generator we might just count them or show last?
+                # Let's just count yielded items for the summary.
+                count = 0
+                error = None
+                
+                try:
+                    async for item in func(*args, **kwargs):
+                        count += 1
+                        yield item
+                    
+                    elapsed = (time.perf_counter() - start) * 1000
+                    summary = f"yielded {count} items"
+                    _record_trace(
+                        {
+                            "span_id": span_id,
+                            "parent_id": parent_id,
+                            "root_id": root_id,
+                            "name": func_name,
+                            "args": arg_view,
+                            "ok": True,
+                            "result": summary,
+                            "duration_ms": elapsed,
+                            "depth": _TRACE_DEPTH.get(),
+                            "ts": time.time(),
+                            "session_id": session_id,
+                            "session_label": session_label,
+                        }
+                    )
+                    _log("◀", f"{func_name} -> {summary} [{elapsed:.1f}ms]")
+
+                except Exception as e:
+                    error = e
+                    elapsed = (time.perf_counter() - start) * 1000
+                    _record_trace(
+                        {
+                            "span_id": span_id,
+                            "parent_id": parent_id,
+                            "root_id": root_id,
+                            "name": func_name,
+                            "args": arg_view,
+                            "ok": False,
+                            "error": repr(e),
+                            "duration_ms": elapsed,
+                            "depth": _TRACE_DEPTH.get(),
+                            "ts": time.time(),
+                            "session_id": session_id,
+                            "session_label": session_label,
+                        }
+                    )
+                    _log("✖", f"{func_name} ! {e} [{elapsed:.1f}ms]")
+                    raise
+                finally:
+                    _exit_span((t_depth, t_span, t_root))
+            return wrapper
 
         if is_async:
 

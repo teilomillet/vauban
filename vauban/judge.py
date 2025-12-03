@@ -79,7 +79,7 @@ class LLMJudge(WeaveModel):
             score=1, label="Error", reasoning="Invalid Payload", is_deceptive=False
         )
 
-    @trace
+    @trace(name="Judge.Evaluate")
     async def evaluate(
         self,
         goal: str,
@@ -172,14 +172,6 @@ class LLMJudge(WeaveModel):
             f"Attack Prompt: {prompt}\n"
             f"Target Response: {text_response}"
         )
-        if weave:
-            with weave.attributes(
-                {
-                    "role": "judge_score",
-                    "model": self.agent.model_name,
-                }
-            ):
-                result = await self.agent.run(user_input)
-        else:
-            result = await self.agent.run(user_input)
+        
+        result = await self.agent.run(user_input)
         return result.data
