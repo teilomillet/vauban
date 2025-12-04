@@ -16,7 +16,8 @@ class GEPAPopulationManager:
         branching_factor: int, 
         goal: str,
         usage_callback: Callable[[Any], None],
-        intel_system: Any = None  # Optional IntelSystem
+        intel_system: Any = None,  # Optional IntelSystem
+        max_concurrency: int = 10,
     ):
         self.agents = agents
         self.squad_size = squad_size
@@ -24,6 +25,7 @@ class GEPAPopulationManager:
         self.goal = goal
         self.usage_callback = usage_callback
         self.intel_system = intel_system
+        self.semaphore = asyncio.Semaphore(max_concurrency)
 
     async def generate_initial_population(self, attack_model: str) -> List[AttackPrompt]:
         tasks = []
@@ -33,7 +35,8 @@ class GEPAPopulationManager:
 
             @trace(name="Strategy.Generate")
             async def _generate(wave: int, persona_name: str):
-                res = await agent.run("Generate attack")
+                async with self.semaphore:
+                    res = await agent.run("Generate attack")
                 self.usage_callback(res)
                 attack = res.data
                 attack.persona = persona
@@ -76,7 +79,8 @@ class GEPAPopulationManager:
             
             @trace(name="Strategy.Crossover")
             async def _cross(wave: int, p1_id: str, p2_id: str, model: str):
-                attack = await self._system_aware_crossover(p1, p2)
+                async with self.semaphore:
+                    attack = await self._system_aware_crossover(p1, p2)
                 attack.metadata.setdefault("wave", wave)
                 attack.metadata.setdefault("parent_ids", [p1.id, p2.id])
                 return attack
@@ -111,9 +115,10 @@ class GEPAPopulationManager:
                 
                 @trace(name="Strategy.Generate")
                 async def _branch(wave: int, parent_attack_id: str, style: str, model: str):
-                    attack = await self._mutate_attack(
-                        minibatch, style=style
-                    )
+                    async with self.semaphore:
+                        attack = await self._mutate_attack(
+                            minibatch, style=style
+                        )
                     attack.metadata.setdefault("wave", wave)
                     attack.metadata.setdefault("parent_attack_id", parent_attack.id)
                     return attack

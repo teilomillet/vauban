@@ -19,6 +19,13 @@ from pydantic import PrivateAttr, Field
 
 from vauban.config import resolve_api_config
 from vauban.tracing import trace, init_weave, WeaveModel
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
+from openai import AsyncOpenAI, RateLimitError, APITimeoutError
 
 
 @dataclass
@@ -99,6 +106,12 @@ class LLM(WeaveModel):
             self._client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
         return self._client
 
+    @retry(
+        retry=retry_if_exception_type((RateLimitError, APITimeoutError)),
+        wait=wait_exponential(multiplier=1, min=2, max=60),
+        stop=stop_after_attempt(8),
+        reraise=True,
+    )
     async def _run_impl(self, prompt: str) -> MiniResult:
         messages = []
         if self.system_prompt:
