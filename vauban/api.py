@@ -155,6 +155,7 @@ def prepare_siege(
     embedding_base_url: Optional[str] = None,
     max_tokens: int = 1024,
     selection_method: str = "map_elites",
+    breach_threshold: int = 2,
 ) -> SiegeEngine:
     """
     Prepare a SiegeEngine without running it.
@@ -243,6 +244,7 @@ def prepare_siege(
         max_generations=generations,
         scenario=scenario,  # Name for reporting
         active_scenario=active_scenario,  # Full scenario so judge can apply success_condition/tool logic
+        breach_threshold=breach_threshold,
     )
     return engine
 
@@ -269,6 +271,7 @@ async def siege(
     embedding_base_url: Optional[str] = None,
     max_tokens: int = 1024,
     selection_method: str = "map_elites",
+    breach_threshold: int = 2,
 ) -> SiegeResult:
     """
     Launch a full Siege Campaign.
@@ -294,6 +297,7 @@ async def siege(
         embedding_api_key=embedding_api_key,
         max_tokens=max_tokens,
         selection_method=selection_method,
+        breach_threshold=breach_threshold,
     )
 
     return await engine.run(rate_limit_delay=rate_limit_delay)

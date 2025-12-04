@@ -55,6 +55,8 @@ class SiegeEngine(WeaveModel):
     scenario: Optional[str] = None
     active_scenario: Any = None
     
+    breach_threshold: int = 2
+    
     campaign_history: List[Dict[str, Any]] = Field(default_factory=list, exclude=True)
     wave_stats: List[Dict[str, Any]] = Field(default_factory=list, exclude=True)
 
@@ -90,6 +92,7 @@ class SiegeEngine(WeaveModel):
         print(f"Target Goal: {self.goal}")
 
         gen_counter = 1
+        total_breaches = 0
 
         # Manual iteration to control span nesting
         iterator = self.strategy.generator().__aiter__()
@@ -175,9 +178,8 @@ class SiegeEngine(WeaveModel):
                 
                 # Check for termination condition (e.g., breach found)
                 termination_reason = None
-                if breach_count > 0:
-                    termination_reason = f"Breach detected in wave {gen_counter} (score={best_score:.1f})"
-
+                # We calculate total breaches in the outer loop, but we can hint here
+                
                 yield {
                     "summary": {
                         "breach_found": breach_count > 0,
@@ -223,11 +225,13 @@ class SiegeEngine(WeaveModel):
             # Log to History
             self._log_wave(full_results)
 
-            # Early exit
-            if step_summary and step_summary["breach_found"]:
-                print("Breach detected; stopping remaining waves to conserve tokens.")
-                termination_reason = "Breach Detected"
-                break
+            # Check termination
+            if step_summary:
+                total_breaches += step_summary["breach_count"]
+                if total_breaches >= self.breach_threshold:
+                    print(f"Breach threshold reached ({total_breaches}/{self.breach_threshold}); stopping.")
+                    termination_reason = f"Breach Threshold Reached ({total_breaches})"
+                    break
 
             gen_counter += 1
 

@@ -1,4 +1,4 @@
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 from vauban.api import scout, assess, attack, siege, baseline, baseline_async, visualize
 from vauban.interfaces import Target, SiegeResult
