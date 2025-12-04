@@ -219,6 +219,8 @@ def init_weave(project_name: Optional[str] = None) -> None:
     global _WEAVE_INITIALIZED
     
     if not WEAVE_AVAILABLE:
+        if project_name or os.getenv("WEAVE_PROJECT"):
+            print("[WARNING] WEAVE_PROJECT is set but 'weave' package is not installed. Tracing disabled. Run 'pip install weave'.")
         return
 
     project = project_name or os.getenv("WEAVE_PROJECT")

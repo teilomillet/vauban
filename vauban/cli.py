@@ -247,7 +247,7 @@ class VaubanCLI:
 
     def generate_footer(self) -> Panel:
         return Panel(
-            "Type commands in the line below (again | attack <...> | :q). Ctrl+C pauses and saves.",
+            "Running... | Type 'again', 'exit', or 'attack ...' and press Enter | Ctrl+C to force quit",
             style="white on blue",
         )
 
@@ -302,7 +302,8 @@ class VaubanCLI:
         try:
             while not stop_event.is_set():
                 # Use live.console.input so the prompt is drawn even while Live owns the screen.
-                cmd = await asyncio.to_thread(lambda: live.console.input("command> "))
+                # We use an empty prompt to avoid fighting with the footer layout.
+                cmd = await asyncio.to_thread(lambda: live.console.input(""))
                 cmd = cmd.strip()
                 if not cmd:
                     # Stay in the UI; ignore empty lines

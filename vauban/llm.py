@@ -113,6 +113,11 @@ class LLM(WeaveModel):
             params["response_format"] = {"type": "json_object"}
 
         response = await self.client.chat.completions.create(**params)
+        
+        if not response.choices:
+            # Handle cases where provider returns None or empty list for choices
+            raise ValueError(f"LLM returned no choices. Model: {self.model_name}. Response: {response}")
+            
         msg = response.choices[0].message
         content = msg.content or ""
 

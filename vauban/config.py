@@ -21,3 +21,23 @@ def resolve_api_config(
         url = os.getenv("OPENAI_BASE_URL")
 
     return key, url
+
+
+def get_smart_default_model() -> str:
+    """
+    Determine the best default model based on available API keys.
+    """
+    if os.getenv("OPENROUTER_API_KEY"):
+        return "anthropic/claude-3.5-sonnet"
+    return "gpt-4o"
+
+
+# Centralized Defaults
+DEFAULT_ATTACKER_MODEL = get_smart_default_model()
+DEFAULT_STRATEGY_MODEL = DEFAULT_ATTACKER_MODEL
+DEFAULT_STEALTH_MODEL = "gpt-4o-mini"
+DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
+
+# Pricing (per 1M tokens)
+PRICING_INPUT_PER_1M = 2.50
+PRICING_OUTPUT_PER_1M = 10.00

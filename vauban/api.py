@@ -126,6 +126,15 @@ async def baseline_async(
 
 # ...
 
+from vauban.config import (
+    DEFAULT_ATTACKER_MODEL,
+    DEFAULT_STRATEGY_MODEL,
+    DEFAULT_STEALTH_MODEL,
+    DEFAULT_EMBEDDING_MODEL,
+)
+
+# ...
+
 def prepare_siege(
     goal: str,
     generations: int = 3,
@@ -137,7 +146,7 @@ def prepare_siege(
     mutation_model: Optional[str] = None,
     stealth_model: Optional[str] = None,
     scorer_model: Optional[str] = None,
-    embedding_model: str = "text-embedding-3-small",
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL,
     use_tools: bool = False,
     target_tools: Optional[List[Dict[str, Any]]] = None,
     api_key: Optional[str] = None,
@@ -145,21 +154,18 @@ def prepare_siege(
     embedding_api_key: Optional[str] = None,
     embedding_base_url: Optional[str] = None,
     max_tokens: int = 1024,
+    selection_method: str = "map_elites",
 ) -> SiegeEngine:
     """
     Prepare a SiegeEngine without running it.
     scorer_model mirrors the FerRet reward scorer; when omitted we reuse stealth_model
     for backward compatibility with older CLI/API callers.
     """
-    # Validate required models
-    if not attacker_model:
-        raise ValueError("attacker_model is required")
-    if not reflection_model:
-        raise ValueError("reflection_model is required")
-    if not mutation_model:
-        raise ValueError("mutation_model is required")
-    if not stealth_model:
-        raise ValueError("stealth_model is required")
+    # Apply defaults
+    attacker_model = attacker_model or DEFAULT_ATTACKER_MODEL
+    reflection_model = reflection_model or DEFAULT_STRATEGY_MODEL
+    mutation_model = mutation_model or DEFAULT_STRATEGY_MODEL
+    stealth_model = stealth_model or DEFAULT_STEALTH_MODEL
 
     # 1. Setup Intel
     intel_system = create_default_intel(
@@ -224,6 +230,7 @@ def prepare_siege(
         attack_model=attacker_model,
         squad_size=squad_size,
         max_generations=generations,
+        selection_method=selection_method,
     )
 
     # 6. Inject Deps into Engine
@@ -252,7 +259,7 @@ async def siege(
     mutation_model: Optional[str] = None,
     stealth_model: Optional[str] = None,
     scorer_model: Optional[str] = None,
-    embedding_model: str = "text-embedding-3-small",
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL,
     use_tools: bool = False,
     target_tools: Optional[List[Dict[str, Any]]] = None,
     rate_limit_delay: float = 2.0,
@@ -261,6 +268,7 @@ async def siege(
     embedding_api_key: Optional[str] = None,
     embedding_base_url: Optional[str] = None,
     max_tokens: int = 1024,
+    selection_method: str = "map_elites",
 ) -> SiegeResult:
     """
     Launch a full Siege Campaign.
@@ -285,6 +293,7 @@ async def siege(
         embedding_base_url=embedding_base_url,
         embedding_api_key=embedding_api_key,
         max_tokens=max_tokens,
+        selection_method=selection_method,
     )
 
     return await engine.run(rate_limit_delay=rate_limit_delay)
