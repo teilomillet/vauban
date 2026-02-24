@@ -5,6 +5,7 @@ from pathlib import Path
 from vauban._serializers import (
     _detect_to_dict,
     _optimize_to_dict,
+    _sic_to_dict,
     _softprompt_to_dict,
     _surface_comparison_to_dict,
 )
@@ -37,6 +38,8 @@ from vauban.measure import (
 )
 from vauban.optimize import optimize
 from vauban.probe import multi_probe, probe, steer
+from vauban.sic import sic as sic_sanitize
+from vauban.sic import sic_single
 from vauban.softprompt import softprompt_attack
 from vauban.subspace import (
     effective_rank,
@@ -70,6 +73,9 @@ from vauban.types import (
     OptimizeResult,
     PipelineConfig,
     ProbeResult,
+    SICConfig,
+    SICPromptResult,
+    SICResult,
     SoftPromptConfig,
     SoftPromptResult,
     SteerResult,
@@ -99,6 +105,9 @@ __all__ = [
     "OptimizeResult",
     "PipelineConfig",
     "ProbeResult",
+    "SICConfig",
+    "SICPromptResult",
+    "SICResult",
     "SoftPromptConfig",
     "SoftPromptResult",
     "SteerResult",
@@ -151,6 +160,8 @@ __all__ = [
     "save_weights",
     "scan",
     "select_target_layers",
+    "sic_sanitize",
+    "sic_single",
     "silhouette_scores",
     "softprompt_attack",
     "sparsify_direction",
@@ -227,6 +238,31 @@ def run(config_path: str | Path) -> None:
             model, tokenizer, harmful, harmless, clip_q,  # type: ignore[arg-type]
         )
         cosine_scores = direction_result.cosine_scores
+
+    # SIC sanitization: detect and rewrite adversarial prompts
+    if config.sic is not None:
+        direction_vec = (
+            direction_result.direction if direction_result is not None
+            else None
+        )
+        layer_idx = (
+            direction_result.layer_index if direction_result is not None
+            else 0
+        )
+        if config.eval_prompts_path is not None:
+            sic_prompts: list[str] = load_prompts(config.eval_prompts_path)
+        else:
+            sic_prompts = harmful[:20]
+
+        sic_result = sic_sanitize(
+            model, tokenizer, sic_prompts, config.sic,  # type: ignore[arg-type]
+            direction_vec, layer_idx,
+        )
+        report_path = config.output_dir / "sic_report.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            json.dumps(_sic_to_dict(sic_result), indent=2),
+        )
 
     # Optimization mode: search over cut parameters, write report, return early
     if config.optimize is not None and direction_result is not None:

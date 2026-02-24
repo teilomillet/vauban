@@ -1,0 +1,312 @@
+"""SIC (Soft Instruction Control) — iterative input sanitization defense.
+
+Detect adversarial content in prompts, rewrite to remove it, repeat until
+clean or block. Direction-aware variant uses refusal projection as a fast
+detection signal.
+
+Reference: arxiv.org/abs/2510.21057
+"""
+
+import mlx.core as mx
+import mlx.nn as nn
+
+from vauban.evaluate import DEFAULT_REFUSAL_PHRASES, _extract_logits
+from vauban.probe import _make_cache
+from vauban.types import (
+    CausalLM,
+    SICConfig,
+    SICPromptResult,
+    SICResult,
+    Tokenizer,
+)
+
+
+def sic(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    prompts: list[str],
+    config: SICConfig,
+    direction: mx.array | None = None,
+    layer_index: int = 0,
+) -> SICResult:
+    """Run SIC sanitization on a batch of prompts.
+
+    Args:
+        model: The causal language model.
+        tokenizer: Tokenizer with chat template support.
+        prompts: Prompts to sanitize.
+        config: SIC configuration.
+        direction: Refusal direction vector (required for mode="direction").
+        layer_index: Layer index for direction projection (used when
+            config.target_layer is None).
+
+    Returns:
+        SICResult with per-prompt sanitization outcomes.
+
+    Raises:
+        ValueError: If mode="direction" and no direction is provided.
+    """
+    if config.mode == "direction" and direction is None:
+        msg = "SIC mode='direction' requires a direction vector"
+        raise ValueError(msg)
+
+    results: list[SICPromptResult] = []
+    for prompt in prompts:
+        result = sic_single(
+            model, tokenizer, prompt, config, direction, layer_index,
+        )
+        results.append(result)
+
+    prompts_clean = [r.clean_prompt for r in results]
+    prompts_blocked = [r.blocked for r in results]
+    iterations_used = [r.iterations for r in results]
+    initial_scores = [r.initial_score for r in results]
+    final_scores = [r.final_score for r in results]
+
+    total_blocked = sum(1 for b in prompts_blocked if b)
+    total_sanitized = sum(
+        1 for r in results if r.iterations > 0 and not r.blocked
+    )
+    total_clean = sum(
+        1 for r in results if r.iterations == 0 and not r.blocked
+    )
+
+    return SICResult(
+        prompts_clean=prompts_clean,
+        prompts_blocked=prompts_blocked,
+        iterations_used=iterations_used,
+        initial_scores=initial_scores,
+        final_scores=final_scores,
+        total_blocked=total_blocked,
+        total_sanitized=total_sanitized,
+        total_clean=total_clean,
+    )
+
+
+def sic_single(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    prompt: str,
+    config: SICConfig,
+    direction: mx.array | None = None,
+    layer_index: int = 0,
+) -> SICPromptResult:
+    """Run SIC sanitization on a single prompt.
+
+    Args:
+        model: The causal language model.
+        tokenizer: Tokenizer with chat template support.
+        prompt: The prompt to sanitize.
+        config: SIC configuration.
+        direction: Refusal direction vector (required for mode="direction").
+        layer_index: Layer index for direction projection (used when
+            config.target_layer is None).
+
+    Returns:
+        SICPromptResult with sanitization outcome.
+    """
+    target_layer = (
+        config.target_layer if config.target_layer is not None
+        else layer_index
+    )
+
+    return _sanitize_prompt(
+        model, tokenizer, prompt, config, direction, target_layer,
+    )
+
+
+def _sanitize_prompt(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    prompt: str,
+    config: SICConfig,
+    direction: mx.array | None,
+    target_layer: int,
+) -> SICPromptResult:
+    """Iterative sanitization loop for a single prompt.
+
+    1. Score prompt via detection
+    2. If score >= threshold: return clean (iterations=0)
+    3. Else: rewrite prompt, re-score, repeat
+    4. If still adversarial after max_iterations: block or return last rewrite
+    """
+    initial_score = _detect(
+        model, tokenizer, prompt, config, direction, target_layer,
+    )
+
+    if initial_score >= config.threshold:
+        return SICPromptResult(
+            clean_prompt=prompt,
+            blocked=False,
+            iterations=0,
+            initial_score=initial_score,
+            final_score=initial_score,
+        )
+
+    current_prompt = prompt
+    current_score = initial_score
+
+    for i in range(1, config.max_iterations + 1):
+        current_prompt = _rewrite_prompt(
+            model, tokenizer, current_prompt,
+            config.sanitize_system_prompt, config.max_sanitize_tokens,
+        )
+        current_score = _detect(
+            model, tokenizer, current_prompt, config, direction, target_layer,
+        )
+        if current_score >= config.threshold:
+            return SICPromptResult(
+                clean_prompt=current_prompt,
+                blocked=False,
+                iterations=i,
+                initial_score=initial_score,
+                final_score=current_score,
+            )
+
+    # Exhausted iterations — block or return last rewrite
+    return SICPromptResult(
+        clean_prompt=current_prompt,
+        blocked=config.block_on_failure,
+        iterations=config.max_iterations,
+        initial_score=initial_score,
+        final_score=current_score,
+    )
+
+
+def _detect(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    prompt: str,
+    config: SICConfig,
+    direction: mx.array | None,
+    target_layer: int,
+) -> float:
+    """Dispatch to direction or generation detection."""
+    if config.mode == "direction":
+        assert direction is not None
+        return _detect_adversarial_direction(
+            model, tokenizer, prompt, direction, target_layer,
+        )
+    return _detect_adversarial_generation(
+        model, tokenizer, prompt, config.max_tokens,
+    )
+
+
+def _detect_adversarial_direction(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    prompt: str,
+    direction: mx.array,
+    target_layer: int,
+) -> float:
+    """Detect adversarial content via refusal direction projection.
+
+    Single forward pass, compute projection at the target layer only.
+    Higher projection = more refusal-like = benign.
+    Lower projection = less refusal = likely adversarial.
+
+    Returns:
+        Projection magnitude (float). Higher = more benign.
+    """
+    messages = [{"role": "user", "content": prompt}]
+    text = tokenizer.apply_chat_template(messages, tokenize=False)
+    if not isinstance(text, str):
+        msg = "apply_chat_template must return str when tokenize=False"
+        raise TypeError(msg)
+    token_ids = mx.array(tokenizer.encode(text))[None, :]
+
+    transformer = model.model
+    h = transformer.embed_tokens(token_ids)
+    mask = nn.MultiHeadAttention.create_additive_causal_mask(h.shape[1])
+    mask = mask.astype(h.dtype)
+
+    for i, layer in enumerate(transformer.layers):
+        h = layer(h, mask)
+        if i == target_layer:
+            last_token = h[0, -1, :]
+            proj = mx.sum(last_token * direction)
+            mx.eval(proj)
+            return float(proj.item())
+
+    # Fallback: if target_layer exceeds layer count, use last layer
+    last_token = h[0, -1, :]
+    proj = mx.sum(last_token * direction)
+    mx.eval(proj)
+    return float(proj.item())
+
+
+def _detect_adversarial_generation(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    prompt: str,
+    max_tokens: int,
+) -> float:
+    """Detect adversarial content via generation-based refusal check.
+
+    Generate a response and check for refusal phrases.
+    Returns 1.0 if the model refused (prompt is benign).
+    Returns 0.0 if the model did not refuse (prompt is suspicious).
+    """
+    response = _generate_with_messages(
+        model, tokenizer,
+        [{"role": "user", "content": prompt}],
+        max_tokens,
+    )
+    lower = response.lower()
+    if any(phrase.lower() in lower for phrase in DEFAULT_REFUSAL_PHRASES):
+        return 1.0
+    return 0.0
+
+
+def _rewrite_prompt(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    prompt: str,
+    system_prompt: str,
+    max_tokens: int,
+) -> str:
+    """Rewrite a prompt to remove adversarial content.
+
+    Uses the model itself with a system instruction to sanitize the prompt.
+    """
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": prompt},
+    ]
+    result = _generate_with_messages(model, tokenizer, messages, max_tokens)
+    return result.strip() if result.strip() else prompt
+
+
+def _generate_with_messages(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    messages: list[dict[str, str]],
+    max_tokens: int,
+) -> str:
+    """Generate text from a list of messages using KV-cached greedy decoding.
+
+    Like evaluate._generate() but takes a full messages list (enables
+    system messages for the sanitization step).
+    """
+    text = tokenizer.apply_chat_template(messages, tokenize=False)
+    if not isinstance(text, str):
+        msg = "apply_chat_template must return str when tokenize=False"
+        raise TypeError(msg)
+    tokens = tokenizer.encode(text)
+    generated: list[int] = []
+
+    eos_token_id: int | None = getattr(tokenizer, "eos_token_id", None)
+
+    cache = _make_cache(model)
+    token_ids = mx.array([tokens])
+
+    for _ in range(max_tokens):
+        result = model(token_ids, cache=cache)  # type: ignore[call-non-callable]
+        logits = _extract_logits(result)
+        next_token = int(mx.argmax(logits[:, -1, :], axis=-1).item())
+        generated.append(next_token)
+        if eos_token_id is not None and next_token == eos_token_id:
+            break
+        token_ids = mx.array([[next_token]])
+
+    return tokenizer.decode(generated)

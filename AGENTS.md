@@ -64,6 +64,7 @@ This project builds upon abliteration research — the discovery that refusal in
 ### Defense Duals
 - **CAST** — "Programming Refusal with Conditional Activation Steering" — Context-dependent steering rules at inference time without weight modification. ICLR 2025 Spotlight. Code: github.com/IBM/activation-steering — arxiv.org/abs/2409.05907
 - **RepBend** — "Representation Bending for Large Language Model Safety" — Loss-based fine-tuning to push harmful activations apart from safe ones. The defense dual of abliteration. ACL 2025. — arxiv.org/abs/2504.01550
+- **SIC** — "SIC! Iterative Self-Improvement for Adversarial Attacks on Safety-Aligned LLMs" — Iterative input sanitization defense: detect adversarial content, rewrite to remove it, repeat until clean or block. Direction-aware variant uses refusal projection as detection signal. — arxiv.org/abs/2510.21057
 
 ### Theoretical Backing
 - **C-AdvIPO** — "Efficient Adversarial Training in LLMs with Continuous Attacks" — Proves continuous embedding attacks are the fundamental threat model: robustness to them predicts robustness to discrete attacks. — arxiv.org/abs/2405.15589

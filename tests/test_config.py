@@ -1156,3 +1156,133 @@ class TestLoadConfig:
         assert config.softprompt is not None
         assert config.softprompt.kl_ref_weight == 0.5
         assert config.softprompt.ref_model == "mlx-community/tiny-llama"
+
+    # =========================================================================
+    # SIC config tests
+    # =========================================================================
+
+    def test_sic_defaults(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[sic]\n"
+        )
+        config = load_config(toml_file)
+        assert config.sic is not None
+        assert config.sic.mode == "direction"
+        assert config.sic.threshold == 0.0
+        assert config.sic.max_iterations == 3
+        assert config.sic.max_tokens == 100
+        assert config.sic.target_layer is None
+        assert config.sic.max_sanitize_tokens == 200
+        assert config.sic.block_on_failure is True
+
+    def test_sic_full_parse(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[sic]\n"
+            'mode = "generation"\n'
+            "threshold = -0.5\n"
+            "max_iterations = 5\n"
+            "max_tokens = 50\n"
+            "target_layer = 14\n"
+            'sanitize_system_prompt = "Custom prompt"\n'
+            "max_sanitize_tokens = 100\n"
+            "block_on_failure = false\n"
+        )
+        config = load_config(toml_file)
+        assert config.sic is not None
+        assert config.sic.mode == "generation"
+        assert config.sic.threshold == -0.5
+        assert config.sic.max_iterations == 5
+        assert config.sic.max_tokens == 50
+        assert config.sic.target_layer == 14
+        assert config.sic.sanitize_system_prompt == "Custom prompt"
+        assert config.sic.max_sanitize_tokens == 100
+        assert config.sic.block_on_failure is False
+
+    def test_sic_absent_is_none(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+        )
+        config = load_config(toml_file)
+        assert config.sic is None
+
+    def test_sic_invalid_mode_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[sic]\nmode = "invalid"\n'
+        )
+        with pytest.raises(ValueError, match="mode"):
+            load_config(toml_file)
+
+    def test_sic_invalid_max_iterations_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[sic]\nmax_iterations = 0\n"
+        )
+        with pytest.raises(ValueError, match="max_iterations"):
+            load_config(toml_file)
+
+    def test_sic_invalid_max_tokens_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[sic]\nmax_tokens = 0\n"
+        )
+        with pytest.raises(ValueError, match="max_tokens"):
+            load_config(toml_file)
+
+    def test_sic_invalid_max_sanitize_tokens_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[sic]\nmax_sanitize_tokens = 0\n"
+        )
+        with pytest.raises(ValueError, match="max_sanitize_tokens"):
+            load_config(toml_file)
+
+    def test_sic_mode_type_error(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[sic]\nmode = 42\n"
+        )
+        with pytest.raises(TypeError, match="mode"):
+            load_config(toml_file)
+
+    def test_sic_custom_system_prompt(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[sic]\nsanitize_system_prompt = "Remove bad stuff"\n'
+        )
+        config = load_config(toml_file)
+        assert config.sic is not None
+        assert config.sic.sanitize_system_prompt == "Remove bad stuff"
+
+    def test_sic_target_layer(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[sic]\ntarget_layer = 7\n"
+        )
+        config = load_config(toml_file)
+        assert config.sic is not None
+        assert config.sic.target_layer == 7

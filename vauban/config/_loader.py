@@ -7,6 +7,7 @@ from vauban.config._parse_cut import _parse_cut
 from vauban.config._parse_detect import _parse_detect
 from vauban.config._parse_measure import _parse_measure
 from vauban.config._parse_optimize import _parse_optimize
+from vauban.config._parse_sic import _parse_sic
 from vauban.config._parse_softprompt import _parse_softprompt
 from vauban.config._parse_surface import _parse_surface
 from vauban.config._types import TomlDict
@@ -57,6 +58,7 @@ def load_config(path: str | Path) -> PipelineConfig:
     detect_config = _parse_detect(raw)
     optimize_config = _parse_optimize(raw)
     softprompt_config = _parse_softprompt(raw)
+    sic_config = _parse_sic(raw)
 
     eval_path: Path | None = None
     eval_section = raw.get("eval")
@@ -93,6 +95,7 @@ def load_config(path: str | Path) -> PipelineConfig:
         detect=detect_config,
         optimize=optimize_config,
         softprompt=softprompt_config,
+        sic=sic_config,
         eval_prompts_path=eval_path,
         output_dir=output_dir,
         borderline_path=borderline_path,

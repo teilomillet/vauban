@@ -3,6 +3,7 @@
 from vauban.types import (
     DetectResult,
     OptimizeResult,
+    SICResult,
     SoftPromptResult,
     SurfaceComparison,
     SurfaceGroupDelta,
@@ -94,6 +95,20 @@ def _optimize_to_dict(result: OptimizeResult) -> dict[str, object]:
         ),
         "pareto_trials": [_trial_to_dict(t) for t in result.pareto_trials],
         "all_trials": [_trial_to_dict(t) for t in result.all_trials],
+    }
+
+
+def _sic_to_dict(result: SICResult) -> dict[str, object]:
+    """Serialize a SICResult to a JSON-compatible dict."""
+    return {
+        "prompts_clean": result.prompts_clean,
+        "prompts_blocked": result.prompts_blocked,
+        "iterations_used": result.iterations_used,
+        "initial_scores": result.initial_scores,
+        "final_scores": result.final_scores,
+        "total_blocked": result.total_blocked,
+        "total_sanitized": result.total_sanitized,
+        "total_clean": result.total_clean,
     }
 
 
