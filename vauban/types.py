@@ -264,7 +264,7 @@ class SurfaceComparison:
 class SoftPromptConfig:
     """Configuration for soft prompt attack."""
 
-    mode: str = "continuous"  # "continuous" or "gcg"
+    mode: str = "continuous"  # "continuous", "gcg", or "egd"
     n_tokens: int = 16  # number of soft prompt tokens
     n_steps: int = 200  # optimization steps
     learning_rate: float = 0.01  # Adam LR (continuous mode)
@@ -280,6 +280,10 @@ class SoftPromptConfig:
     lr_schedule: str = "constant"  # "constant" or "cosine"
     n_restarts: int = 1  # GCG random restarts
     prompt_strategy: str = "all"  # "all", "cycle", or "first"
+    direction_mode: str = "last"  # "last", "raid", or "all_positions"
+    direction_layers: list[int] | None = None  # None = all layers
+    loss_mode: str = "targeted"  # "targeted" or "untargeted"
+    egd_temperature: float = 1.0  # EGD simplex sharpening
 
 
 @dataclass(frozen=True, slots=True)

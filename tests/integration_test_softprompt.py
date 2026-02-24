@@ -601,6 +601,120 @@ def main() -> None:
         print(f"  FAIL — match={score_matches}, range={score_in_range}")
 
     # ------------------------------------------------------------------
+    # Test 16: RAID direction mode
+    # ------------------------------------------------------------------
+    print("\n=== Test 16: RAID direction mode ===")
+    total += 1
+    config_raid = SoftPromptConfig(
+        mode="continuous",
+        n_tokens=16,
+        n_steps=30,
+        learning_rate=0.05,
+        init_scale=0.1,
+        direction_weight=0.5,
+        direction_mode="raid",
+        seed=42,
+        max_gen_tokens=30,
+        target_prefixes=["Sure,", " here"],
+    )
+
+    result_raid = softprompt_attack(
+        model, tokenizer, [test_prompt],  # type: ignore[arg-type]
+        config_raid, direction_result.direction,
+    )
+
+    raid_finite = all(
+        loss == loss for loss in result_raid.loss_history
+    )
+    raid_reduced = result_raid.loss_history[-1] < result_raid.loss_history[0]
+    first, last = result_raid.loss_history[0], result_raid.loss_history[-1]
+    print(f"  Loss: {first:.4f} -> {last:.4f}")
+    print(f"  All finite: {raid_finite}")
+    print(f"  Reduced: {raid_reduced}")
+
+    if raid_finite:
+        print("  PASS — RAID direction mode runs without NaN")
+        passed += 1
+    else:
+        print("  FAIL — RAID produced NaN losses")
+
+    # ------------------------------------------------------------------
+    # Test 17: Untargeted loss mode
+    # ------------------------------------------------------------------
+    print("\n=== Test 17: Untargeted loss mode ===")
+    total += 1
+    config_untargeted = SoftPromptConfig(
+        mode="continuous",
+        n_tokens=16,
+        n_steps=30,
+        learning_rate=0.05,
+        init_scale=0.1,
+        loss_mode="untargeted",
+        seed=42,
+        max_gen_tokens=30,
+    )
+
+    result_untargeted = softprompt_attack(
+        model, tokenizer, [test_prompt],  # type: ignore[arg-type]
+        config_untargeted, None,
+    )
+
+    untargeted_finite = all(
+        loss == loss for loss in result_untargeted.loss_history
+    )
+    first, last = (
+        result_untargeted.loss_history[0],
+        result_untargeted.loss_history[-1],
+    )
+    print(f"  Loss: {first:.4f} -> {last:.4f}")
+    print(f"  All finite: {untargeted_finite}")
+
+    if untargeted_finite:
+        print("  PASS — untargeted loss mode runs without NaN")
+        passed += 1
+    else:
+        print("  FAIL — untargeted produced NaN losses")
+
+    # ------------------------------------------------------------------
+    # Test 18: EGD attack mode
+    # ------------------------------------------------------------------
+    print("\n=== Test 18: EGD attack mode ===")
+    total += 1
+    config_egd = SoftPromptConfig(
+        mode="egd",
+        n_tokens=16,
+        n_steps=30,
+        learning_rate=0.5,
+        seed=42,
+        max_gen_tokens=30,
+        target_prefixes=["Sure,", " here"],
+    )
+
+    result_egd = softprompt_attack(
+        model, tokenizer, [test_prompt],  # type: ignore[arg-type]
+        config_egd, None,
+    )
+
+    assert result_egd.token_ids is not None
+    assert result_egd.token_text is not None
+    egd_finite = all(
+        loss == loss for loss in result_egd.loss_history
+    )
+    egd_improved = min(result_egd.loss_history) < result_egd.loss_history[0]
+    first, last = result_egd.loss_history[0], result_egd.loss_history[-1]
+    print(f"  Loss: {first:.4f} -> {last:.4f}")
+    print(f"  Token IDs: {result_egd.token_ids[:8]}...")
+    print(f"  All finite: {egd_finite}")
+    print(f"  Improved: {egd_improved}")
+
+    if egd_finite and result_egd.token_ids is not None:
+        print("  PASS — EGD attack runs and produces token IDs")
+        passed += 1
+    else:
+        print(f"  FAIL — finite={egd_finite}, "
+              f"has_tokens={result_egd.token_ids is not None}")
+
+    # ------------------------------------------------------------------
     # Summary
     # ------------------------------------------------------------------
     print(f"\n=== {passed}/{total} tests passed ===")

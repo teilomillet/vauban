@@ -20,7 +20,10 @@ from vauban.softprompt import (
     _compute_embed_regularization,
     _compute_learning_rate,
     _compute_loss,
+    _compute_untargeted_loss,
     _continuous_attack,
+    _egd_attack,
+    _encode_refusal_tokens,
     _encode_targets,
     _evaluate_attack,
     _forward_with_prefix,
@@ -923,3 +926,363 @@ class TestSoftPromptResultNewFields:
         assert result.accessibility_score == 0.6
         assert result.per_prompt_losses == [0.4, 0.6]
         assert result.early_stopped is True
+
+
+# ---------------------------------------------------------------------------
+# New config defaults tests
+# ---------------------------------------------------------------------------
+
+
+class TestNewConfigDefaults:
+    def test_new_fields_defaults(self) -> None:
+        cfg = SoftPromptConfig()
+        assert cfg.direction_mode == "last"
+        assert cfg.direction_layers is None
+        assert cfg.loss_mode == "targeted"
+        assert cfg.egd_temperature == 1.0
+
+    def test_egd_mode_accepted(self) -> None:
+        cfg = SoftPromptConfig(mode="egd")
+        assert cfg.mode == "egd"
+
+    def test_custom_direction_mode(self) -> None:
+        cfg = SoftPromptConfig(direction_mode="raid")
+        assert cfg.direction_mode == "raid"
+
+    def test_custom_direction_layers(self) -> None:
+        cfg = SoftPromptConfig(direction_layers=[0, 1])
+        assert cfg.direction_layers == [0, 1]
+
+
+# ---------------------------------------------------------------------------
+# RAID direction mode tests
+# ---------------------------------------------------------------------------
+
+
+class TestRAIDDirectionMode:
+    def test_raid_runs(self) -> None:
+        """RAID mode with direction_weight=0.1 produces finite loss."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        direction = mx.random.normal((D_MODEL,))
+        direction = direction / mx.linalg.norm(direction)
+        mx.eval(direction)
+
+        config = SoftPromptConfig(
+            mode="continuous",
+            n_tokens=4,
+            n_steps=3,
+            direction_weight=0.1,
+            direction_mode="raid",
+            seed=42,
+            max_gen_tokens=2,
+        )
+
+        result = softprompt_attack(
+            model, tokenizer, ["test"], config, direction,
+        )
+
+        assert result.mode == "continuous"
+        for loss in result.loss_history:
+            assert not math.isnan(loss), "RAID mode produced NaN loss"
+
+    def test_raid_differs_from_last(self) -> None:
+        """Same seed, RAID vs 'last' produce different final losses."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        direction = mx.random.normal((D_MODEL,))
+        direction = direction / mx.linalg.norm(direction)
+        mx.eval(direction)
+
+        config_last = SoftPromptConfig(
+            mode="continuous",
+            n_tokens=4,
+            n_steps=5,
+            learning_rate=0.1,
+            direction_weight=0.5,
+            direction_mode="last",
+            seed=42,
+            max_gen_tokens=2,
+        )
+        result_last = _continuous_attack(
+            model, tokenizer, ["test"], config_last, direction,
+        )
+
+        config_raid = SoftPromptConfig(
+            mode="continuous",
+            n_tokens=4,
+            n_steps=5,
+            learning_rate=0.1,
+            direction_weight=0.5,
+            direction_mode="raid",
+            seed=42,
+            max_gen_tokens=2,
+        )
+        result_raid = _continuous_attack(
+            model, tokenizer, ["test"], config_raid, direction,
+        )
+
+        # They should differ since RAID accumulates across layers
+        assert result_last.loss_history != result_raid.loss_history
+
+    def test_all_positions_runs(self) -> None:
+        """direction_mode='all_positions' runs without error."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        direction = mx.random.normal((D_MODEL,))
+        direction = direction / mx.linalg.norm(direction)
+        mx.eval(direction)
+
+        config = SoftPromptConfig(
+            mode="continuous",
+            n_tokens=4,
+            n_steps=3,
+            direction_weight=0.1,
+            direction_mode="all_positions",
+            seed=42,
+            max_gen_tokens=2,
+        )
+
+        result = softprompt_attack(
+            model, tokenizer, ["test"], config, direction,
+        )
+
+        assert result.mode == "continuous"
+        for loss in result.loss_history:
+            assert not math.isnan(loss)
+
+    def test_direction_layers_subset(self) -> None:
+        """direction_layers=[0] accepted, runs."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        direction = mx.random.normal((D_MODEL,))
+        direction = direction / mx.linalg.norm(direction)
+        mx.eval(direction)
+
+        config = SoftPromptConfig(
+            mode="continuous",
+            n_tokens=4,
+            n_steps=3,
+            direction_weight=0.1,
+            direction_mode="raid",
+            direction_layers=[0],
+            seed=42,
+            max_gen_tokens=2,
+        )
+
+        result = softprompt_attack(
+            model, tokenizer, ["test"], config, direction,
+        )
+
+        assert result.mode == "continuous"
+        assert len(result.loss_history) == 3
+
+
+# ---------------------------------------------------------------------------
+# Untargeted loss tests
+# ---------------------------------------------------------------------------
+
+
+class TestUntargetedLoss:
+    def test_untargeted_runs(self) -> None:
+        """loss_mode='untargeted' produces finite loss."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="continuous",
+            n_tokens=4,
+            n_steps=5,
+            learning_rate=0.01,
+            loss_mode="untargeted",
+            seed=42,
+            max_gen_tokens=2,
+        )
+
+        result = softprompt_attack(
+            model, tokenizer, ["test"], config, None,
+        )
+
+        assert result.mode == "continuous"
+        for loss in result.loss_history:
+            assert not math.isnan(loss), "Untargeted loss produced NaN"
+
+    def test_untargeted_gradient_nonzero(self) -> None:
+        """Gradient through untargeted loss is nonzero."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
+        mx.eval(soft_embeds)
+
+        refusal_ids = _encode_refusal_tokens(tokenizer)
+        mx.eval(refusal_ids)
+
+        messages = [{"role": "user", "content": "test"}]
+        text = tokenizer.apply_chat_template(messages, tokenize=False)
+        assert isinstance(text, str)
+        prompt_ids = mx.array(tokenizer.encode(text))[None, :]
+
+        def loss_fn(embeds: mx.array) -> mx.array:
+            return _compute_untargeted_loss(
+                model, embeds, prompt_ids, 4, refusal_ids,
+                None, 0.0,
+            )
+
+        loss_and_grad = mx.value_and_grad(loss_fn)
+        loss_val, grad = loss_and_grad(soft_embeds)
+        mx.eval(loss_val, grad)
+
+        grad_norm = float(mx.linalg.norm(grad.reshape(-1)).item())
+        assert grad_norm > 0, "Untargeted gradient is zero"
+
+    def test_untargeted_with_direction(self) -> None:
+        """Untargeted + RAID direction combined."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        direction = mx.random.normal((D_MODEL,))
+        direction = direction / mx.linalg.norm(direction)
+        mx.eval(direction)
+
+        config = SoftPromptConfig(
+            mode="continuous",
+            n_tokens=4,
+            n_steps=3,
+            loss_mode="untargeted",
+            direction_weight=0.1,
+            direction_mode="raid",
+            seed=42,
+            max_gen_tokens=2,
+        )
+
+        result = softprompt_attack(
+            model, tokenizer, ["test"], config, direction,
+        )
+
+        for loss in result.loss_history:
+            assert not math.isnan(loss)
+
+    def test_encode_refusal_tokens(self) -> None:
+        """Produces non-empty array of valid token IDs."""
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        ids = _encode_refusal_tokens(tokenizer)
+        mx.eval(ids)
+        assert ids.ndim == 1
+        assert ids.shape[0] > 0
+        for i in range(ids.shape[0]):
+            assert 0 <= int(ids[i].item()) < VOCAB_SIZE
+
+
+# ---------------------------------------------------------------------------
+# EGD attack tests
+# ---------------------------------------------------------------------------
+
+
+class TestEGDAttack:
+    def test_basic_run(self) -> None:
+        """mode='egd' returns valid SoftPromptResult with token_ids."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="egd",
+            n_tokens=4,
+            n_steps=5,
+            learning_rate=0.1,
+            seed=42,
+            max_gen_tokens=2,
+        )
+
+        result = _egd_attack(
+            model, tokenizer, ["test"], config, None,
+        )
+
+        assert isinstance(result, SoftPromptResult)
+        assert result.mode == "egd"
+        assert result.token_ids is not None
+        assert len(result.token_ids) == 4
+        assert result.token_text is not None
+        assert result.embeddings is None
+        assert len(result.loss_history) == 5
+        assert len(result.eval_responses) == 1
+
+    def test_egd_improves_loss(self) -> None:
+        """Loss decreases over steps."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="egd",
+            n_tokens=4,
+            n_steps=30,
+            learning_rate=0.5,
+            seed=42,
+            max_gen_tokens=2,
+        )
+
+        result = _egd_attack(
+            model, tokenizer, ["test"], config, None,
+        )
+
+        first_loss = result.loss_history[0]
+        best_loss = min(result.loss_history)
+        assert best_loss < first_loss, (
+            f"EGD did not improve: {first_loss:.4f} -> {best_loss:.4f}"
+        )
+
+    def test_egd_token_ids_in_range(self) -> None:
+        """All token IDs in [0, vocab_size)."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="egd",
+            n_tokens=4,
+            n_steps=3,
+            learning_rate=0.1,
+            seed=42,
+            max_gen_tokens=2,
+        )
+
+        result = _egd_attack(
+            model, tokenizer, ["test"], config, None,
+        )
+
+        assert result.token_ids is not None
+        for tid in result.token_ids:
+            assert 0 <= tid < VOCAB_SIZE
+
+    def test_egd_dispatch(self) -> None:
+        """softprompt_attack dispatches correctly to EGD."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="egd",
+            n_tokens=4,
+            n_steps=3,
+            learning_rate=0.1,
+            seed=42,
+            max_gen_tokens=2,
+        )
+
+        result = softprompt_attack(
+            model, tokenizer, ["test"], config, None,
+        )
+        assert result.mode == "egd"

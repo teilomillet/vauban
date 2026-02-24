@@ -636,7 +636,7 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
     if not isinstance(mode_raw, str):
         msg = f"[softprompt].mode must be a string, got {type(mode_raw).__name__}"
         raise TypeError(msg)
-    valid_modes = ("continuous", "gcg")
+    valid_modes = ("continuous", "gcg", "egd")
     if mode_raw not in valid_modes:
         msg = (
             f"[softprompt].mode must be one of {valid_modes!r},"
@@ -816,6 +816,66 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
         )
         raise ValueError(msg)
 
+    # -- direction_mode --
+    direction_mode_raw = sec.get("direction_mode", "last")  # type: ignore[arg-type]
+    if not isinstance(direction_mode_raw, str):
+        msg = (
+            f"[softprompt].direction_mode must be a string,"
+            f" got {type(direction_mode_raw).__name__}"
+        )
+        raise TypeError(msg)
+    valid_direction_modes = ("last", "raid", "all_positions")
+    if direction_mode_raw not in valid_direction_modes:
+        msg = (
+            f"[softprompt].direction_mode must be one of"
+            f" {valid_direction_modes!r}, got {direction_mode_raw!r}"
+        )
+        raise ValueError(msg)
+
+    # -- direction_layers --
+    direction_layers_raw = sec.get("direction_layers")  # type: ignore[arg-type]
+    direction_layers: list[int] | None = None
+    if direction_layers_raw is not None:
+        if not isinstance(direction_layers_raw, list):
+            msg = (
+                f"[softprompt].direction_layers must be a list of ints,"
+                f" got {type(direction_layers_raw).__name__}"
+            )
+            raise TypeError(msg)
+        direction_layers = [
+            int(x) for x in direction_layers_raw if isinstance(x, int | float)
+        ]
+
+    # -- loss_mode --
+    loss_mode_raw = sec.get("loss_mode", "targeted")  # type: ignore[arg-type]
+    if not isinstance(loss_mode_raw, str):
+        msg = (
+            f"[softprompt].loss_mode must be a string,"
+            f" got {type(loss_mode_raw).__name__}"
+        )
+        raise TypeError(msg)
+    valid_loss_modes = ("targeted", "untargeted")
+    if loss_mode_raw not in valid_loss_modes:
+        msg = (
+            f"[softprompt].loss_mode must be one of"
+            f" {valid_loss_modes!r}, got {loss_mode_raw!r}"
+        )
+        raise ValueError(msg)
+
+    # -- egd_temperature --
+    egd_temp_raw = sec.get("egd_temperature", 1.0)  # type: ignore[arg-type]
+    if not isinstance(egd_temp_raw, int | float):
+        msg = (
+            f"[softprompt].egd_temperature must be a number,"
+            f" got {type(egd_temp_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if float(egd_temp_raw) <= 0:
+        msg = (
+            f"[softprompt].egd_temperature must be > 0, got {egd_temp_raw}"
+        )
+        raise ValueError(msg)
+
     return SoftPromptConfig(
         mode=mode_raw,
         n_tokens=n_tokens_raw,
@@ -833,4 +893,8 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
         lr_schedule=lr_schedule_raw,
         n_restarts=n_restarts_raw,
         prompt_strategy=prompt_strategy_raw,
+        direction_mode=direction_mode_raw,
+        direction_layers=direction_layers,
+        loss_mode=loss_mode_raw,
+        egd_temperature=float(egd_temp_raw),
     )

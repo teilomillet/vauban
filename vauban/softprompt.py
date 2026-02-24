@@ -1,4 +1,4 @@
-"""Soft prompt attack: continuous embedding optimization and GCG."""
+"""Soft prompt attack: continuous embedding optimization, GCG, and EGD."""
 
 import math
 import random
@@ -27,8 +27,8 @@ def softprompt_attack(
     """Run a soft prompt attack against a model.
 
     Optimizes a learnable prefix in embedding space that steers generation
-    away from refusal. Supports continuous (gradient-based) and GCG
-    (discrete token search) modes.
+    away from refusal. Supports continuous (gradient-based), GCG
+    (discrete token search), and EGD (exponentiated gradient descent) modes.
 
     Args:
         model: The causal language model to attack.
@@ -45,8 +45,13 @@ def softprompt_attack(
         return _continuous_attack(model, tokenizer, prompts, config, direction)
     if config.mode == "gcg":
         return _gcg_attack(model, tokenizer, prompts, config, direction)
+    if config.mode == "egd":
+        return _egd_attack(model, tokenizer, prompts, config, direction)
 
-    msg = f"Unknown soft prompt mode: {config.mode!r}, must be 'continuous' or 'gcg'"
+    msg = (
+        f"Unknown soft prompt mode: {config.mode!r},"
+        " must be 'continuous', 'gcg', or 'egd'"
+    )
     raise ValueError(msg)
 
 
@@ -169,6 +174,8 @@ def _compute_per_prompt_losses(
     n_tokens: int,
     direction: mx.array | None,
     direction_weight: float,
+    direction_mode: str = "last",
+    direction_layers: set[int] | None = None,
 ) -> list[float]:
     """Compute final loss for each prompt individually.
 
@@ -180,6 +187,8 @@ def _compute_per_prompt_losses(
         n_tokens: Number of soft prompt tokens.
         direction: Optional refusal direction vector.
         direction_weight: Weight for direction auxiliary loss.
+        direction_mode: Direction penalty mode ("last", "raid", "all_positions").
+        direction_layers: Layer indices for direction penalty (None = all).
 
     Returns:
         List of loss values, one per prompt.
@@ -189,10 +198,33 @@ def _compute_per_prompt_losses(
         loss = _compute_loss(
             model, soft_embeds, prompt_ids, target_ids,
             n_tokens, direction, direction_weight,
+            direction_mode, direction_layers,
         )
         mx.eval(loss)
         losses.append(float(loss.item()))
     return losses
+
+
+def _encode_refusal_tokens(tokenizer: Tokenizer) -> mx.array:
+    """Encode refusal phrases into a deduplicated set of first-token IDs.
+
+    Each refusal phrase is tokenized and only the first token is kept,
+    as the first token is the strongest signal for refusal detection.
+
+    Args:
+        tokenizer: Tokenizer with encode support.
+
+    Returns:
+        1-D array of deduplicated refusal token IDs.
+    """
+    seen: set[int] = set()
+    ids: list[int] = []
+    for phrase in DEFAULT_REFUSAL_PHRASES:
+        tokens = tokenizer.encode(phrase)
+        if tokens and tokens[0] not in seen:
+            seen.add(tokens[0])
+            ids.append(tokens[0])
+    return mx.array(ids)
 
 
 # ---------------------------------------------------------------------------
@@ -252,12 +284,17 @@ def _compute_loss(
     n_tokens: int,
     direction: mx.array | None,
     direction_weight: float,
+    direction_mode: str = "last",
+    direction_layers: set[int] | None = None,
 ) -> mx.array:
     """Compute cross-entropy loss with teacher forcing.
 
     Feeds [soft_prefix | prompt | target] through the model and takes
     the cross-entropy loss at positions where the model should predict
     each target token.
+
+    Supports RAID multi-layer direction penalty (Schwinn et al., 2024)
+    and all-positions direction penalty modes.
 
     Args:
         model: The causal language model.
@@ -267,6 +304,10 @@ def _compute_loss(
         n_tokens: Number of soft prompt tokens.
         direction: Optional refusal direction vector.
         direction_weight: Weight for direction auxiliary loss.
+        direction_mode: "last" (original), "raid" (per-layer at last prompt
+            position), or "all_positions" (mean over all positions per layer).
+        direction_layers: Set of layer indices for RAID/all_positions penalty.
+            None means all layers.
 
     Returns:
         Scalar loss value.
@@ -281,19 +322,34 @@ def _compute_loss(
     mask = nn.MultiHeadAttention.create_additive_causal_mask(h.shape[1])
     mask = mask.astype(h.dtype)
 
-    for layer in transformer.layers:
+    n_prompt = prompt_token_ids.shape[1]
+
+    # Per-layer direction penalty accumulation (RAID / all_positions)
+    direction_penalty = mx.array(0.0)
+    n_penalty_layers = 0
+
+    for i, layer in enumerate(transformer.layers):
         h = layer(h, mask)
+        if (
+            direction is not None
+            and direction_weight > 0.0
+            and direction_mode != "last"
+            and (direction_layers is None or i in direction_layers)
+        ):
+            if direction_mode == "raid":
+                # Project at last prompt position (before targets)
+                last_pos = n_tokens + n_prompt - 1
+                proj = mx.sum(h[:, last_pos, :] * direction)
+            else:  # "all_positions"
+                proj = mx.mean(mx.sum(h * direction, axis=-1))
+            direction_penalty = direction_penalty + proj
+            n_penalty_layers += 1
 
     h = transformer.norm(h)
     logits = _lm_head(model, h)
 
     # Logits at position i predict token i+1.
-    # The last prompt position predicts target_ids[0],
-    # the first target position predicts target_ids[1], etc.
-    n_prompt = prompt_token_ids.shape[1]
     n_target = target_ids.shape[0]
-    # Start: position of last prompt token = n_tokens + n_prompt - 1
-    # End: start + n_target (we need n_target logit positions)
     start = n_tokens + n_prompt - 1
     target_logits = logits[:, start : start + n_target, :]
 
@@ -304,15 +360,108 @@ def _compute_loss(
     )
 
     if direction is not None and direction_weight > 0.0:
-        # Project last hidden state onto refusal direction
-        # Use the hidden state at the last prompt position (before targets)
-        last_prompt_pos = n_tokens + n_prompt - 1
-        last_hidden = h[:, last_prompt_pos, :]
-        proj = mx.sum(last_hidden * direction)
-        # Minimize projection = push away from refusal direction
-        ce_loss = ce_loss + direction_weight * proj
+        if direction_mode == "last":
+            # Original single-position behavior
+            last_prompt_pos = n_tokens + n_prompt - 1
+            last_hidden = h[:, last_prompt_pos, :]
+            proj = mx.sum(last_hidden * direction)
+            ce_loss = ce_loss + direction_weight * proj
+        elif n_penalty_layers > 0:
+            ce_loss = ce_loss + direction_weight * (
+                direction_penalty / n_penalty_layers
+            )
 
     return ce_loss
+
+
+def _compute_untargeted_loss(
+    model: CausalLM,
+    soft_embeds: mx.array,
+    prompt_token_ids: mx.array,
+    n_tokens: int,
+    refusal_ids: mx.array,
+    direction: mx.array | None,
+    direction_weight: float,
+    direction_mode: str = "last",
+    direction_layers: set[int] | None = None,
+) -> mx.array:
+    """Compute untargeted jailbreak loss (UJA, Deng et al. 2024).
+
+    Forward pass with [soft_prefix | prompt] (no target tokens). Gets logits
+    at last position, computes softmax, penalizes sum of refusal token
+    probabilities: loss = -log(1 - sum(softmax(logits)[refusal_ids]) + eps).
+
+    Args:
+        model: The causal language model.
+        soft_embeds: Learnable prefix, shape (1, n_tokens, d_model).
+        prompt_token_ids: Prompt token IDs, shape (1, seq_len).
+        n_tokens: Number of soft prompt tokens.
+        refusal_ids: Token IDs of refusal tokens, shape (n_refusal,).
+        direction: Optional refusal direction vector.
+        direction_weight: Weight for direction auxiliary loss.
+        direction_mode: Direction penalty mode.
+        direction_layers: Layer indices for direction penalty.
+
+    Returns:
+        Scalar loss value.
+    """
+    transformer = model.model
+    prompt_embeds = transformer.embed_tokens(prompt_token_ids)
+    h = mx.concatenate([soft_embeds, prompt_embeds], axis=1)
+
+    mask = nn.MultiHeadAttention.create_additive_causal_mask(h.shape[1])
+    mask = mask.astype(h.dtype)
+
+    n_prompt = prompt_token_ids.shape[1]
+
+    # Per-layer direction penalty accumulation
+    direction_penalty = mx.array(0.0)
+    n_penalty_layers = 0
+
+    for i, layer in enumerate(transformer.layers):
+        h = layer(h, mask)
+        if (
+            direction is not None
+            and direction_weight > 0.0
+            and direction_mode != "last"
+            and (direction_layers is None or i in direction_layers)
+        ):
+            if direction_mode == "raid":
+                last_pos = n_tokens + n_prompt - 1
+                proj = mx.sum(h[:, last_pos, :] * direction)
+            else:  # "all_positions"
+                proj = mx.mean(mx.sum(h * direction, axis=-1))
+            direction_penalty = direction_penalty + proj
+            n_penalty_layers += 1
+
+    h = transformer.norm(h)
+    logits = _lm_head(model, h)
+
+    # Logits at the last position predict the first generated token
+    last_logits = logits[:, -1, :]  # (1, vocab_size)
+    probs = mx.softmax(last_logits, axis=-1)  # (1, vocab_size)
+
+    # Sum probability mass on refusal tokens
+    refusal_probs = probs[0, refusal_ids]  # (n_refusal,)
+    refusal_sum = mx.sum(refusal_probs)
+
+    # Minimize: -log(1 - P(refusal) + eps)
+    eps = 1e-8
+    loss = -mx.log(1.0 - refusal_sum + eps)
+
+    # Direction penalty
+    if direction is not None and direction_weight > 0.0:
+        if direction_mode == "last":
+            last_prompt_pos = n_tokens + n_prompt - 1
+            last_hidden = h[:, last_prompt_pos, :]
+            proj = mx.sum(last_hidden * direction)
+            loss = loss + direction_weight * proj
+        elif n_penalty_layers > 0:
+            loss = loss + direction_weight * (
+                direction_penalty / n_penalty_layers
+            )
+
+    return loss
 
 
 def _encode_targets(
@@ -493,6 +642,16 @@ def _continuous_attack(
     effective_prompts = prompts if prompts else ["Hello"]
     all_prompt_ids = _pre_encode_prompts(tokenizer, effective_prompts)
 
+    # Pre-compute direction config
+    direction_layers_set: set[int] | None = (
+        set(config.direction_layers) if config.direction_layers is not None
+        else None
+    )
+    refusal_ids: mx.array | None = None
+    if config.loss_mode == "untargeted":
+        refusal_ids = _encode_refusal_tokens(tokenizer)
+        mx.eval(refusal_ids)
+
     # Adam state: manual tracking since we're optimizing a bare array
     m = mx.zeros_like(soft_embeds)
     v = mx.zeros_like(soft_embeds)
@@ -522,10 +681,19 @@ def _continuous_attack(
         ) -> mx.array:
             total = mx.array(0.0)
             for pid in _sel:
-                total = total + _compute_loss(
-                    model, embeds, pid, target_ids,
-                    config.n_tokens, direction, config.direction_weight,
-                )
+                if config.loss_mode == "untargeted" and refusal_ids is not None:
+                    total = total + _compute_untargeted_loss(
+                        model, embeds, pid,
+                        config.n_tokens, refusal_ids,
+                        direction, config.direction_weight,
+                        config.direction_mode, direction_layers_set,
+                    )
+                else:
+                    total = total + _compute_loss(
+                        model, embeds, pid, target_ids,
+                        config.n_tokens, direction, config.direction_weight,
+                        config.direction_mode, direction_layers_set,
+                    )
             avg = total / len(_sel)
             # Embedding norm regularization (Huang et al.)
             if config.embed_reg_weight > 0.0:
@@ -574,6 +742,7 @@ def _continuous_attack(
     per_prompt_losses = _compute_per_prompt_losses(
         model, soft_embeds, all_prompt_ids, target_ids,
         config.n_tokens, direction, config.direction_weight,
+        config.direction_mode, direction_layers_set,
     )
     final_loss = loss_history[-1] if loss_history else 0.0
     accessibility_score = _compute_accessibility_score(final_loss)
@@ -629,6 +798,16 @@ def _gcg_attack(
     effective_prompts = prompts if prompts else ["Hello"]
     all_prompt_ids = _pre_encode_prompts(tokenizer, effective_prompts)
 
+    # Pre-compute direction config
+    direction_layers_set: set[int] | None = (
+        set(config.direction_layers) if config.direction_layers is not None
+        else None
+    )
+    refusal_ids: mx.array | None = None
+    if config.loss_mode == "untargeted":
+        refusal_ids = _encode_refusal_tokens(tokenizer)
+        mx.eval(refusal_ids)
+
     overall_best_ids: list[int] = []
     overall_best_loss = float("inf")
     all_loss_history: list[float] = []
@@ -664,10 +843,23 @@ def _gcg_attack(
             ) -> mx.array:
                 total = mx.array(0.0)
                 for pid in _sel:
-                    total = total + _compute_loss(
-                        model, embeds, pid, target_ids,
-                        config.n_tokens, direction, config.direction_weight,
-                    )
+                    if (
+                        config.loss_mode == "untargeted"
+                        and refusal_ids is not None
+                    ):
+                        total = total + _compute_untargeted_loss(
+                            model, embeds, pid,
+                            config.n_tokens, refusal_ids,
+                            direction, config.direction_weight,
+                            config.direction_mode, direction_layers_set,
+                        )
+                    else:
+                        total = total + _compute_loss(
+                            model, embeds, pid, target_ids,
+                            config.n_tokens, direction,
+                            config.direction_weight,
+                            config.direction_mode, direction_layers_set,
+                        )
                 return total / len(_sel)
 
             loss_and_grad = mx.value_and_grad(loss_fn)
@@ -719,10 +911,23 @@ def _gcg_attack(
                 cand_embeds = transformer.embed_tokens(cand_array)
                 cand_total = mx.array(0.0)
                 for pid in selected_ids:
-                    cand_total = cand_total + _compute_loss(
-                        model, cand_embeds, pid, target_ids,
-                        config.n_tokens, direction, config.direction_weight,
-                    )
+                    if (
+                        config.loss_mode == "untargeted"
+                        and refusal_ids is not None
+                    ):
+                        cand_total = cand_total + _compute_untargeted_loss(
+                            model, cand_embeds, pid,
+                            config.n_tokens, refusal_ids,
+                            direction, config.direction_weight,
+                            config.direction_mode, direction_layers_set,
+                        )
+                    else:
+                        cand_total = cand_total + _compute_loss(
+                            model, cand_embeds, pid, target_ids,
+                            config.n_tokens, direction,
+                            config.direction_weight,
+                            config.direction_mode, direction_layers_set,
+                        )
                 cand_avg = cand_total / len(selected_ids)
                 mx.eval(cand_avg)
                 candidate_losses.append(float(cand_avg.item()))
@@ -746,6 +951,7 @@ def _gcg_attack(
     per_prompt_losses = _compute_per_prompt_losses(
         model, final_embeds, all_prompt_ids, target_ids,
         config.n_tokens, direction, config.direction_weight,
+        config.direction_mode, direction_layers_set,
     )
     final_loss = overall_best_loss
     accessibility_score = _compute_accessibility_score(final_loss)
@@ -765,6 +971,190 @@ def _gcg_attack(
         n_tokens=config.n_tokens,
         embeddings=None,
         token_ids=current_ids,
+        token_text=token_text,
+        eval_responses=responses,
+        accessibility_score=accessibility_score,
+        per_prompt_losses=per_prompt_losses,
+        early_stopped=early_stopped,
+    )
+
+
+# ---------------------------------------------------------------------------
+# EGD attack
+# ---------------------------------------------------------------------------
+
+
+def _egd_attack(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    prompts: list[str],
+    config: SoftPromptConfig,
+    direction: mx.array | None,
+) -> SoftPromptResult:
+    """EGD (Exponentiated Gradient Descent) on the probability simplex.
+
+    Relaxes discrete GCG into continuous optimization over per-position
+    token distributions. Each position maintains a probability vector
+    over the vocabulary; soft embeddings are computed as weighted sums
+    of the embedding matrix rows. After optimization, tokens are
+    extracted via argmax.
+
+    Reference: arxiv.org/abs/2508.14853
+
+    Args:
+        model: The causal language model.
+        tokenizer: Tokenizer with encode/decode support.
+        prompts: Attack prompts to optimize against.
+        config: Soft prompt configuration.
+        direction: Optional refusal direction for direction-guided mode.
+    """
+    transformer = model.model
+    vocab_size = transformer.embed_tokens.weight.shape[0]
+    embed_matrix = transformer.embed_tokens.weight
+
+    target_ids = _encode_targets(tokenizer, config.target_prefixes)
+    mx.eval(target_ids)
+
+    # Pre-encode all prompts
+    effective_prompts = prompts if prompts else ["Hello"]
+    all_prompt_ids = _pre_encode_prompts(tokenizer, effective_prompts)
+
+    # Pre-compute direction config
+    direction_layers_set: set[int] | None = (
+        set(config.direction_layers) if config.direction_layers is not None
+        else None
+    )
+    refusal_ids: mx.array | None = None
+    if config.loss_mode == "untargeted":
+        refusal_ids = _encode_refusal_tokens(tokenizer)
+        mx.eval(refusal_ids)
+
+    # Initialize p uniformly on the simplex: (n_tokens, vocab_size)
+    p = mx.ones((config.n_tokens, vocab_size)) / vocab_size
+    mx.eval(p)
+
+    loss_history: list[float] = []
+    best_loss = float("inf")
+    best_p = p
+    steps_without_improvement = 0
+    actual_steps = 0
+    early_stopped = False
+
+    for step in range(config.n_steps):
+        actual_steps = step + 1
+
+        # Select prompts for this step
+        selected_ids = _select_prompt_ids(
+            all_prompt_ids, step, config.prompt_strategy,
+        )
+
+        # Compute soft embeddings from probability distributions
+        # p: (n_tokens, vocab_size), embed_matrix: (vocab_size, d_model)
+        # soft_embeds: (1, n_tokens, d_model)
+        def loss_fn(
+            probs: mx.array,
+            _sel: list[mx.array] = selected_ids,
+        ) -> mx.array:
+            soft_embeds = (probs @ embed_matrix)[None, :]
+            total = mx.array(0.0)
+            for pid in _sel:
+                if (
+                    config.loss_mode == "untargeted"
+                    and refusal_ids is not None
+                ):
+                    total = total + _compute_untargeted_loss(
+                        model, soft_embeds, pid,
+                        config.n_tokens, refusal_ids,
+                        direction, config.direction_weight,
+                        config.direction_mode, direction_layers_set,
+                    )
+                else:
+                    total = total + _compute_loss(
+                        model, soft_embeds, pid, target_ids,
+                        config.n_tokens, direction, config.direction_weight,
+                        config.direction_mode, direction_layers_set,
+                    )
+            return total / len(_sel)
+
+        loss_and_grad = mx.value_and_grad(loss_fn)
+        loss_val, grad = loss_and_grad(p)
+        mx.eval(loss_val, grad)
+        current_loss = float(loss_val.item())
+        loss_history.append(current_loss)
+
+        # Track best
+        if current_loss < best_loss:
+            best_loss = current_loss
+            best_p = p
+            steps_without_improvement = 0
+        else:
+            steps_without_improvement += 1
+
+        # Early stopping
+        if config.patience > 0 and steps_without_improvement >= config.patience:
+            early_stopped = True
+            break
+
+        # Compute LR for this step
+        lr = _compute_learning_rate(
+            config.learning_rate, step, config.n_steps, config.lr_schedule,
+        )
+
+        # EGD update: p = p * exp(-lr * grad), then row-normalize
+        p = p * mx.exp(-lr * grad)
+        # Row-normalize to simplex
+        row_sums = mx.sum(p, axis=-1, keepdims=True)
+        p = p / (row_sums + 1e-30)
+
+        # Temperature sharpening: p = softmax(log(p) / temperature)
+        if config.egd_temperature != 1.0:
+            log_p = mx.log(p + 1e-30)
+            p = mx.softmax(log_p / config.egd_temperature, axis=-1)
+
+        mx.eval(p)
+
+    # Use best p for evaluation
+    p = best_p
+
+    # Extract token IDs via argmax
+    token_ids_array = mx.argmax(p, axis=-1)
+    mx.eval(token_ids_array)
+    raw_ids = token_ids_array.tolist()
+    token_ids: list[int] = (
+        [int(raw_ids)]
+        if not isinstance(raw_ids, list)
+        else [int(t) for t in raw_ids]
+    )
+
+    # Build final embeddings from best tokens
+    final_token_array = mx.array(token_ids)[None, :]
+    final_embeds = transformer.embed_tokens(final_token_array)
+    mx.eval(final_embeds)
+
+    # Compute per-prompt losses and accessibility score
+    per_prompt_losses = _compute_per_prompt_losses(
+        model, final_embeds, all_prompt_ids, target_ids,
+        config.n_tokens, direction, config.direction_weight,
+        config.direction_mode, direction_layers_set,
+    )
+    final_loss = best_loss
+    accessibility_score = _compute_accessibility_score(final_loss)
+
+    success_rate, responses = _evaluate_attack(
+        model, tokenizer, prompts, final_embeds, config,
+    )
+
+    token_text = tokenizer.decode(token_ids)
+
+    return SoftPromptResult(
+        mode="egd",
+        success_rate=success_rate,
+        final_loss=final_loss,
+        loss_history=loss_history,
+        n_steps=actual_steps,
+        n_tokens=config.n_tokens,
+        embeddings=None,
+        token_ids=token_ids,
         token_text=token_text,
         eval_responses=responses,
         accessibility_score=accessibility_score,
