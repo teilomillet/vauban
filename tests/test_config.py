@@ -1094,3 +1094,65 @@ class TestLoadConfig:
         )
         with pytest.raises(ValueError, match="kl_ref_weight"):
             load_config(toml_file)
+
+    # -- ref_model --
+
+    def test_softprompt_ref_model_default_none(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.ref_model is None
+
+    def test_softprompt_ref_model_parsed(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\nref_model = "mlx-community/tiny-llama"\n'
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.ref_model == "mlx-community/tiny-llama"
+
+    def test_softprompt_ref_model_type_error(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\nref_model = 42\n"
+        )
+        with pytest.raises(TypeError, match="ref_model"):
+            load_config(toml_file)
+
+    def test_softprompt_kl_ref_weight_requires_ref_model(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\nkl_ref_weight = 0.5\n"
+        )
+        with pytest.raises(ValueError, match="ref_model"):
+            load_config(toml_file)
+
+    def test_softprompt_kl_ref_weight_with_ref_model_ok(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+            "kl_ref_weight = 0.5\n"
+            'ref_model = "mlx-community/tiny-llama"\n'
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.kl_ref_weight == 0.5
+        assert config.softprompt.ref_model == "mlx-community/tiny-llama"
