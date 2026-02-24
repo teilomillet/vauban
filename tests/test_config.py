@@ -1287,6 +1287,65 @@ class TestLoadConfig:
         assert config.sic is not None
         assert config.sic.target_layer == 7
 
+    def test_sic_calibrate_default_false(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[sic]\n"
+        )
+        config = load_config(toml_file)
+        assert config.sic is not None
+        assert config.sic.calibrate is False
+
+    def test_sic_calibrate_parsed_true(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[sic]\ncalibrate = true\n"
+        )
+        config = load_config(toml_file)
+        assert config.sic is not None
+        assert config.sic.calibrate is True
+
+    def test_sic_calibrate_prompts_default_harmless(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[sic]\n"
+        )
+        config = load_config(toml_file)
+        assert config.sic is not None
+        assert config.sic.calibrate_prompts == "harmless"
+
+    def test_sic_calibrate_prompts_invalid_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[sic]\ncalibrate_prompts = "invalid"\n'
+        )
+        with pytest.raises(ValueError, match="calibrate_prompts"):
+            load_config(toml_file)
+
+    def test_sic_calibrate_prompts_type_error(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[sic]\ncalibrate_prompts = 42\n"
+        )
+        with pytest.raises(TypeError, match="calibrate_prompts"):
+            load_config(toml_file)
+
     # =========================================================================
     # Worst-K config tests
     # =========================================================================

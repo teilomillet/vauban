@@ -339,6 +339,8 @@ class SICConfig:
     )
     max_sanitize_tokens: int = 200
     block_on_failure: bool = True
+    calibrate: bool = False  # auto-calibrate threshold from clean prompts
+    calibrate_prompts: str = "harmless"  # "harmless" or "harmful"
 
 
 @dataclass(frozen=True, slots=True)
@@ -364,6 +366,7 @@ class SICResult:
     total_blocked: int
     total_sanitized: int
     total_clean: int
+    calibrated_threshold: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

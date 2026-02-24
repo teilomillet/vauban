@@ -110,6 +110,7 @@ def _sic_to_dict(result: SICResult) -> dict[str, object]:
         "total_blocked": result.total_blocked,
         "total_sanitized": result.total_sanitized,
         "total_clean": result.total_clean,
+        "calibrated_threshold": result.calibrated_threshold,
     }
 
 

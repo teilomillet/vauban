@@ -116,6 +116,33 @@ def _parse_sic(raw: TomlDict) -> SICConfig | None:
         )
         raise TypeError(msg)
 
+    # -- calibrate --
+    calibrate_raw = sec.get("calibrate", False)  # type: ignore[arg-type]
+    if not isinstance(calibrate_raw, bool):
+        msg = (
+            f"[sic].calibrate must be a boolean,"
+            f" got {type(calibrate_raw).__name__}"
+        )
+        raise TypeError(msg)
+
+    # -- calibrate_prompts --
+    cal_prompts_raw = sec.get(  # type: ignore[arg-type]
+        "calibrate_prompts", "harmless",
+    )
+    if not isinstance(cal_prompts_raw, str):
+        msg = (
+            f"[sic].calibrate_prompts must be a string,"
+            f" got {type(cal_prompts_raw).__name__}"
+        )
+        raise TypeError(msg)
+    valid_cal_prompts = ("harmless", "harmful")
+    if cal_prompts_raw not in valid_cal_prompts:
+        msg = (
+            f"[sic].calibrate_prompts must be one of"
+            f" {valid_cal_prompts!r}, got {cal_prompts_raw!r}"
+        )
+        raise ValueError(msg)
+
     return SICConfig(
         mode=mode_raw,
         threshold=float(threshold_raw),
@@ -125,4 +152,6 @@ def _parse_sic(raw: TomlDict) -> SICConfig | None:
         sanitize_system_prompt=system_raw,
         max_sanitize_tokens=max_san_raw,
         block_on_failure=block_raw,
+        calibrate=calibrate_raw,
+        calibrate_prompts=cal_prompts_raw,
     )

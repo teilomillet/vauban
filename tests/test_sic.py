@@ -10,6 +10,7 @@ from vauban.sic import (
     _generate_with_messages,
     _rewrite_prompt,
     _sanitize_prompt,
+    calibrate_threshold,
     sic,
     sic_single,
 )
@@ -272,3 +273,87 @@ class TestSicSingle:
             mock_model, mock_tokenizer, "Hello", config, direction, 0,
         )
         assert isinstance(result, SICPromptResult)
+
+
+class TestCalibrateThreshold:
+    def test_returns_finite_float(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+        direction: mx.array,
+    ) -> None:
+        config = SICConfig(mode="direction")
+        threshold = calibrate_threshold(
+            mock_model, mock_tokenizer,
+            ["Hello", "World", "Test"],
+            config, direction, 0,
+        )
+        assert isinstance(threshold, float)
+        assert mx.isfinite(mx.array(threshold)).item()
+
+    def test_threshold_below_mean(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+        direction: mx.array,
+    ) -> None:
+        config = SICConfig(mode="direction")
+        prompts = ["Hello", "World", "Test", "Foo", "Bar"]
+        threshold = calibrate_threshold(
+            mock_model, mock_tokenizer, prompts,
+            config, direction, 0,
+        )
+        # Compute mean of scores manually
+        from vauban.sic import _detect
+        scores = [
+            _detect(mock_model, mock_tokenizer, p, config, direction, 0)
+            for p in prompts
+        ]
+        mean = sum(scores) / len(scores)
+        assert threshold < mean
+
+    def test_empty_prompts_returns_default(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+        direction: mx.array,
+    ) -> None:
+        config = SICConfig(mode="direction", threshold=0.5)
+        threshold = calibrate_threshold(
+            mock_model, mock_tokenizer, [],
+            config, direction, 0,
+        )
+        assert threshold == 0.5
+
+
+class TestSicCalibration:
+    def test_calibrated_threshold_set(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+        direction: mx.array,
+    ) -> None:
+        config = SICConfig(mode="direction", calibrate=True)
+        result = sic(
+            mock_model, mock_tokenizer,
+            ["Hello"], config, direction, 0,
+            calibration_prompts=["Clean1", "Clean2", "Clean3"],
+        )
+        assert isinstance(result, SICResult)
+        assert result.calibrated_threshold is not None
+        assert isinstance(result.calibrated_threshold, float)
+
+    def test_no_calibration_threshold_is_none(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+        direction: mx.array,
+    ) -> None:
+        config = SICConfig(mode="direction", threshold=-1e6)
+        result = sic(
+            mock_model, mock_tokenizer,
+            ["Hello"], config, direction, 0,
+        )
+        assert result.calibrated_threshold is None
+
+    def test_calibrate_without_prompts_no_calibration(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+        direction: mx.array,
+    ) -> None:
+        config = SICConfig(mode="direction", calibrate=True, threshold=-1e6)
+        result = sic(
+            mock_model, mock_tokenizer,
+            ["Hello"], config, direction, 0,
+        )
+        # calibrate=True but no calibration_prompts passed
+        assert result.calibrated_threshold is None

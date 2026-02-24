@@ -38,8 +38,8 @@ from vauban.measure import (
 )
 from vauban.optimize import optimize
 from vauban.probe import multi_probe, probe, steer
+from vauban.sic import calibrate_threshold, sic_single
 from vauban.sic import sic as sic_sanitize
-from vauban.sic import sic_single
 from vauban.softprompt import _project_to_tokens, softprompt_attack
 from vauban.subspace import (
     effective_rank,
@@ -123,6 +123,7 @@ __all__ = [
     "TransferEvalResult",
     "TrialResult",
     "aggregate",
+    "calibrate_threshold",
     "compare_surfaces",
     "cut",
     "cut_biprojected",
@@ -242,7 +243,7 @@ def run(config_path: str | Path) -> None:
         )
         cosine_scores = direction_result.cosine_scores
 
-    # SIC sanitization: detect and rewrite adversarial prompts
+    # SIC sanitization: standalone early-return mode
     if config.sic is not None:
         direction_vec = (
             direction_result.direction if direction_result is not None
@@ -257,15 +258,23 @@ def run(config_path: str | Path) -> None:
         else:
             sic_prompts = harmful[:20]
 
+        cal_prompts: list[str] | None = None
+        if config.sic.calibrate:
+            cal_prompts = (
+                harmless if config.sic.calibrate_prompts == "harmless"
+                else harmful
+            )
+
         sic_result = sic_sanitize(
             model, tokenizer, sic_prompts, config.sic,  # type: ignore[arg-type]
-            direction_vec, layer_idx,
+            direction_vec, layer_idx, cal_prompts,
         )
         report_path = config.output_dir / "sic_report.json"
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(
             json.dumps(_sic_to_dict(sic_result), indent=2),
         )
+        return
 
     # Optimization mode: search over cut parameters, write report, return early
     if config.optimize is not None and direction_result is not None:

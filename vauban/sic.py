@@ -7,6 +7,8 @@ detection signal.
 Reference: arxiv.org/abs/2510.21057
 """
 
+import math
+
 import mlx.core as mx
 import mlx.nn as nn
 
@@ -21,6 +23,46 @@ from vauban.types import (
 )
 
 
+def calibrate_threshold(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    clean_prompts: list[str],
+    config: SICConfig,
+    direction: mx.array | None,
+    target_layer: int,
+) -> float:
+    """Auto-calibrate the detection threshold from known-clean prompts.
+
+    Scores each clean prompt via ``_detect()``, then returns
+    ``mean - 2*std`` — a conservative threshold where ~97.7% of clean
+    prompts should score above.
+
+    Args:
+        model: The causal language model.
+        tokenizer: Tokenizer with chat template support.
+        clean_prompts: Prompts known to be benign.
+        config: SIC configuration (used for detection mode/params).
+        direction: Refusal direction vector (required for mode="direction").
+        target_layer: Layer index for direction projection.
+
+    Returns:
+        Calibrated threshold value.
+    """
+    scores: list[float] = []
+    for prompt in clean_prompts:
+        score = _detect(model, tokenizer, prompt, config, direction, target_layer)
+        scores.append(score)
+
+    if not scores:
+        return config.threshold
+
+    mean = sum(scores) / len(scores)
+    variance = sum((s - mean) ** 2 for s in scores) / len(scores)
+    std = math.sqrt(variance)
+
+    return mean - 2.0 * std
+
+
 def sic(
     model: CausalLM,
     tokenizer: Tokenizer,
@@ -28,6 +70,7 @@ def sic(
     config: SICConfig,
     direction: mx.array | None = None,
     layer_index: int = 0,
+    calibration_prompts: list[str] | None = None,
 ) -> SICResult:
     """Run SIC sanitization on a batch of prompts.
 
@@ -39,6 +82,8 @@ def sic(
         direction: Refusal direction vector (required for mode="direction").
         layer_index: Layer index for direction projection (used when
             config.target_layer is None).
+        calibration_prompts: Known-clean prompts for threshold
+            auto-calibration. Used when ``config.calibrate`` is True.
 
     Returns:
         SICResult with per-prompt sanitization outcomes.
@@ -50,10 +95,37 @@ def sic(
         msg = "SIC mode='direction' requires a direction vector"
         raise ValueError(msg)
 
+    target_layer = (
+        config.target_layer if config.target_layer is not None
+        else layer_index
+    )
+
+    # Auto-calibrate threshold if requested
+    calibrated: float | None = None
+    effective_config = config
+    if config.calibrate and calibration_prompts is not None:
+        calibrated = calibrate_threshold(
+            model, tokenizer, calibration_prompts,
+            config, direction, target_layer,
+        )
+        # Replace threshold in config for this run
+        effective_config = SICConfig(
+            mode=config.mode,
+            threshold=calibrated,
+            max_iterations=config.max_iterations,
+            max_tokens=config.max_tokens,
+            target_layer=config.target_layer,
+            sanitize_system_prompt=config.sanitize_system_prompt,
+            max_sanitize_tokens=config.max_sanitize_tokens,
+            block_on_failure=config.block_on_failure,
+            calibrate=config.calibrate,
+            calibrate_prompts=config.calibrate_prompts,
+        )
+
     results: list[SICPromptResult] = []
     for prompt in prompts:
         result = sic_single(
-            model, tokenizer, prompt, config, direction, layer_index,
+            model, tokenizer, prompt, effective_config, direction, layer_index,
         )
         results.append(result)
 
@@ -80,6 +152,7 @@ def sic(
         total_blocked=total_blocked,
         total_sanitized=total_sanitized,
         total_clean=total_clean,
+        calibrated_threshold=calibrated,
     )
 
 
