@@ -54,6 +54,7 @@ This project builds upon abliteration research — the discovery that refusal in
 - **AmpleGCG** — "Learning a Universal and Transferable Generative Model of Adversarial Suffixes" — Trains a generator on intermediate GCG successes; produces hundreds of adversarial suffixes per query in minutes. Near-100% ASR. — arxiv.org/abs/2404.07921
 - **EGD Attack** — "Universal and Transferable Adversarial Attack Using Exponentiated Gradient Descent" — Relaxed one-hot optimization with Bregman projection on probability simplex. Cleaner convergence than GCG. — arxiv.org/abs/2508.14853
 - **UJA** — "Untargeted Jailbreak Attack" — First gradient-based untargeted jailbreak: maximizes probability of any unsafe response instead of a fixed target. 80%+ ASR in 100 iterations. — arxiv.org/abs/2510.02999
+- **Geiping et al. (2024)** — "Coercing LLMs to do and reveal (almost) anything" — Systematizes adversarial objectives beyond jailbreaking: extraction, misdirection, DoS, control, and collision attacks. All solved with GCG under different loss formulations. Introduces token constraint sets (ASCII, non-Latin, emoji) and KL-divergence collision loss. — arxiv.org/abs/2402.14020
 
 ### Latent Space Geometry
 - **Latent Fusion Jailbreak** — "Blending Harmful and Harmless Representations to Elicit Unsafe LLM Outputs" — Fuses hidden states of harmful + benign queries in continuous latent space. The prompt-side dual of abliteration. — arxiv.org/abs/2508.10029
