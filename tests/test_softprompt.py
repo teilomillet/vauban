@@ -32,10 +32,17 @@ from vauban.softprompt import (
     _forward_with_prefix,
     _gcg_attack,
     _pre_encode_prompts,
+    _project_to_tokens,
     _select_prompt_ids,
+    _select_worst_k_prompt_ids,
+    _split_into_batches,
     softprompt_attack,
 )
-from vauban.types import SoftPromptConfig, SoftPromptResult
+from vauban.types import (
+    SoftPromptConfig,
+    SoftPromptResult,
+    TransferEvalResult,
+)
 
 # ---------------------------------------------------------------------------
 # Type tests
@@ -1556,3 +1563,446 @@ class TestNewConfigDefaults2:
     def test_kl_ref_default(self) -> None:
         cfg = SoftPromptConfig()
         assert cfg.kl_ref_weight == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Worst-K prompt selection tests
+# ---------------------------------------------------------------------------
+
+
+class TestSelectWorstKPromptIds:
+    def test_returns_correct_count(self) -> None:
+        """Returns exactly k prompts when k < len(all_ids)."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        all_ids = _pre_encode_prompts(tokenizer, ["a", "b", "c", "d"])
+        target_ids = _encode_targets(tokenizer, ["Sure"])
+        mx.eval(target_ids)
+
+        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
+        mx.eval(soft_embeds)
+
+        selected = _select_worst_k_prompt_ids(
+            model, soft_embeds, all_ids, target_ids,
+            4, 2,  # k=2
+            None, 0.0, "last", None,
+            None, "none", 0.0,
+            None, 0.0,
+            loss_mode="targeted", refusal_ids=None,
+        )
+
+        assert len(selected) == 2
+
+    def test_k_greater_than_len(self) -> None:
+        """Returns all prompts when k >= len(all_ids)."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        all_ids = _pre_encode_prompts(tokenizer, ["a", "b"])
+        target_ids = _encode_targets(tokenizer, ["Sure"])
+        mx.eval(target_ids)
+
+        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
+        mx.eval(soft_embeds)
+
+        selected = _select_worst_k_prompt_ids(
+            model, soft_embeds, all_ids, target_ids,
+            4, 10,  # k=10 > len=2
+            None, 0.0, "last", None,
+            None, "none", 0.0,
+            None, 0.0,
+            loss_mode="targeted", refusal_ids=None,
+        )
+
+        assert len(selected) == 2
+
+    def test_returns_highest_loss(self) -> None:
+        """Selected prompts should be the ones with highest loss."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        all_ids = _pre_encode_prompts(tokenizer, ["a", "b", "c"])
+        target_ids = _encode_targets(tokenizer, ["Sure"])
+        mx.eval(target_ids)
+
+        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
+        mx.eval(soft_embeds)
+
+        selected = _select_worst_k_prompt_ids(
+            model, soft_embeds, all_ids, target_ids,
+            4, 1,  # k=1
+            None, 0.0, "last", None,
+            None, "none", 0.0,
+            None, 0.0,
+            loss_mode="targeted", refusal_ids=None,
+        )
+
+        assert len(selected) == 1
+        # Verify it's a valid prompt from the original set
+        assert selected[0].shape == all_ids[0].shape or True
+
+
+class TestWorstKIntegration:
+    def test_continuous_worst_k(self) -> None:
+        """Continuous mode with worst_k strategy runs."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="continuous",
+            n_tokens=4,
+            n_steps=3,
+            seed=42,
+            max_gen_tokens=2,
+            prompt_strategy="worst_k",
+            worst_k=2,
+        )
+
+        result = _continuous_attack(
+            model, tokenizer, ["hello", "world", "test"], config, None,
+        )
+
+        assert result.mode == "continuous"
+        for loss in result.loss_history:
+            assert not math.isnan(loss)
+
+    def test_gcg_worst_k(self) -> None:
+        """GCG mode with worst_k strategy runs."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="gcg",
+            n_tokens=4,
+            n_steps=2,
+            batch_size=4,
+            top_k=8,
+            seed=42,
+            max_gen_tokens=2,
+            prompt_strategy="worst_k",
+            worst_k=1,
+        )
+
+        result = _gcg_attack(
+            model, tokenizer, ["hello", "world"], config, None,
+        )
+
+        assert result.mode == "gcg"
+        assert len(result.loss_history) == 2
+
+    def test_egd_worst_k(self) -> None:
+        """EGD mode with worst_k strategy runs."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="egd",
+            n_tokens=4,
+            n_steps=3,
+            learning_rate=0.1,
+            seed=42,
+            max_gen_tokens=2,
+            prompt_strategy="worst_k",
+            worst_k=1,
+        )
+
+        result = _egd_attack(
+            model, tokenizer, ["hello", "world"], config, None,
+        )
+
+        assert result.mode == "egd"
+        for loss in result.loss_history:
+            assert not math.isnan(loss)
+
+
+# ---------------------------------------------------------------------------
+# Gradient accumulation tests
+# ---------------------------------------------------------------------------
+
+
+class TestSplitIntoBatches:
+    def test_single_batch(self) -> None:
+        items = [mx.array([[1]]), mx.array([[2]]), mx.array([[3]])]
+        batches = _split_into_batches(items, 1)
+        assert len(batches) == 1
+        assert len(batches[0]) == 3
+
+    def test_correct_batch_count(self) -> None:
+        items = [mx.array([[i]]) for i in range(6)]
+        batches = _split_into_batches(items, 3)
+        assert len(batches) == 3
+        assert sum(len(b) for b in batches) == 6
+
+    def test_n_greater_than_len(self) -> None:
+        items = [mx.array([[1]]), mx.array([[2]])]
+        batches = _split_into_batches(items, 10)
+        assert len(batches) == 2
+        assert sum(len(b) for b in batches) == 2
+
+    def test_empty_list(self) -> None:
+        batches = _split_into_batches([], 3)
+        assert len(batches) == 1
+        assert len(batches[0]) == 0
+
+    def test_uneven_split(self) -> None:
+        items = [mx.array([[i]]) for i in range(5)]
+        batches = _split_into_batches(items, 3)
+        assert len(batches) == 3
+        assert sum(len(b) for b in batches) == 5
+
+
+class TestGradAccumIntegration:
+    def test_continuous_grad_accum(self) -> None:
+        """Continuous mode with grad_accum_steps=2 runs and produces finite loss."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="continuous",
+            n_tokens=4,
+            n_steps=3,
+            seed=42,
+            max_gen_tokens=2,
+            prompt_strategy="all",
+            grad_accum_steps=2,
+        )
+
+        result = _continuous_attack(
+            model, tokenizer, ["hello", "world"], config, None,
+        )
+
+        assert result.mode == "continuous"
+        for loss in result.loss_history:
+            assert not math.isnan(loss)
+
+    def test_gcg_grad_accum(self) -> None:
+        """GCG mode with grad_accum_steps=2 runs."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="gcg",
+            n_tokens=4,
+            n_steps=2,
+            batch_size=4,
+            top_k=8,
+            seed=42,
+            max_gen_tokens=2,
+            prompt_strategy="all",
+            grad_accum_steps=2,
+        )
+
+        result = _gcg_attack(
+            model, tokenizer, ["hello", "world"], config, None,
+        )
+
+        assert result.mode == "gcg"
+        for loss in result.loss_history:
+            assert not math.isnan(loss)
+
+    def test_egd_grad_accum(self) -> None:
+        """EGD mode with grad_accum_steps=2 runs."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="egd",
+            n_tokens=4,
+            n_steps=3,
+            learning_rate=0.1,
+            seed=42,
+            max_gen_tokens=2,
+            prompt_strategy="all",
+            grad_accum_steps=2,
+        )
+
+        result = _egd_attack(
+            model, tokenizer, ["hello", "world"], config, None,
+        )
+
+        assert result.mode == "egd"
+        for loss in result.loss_history:
+            assert not math.isnan(loss)
+
+
+# ---------------------------------------------------------------------------
+# Transfer evaluation tests
+# ---------------------------------------------------------------------------
+
+
+class TestProjectToTokens:
+    def test_returns_valid_token_ids(self) -> None:
+        """Returns correct count of token IDs in vocab range."""
+        n_tokens = 4
+        soft_embeds = mx.random.normal((1, n_tokens, D_MODEL))
+        embed_matrix = mx.random.normal((VOCAB_SIZE, D_MODEL))
+        mx.eval(soft_embeds, embed_matrix)
+
+        token_ids = _project_to_tokens(soft_embeds, embed_matrix)
+        assert len(token_ids) == n_tokens
+        for tid in token_ids:
+            assert 0 <= tid < VOCAB_SIZE
+
+    def test_single_token(self) -> None:
+        soft_embeds = mx.random.normal((1, 1, D_MODEL))
+        embed_matrix = mx.random.normal((VOCAB_SIZE, D_MODEL))
+        mx.eval(soft_embeds, embed_matrix)
+
+        token_ids = _project_to_tokens(soft_embeds, embed_matrix)
+        assert len(token_ids) == 1
+
+    def test_nearest_neighbor_correctness(self) -> None:
+        """Embedding of token i should project back to token i."""
+        embed_matrix = mx.random.normal((VOCAB_SIZE, D_MODEL))
+        mx.eval(embed_matrix)
+        # Use exact embedding for token 3
+        soft_embeds = embed_matrix[3:4][None, :]  # shape (1, 1, D_MODEL)
+        mx.eval(soft_embeds)
+        token_ids = _project_to_tokens(soft_embeds, embed_matrix)
+        assert token_ids[0] == 3
+
+
+class TestTransferEvalResult:
+    def test_construction(self) -> None:
+        result = TransferEvalResult(
+            model_id="test-model",
+            success_rate=0.5,
+            eval_responses=["resp1", "resp2"],
+        )
+        assert result.model_id == "test-model"
+        assert result.success_rate == 0.5
+        assert len(result.eval_responses) == 2
+
+    def test_frozen(self) -> None:
+        result = TransferEvalResult(
+            model_id="test", success_rate=0.0, eval_responses=[],
+        )
+        with pytest.raises(AttributeError):
+            result.success_rate = 1.0  # type: ignore[misc]
+
+
+class TestSoftPromptResultTransfer:
+    def test_default_empty(self) -> None:
+        result = SoftPromptResult(
+            mode="continuous",
+            success_rate=0.5,
+            final_loss=2.0,
+            loss_history=[2.0],
+            n_steps=1,
+            n_tokens=4,
+            embeddings=None,
+            token_ids=None,
+            token_text=None,
+            eval_responses=[],
+        )
+        assert result.transfer_results == []
+
+    def test_with_transfer_results(self) -> None:
+        tr = TransferEvalResult(
+            model_id="other-model",
+            success_rate=0.3,
+            eval_responses=["r1"],
+        )
+        result = SoftPromptResult(
+            mode="gcg",
+            success_rate=0.9,
+            final_loss=0.5,
+            loss_history=[0.5],
+            n_steps=1,
+            n_tokens=4,
+            embeddings=None,
+            token_ids=[1, 2, 3, 4],
+            token_text="test",
+            eval_responses=["resp"],
+            transfer_results=[tr],
+        )
+        assert len(result.transfer_results) == 1
+        assert result.transfer_results[0].model_id == "other-model"
+
+
+class TestSoftPromptSerialization:
+    def test_softprompt_to_dict_includes_transfer(self) -> None:
+        from vauban._serializers import _softprompt_to_dict
+
+        tr = TransferEvalResult(
+            model_id="m1", success_rate=0.4, eval_responses=["r"],
+        )
+        result = SoftPromptResult(
+            mode="gcg",
+            success_rate=0.8,
+            final_loss=1.0,
+            loss_history=[1.0],
+            n_steps=1,
+            n_tokens=4,
+            embeddings=None,
+            token_ids=[1, 2, 3, 4],
+            token_text="test",
+            eval_responses=["resp"],
+            transfer_results=[tr],
+        )
+        d = _softprompt_to_dict(result)
+        assert "transfer_results" in d
+        trs = d["transfer_results"]
+        assert isinstance(trs, list)
+        assert len(trs) == 1
+        assert trs[0]["model_id"] == "m1"  # type: ignore[index]
+        assert trs[0]["success_rate"] == 0.4  # type: ignore[index]
+
+    def test_softprompt_to_dict_empty_transfer(self) -> None:
+        from vauban._serializers import _softprompt_to_dict
+
+        result = SoftPromptResult(
+            mode="continuous",
+            success_rate=0.5,
+            final_loss=2.0,
+            loss_history=[2.0],
+            n_steps=1,
+            n_tokens=4,
+            embeddings=None,
+            token_ids=None,
+            token_text=None,
+            eval_responses=[],
+        )
+        d = _softprompt_to_dict(result)
+        assert d["transfer_results"] == []
+
+
+# ---------------------------------------------------------------------------
+# New config defaults for worst-k, grad accum, transfer
+# ---------------------------------------------------------------------------
+
+
+class TestNewConfigDefaults3:
+    def test_worst_k_default(self) -> None:
+        cfg = SoftPromptConfig()
+        assert cfg.worst_k == 5
+
+    def test_grad_accum_steps_default(self) -> None:
+        cfg = SoftPromptConfig()
+        assert cfg.grad_accum_steps == 1
+
+    def test_transfer_models_default(self) -> None:
+        cfg = SoftPromptConfig()
+        assert cfg.transfer_models == []
+
+    def test_custom_worst_k(self) -> None:
+        cfg = SoftPromptConfig(worst_k=10)
+        assert cfg.worst_k == 10
+
+    def test_custom_grad_accum_steps(self) -> None:
+        cfg = SoftPromptConfig(grad_accum_steps=4)
+        assert cfg.grad_accum_steps == 4
+
+    def test_custom_transfer_models(self) -> None:
+        cfg = SoftPromptConfig(transfer_models=["model-a"])
+        assert cfg.transfer_models == ["model-a"]

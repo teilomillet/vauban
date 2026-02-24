@@ -40,7 +40,7 @@ from vauban.optimize import optimize
 from vauban.probe import multi_probe, probe, steer
 from vauban.sic import sic as sic_sanitize
 from vauban.sic import sic_single
-from vauban.softprompt import softprompt_attack
+from vauban.softprompt import _project_to_tokens, softprompt_attack
 from vauban.subspace import (
     effective_rank,
     explained_variance_ratio,
@@ -87,6 +87,7 @@ from vauban.types import (
     SurfacePoint,
     SurfacePrompt,
     SurfaceResult,
+    TransferEvalResult,
     TrialResult,
 )
 
@@ -119,6 +120,7 @@ __all__ = [
     "SurfacePoint",
     "SurfacePrompt",
     "SurfaceResult",
+    "TransferEvalResult",
     "TrialResult",
     "aggregate",
     "compare_surfaces",
@@ -175,6 +177,7 @@ def run(config_path: str | Path) -> None:
     """Run the full measure -> cut -> evaluate pipeline from a TOML config."""
     import json
 
+    import mlx.core as mx
     import mlx_lm
     from mlx.utils import tree_flatten
 
@@ -305,6 +308,59 @@ def run(config_path: str | Path) -> None:
             model, tokenizer, sp_prompts, config.softprompt, direction_vec,  # type: ignore[arg-type]
             ref_model,
         )
+
+        # Transfer evaluation: test optimized prefix on other models
+        if config.softprompt.transfer_models:
+            from vauban.softprompt import _evaluate_attack
+
+            # Get discrete token IDs (project if continuous mode)
+            if sp_result.token_ids is not None:
+                transfer_token_ids = sp_result.token_ids
+            elif sp_result.embeddings is not None:
+                transfer_token_ids = _project_to_tokens(
+                    sp_result.embeddings,
+                    model.model.embed_tokens.weight,
+                )
+            else:
+                transfer_token_ids = []
+
+            transfer_results: list[TransferEvalResult] = []
+            for transfer_model_id in config.softprompt.transfer_models:
+                t_model, _ = mlx_lm.load(transfer_model_id)  # type: ignore[assignment]
+                if is_quantized(t_model):
+                    dequantize_model(t_model)
+                # Re-embed the tokens in the transfer model's space
+                t_token_array = mx.array(transfer_token_ids)[None, :]
+                t_embeds = t_model.model.embed_tokens(t_token_array)
+                mx.eval(t_embeds)
+                t_success, t_responses = _evaluate_attack(
+                    t_model, tokenizer, sp_prompts,  # type: ignore[arg-type]
+                    t_embeds, config.softprompt,
+                )
+                transfer_results.append(TransferEvalResult(
+                    model_id=transfer_model_id,
+                    success_rate=t_success,
+                    eval_responses=t_responses,
+                ))
+
+            # Reconstruct result with transfer results
+            sp_result = SoftPromptResult(
+                mode=sp_result.mode,
+                success_rate=sp_result.success_rate,
+                final_loss=sp_result.final_loss,
+                loss_history=sp_result.loss_history,
+                n_steps=sp_result.n_steps,
+                n_tokens=sp_result.n_tokens,
+                embeddings=sp_result.embeddings,
+                token_ids=sp_result.token_ids,
+                token_text=sp_result.token_text,
+                eval_responses=sp_result.eval_responses,
+                accessibility_score=sp_result.accessibility_score,
+                per_prompt_losses=sp_result.per_prompt_losses,
+                early_stopped=sp_result.early_stopped,
+                transfer_results=transfer_results,
+            )
+
         report_path = config.output_dir / "softprompt_report.json"
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(

@@ -1286,3 +1286,134 @@ class TestLoadConfig:
         config = load_config(toml_file)
         assert config.sic is not None
         assert config.sic.target_layer == 7
+
+    # =========================================================================
+    # Worst-K config tests
+    # =========================================================================
+
+    def test_softprompt_worst_k_default(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.worst_k == 5
+
+    def test_softprompt_worst_k_parsed(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\nworst_k = 10\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.worst_k == 10
+
+    def test_softprompt_worst_k_zero_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\nworst_k = 0\n"
+        )
+        with pytest.raises(ValueError, match="worst_k"):
+            load_config(toml_file)
+
+    def test_softprompt_prompt_strategy_worst_k(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\nprompt_strategy = "worst_k"\n'
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.prompt_strategy == "worst_k"
+
+    # =========================================================================
+    # Gradient accumulation config tests
+    # =========================================================================
+
+    def test_softprompt_grad_accum_steps_default(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.grad_accum_steps == 1
+
+    def test_softprompt_grad_accum_steps_parsed(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ngrad_accum_steps = 4\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.grad_accum_steps == 4
+
+    def test_softprompt_grad_accum_steps_zero_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ngrad_accum_steps = 0\n"
+        )
+        with pytest.raises(ValueError, match="grad_accum_steps"):
+            load_config(toml_file)
+
+    # =========================================================================
+    # Transfer models config tests
+    # =========================================================================
+
+    def test_softprompt_transfer_models_default(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.transfer_models == []
+
+    def test_softprompt_transfer_models_parsed(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\ntransfer_models = ["model-a", "model-b"]\n'
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.transfer_models == ["model-a", "model-b"]
+
+    def test_softprompt_transfer_models_type_error(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\ntransfer_models = "not-a-list"\n'
+        )
+        with pytest.raises(TypeError, match="transfer_models"):
+            load_config(toml_file)

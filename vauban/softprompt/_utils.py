@@ -230,6 +230,119 @@ def _compute_per_prompt_losses(
     return losses
 
 
+def _select_worst_k_prompt_ids(
+    model: CausalLM,
+    soft_embeds: mx.array,
+    all_ids: list[mx.array],
+    target_ids: mx.array,
+    n_tokens: int,
+    k: int,
+    direction: mx.array | None,
+    direction_weight: float,
+    direction_mode: str,
+    direction_layers: set[int] | None,
+    eos_token_id: int | None,
+    eos_loss_mode: str,
+    eos_loss_weight: float,
+    ref_model: CausalLM | None,
+    kl_ref_weight: float,
+    loss_mode: str,
+    refusal_ids: mx.array | None,
+) -> list[mx.array]:
+    """Select the top-k hardest prompts by loss (worst-k strategy).
+
+    Computes per-prompt losses with stopped gradients, sorts descending,
+    and returns the top-k prompt ID arrays.
+
+    Args:
+        model: The causal language model.
+        soft_embeds: Current soft prompt embeddings (gradients stopped).
+        all_ids: Pre-encoded prompt token ID arrays.
+        target_ids: Target token IDs.
+        n_tokens: Number of soft prompt tokens.
+        k: Number of prompts to select.
+        direction: Optional refusal direction vector.
+        direction_weight: Weight for direction auxiliary loss.
+        direction_mode: Direction penalty mode.
+        direction_layers: Layer indices for direction penalty.
+        eos_token_id: EOS token ID for EOS loss.
+        eos_loss_mode: EOS loss mode.
+        eos_loss_weight: Weight for EOS auxiliary loss.
+        ref_model: Reference model for KL collision loss.
+        kl_ref_weight: Weight for KL collision loss.
+        loss_mode: Loss mode ("targeted", "untargeted", or "defensive").
+        refusal_ids: Refusal token IDs.
+
+    Returns:
+        Top-k prompt ID arrays sorted by descending loss.
+    """
+    stopped_embeds = mx.stop_gradient(soft_embeds)
+    losses = _compute_per_prompt_losses(
+        model, stopped_embeds, all_ids, target_ids,
+        n_tokens, direction, direction_weight,
+        direction_mode, direction_layers,
+        eos_token_id, eos_loss_mode, eos_loss_weight,
+        ref_model, kl_ref_weight,
+        loss_mode=loss_mode, refusal_ids=refusal_ids,
+    )
+    # Sort by loss descending, take top k
+    effective_k = min(k, len(all_ids))
+    indexed = sorted(enumerate(losses), key=lambda x: x[1], reverse=True)
+    return [all_ids[i] for i, _ in indexed[:effective_k]]
+
+
+def _split_into_batches(
+    items: list[mx.array],
+    n_batches: int,
+) -> list[list[mx.array]]:
+    """Split items into approximately equal batches.
+
+    Args:
+        items: List of items to split.
+        n_batches: Target number of batches.
+
+    Returns:
+        List of batches. Returns [items] when n_batches <= 1.
+    """
+    if n_batches <= 1 or len(items) <= 1:
+        return [items]
+
+    effective_n = min(n_batches, len(items))
+    batch_size = len(items) // effective_n
+    remainder = len(items) % effective_n
+
+    batches: list[list[mx.array]] = []
+    start = 0
+    for i in range(effective_n):
+        end = start + batch_size + (1 if i < remainder else 0)
+        batches.append(items[start:end])
+        start = end
+    return batches
+
+
+def _project_to_tokens(
+    soft_embeds: mx.array,
+    embed_matrix: mx.array,
+) -> list[int]:
+    """Project continuous embeddings to nearest discrete tokens.
+
+    Args:
+        soft_embeds: Continuous embeddings, shape (1, n_tokens, d_model).
+        embed_matrix: Token embedding matrix, shape (vocab_size, d_model).
+
+    Returns:
+        List of token IDs (one per soft prompt position).
+    """
+    # (n_tokens, d_model) @ (d_model, vocab_size) -> (n_tokens, vocab_size)
+    scores = soft_embeds[0] @ embed_matrix.T
+    token_ids_array = mx.argmax(scores, axis=-1)
+    mx.eval(token_ids_array)
+    raw = token_ids_array.tolist()
+    if not isinstance(raw, list):
+        return [int(raw)]
+    return [int(t) for t in raw]
+
+
 def _encode_refusal_tokens(tokenizer: Tokenizer) -> mx.array:
     """Encode refusal phrases into a deduplicated set of first-token IDs.
 

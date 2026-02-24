@@ -195,7 +195,7 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
             f" got {type(prompt_strategy_raw).__name__}"
         )
         raise TypeError(msg)
-    valid_prompt_strategies = ("all", "cycle", "first")
+    valid_prompt_strategies = ("all", "cycle", "first", "worst_k")
     if prompt_strategy_raw not in valid_prompt_strategies:
         msg = (
             f"[softprompt].prompt_strategy must be one of"
@@ -328,6 +328,45 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
         )
         raise ValueError(msg)
 
+    # -- worst_k --
+    worst_k_raw = sec.get("worst_k", 5)  # type: ignore[arg-type]
+    if not isinstance(worst_k_raw, int):
+        msg = (
+            f"[softprompt].worst_k must be an integer,"
+            f" got {type(worst_k_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if worst_k_raw < 1:
+        msg = f"[softprompt].worst_k must be >= 1, got {worst_k_raw}"
+        raise ValueError(msg)
+
+    # -- grad_accum_steps --
+    grad_accum_steps_raw = sec.get("grad_accum_steps", 1)  # type: ignore[arg-type]
+    if not isinstance(grad_accum_steps_raw, int):
+        msg = (
+            f"[softprompt].grad_accum_steps must be an integer,"
+            f" got {type(grad_accum_steps_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if grad_accum_steps_raw < 1:
+        msg = (
+            f"[softprompt].grad_accum_steps must be >= 1,"
+            f" got {grad_accum_steps_raw}"
+        )
+        raise ValueError(msg)
+
+    # -- transfer_models --
+    transfer_models_raw = sec.get(  # type: ignore[arg-type]
+        "transfer_models", [],
+    )
+    if not isinstance(transfer_models_raw, list):
+        msg = (
+            f"[softprompt].transfer_models must be a list,"
+            f" got {type(transfer_models_raw).__name__}"
+        )
+        raise TypeError(msg)
+    transfer_models: list[str] = [str(m) for m in transfer_models_raw]
+
     # -- ref_model --
     ref_model_raw = sec.get("ref_model")  # type: ignore[arg-type]
     ref_model: str | None = None
@@ -374,4 +413,7 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
         eos_loss_weight=float(eos_loss_weight_raw),
         kl_ref_weight=float(kl_ref_weight_raw),
         ref_model=ref_model,
+        worst_k=worst_k_raw,
+        grad_accum_steps=grad_accum_steps_raw,
+        transfer_models=transfer_models,
     )

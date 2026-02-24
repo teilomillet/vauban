@@ -26,7 +26,10 @@ from vauban.softprompt._utils import (
     _encode_targets,
     _forward_with_prefix,
     _pre_encode_prompts,
+    _project_to_tokens,
     _select_prompt_ids,
+    _select_worst_k_prompt_ids,
+    _split_into_batches,
 )
 
 __all__ = [
@@ -50,6 +53,9 @@ __all__ = [
     "_make_cache",
     "_pre_encode_prompts",
     "_prefill_with_cache",
+    "_project_to_tokens",
     "_select_prompt_ids",
+    "_select_worst_k_prompt_ids",
+    "_split_into_batches",
     "softprompt_attack",
 ]

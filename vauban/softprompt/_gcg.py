@@ -18,6 +18,8 @@ from vauban.softprompt._utils import (
     _encode_targets,
     _pre_encode_prompts,
     _select_prompt_ids,
+    _select_worst_k_prompt_ids,
+    _split_into_batches,
 )
 from vauban.types import CausalLM, SoftPromptConfig, SoftPromptResult, Tokenizer
 
@@ -90,65 +92,89 @@ def _gcg_attack(
         for step in range(config.n_steps):
             total_steps += 1
 
-            # Select prompts for this step
-            selected_ids = _select_prompt_ids(
-                all_prompt_ids, step, config.prompt_strategy,
-            )
-
             # Get embeddings for current tokens
             token_array = mx.array(current_ids)[None, :]
             soft_embeds = transformer.embed_tokens(token_array)
             mx.eval(soft_embeds)
 
-            # Compute gradient w.r.t. embeddings (averaged across prompts)
-            def loss_fn(
-                embeds: mx.array,
-                _sel: list[mx.array] = selected_ids,
-            ) -> mx.array:
-                total = mx.array(0.0)
-                for pid in _sel:
-                    if (
-                        config.loss_mode == "defensive"
-                        and refusal_ids is not None
-                    ):
-                        total = total + _compute_defensive_loss(
-                            model, embeds, pid,
-                            config.n_tokens, refusal_ids,
-                            direction, config.direction_weight,
-                            config.direction_mode, direction_layers_set,
-                            eos_token_id, config.eos_loss_mode,
-                            config.eos_loss_weight,
-                            ref_model, config.kl_ref_weight,
-                        )
-                    elif (
-                        config.loss_mode == "untargeted"
-                        and refusal_ids is not None
-                    ):
-                        total = total + _compute_untargeted_loss(
-                            model, embeds, pid,
-                            config.n_tokens, refusal_ids,
-                            direction, config.direction_weight,
-                            config.direction_mode, direction_layers_set,
-                            eos_token_id, config.eos_loss_mode,
-                            config.eos_loss_weight,
-                            ref_model, config.kl_ref_weight,
-                        )
-                    else:
-                        total = total + _compute_loss(
-                            model, embeds, pid, target_ids,
-                            config.n_tokens, direction,
-                            config.direction_weight,
-                            config.direction_mode, direction_layers_set,
-                            eos_token_id, config.eos_loss_mode,
-                            config.eos_loss_weight,
-                            ref_model, config.kl_ref_weight,
-                        )
-                return total / len(_sel)
+            # Select prompts for this step
+            if config.prompt_strategy == "worst_k":
+                selected_ids = _select_worst_k_prompt_ids(
+                    model, soft_embeds, all_prompt_ids, target_ids,
+                    config.n_tokens, config.worst_k,
+                    direction, config.direction_weight,
+                    config.direction_mode, direction_layers_set,
+                    eos_token_id, config.eos_loss_mode,
+                    config.eos_loss_weight,
+                    ref_model, config.kl_ref_weight,
+                    loss_mode=config.loss_mode, refusal_ids=refusal_ids,
+                )
+            else:
+                selected_ids = _select_prompt_ids(
+                    all_prompt_ids, step, config.prompt_strategy,
+                )
 
-            loss_and_grad = mx.value_and_grad(loss_fn)
-            loss_val, grad = loss_and_grad(soft_embeds)
-            mx.eval(loss_val, grad)
-            current_loss = float(loss_val.item())
+            # Gradient accumulation over mini-batches
+            batches = _split_into_batches(
+                selected_ids, config.grad_accum_steps,
+            )
+            total_loss = 0.0
+            accum_grad = mx.zeros_like(soft_embeds)
+
+            for batch in batches:
+                def loss_fn(
+                    embeds: mx.array,
+                    _sel: list[mx.array] = batch,
+                ) -> mx.array:
+                    total = mx.array(0.0)
+                    for pid in _sel:
+                        if (
+                            config.loss_mode == "defensive"
+                            and refusal_ids is not None
+                        ):
+                            total = total + _compute_defensive_loss(
+                                model, embeds, pid,
+                                config.n_tokens, refusal_ids,
+                                direction, config.direction_weight,
+                                config.direction_mode, direction_layers_set,
+                                eos_token_id, config.eos_loss_mode,
+                                config.eos_loss_weight,
+                                ref_model, config.kl_ref_weight,
+                            )
+                        elif (
+                            config.loss_mode == "untargeted"
+                            and refusal_ids is not None
+                        ):
+                            total = total + _compute_untargeted_loss(
+                                model, embeds, pid,
+                                config.n_tokens, refusal_ids,
+                                direction, config.direction_weight,
+                                config.direction_mode, direction_layers_set,
+                                eos_token_id, config.eos_loss_mode,
+                                config.eos_loss_weight,
+                                ref_model, config.kl_ref_weight,
+                            )
+                        else:
+                            total = total + _compute_loss(
+                                model, embeds, pid, target_ids,
+                                config.n_tokens, direction,
+                                config.direction_weight,
+                                config.direction_mode, direction_layers_set,
+                                eos_token_id, config.eos_loss_mode,
+                                config.eos_loss_weight,
+                                ref_model, config.kl_ref_weight,
+                            )
+                    return total / len(_sel)
+
+                batch_loss, batch_grad = mx.value_and_grad(loss_fn)(
+                    soft_embeds,
+                )
+                mx.eval(batch_loss, batch_grad)
+                total_loss += float(batch_loss.item())
+                accum_grad = accum_grad + batch_grad
+
+            current_loss = total_loss / len(batches)
+            grad = accum_grad / len(batches)
             all_loss_history.append(current_loss)
 
             if current_loss < restart_best_loss:

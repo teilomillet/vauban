@@ -279,7 +279,7 @@ class SoftPromptConfig:
     patience: int = 0  # early stopping (0 = disabled)
     lr_schedule: str = "constant"  # "constant" or "cosine"
     n_restarts: int = 1  # GCG random restarts
-    prompt_strategy: str = "all"  # "all", "cycle", or "first"
+    prompt_strategy: str = "all"  # "all", "cycle", "first", or "worst_k"
     direction_mode: str = "last"  # "last", "raid", or "all_positions"
     direction_layers: list[int] | None = None  # None = all layers
     loss_mode: str = "targeted"  # "targeted" or "untargeted"
@@ -289,6 +289,18 @@ class SoftPromptConfig:
     eos_loss_weight: float = 0.0  # weight for EOS auxiliary loss
     kl_ref_weight: float = 0.0  # weight for KL collision loss (0 = off)
     ref_model: str | None = None  # HF model ID or path for KL collision reference
+    worst_k: int = 5  # prompts to select for "worst_k" strategy
+    grad_accum_steps: int = 1  # gradient accumulation (1 = no accumulation)
+    transfer_models: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class TransferEvalResult:
+    """Result of evaluating an optimized soft prompt on a transfer model."""
+
+    model_id: str
+    success_rate: float
+    eval_responses: list[str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -308,6 +320,7 @@ class SoftPromptResult:
     accessibility_score: float = 0.0  # exp(-final_loss), Nordby metric
     per_prompt_losses: list[float] = field(default_factory=list)
     early_stopped: bool = False
+    transfer_results: list[TransferEvalResult] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)

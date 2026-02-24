@@ -7,6 +7,7 @@ from vauban.types import (
     SoftPromptResult,
     SurfaceComparison,
     SurfaceGroupDelta,
+    TransferEvalResult,
     TrialResult,
 )
 
@@ -112,6 +113,17 @@ def _sic_to_dict(result: SICResult) -> dict[str, object]:
     }
 
 
+def _transfer_eval_to_dict(
+    result: TransferEvalResult,
+) -> dict[str, object]:
+    """Serialize a TransferEvalResult to a JSON-compatible dict."""
+    return {
+        "model_id": result.model_id,
+        "success_rate": result.success_rate,
+        "eval_responses": result.eval_responses,
+    }
+
+
 def _softprompt_to_dict(result: SoftPromptResult) -> dict[str, object]:
     """Serialize a SoftPromptResult to a JSON-compatible dict."""
     return {
@@ -127,4 +139,7 @@ def _softprompt_to_dict(result: SoftPromptResult) -> dict[str, object]:
         "accessibility_score": result.accessibility_score,
         "per_prompt_losses": result.per_prompt_losses,
         "early_stopped": result.early_stopped,
+        "transfer_results": [
+            _transfer_eval_to_dict(t) for t in result.transfer_results
+        ],
     }
