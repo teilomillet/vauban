@@ -172,6 +172,7 @@ class MockTokenizer:
 
     def __init__(self, vocab_size: int) -> None:
         self._vocab_size = vocab_size
+        self.eos_token_id: int = vocab_size - 1
 
     def encode(self, text: str) -> list[int]:
         """Map each character to a token id (mod vocab_size)."""

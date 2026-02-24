@@ -1,0 +1,168 @@
+"""Activation collection helpers for the measure pipeline."""
+
+import mlx.core as mx
+import mlx.nn as nn
+
+from vauban.types import CausalLM, Tokenizer
+
+
+def _collect_activations(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    prompts: list[str],
+    clip_quantile: float = 0.0,
+    token_position: int = -1,
+) -> list[mx.array]:
+    """Collect per-layer mean activations across prompts.
+
+    Uses Welford's online algorithm for numerically stable streaming
+    mean computation — O(d_model) memory per layer instead of
+    O(num_prompts * d_model).
+
+    Args:
+        model: The causal language model.
+        tokenizer: Tokenizer with chat template support.
+        prompts: Prompts to collect activations for.
+        clip_quantile: If > 0, clip per-prompt activations by this
+            quantile before accumulating into the running mean.
+        token_position: Token index to extract activations from.
+            Defaults to -1 (last token).
+
+    Returns a list of length num_layers, each element shape (d_model,).
+    """
+    means: list[mx.array] | None = None
+
+    for count, prompt in enumerate(prompts, start=1):
+        messages = [{"role": "user", "content": prompt}]
+        text = tokenizer.apply_chat_template(
+            messages, tokenize=False,
+        )
+        if not isinstance(text, str):
+            msg = "apply_chat_template must return str when tokenize=False"
+            raise TypeError(msg)
+        token_ids = mx.array(tokenizer.encode(text))[None, :]
+        residuals = _forward_collect(model, token_ids, token_position)
+
+        if clip_quantile > 0.0:
+            residuals = [_clip_activation(r, clip_quantile) for r in residuals]
+
+        if means is None:
+            means = [r.astype(mx.float32) for r in residuals]
+        else:
+            # Welford online mean: mean += (x - mean) / n
+            for i, r in enumerate(residuals):
+                delta = r.astype(mx.float32) - means[i]
+                means[i] = means[i] + delta / count
+
+        # Evaluate periodically to avoid graph buildup
+        if count % 16 == 0 and means is not None:
+            mx.eval(*means)
+
+    if means is None:
+        msg = "No prompts provided for activation collection"
+        raise ValueError(msg)
+
+    mx.eval(*means)
+    return means
+
+
+def _collect_per_prompt_activations(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    prompts: list[str],
+    clip_quantile: float = 0.0,
+    token_position: int = -1,
+) -> list[mx.array]:
+    """Collect per-prompt activations at each layer (no averaging).
+
+    Args:
+        model: The causal language model.
+        tokenizer: Tokenizer with chat template support.
+        prompts: Prompts to collect activations for.
+        clip_quantile: If > 0, clip per-prompt activations by this quantile.
+        token_position: Token index to extract activations from.
+            Defaults to -1 (last token).
+
+    Returns a list of length num_layers, each element shape (num_prompts, d_model).
+    """
+    all_residuals: list[list[mx.array]] = []
+
+    for prompt in prompts:
+        messages = [{"role": "user", "content": prompt}]
+        text = tokenizer.apply_chat_template(
+            messages, tokenize=False,
+        )
+        if not isinstance(text, str):
+            msg = "apply_chat_template must return str when tokenize=False"
+            raise TypeError(msg)
+        token_ids = mx.array(tokenizer.encode(text))[None, :]
+        residuals = _forward_collect(model, token_ids, token_position)
+
+        if clip_quantile > 0.0:
+            residuals = [_clip_activation(r, clip_quantile) for r in residuals]
+
+        all_residuals.append(residuals)
+
+    # Stack per-prompt activations for each layer
+    num_layers = len(all_residuals[0])
+    per_layer: list[mx.array] = []
+    for layer_idx in range(num_layers):
+        stacked = mx.stack([r[layer_idx] for r in all_residuals])
+        mx.eval(stacked)
+        per_layer.append(stacked)
+
+    return per_layer
+
+
+def _forward_collect(
+    model: CausalLM,
+    token_ids: mx.array,
+    token_position: int = -1,
+) -> list[mx.array]:
+    """Manual layer-by-layer forward pass, capturing residual stream.
+
+    Returns per-layer activations at the given token position.
+    Each element has shape (d_model,).
+
+    Args:
+        model: The causal language model.
+        token_ids: Input token IDs of shape (1, seq_len).
+        token_position: Token index to extract activations from.
+            Defaults to -1 (last token).
+    """
+    transformer = model.model
+    h = transformer.embed_tokens(token_ids)
+
+    mask = nn.MultiHeadAttention.create_additive_causal_mask(
+        h.shape[1],
+    )
+    mask = mask.astype(h.dtype)
+
+    residuals: list[mx.array] = []
+    for layer in transformer.layers:
+        h = layer(h, mask)
+        # Upcast to float32 for numerical stability (like Heretic)
+        activation = h[0, token_position, :].astype(mx.float32)
+        residuals.append(activation)
+
+    return residuals
+
+
+def _clip_activation(activation: mx.array, quantile: float) -> mx.array:
+    """Winsorize an activation vector by clamping extreme values.
+
+    Clips each dimension to the ``[quantile, 1-quantile]`` range of
+    its absolute value distribution. This tames "massive activations"
+    that can distort the difference-in-means computation.
+
+    Args:
+        activation: Activation vector of shape (d_model,).
+        quantile: Fraction of extremes to clip (e.g. 0.01 = clip top/bottom 1%).
+    """
+    abs_vals = mx.abs(activation)
+    sorted_vals = mx.sort(abs_vals)
+    n = sorted_vals.shape[0]
+    high_idx = min(n - 1, int(n * (1.0 - quantile)))
+    threshold = sorted_vals[high_idx]
+    mx.eval(threshold)
+    return mx.clip(activation, -threshold, threshold)

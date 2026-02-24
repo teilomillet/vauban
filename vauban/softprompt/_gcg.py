@@ -1,0 +1,287 @@
+"""GCG (Greedy Coordinate Gradient) discrete token search."""
+
+import random
+
+import mlx.core as mx
+
+from vauban.softprompt._generation import _evaluate_attack
+from vauban.softprompt._loss import (
+    _compute_defensive_loss,
+    _compute_loss,
+    _compute_untargeted_loss,
+)
+from vauban.softprompt._utils import (
+    _build_vocab_mask,
+    _compute_accessibility_score,
+    _compute_per_prompt_losses,
+    _encode_refusal_tokens,
+    _encode_targets,
+    _pre_encode_prompts,
+    _select_prompt_ids,
+)
+from vauban.types import CausalLM, SoftPromptConfig, SoftPromptResult, Tokenizer
+
+
+def _gcg_attack(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    prompts: list[str],
+    config: SoftPromptConfig,
+    direction: mx.array | None,
+    ref_model: CausalLM | None = None,
+) -> SoftPromptResult:
+    """GCG (Greedy Coordinate Gradient) discrete token search.
+
+    Finds adversarial token sequences by using gradient information
+    to guide a discrete search over the vocabulary. Supports
+    multi-prompt optimization, multiple restarts, and early stopping.
+    """
+    transformer = model.model
+    vocab_size = transformer.embed_tokens.weight.shape[0]
+    embed_matrix = transformer.embed_tokens.weight
+
+    target_ids = _encode_targets(tokenizer, config.target_prefixes)
+    mx.eval(target_ids)
+
+    # Pre-encode all prompts
+    effective_prompts = prompts if prompts else ["Hello"]
+    all_prompt_ids = _pre_encode_prompts(tokenizer, effective_prompts)
+
+    # Pre-compute direction config
+    direction_layers_set: set[int] | None = (
+        set(config.direction_layers) if config.direction_layers is not None
+        else None
+    )
+    refusal_ids: mx.array | None = None
+    if config.loss_mode in ("untargeted", "defensive"):
+        refusal_ids = _encode_refusal_tokens(tokenizer)
+        mx.eval(refusal_ids)
+
+    # Pre-compute vocab mask and EOS token ID
+    vocab_mask = _build_vocab_mask(
+        tokenizer, vocab_size, config.token_constraint,
+    )
+    eos_token_id: int | None = getattr(tokenizer, "eos_token_id", None)
+
+    # Build list of allowed token indices for constrained random init
+    if vocab_mask is not None:
+        mx.eval(vocab_mask)
+        allowed_indices: list[int] = [
+            i for i in range(vocab_size) if bool(vocab_mask[i].item())
+        ]
+    else:
+        allowed_indices = list(range(vocab_size))
+
+    overall_best_ids: list[int] = []
+    overall_best_loss = float("inf")
+    all_loss_history: list[float] = []
+    total_steps = 0
+    early_stopped = False
+
+    for _restart in range(config.n_restarts):
+        # Initialize with random tokens (constrained if mask is set)
+        current_ids = [
+            random.choice(allowed_indices) for _ in range(config.n_tokens)
+        ]
+        restart_best_ids = list(current_ids)
+        restart_best_loss = float("inf")
+        steps_without_improvement = 0
+
+        for step in range(config.n_steps):
+            total_steps += 1
+
+            # Select prompts for this step
+            selected_ids = _select_prompt_ids(
+                all_prompt_ids, step, config.prompt_strategy,
+            )
+
+            # Get embeddings for current tokens
+            token_array = mx.array(current_ids)[None, :]
+            soft_embeds = transformer.embed_tokens(token_array)
+            mx.eval(soft_embeds)
+
+            # Compute gradient w.r.t. embeddings (averaged across prompts)
+            def loss_fn(
+                embeds: mx.array,
+                _sel: list[mx.array] = selected_ids,
+            ) -> mx.array:
+                total = mx.array(0.0)
+                for pid in _sel:
+                    if (
+                        config.loss_mode == "defensive"
+                        and refusal_ids is not None
+                    ):
+                        total = total + _compute_defensive_loss(
+                            model, embeds, pid,
+                            config.n_tokens, refusal_ids,
+                            direction, config.direction_weight,
+                            config.direction_mode, direction_layers_set,
+                            eos_token_id, config.eos_loss_mode,
+                            config.eos_loss_weight,
+                            ref_model, config.kl_ref_weight,
+                        )
+                    elif (
+                        config.loss_mode == "untargeted"
+                        and refusal_ids is not None
+                    ):
+                        total = total + _compute_untargeted_loss(
+                            model, embeds, pid,
+                            config.n_tokens, refusal_ids,
+                            direction, config.direction_weight,
+                            config.direction_mode, direction_layers_set,
+                            eos_token_id, config.eos_loss_mode,
+                            config.eos_loss_weight,
+                            ref_model, config.kl_ref_weight,
+                        )
+                    else:
+                        total = total + _compute_loss(
+                            model, embeds, pid, target_ids,
+                            config.n_tokens, direction,
+                            config.direction_weight,
+                            config.direction_mode, direction_layers_set,
+                            eos_token_id, config.eos_loss_mode,
+                            config.eos_loss_weight,
+                            ref_model, config.kl_ref_weight,
+                        )
+                return total / len(_sel)
+
+            loss_and_grad = mx.value_and_grad(loss_fn)
+            loss_val, grad = loss_and_grad(soft_embeds)
+            mx.eval(loss_val, grad)
+            current_loss = float(loss_val.item())
+            all_loss_history.append(current_loss)
+
+            if current_loss < restart_best_loss:
+                restart_best_loss = current_loss
+                restart_best_ids = list(current_ids)
+                steps_without_improvement = 0
+            else:
+                steps_without_improvement += 1
+
+            # Early stopping within restart
+            if (
+                config.patience > 0
+                and steps_without_improvement >= config.patience
+            ):
+                early_stopped = True
+                break
+
+            # Score token candidates: -grad @ embed_matrix.T
+            # grad shape: (1, n_tokens, d_model)
+            scores = -mx.matmul(grad[0], embed_matrix.T)  # (n_tokens, vocab_size)
+            # Apply vocab mask to exclude disallowed tokens
+            if vocab_mask is not None:
+                scores = mx.where(vocab_mask, scores, mx.array(-1e10))
+            mx.eval(scores)
+
+            # Top-k per position
+            effective_k = min(config.top_k, vocab_size)
+            sorted_indices = mx.argsort(-scores, axis=-1)  # descending order
+            top_indices = sorted_indices[:, :effective_k]  # (n_tokens, top_k)
+            mx.eval(top_indices)
+
+            # Generate batch_size candidates
+            candidates: list[list[int]] = []
+            for _ in range(config.batch_size):
+                pos = random.randint(0, config.n_tokens - 1)
+                tok_idx = random.randint(0, effective_k - 1)
+                new_token = int(top_indices[pos, tok_idx].item())
+                candidate = list(current_ids)
+                candidate[pos] = new_token
+                candidates.append(candidate)
+
+            # Evaluate all candidates (averaged across selected prompts)
+            candidate_losses: list[float] = []
+            for candidate in candidates:
+                cand_array = mx.array(candidate)[None, :]
+                cand_embeds = transformer.embed_tokens(cand_array)
+                cand_total = mx.array(0.0)
+                for pid in selected_ids:
+                    if (
+                        config.loss_mode == "defensive"
+                        and refusal_ids is not None
+                    ):
+                        cand_total = cand_total + _compute_defensive_loss(
+                            model, cand_embeds, pid,
+                            config.n_tokens, refusal_ids,
+                            direction, config.direction_weight,
+                            config.direction_mode, direction_layers_set,
+                            eos_token_id, config.eos_loss_mode,
+                            config.eos_loss_weight,
+                            ref_model, config.kl_ref_weight,
+                        )
+                    elif (
+                        config.loss_mode == "untargeted"
+                        and refusal_ids is not None
+                    ):
+                        cand_total = cand_total + _compute_untargeted_loss(
+                            model, cand_embeds, pid,
+                            config.n_tokens, refusal_ids,
+                            direction, config.direction_weight,
+                            config.direction_mode, direction_layers_set,
+                            eos_token_id, config.eos_loss_mode,
+                            config.eos_loss_weight,
+                            ref_model, config.kl_ref_weight,
+                        )
+                    else:
+                        cand_total = cand_total + _compute_loss(
+                            model, cand_embeds, pid, target_ids,
+                            config.n_tokens, direction,
+                            config.direction_weight,
+                            config.direction_mode, direction_layers_set,
+                            eos_token_id, config.eos_loss_mode,
+                            config.eos_loss_weight,
+                            ref_model, config.kl_ref_weight,
+                        )
+                cand_avg = cand_total / len(selected_ids)
+                mx.eval(cand_avg)
+                candidate_losses.append(float(cand_avg.item()))
+
+            best_candidate_idx = candidate_losses.index(min(candidate_losses))
+            if candidate_losses[best_candidate_idx] < current_loss:
+                current_ids = candidates[best_candidate_idx]
+
+        # Update overall best across restarts
+        if restart_best_loss < overall_best_loss:
+            overall_best_loss = restart_best_loss
+            overall_best_ids = restart_best_ids
+
+    # Evaluate with best tokens
+    current_ids = overall_best_ids
+    final_token_array = mx.array(current_ids)[None, :]
+    final_embeds = transformer.embed_tokens(final_token_array)
+    mx.eval(final_embeds)
+
+    # Compute per-prompt losses and accessibility score
+    per_prompt_losses = _compute_per_prompt_losses(
+        model, final_embeds, all_prompt_ids, target_ids,
+        config.n_tokens, direction, config.direction_weight,
+        config.direction_mode, direction_layers_set,
+        eos_token_id, config.eos_loss_mode, config.eos_loss_weight,
+        ref_model, config.kl_ref_weight,
+        loss_mode=config.loss_mode, refusal_ids=refusal_ids,
+    )
+    final_loss = overall_best_loss
+    accessibility_score = _compute_accessibility_score(final_loss)
+
+    success_rate, responses = _evaluate_attack(
+        model, tokenizer, prompts, final_embeds, config,
+    )
+
+    token_text = tokenizer.decode(current_ids)
+
+    return SoftPromptResult(
+        mode="gcg",
+        success_rate=success_rate,
+        final_loss=final_loss,
+        loss_history=all_loss_history,
+        n_steps=total_steps,
+        n_tokens=config.n_tokens,
+        embeddings=None,
+        token_ids=current_ids,
+        token_text=token_text,
+        eval_responses=responses,
+        accessibility_score=accessibility_score,
+        per_prompt_losses=per_prompt_losses,
+        early_stopped=early_stopped,
+    )

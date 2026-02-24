@@ -968,3 +968,129 @@ class TestLoadConfig:
         config = load_config(toml_file)
         assert config.softprompt is not None
         assert config.softprompt.mode == "egd"
+
+    # -- token_constraint --
+
+    def test_softprompt_token_constraint_default_none(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.token_constraint is None
+
+    def test_softprompt_token_constraint_ascii(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\ntoken_constraint = "ascii"\n'
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.token_constraint == "ascii"
+
+    def test_softprompt_token_constraint_invalid_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\ntoken_constraint = "emoji"\n'
+        )
+        with pytest.raises(ValueError, match="token_constraint"):
+            load_config(toml_file)
+
+    # -- eos_loss_mode --
+
+    def test_softprompt_eos_loss_mode_default(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.eos_loss_mode == "none"
+
+    def test_softprompt_eos_loss_mode_force(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\neos_loss_mode = "force"\n'
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.eos_loss_mode == "force"
+
+    def test_softprompt_eos_loss_mode_invalid_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\neos_loss_mode = "invalid"\n'
+        )
+        with pytest.raises(ValueError, match="eos_loss_mode"):
+            load_config(toml_file)
+
+    # -- eos_loss_weight --
+
+    def test_softprompt_eos_loss_weight_default(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.eos_loss_weight == 0.0
+
+    def test_softprompt_eos_loss_weight_negative_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\neos_loss_weight = -0.1\n"
+        )
+        with pytest.raises(ValueError, match="eos_loss_weight"):
+            load_config(toml_file)
+
+    # -- kl_ref_weight --
+
+    def test_softprompt_kl_ref_weight_default(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.kl_ref_weight == 0.0
+
+    def test_softprompt_kl_ref_weight_negative_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\nkl_ref_weight = -0.1\n"
+        )
+        with pytest.raises(ValueError, match="kl_ref_weight"):
+            load_config(toml_file)

@@ -284,6 +284,11 @@ class SoftPromptConfig:
     direction_layers: list[int] | None = None  # None = all layers
     loss_mode: str = "targeted"  # "targeted" or "untargeted"
     egd_temperature: float = 1.0  # EGD simplex sharpening
+    token_constraint: str | None = None  # "ascii", "alpha", "alphanumeric", or None
+    eos_loss_mode: str = "none"  # "none", "force", or "suppress"
+    eos_loss_weight: float = 0.0  # weight for EOS auxiliary loss
+    kl_ref_weight: float = 0.0  # weight for KL collision loss (0 = off)
+    ref_model: str | None = None  # HF model ID or path for KL collision reference
 
 
 @dataclass(frozen=True, slots=True)

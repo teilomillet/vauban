@@ -715,6 +715,85 @@ def main() -> None:
               f"has_tokens={result_egd.token_ids is not None}")
 
     # ------------------------------------------------------------------
+    # Test 19: Token constraint with GCG
+    # ------------------------------------------------------------------
+    print("\n=== Test 19: Token constraint (GCG + ascii) ===")
+    total += 1
+    config_constraint = SoftPromptConfig(
+        mode="gcg",
+        n_tokens=8,
+        n_steps=10,
+        batch_size=32,
+        top_k=64,
+        seed=42,
+        max_gen_tokens=30,
+        target_prefixes=["Sure,", " here"],
+        token_constraint="ascii",
+    )
+
+    result_constraint = softprompt_attack(
+        model, tokenizer, [test_prompt],  # type: ignore[arg-type]
+        config_constraint, None,
+    )
+
+    assert result_constraint.token_ids is not None
+    all_ascii = True
+    for tid in result_constraint.token_ids:
+        decoded = tokenizer.decode([tid])
+        if not all(32 <= ord(c) < 127 for c in decoded):
+            all_ascii = False
+            break
+
+    constraint_finite = all(
+        loss == loss for loss in result_constraint.loss_history
+    )
+    print(f"  All ASCII tokens: {all_ascii}")
+    print(f"  All finite: {constraint_finite}")
+    print(f"  Token text: {result_constraint.token_text!r}")
+
+    if all_ascii and constraint_finite:
+        print("  PASS — token constraint restricts to ASCII")
+        passed += 1
+    else:
+        print(f"  FAIL — ascii={all_ascii}, finite={constraint_finite}")
+
+    # ------------------------------------------------------------------
+    # Test 20: EOS force/suppress
+    # ------------------------------------------------------------------
+    print("\n=== Test 20: EOS force/suppress ===")
+    total += 1
+    config_eos = SoftPromptConfig(
+        mode="continuous",
+        n_tokens=8,
+        n_steps=20,
+        learning_rate=0.05,
+        init_scale=0.1,
+        seed=42,
+        max_gen_tokens=30,
+        target_prefixes=["Sure,", " here"],
+        eos_loss_mode="suppress",
+        eos_loss_weight=0.5,
+    )
+
+    result_eos = softprompt_attack(
+        model, tokenizer, [test_prompt],  # type: ignore[arg-type]
+        config_eos, None,
+    )
+
+    eos_finite = all(
+        loss == loss for loss in result_eos.loss_history
+    )
+    first, last = result_eos.loss_history[0], result_eos.loss_history[-1]
+    print(f"  Loss: {first:.4f} -> {last:.4f}")
+    print(f"  All finite: {eos_finite}")
+
+    if eos_finite:
+        print("  PASS — EOS suppress runs without NaN")
+        passed += 1
+    else:
+        print("  FAIL — EOS produced NaN losses")
+
+    # ------------------------------------------------------------------
     # Summary
     # ------------------------------------------------------------------
     print(f"\n=== {passed}/{total} tests passed ===")

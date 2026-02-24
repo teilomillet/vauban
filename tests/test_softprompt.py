@@ -16,8 +16,11 @@ from conftest import (
 )
 
 from vauban.softprompt import (
+    _build_vocab_mask,
     _compute_accessibility_score,
     _compute_embed_regularization,
+    _compute_eos_loss,
+    _compute_kl_collision_loss,
     _compute_learning_rate,
     _compute_loss,
     _compute_untargeted_loss,
@@ -1286,3 +1289,270 @@ class TestEGDAttack:
             model, tokenizer, ["test"], config, None,
         )
         assert result.mode == "egd"
+
+
+# ---------------------------------------------------------------------------
+# Token constraint tests
+# ---------------------------------------------------------------------------
+
+
+class TestTokenConstraint:
+    def test_build_vocab_mask_ascii(self) -> None:
+        """Mask shape is (VOCAB_SIZE,) with some True entries."""
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        mask = _build_vocab_mask(tokenizer, VOCAB_SIZE, "ascii")
+        assert mask is not None
+        mx.eval(mask)
+        assert mask.shape == (VOCAB_SIZE,)
+        n_allowed = int(mx.sum(mask).item())
+        assert n_allowed > 0
+        assert n_allowed <= VOCAB_SIZE
+
+    def test_build_vocab_mask_none(self) -> None:
+        """Returns None when constraint is None."""
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        mask = _build_vocab_mask(tokenizer, VOCAB_SIZE, None)
+        assert mask is None
+
+    def test_gcg_with_constraint(self) -> None:
+        """GCG + token_constraint='ascii' runs, all token IDs map to ASCII."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="gcg",
+            n_tokens=4,
+            n_steps=3,
+            batch_size=4,
+            top_k=8,
+            seed=42,
+            max_gen_tokens=2,
+            token_constraint="ascii",
+        )
+
+        result = _gcg_attack(
+            model, tokenizer, ["test"], config, None,
+        )
+
+        assert result.token_ids is not None
+        for tid in result.token_ids:
+            decoded = tokenizer.decode([tid])
+            assert all(32 <= ord(c) < 127 for c in decoded)
+
+    def test_egd_with_constraint(self) -> None:
+        """EGD + token_constraint='ascii' runs, all token IDs map to ASCII."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="egd",
+            n_tokens=4,
+            n_steps=3,
+            learning_rate=0.1,
+            seed=42,
+            max_gen_tokens=2,
+            token_constraint="ascii",
+        )
+
+        result = _egd_attack(
+            model, tokenizer, ["test"], config, None,
+        )
+
+        assert result.token_ids is not None
+        for tid in result.token_ids:
+            decoded = tokenizer.decode([tid])
+            assert all(32 <= ord(c) < 127 for c in decoded)
+
+
+# ---------------------------------------------------------------------------
+# EOS loss tests
+# ---------------------------------------------------------------------------
+
+
+class TestEOSLoss:
+    def test_eos_force_runs(self) -> None:
+        """Continuous + eos_loss_mode='force' produces finite loss."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="continuous",
+            n_tokens=4,
+            n_steps=3,
+            seed=42,
+            max_gen_tokens=2,
+            eos_loss_mode="force",
+            eos_loss_weight=0.1,
+        )
+
+        result = _continuous_attack(
+            model, tokenizer, ["test"], config, None,
+        )
+
+        for loss in result.loss_history:
+            assert not math.isnan(loss), "EOS force loss produced NaN"
+
+    def test_eos_suppress_runs(self) -> None:
+        """Continuous + eos_loss_mode='suppress' produces finite loss."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="continuous",
+            n_tokens=4,
+            n_steps=3,
+            seed=42,
+            max_gen_tokens=2,
+            eos_loss_mode="suppress",
+            eos_loss_weight=0.1,
+        )
+
+        result = _continuous_attack(
+            model, tokenizer, ["test"], config, None,
+        )
+
+        for loss in result.loss_history:
+            assert not math.isnan(loss), "EOS suppress loss produced NaN"
+
+    def test_eos_loss_helper_force(self) -> None:
+        """Force loss decreases as P(EOS) increases."""
+        # Create logits where EOS token has varying probability
+        vocab_size = 8
+        eos_id = 7
+
+        # Low P(EOS): uniform logits
+        logits_low = mx.zeros((1, 2, vocab_size))
+        mx.eval(logits_low)
+        loss_low = _compute_eos_loss(logits_low, 0, eos_id, "force")
+        mx.eval(loss_low)
+
+        # High P(EOS): boost EOS logit
+        logits_high = mx.zeros((1, 2, vocab_size))
+        logits_high = logits_high.at[:, 0, eos_id].add(mx.array(10.0))
+        mx.eval(logits_high)
+        loss_high = _compute_eos_loss(logits_high, 0, eos_id, "force")
+        mx.eval(loss_high)
+
+        assert float(loss_high.item()) < float(loss_low.item())
+
+    def test_eos_loss_helper_suppress(self) -> None:
+        """Suppress loss decreases as P(EOS) decreases."""
+        vocab_size = 8
+        eos_id = 7
+
+        # High P(EOS): boost EOS logit
+        logits_high = mx.zeros((1, 2, vocab_size))
+        logits_high = logits_high.at[:, 0, eos_id].add(mx.array(10.0))
+        mx.eval(logits_high)
+        loss_high = _compute_eos_loss(logits_high, 0, eos_id, "suppress")
+        mx.eval(loss_high)
+
+        # Low P(EOS): uniform logits
+        logits_low = mx.zeros((1, 2, vocab_size))
+        mx.eval(logits_low)
+        loss_low = _compute_eos_loss(logits_low, 0, eos_id, "suppress")
+        mx.eval(loss_low)
+
+        assert float(loss_low.item()) < float(loss_high.item())
+
+
+# ---------------------------------------------------------------------------
+# KL collision loss tests
+# ---------------------------------------------------------------------------
+
+
+class TestKLCollisionLoss:
+    def test_kl_collision_runs(self) -> None:
+        """Continuous + kl_ref_weight=0.1 with ref model runs."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        ref_model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(ref_model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="continuous",
+            n_tokens=4,
+            n_steps=3,
+            seed=42,
+            max_gen_tokens=2,
+            kl_ref_weight=0.1,
+        )
+
+        result = _continuous_attack(
+            model, tokenizer, ["test"], config, None,
+            ref_model=ref_model,
+        )
+
+        for loss in result.loss_history:
+            assert not math.isnan(loss), "KL collision loss produced NaN"
+
+    def test_kl_collision_same_model_low(self) -> None:
+        """Same model as reference produces near-zero KL."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
+        mx.eval(soft_embeds)
+
+        messages = [{"role": "user", "content": "test"}]
+        text = tokenizer.apply_chat_template(messages, tokenize=False)
+        assert isinstance(text, str)
+        prompt_ids = mx.array(tokenizer.encode(text))[None, :]
+
+        kl = _compute_kl_collision_loss(model, model, soft_embeds, prompt_ids, 4)
+        mx.eval(kl)
+        assert float(kl.item()) < 0.01
+
+    def test_kl_collision_gradient_nonzero(self) -> None:
+        """Gradient through KL loss is nonzero."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        ref_model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(ref_model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
+        mx.eval(soft_embeds)
+
+        messages = [{"role": "user", "content": "test"}]
+        text = tokenizer.apply_chat_template(messages, tokenize=False)
+        assert isinstance(text, str)
+        prompt_ids = mx.array(tokenizer.encode(text))[None, :]
+
+        def loss_fn(embeds: mx.array) -> mx.array:
+            return _compute_kl_collision_loss(
+                model, ref_model, embeds, prompt_ids, 4,
+            )
+
+        loss_and_grad = mx.value_and_grad(loss_fn)
+        loss_val, grad = loss_and_grad(soft_embeds)
+        mx.eval(loss_val, grad)
+
+        grad_norm = float(mx.linalg.norm(grad.reshape(-1)).item())
+        assert grad_norm > 0, "KL collision gradient is zero"
+
+
+# ---------------------------------------------------------------------------
+# New config defaults tests (Geiping features)
+# ---------------------------------------------------------------------------
+
+
+class TestNewConfigDefaults2:
+    def test_constraint_default_none(self) -> None:
+        cfg = SoftPromptConfig()
+        assert cfg.token_constraint is None
+
+    def test_eos_defaults(self) -> None:
+        cfg = SoftPromptConfig()
+        assert cfg.eos_loss_mode == "none"
+        assert cfg.eos_loss_weight == 0.0
+
+    def test_kl_ref_default(self) -> None:
+        cfg = SoftPromptConfig()
+        assert cfg.kl_ref_weight == 0.0
