@@ -42,6 +42,8 @@ This project builds upon abliteration research — the discovery that refusal in
 ### Additional Papers
 - **Young (UNLV, 2024)** — "Comparative Analysis of LLM Abliteration Methods" — First systematic benchmark of 4 tools (Heretic, DECCP, ErisForge, FailSpy) across 16 models. Key finding: single-pass methods preserve math reasoning better than Bayesian optimization. — arxiv.org/abs/2512.13655
 - **GRP-Obliteration** — "Unaligning LLMs With a Single Unlabeled Prompt" — Uses GRPO to invert safety alignment. Outperforms abliteration and TwinBreak on attack success while preserving more utility. Works on diffusion models too. — arxiv.org/pdf/2602.06258
+- **Nordby (2025)** — "Soft Prompts for Evaluation: Measuring Conditional Distance of Capabilities" — Optimized soft prompts as quantitative safety metric; accessibility scoring. — arxiv.org/abs/2505.14943
+- **Huang et al. (2025)** — "Optimizing Soft Prompt Tuning via Structural Evolution" — Topological analysis of soft prompt convergence; embedding norm regularization. — arxiv.org/abs/2602.16500
 
 ## Why MLX
 

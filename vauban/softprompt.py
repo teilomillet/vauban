@@ -1,12 +1,20 @@
 """Soft prompt attack: continuous embedding optimization and GCG."""
 
+import math
 import random
 
 import mlx.core as mx
 import mlx.nn as nn
 
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES
-from vauban.types import CausalLM, SoftPromptConfig, SoftPromptResult, Tokenizer
+from vauban.probe import _make_cache
+from vauban.types import (
+    CausalLM,
+    LayerCache,
+    SoftPromptConfig,
+    SoftPromptResult,
+    Tokenizer,
+)
 
 
 def softprompt_attack(
@@ -40,6 +48,156 @@ def softprompt_attack(
 
     msg = f"Unknown soft prompt mode: {config.mode!r}, must be 'continuous' or 'gcg'"
     raise ValueError(msg)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _compute_learning_rate(
+    base_lr: float,
+    step: int,
+    n_steps: int,
+    schedule: str,
+) -> float:
+    """Compute learning rate for the given step.
+
+    Args:
+        base_lr: Base learning rate.
+        step: Current step (0-indexed).
+        n_steps: Total number of steps.
+        schedule: "constant" or "cosine".
+
+    Returns:
+        Learning rate for this step.
+    """
+    if schedule == "cosine" and n_steps > 1:
+        return base_lr * 0.5 * (1.0 + math.cos(math.pi * step / (n_steps - 1)))
+    return base_lr
+
+
+def _compute_embed_regularization(
+    soft_embeds: mx.array,
+    embed_matrix: mx.array,
+    weight: float,
+) -> mx.array:
+    """L2 penalty on embedding norm deviation (Huang et al.).
+
+    Penalizes the soft prompt embeddings when their mean norm
+    differs from the mean norm of real token embeddings.
+
+    Args:
+        soft_embeds: Soft prompt embeddings, shape (1, n_tokens, d_model).
+        embed_matrix: Token embedding matrix, shape (vocab_size, d_model).
+        weight: Regularization weight.
+
+    Returns:
+        Scalar regularization loss.
+    """
+    mean_soft_norm = mx.mean(mx.linalg.norm(soft_embeds[0], axis=-1))
+    mean_real_norm = mx.mean(mx.linalg.norm(embed_matrix, axis=-1))
+    return weight * (mean_soft_norm - mean_real_norm) ** 2
+
+
+def _pre_encode_prompts(
+    tokenizer: Tokenizer,
+    prompts: list[str],
+) -> list[mx.array]:
+    """Pre-tokenize all prompts into token ID arrays.
+
+    Args:
+        tokenizer: Tokenizer with encode and chat template support.
+        prompts: List of prompt strings.
+
+    Returns:
+        List of token ID arrays, each shape (1, seq_len).
+    """
+    encoded: list[mx.array] = []
+    for prompt in prompts:
+        messages = [{"role": "user", "content": prompt}]
+        text = tokenizer.apply_chat_template(messages, tokenize=False)
+        if not isinstance(text, str):
+            msg = "apply_chat_template must return str when tokenize=False"
+            raise TypeError(msg)
+        ids = mx.array(tokenizer.encode(text))[None, :]
+        encoded.append(ids)
+    return encoded
+
+
+def _select_prompt_ids(
+    all_ids: list[mx.array],
+    step: int,
+    strategy: str,
+) -> list[mx.array]:
+    """Select prompt ID arrays for this optimization step.
+
+    Args:
+        all_ids: All pre-encoded prompt ID arrays.
+        step: Current optimization step (0-indexed).
+        strategy: "all", "cycle", or "first".
+
+    Returns:
+        Subset of prompt ID arrays to use this step.
+    """
+    if strategy == "first":
+        return [all_ids[0]]
+    if strategy == "cycle":
+        idx = step % len(all_ids)
+        return [all_ids[idx]]
+    # "all"
+    return all_ids
+
+
+def _compute_accessibility_score(final_loss: float) -> float:
+    """Compute accessibility score from final loss (Nordby metric).
+
+    Args:
+        final_loss: Final optimization loss value.
+
+    Returns:
+        Accessibility score in (0, 1].
+    """
+    return math.exp(-final_loss)
+
+
+def _compute_per_prompt_losses(
+    model: CausalLM,
+    soft_embeds: mx.array,
+    all_ids: list[mx.array],
+    target_ids: mx.array,
+    n_tokens: int,
+    direction: mx.array | None,
+    direction_weight: float,
+) -> list[float]:
+    """Compute final loss for each prompt individually.
+
+    Args:
+        model: The causal language model.
+        soft_embeds: Optimized soft prompt embeddings.
+        all_ids: Pre-encoded prompt token ID arrays.
+        target_ids: Target token IDs.
+        n_tokens: Number of soft prompt tokens.
+        direction: Optional refusal direction vector.
+        direction_weight: Weight for direction auxiliary loss.
+
+    Returns:
+        List of loss values, one per prompt.
+    """
+    losses: list[float] = []
+    for prompt_ids in all_ids:
+        loss = _compute_loss(
+            model, soft_embeds, prompt_ids, target_ids,
+            n_tokens, direction, direction_weight,
+        )
+        mx.eval(loss)
+        losses.append(float(loss.item()))
+    return losses
+
+
+# ---------------------------------------------------------------------------
+# Forward pass and loss
+# ---------------------------------------------------------------------------
 
 
 def _forward_with_prefix(
@@ -78,6 +236,14 @@ def _forward_with_prefix(
     return logits
 
 
+def _lm_head(model: CausalLM, h: mx.array) -> mx.array:
+    """Apply the language model head to hidden states."""
+    if hasattr(model, "lm_head"):
+        lm_head: nn.Module = model.lm_head  # type: ignore[attr-defined]
+        return lm_head(h)
+    return model.model.embed_tokens.as_linear(h)
+
+
 def _compute_loss(
     model: CausalLM,
     soft_embeds: mx.array,
@@ -87,7 +253,11 @@ def _compute_loss(
     direction: mx.array | None,
     direction_weight: float,
 ) -> mx.array:
-    """Compute cross-entropy loss on target prefix tokens.
+    """Compute cross-entropy loss with teacher forcing.
+
+    Feeds [soft_prefix | prompt | target] through the model and takes
+    the cross-entropy loss at positions where the model should predict
+    each target token.
 
     Args:
         model: The causal language model.
@@ -101,15 +271,31 @@ def _compute_loss(
     Returns:
         Scalar loss value.
     """
-    logits = _forward_with_prefix(model, soft_embeds, prompt_token_ids)
+    transformer = model.model
+    prompt_embeds = transformer.embed_tokens(prompt_token_ids)
+    target_embeds = transformer.embed_tokens(target_ids[None, :])
 
+    # Teacher forcing: model sees prefix + prompt + target tokens
+    h = mx.concatenate([soft_embeds, prompt_embeds, target_embeds], axis=1)
+
+    mask = nn.MultiHeadAttention.create_additive_causal_mask(h.shape[1])
+    mask = mask.astype(h.dtype)
+
+    for layer in transformer.layers:
+        h = layer(h, mask)
+
+    h = transformer.norm(h)
+    logits = _lm_head(model, h)
+
+    # Logits at position i predict token i+1.
+    # The last prompt position predicts target_ids[0],
+    # the first target position predicts target_ids[1], etc.
+    n_prompt = prompt_token_ids.shape[1]
     n_target = target_ids.shape[0]
-    # Target logits: positions just before each target token
-    # After soft prefix + prompt, the model should predict target tokens
-    # We take the last n_target logit positions before the end
-    total_len = logits.shape[1]
-    start = total_len - n_target
-    target_logits = logits[:, start:, :]
+    # Start: position of last prompt token = n_tokens + n_prompt - 1
+    # End: start + n_target (we need n_target logit positions)
+    start = n_tokens + n_prompt - 1
+    target_logits = logits[:, start : start + n_target, :]
 
     ce_loss = nn.losses.cross_entropy(
         target_logits.reshape(-1, target_logits.shape[-1]),
@@ -118,16 +304,10 @@ def _compute_loss(
     )
 
     if direction is not None and direction_weight > 0.0:
-        # Get hidden state before lm_head for direction projection
-        transformer = model.model
-        prompt_embeds = transformer.embed_tokens(prompt_token_ids)
-        h = mx.concatenate([soft_embeds, prompt_embeds], axis=1)
-        mask = nn.MultiHeadAttention.create_additive_causal_mask(h.shape[1])
-        mask = mask.astype(h.dtype)
-        for layer in transformer.layers:
-            h = layer(h, mask)
-        h = transformer.norm(h)
-        last_hidden = h[:, -1, :]
+        # Project last hidden state onto refusal direction
+        # Use the hidden state at the last prompt position (before targets)
+        last_prompt_pos = n_tokens + n_prompt - 1
+        last_hidden = h[:, last_prompt_pos, :]
         proj = mx.sum(last_hidden * direction)
         # Minimize projection = push away from refusal direction
         ce_loss = ce_loss + direction_weight * proj
@@ -155,6 +335,66 @@ def _encode_targets(
     return mx.array(all_ids)
 
 
+# ---------------------------------------------------------------------------
+# KV-cached generation
+# ---------------------------------------------------------------------------
+
+
+def _prefill_with_cache(
+    model: CausalLM,
+    soft_embeds: mx.array,
+    prompt_token_ids: mx.array,
+    cache: list[LayerCache],
+) -> mx.array:
+    """Forward pass populating KV cache, returns logits at last position.
+
+    Feeds [soft_prefix | prompt] through the model layer by layer,
+    updating the KV cache at each layer so subsequent decode steps
+    have full context.
+
+    Returns:
+        Logits at the last position, shape (1, 1, vocab_size).
+    """
+    transformer = model.model
+    prompt_embeds = transformer.embed_tokens(prompt_token_ids)
+    h = mx.concatenate([soft_embeds, prompt_embeds], axis=1)
+
+    mask = nn.MultiHeadAttention.create_additive_causal_mask(h.shape[1])
+    mask = mask.astype(h.dtype)
+
+    for i, layer in enumerate(transformer.layers):
+        h = layer(h, mask, cache=cache[i])
+
+    h = transformer.norm(h)
+    logits = _lm_head(model, h)
+    return logits[:, -1:, :]
+
+
+def _decode_step(
+    model: CausalLM,
+    token_id: int,
+    cache: list[LayerCache],
+) -> mx.array:
+    """Single autoregressive decode step with KV cache.
+
+    Returns:
+        Logits for the next token, shape (1, 1, vocab_size).
+    """
+    transformer = model.model
+    h = transformer.embed_tokens(mx.array([[token_id]]))
+
+    for i, layer in enumerate(transformer.layers):
+        h = layer(h, None, cache=cache[i])
+
+    h = transformer.norm(h)
+    return _lm_head(model, h)
+
+
+# ---------------------------------------------------------------------------
+# Evaluation
+# ---------------------------------------------------------------------------
+
+
 def _evaluate_attack(
     model: CausalLM,
     tokenizer: Tokenizer,
@@ -163,6 +403,9 @@ def _evaluate_attack(
     config: SoftPromptConfig,
 ) -> tuple[float, list[str]]:
     """Evaluate attack success by generating with the optimized prefix.
+
+    Uses KV cache for proper autoregressive generation: prefills the
+    cache with [soft_prefix | prompt], then decodes token-by-token.
 
     Args:
         model: The causal language model.
@@ -177,6 +420,8 @@ def _evaluate_attack(
     responses: list[str] = []
     successes = 0
 
+    eos_token_id: int | None = getattr(tokenizer, "eos_token_id", None)
+
     for prompt in prompts:
         messages = [{"role": "user", "content": prompt}]
         text = tokenizer.apply_chat_template(messages, tokenize=False)
@@ -185,30 +430,20 @@ def _evaluate_attack(
             raise TypeError(msg)
         prompt_ids = mx.array(tokenizer.encode(text))[None, :]
 
-        logits = _forward_with_prefix(model, soft_embeds, prompt_ids)
-        # Greedy decode from last position
-        generated_ids: list[int] = []
-        next_logits = logits[:, -1:, :]
+        # Prefill: forward [soft_prefix | prompt] through model with cache
+        cache = _make_cache(model)
+        next_logits = _prefill_with_cache(model, soft_embeds, prompt_ids, cache)
+        mx.eval(next_logits)
 
-        # Generate tokens autoregressively using the prefix context
-        # For simplicity, use the initial forward pass logits for first token,
-        # then continue without KV cache (short generations)
+        # Decode autoregressively using the cache
+        generated_ids: list[int] = []
         for _ in range(config.max_gen_tokens):
             next_token = int(mx.argmax(next_logits[:, -1, :], axis=-1).item())
+            if eos_token_id is not None and next_token == eos_token_id:
+                break
             generated_ids.append(next_token)
-            # Simple forward for next token
-            next_input = mx.array([[next_token]])
-            next_embeds = model.model.embed_tokens(next_input)
-            # Single-token forward through model
-            h = next_embeds
-            for layer_mod in model.model.layers:
-                h = layer_mod(h, None)
-            h = model.model.norm(h)
-            if hasattr(model, "lm_head"):
-                lm_head: nn.Module = model.lm_head  # type: ignore[attr-defined]
-                next_logits = lm_head(h)
-            else:
-                next_logits = model.model.embed_tokens.as_linear(h)
+            next_logits = _decode_step(model, next_token, cache)
+            mx.eval(next_logits)
 
         response = tokenizer.decode(generated_ids)
         responses.append(response)
@@ -224,6 +459,11 @@ def _evaluate_attack(
     return success_rate, responses
 
 
+# ---------------------------------------------------------------------------
+# Continuous attack
+# ---------------------------------------------------------------------------
+
+
 def _continuous_attack(
     model: CausalLM,
     tokenizer: Tokenizer,
@@ -235,22 +475,23 @@ def _continuous_attack(
 
     Optimizes learnable embedding vectors prepended to the prompt
     to minimize cross-entropy loss on target prefix tokens.
+    Supports multi-prompt optimization, cosine LR schedule,
+    embedding norm regularization, and early stopping.
     """
     d_model = model.model.embed_tokens.weight.shape[1]
-    soft_embeds = mx.random.normal((1, config.n_tokens, d_model)) * config.init_scale
+    embed_matrix = model.model.embed_tokens.weight
+
+    soft_embeds = (
+        mx.random.normal((1, config.n_tokens, d_model)) * config.init_scale
+    )
     mx.eval(soft_embeds)
 
     target_ids = _encode_targets(tokenizer, config.target_prefixes)
     mx.eval(target_ids)
 
-    # Use first prompt for optimization (or average over a few)
-    opt_prompt = prompts[0] if prompts else "Hello"
-    messages = [{"role": "user", "content": opt_prompt}]
-    text = tokenizer.apply_chat_template(messages, tokenize=False)
-    if not isinstance(text, str):
-        msg = "apply_chat_template must return str when tokenize=False"
-        raise TypeError(msg)
-    prompt_ids = mx.array(tokenizer.encode(text))[None, :]
+    # Pre-encode all prompts
+    effective_prompts = prompts if prompts else ["Hello"]
+    all_prompt_ids = _pre_encode_prompts(tokenizer, effective_prompts)
 
     # Adam state: manual tracking since we're optimizing a bare array
     m = mx.zeros_like(soft_embeds)
@@ -260,27 +501,82 @@ def _continuous_attack(
     eps = 1e-8
 
     loss_history: list[float] = []
+    best_loss = float("inf")
+    best_embeds = soft_embeds
+    steps_without_improvement = 0
+    actual_steps = 0
+    early_stopped = False
 
     for step in range(config.n_steps):
-        def loss_fn(embeds: mx.array) -> mx.array:
-            return _compute_loss(
-                model, embeds, prompt_ids, target_ids,
-                config.n_tokens, direction, config.direction_weight,
-            )
+        actual_steps = step + 1
+
+        # Select prompts for this step
+        selected_ids = _select_prompt_ids(
+            all_prompt_ids, step, config.prompt_strategy,
+        )
+
+        # Compute average loss across selected prompts
+        def loss_fn(
+            embeds: mx.array,
+            _sel: list[mx.array] = selected_ids,
+        ) -> mx.array:
+            total = mx.array(0.0)
+            for pid in _sel:
+                total = total + _compute_loss(
+                    model, embeds, pid, target_ids,
+                    config.n_tokens, direction, config.direction_weight,
+                )
+            avg = total / len(_sel)
+            # Embedding norm regularization (Huang et al.)
+            if config.embed_reg_weight > 0.0:
+                avg = avg + _compute_embed_regularization(
+                    embeds, embed_matrix, config.embed_reg_weight,
+                )
+            return avg
 
         loss_and_grad = mx.value_and_grad(loss_fn)
         loss_val, grad = loss_and_grad(soft_embeds)
         mx.eval(loss_val, grad)
-        loss_history.append(float(loss_val.item()))
+        current_loss = float(loss_val.item())
+        loss_history.append(current_loss)
+
+        # Track best
+        if current_loss < best_loss:
+            best_loss = current_loss
+            best_embeds = soft_embeds
+            steps_without_improvement = 0
+        else:
+            steps_without_improvement += 1
+
+        # Early stopping
+        if config.patience > 0 and steps_without_improvement >= config.patience:
+            early_stopped = True
+            break
+
+        # Compute LR for this step
+        lr = _compute_learning_rate(
+            config.learning_rate, step, config.n_steps, config.lr_schedule,
+        )
 
         # Manual Adam update
         m = beta1 * m + (1 - beta1) * grad
         v = beta2 * v + (1 - beta2) * (grad * grad)
         m_hat = m / (1 - beta1 ** (step + 1))
         v_hat = v / (1 - beta2 ** (step + 1))
-        update = config.learning_rate * m_hat / (mx.sqrt(v_hat) + eps)
+        update = lr * m_hat / (mx.sqrt(v_hat) + eps)
         soft_embeds = soft_embeds - update
         mx.eval(soft_embeds, m, v)
+
+    # Use best embeddings for evaluation
+    soft_embeds = best_embeds
+
+    # Compute per-prompt losses and accessibility score
+    per_prompt_losses = _compute_per_prompt_losses(
+        model, soft_embeds, all_prompt_ids, target_ids,
+        config.n_tokens, direction, config.direction_weight,
+    )
+    final_loss = loss_history[-1] if loss_history else 0.0
+    accessibility_score = _compute_accessibility_score(final_loss)
 
     # Evaluate final embeddings
     success_rate, responses = _evaluate_attack(
@@ -290,15 +586,23 @@ def _continuous_attack(
     return SoftPromptResult(
         mode="continuous",
         success_rate=success_rate,
-        final_loss=loss_history[-1] if loss_history else 0.0,
+        final_loss=final_loss,
         loss_history=loss_history,
-        n_steps=config.n_steps,
+        n_steps=actual_steps,
         n_tokens=config.n_tokens,
         embeddings=soft_embeds,
         token_ids=None,
         token_text=None,
         eval_responses=responses,
+        accessibility_score=accessibility_score,
+        per_prompt_losses=per_prompt_losses,
+        early_stopped=early_stopped,
     )
+
+
+# ---------------------------------------------------------------------------
+# GCG attack
+# ---------------------------------------------------------------------------
 
 
 def _gcg_attack(
@@ -311,100 +615,140 @@ def _gcg_attack(
     """GCG (Greedy Coordinate Gradient) discrete token search.
 
     Finds adversarial token sequences by using gradient information
-    to guide a discrete search over the vocabulary.
+    to guide a discrete search over the vocabulary. Supports
+    multi-prompt optimization, multiple restarts, and early stopping.
     """
     transformer = model.model
     vocab_size = transformer.embed_tokens.weight.shape[0]
-
-    # Initialize with random tokens
-    current_ids = [random.randint(0, vocab_size - 1) for _ in range(config.n_tokens)]
+    embed_matrix = transformer.embed_tokens.weight
 
     target_ids = _encode_targets(tokenizer, config.target_prefixes)
     mx.eval(target_ids)
 
-    # Use first prompt for optimization
-    opt_prompt = prompts[0] if prompts else "Hello"
-    messages = [{"role": "user", "content": opt_prompt}]
-    text = tokenizer.apply_chat_template(messages, tokenize=False)
-    if not isinstance(text, str):
-        msg = "apply_chat_template must return str when tokenize=False"
-        raise TypeError(msg)
-    prompt_ids = mx.array(tokenizer.encode(text))[None, :]
+    # Pre-encode all prompts
+    effective_prompts = prompts if prompts else ["Hello"]
+    all_prompt_ids = _pre_encode_prompts(tokenizer, effective_prompts)
 
-    embed_matrix = transformer.embed_tokens.weight  # (vocab_size, d_model)
+    overall_best_ids: list[int] = []
+    overall_best_loss = float("inf")
+    all_loss_history: list[float] = []
+    total_steps = 0
+    early_stopped = False
 
-    loss_history: list[float] = []
-    best_ids = list(current_ids)
-    best_loss = float("inf")
+    for _restart in range(config.n_restarts):
+        # Initialize with random tokens
+        current_ids = [
+            random.randint(0, vocab_size - 1) for _ in range(config.n_tokens)
+        ]
+        restart_best_ids = list(current_ids)
+        restart_best_loss = float("inf")
+        steps_without_improvement = 0
 
-    for _step in range(config.n_steps):
-        # Get embeddings for current tokens
-        token_array = mx.array(current_ids)[None, :]
-        soft_embeds = transformer.embed_tokens(token_array)
-        mx.eval(soft_embeds)
+        for step in range(config.n_steps):
+            total_steps += 1
 
-        # Compute gradient w.r.t. embeddings
-        def loss_fn(embeds: mx.array) -> mx.array:
-            return _compute_loss(
-                model, embeds, prompt_ids, target_ids,
-                config.n_tokens, direction, config.direction_weight,
+            # Select prompts for this step
+            selected_ids = _select_prompt_ids(
+                all_prompt_ids, step, config.prompt_strategy,
             )
 
-        loss_and_grad = mx.value_and_grad(loss_fn)
-        loss_val, grad = loss_and_grad(soft_embeds)
-        mx.eval(loss_val, grad)
-        current_loss = float(loss_val.item())
-        loss_history.append(current_loss)
+            # Get embeddings for current tokens
+            token_array = mx.array(current_ids)[None, :]
+            soft_embeds = transformer.embed_tokens(token_array)
+            mx.eval(soft_embeds)
 
-        if current_loss < best_loss:
-            best_loss = current_loss
-            best_ids = list(current_ids)
+            # Compute gradient w.r.t. embeddings (averaged across prompts)
+            def loss_fn(
+                embeds: mx.array,
+                _sel: list[mx.array] = selected_ids,
+            ) -> mx.array:
+                total = mx.array(0.0)
+                for pid in _sel:
+                    total = total + _compute_loss(
+                        model, embeds, pid, target_ids,
+                        config.n_tokens, direction, config.direction_weight,
+                    )
+                return total / len(_sel)
 
-        # Score token candidates: -grad @ embed_matrix.T
-        # grad shape: (1, n_tokens, d_model)
-        scores = -mx.matmul(grad[0], embed_matrix.T)  # (n_tokens, vocab_size)
-        mx.eval(scores)
+            loss_and_grad = mx.value_and_grad(loss_fn)
+            loss_val, grad = loss_and_grad(soft_embeds)
+            mx.eval(loss_val, grad)
+            current_loss = float(loss_val.item())
+            all_loss_history.append(current_loss)
 
-        # Top-k per position
-        effective_k = min(config.top_k, vocab_size)
-        # argsort to get top-k indices per position
-        sorted_indices = mx.argsort(-scores, axis=-1)  # descending order
-        top_indices = sorted_indices[:, :effective_k]  # (n_tokens, top_k)
-        mx.eval(top_indices)
+            if current_loss < restart_best_loss:
+                restart_best_loss = current_loss
+                restart_best_ids = list(current_ids)
+                steps_without_improvement = 0
+            else:
+                steps_without_improvement += 1
 
-        # Generate batch_size candidates
-        candidates: list[list[int]] = []
-        for _ in range(config.batch_size):
-            pos = random.randint(0, config.n_tokens - 1)
-            tok_idx = random.randint(0, effective_k - 1)
-            new_token = int(top_indices[pos, tok_idx].item())
-            candidate = list(current_ids)
-            candidate[pos] = new_token
-            candidates.append(candidate)
+            # Early stopping within restart
+            if (
+                config.patience > 0
+                and steps_without_improvement >= config.patience
+            ):
+                early_stopped = True
+                break
 
-        # Evaluate all candidates, keep the best
-        candidate_losses: list[float] = []
-        for candidate in candidates:
-            cand_array = mx.array(candidate)[None, :]
-            cand_embeds = transformer.embed_tokens(cand_array)
-            cand_loss = _compute_loss(
-                model, cand_embeds, prompt_ids, target_ids,
-                config.n_tokens, direction, config.direction_weight,
-            )
-            mx.eval(cand_loss)
-            candidate_losses.append(float(cand_loss.item()))
+            # Score token candidates: -grad @ embed_matrix.T
+            # grad shape: (1, n_tokens, d_model)
+            scores = -mx.matmul(grad[0], embed_matrix.T)  # (n_tokens, vocab_size)
+            mx.eval(scores)
 
-        best_candidate_idx = candidate_losses.index(min(candidate_losses))
-        if candidate_losses[best_candidate_idx] < current_loss:
-            current_ids = candidates[best_candidate_idx]
+            # Top-k per position
+            effective_k = min(config.top_k, vocab_size)
+            sorted_indices = mx.argsort(-scores, axis=-1)  # descending order
+            top_indices = sorted_indices[:, :effective_k]  # (n_tokens, top_k)
+            mx.eval(top_indices)
 
-    # Use best overall token IDs
-    current_ids = best_ids
+            # Generate batch_size candidates
+            candidates: list[list[int]] = []
+            for _ in range(config.batch_size):
+                pos = random.randint(0, config.n_tokens - 1)
+                tok_idx = random.randint(0, effective_k - 1)
+                new_token = int(top_indices[pos, tok_idx].item())
+                candidate = list(current_ids)
+                candidate[pos] = new_token
+                candidates.append(candidate)
+
+            # Evaluate all candidates (averaged across selected prompts)
+            candidate_losses: list[float] = []
+            for candidate in candidates:
+                cand_array = mx.array(candidate)[None, :]
+                cand_embeds = transformer.embed_tokens(cand_array)
+                cand_total = mx.array(0.0)
+                for pid in selected_ids:
+                    cand_total = cand_total + _compute_loss(
+                        model, cand_embeds, pid, target_ids,
+                        config.n_tokens, direction, config.direction_weight,
+                    )
+                cand_avg = cand_total / len(selected_ids)
+                mx.eval(cand_avg)
+                candidate_losses.append(float(cand_avg.item()))
+
+            best_candidate_idx = candidate_losses.index(min(candidate_losses))
+            if candidate_losses[best_candidate_idx] < current_loss:
+                current_ids = candidates[best_candidate_idx]
+
+        # Update overall best across restarts
+        if restart_best_loss < overall_best_loss:
+            overall_best_loss = restart_best_loss
+            overall_best_ids = restart_best_ids
 
     # Evaluate with best tokens
+    current_ids = overall_best_ids
     final_token_array = mx.array(current_ids)[None, :]
     final_embeds = transformer.embed_tokens(final_token_array)
     mx.eval(final_embeds)
+
+    # Compute per-prompt losses and accessibility score
+    per_prompt_losses = _compute_per_prompt_losses(
+        model, final_embeds, all_prompt_ids, target_ids,
+        config.n_tokens, direction, config.direction_weight,
+    )
+    final_loss = overall_best_loss
+    accessibility_score = _compute_accessibility_score(final_loss)
 
     success_rate, responses = _evaluate_attack(
         model, tokenizer, prompts, final_embeds, config,
@@ -415,12 +759,15 @@ def _gcg_attack(
     return SoftPromptResult(
         mode="gcg",
         success_rate=success_rate,
-        final_loss=best_loss,
-        loss_history=loss_history,
-        n_steps=config.n_steps,
+        final_loss=final_loss,
+        loss_history=all_loss_history,
+        n_steps=total_steps,
         n_tokens=config.n_tokens,
         embeddings=None,
         token_ids=current_ids,
         token_text=token_text,
         eval_responses=responses,
+        accessibility_score=accessibility_score,
+        per_prompt_losses=per_prompt_losses,
+        early_stopped=early_stopped,
     )

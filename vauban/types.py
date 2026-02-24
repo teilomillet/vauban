@@ -275,6 +275,11 @@ class SoftPromptConfig:
     target_prefixes: list[str] = field(default_factory=lambda: ["Sure", "Here"])
     max_gen_tokens: int = 100  # tokens to generate for evaluation
     seed: int | None = None
+    embed_reg_weight: float = 0.0  # Huang et al. norm regularization (0 = off)
+    patience: int = 0  # early stopping (0 = disabled)
+    lr_schedule: str = "constant"  # "constant" or "cosine"
+    n_restarts: int = 1  # GCG random restarts
+    prompt_strategy: str = "all"  # "all", "cycle", or "first"
 
 
 @dataclass(frozen=True, slots=True)
@@ -291,6 +296,9 @@ class SoftPromptResult:
     token_ids: list[int] | None  # GCG mode: optimized token IDs
     token_text: str | None  # GCG mode: decoded token string
     eval_responses: list[str]  # generated responses for each eval prompt
+    accessibility_score: float = 0.0  # exp(-final_loss), Nordby metric
+    per_prompt_losses: list[float] = field(default_factory=list)
+    early_stopped: bool = False
 
 
 @dataclass(frozen=True, slots=True)

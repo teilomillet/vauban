@@ -750,6 +750,72 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
             raise TypeError(msg)
         seed = seed_raw
 
+    embed_reg_raw = sec.get("embed_reg_weight", 0.0)  # type: ignore[arg-type]
+    if not isinstance(embed_reg_raw, int | float):
+        msg = (
+            f"[softprompt].embed_reg_weight must be a number,"
+            f" got {type(embed_reg_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if float(embed_reg_raw) < 0.0:
+        msg = (
+            f"[softprompt].embed_reg_weight must be >= 0.0,"
+            f" got {embed_reg_raw}"
+        )
+        raise ValueError(msg)
+
+    patience_raw = sec.get("patience", 0)  # type: ignore[arg-type]
+    if not isinstance(patience_raw, int):
+        msg = (
+            f"[softprompt].patience must be an integer,"
+            f" got {type(patience_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if patience_raw < 0:
+        msg = f"[softprompt].patience must be >= 0, got {patience_raw}"
+        raise ValueError(msg)
+
+    lr_schedule_raw = sec.get("lr_schedule", "constant")  # type: ignore[arg-type]
+    if not isinstance(lr_schedule_raw, str):
+        msg = (
+            f"[softprompt].lr_schedule must be a string,"
+            f" got {type(lr_schedule_raw).__name__}"
+        )
+        raise TypeError(msg)
+    valid_lr_schedules = ("constant", "cosine")
+    if lr_schedule_raw not in valid_lr_schedules:
+        msg = (
+            f"[softprompt].lr_schedule must be one of"
+            f" {valid_lr_schedules!r}, got {lr_schedule_raw!r}"
+        )
+        raise ValueError(msg)
+
+    n_restarts_raw = sec.get("n_restarts", 1)  # type: ignore[arg-type]
+    if not isinstance(n_restarts_raw, int):
+        msg = (
+            f"[softprompt].n_restarts must be an integer,"
+            f" got {type(n_restarts_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if n_restarts_raw < 1:
+        msg = f"[softprompt].n_restarts must be >= 1, got {n_restarts_raw}"
+        raise ValueError(msg)
+
+    prompt_strategy_raw = sec.get("prompt_strategy", "all")  # type: ignore[arg-type]
+    if not isinstance(prompt_strategy_raw, str):
+        msg = (
+            f"[softprompt].prompt_strategy must be a string,"
+            f" got {type(prompt_strategy_raw).__name__}"
+        )
+        raise TypeError(msg)
+    valid_prompt_strategies = ("all", "cycle", "first")
+    if prompt_strategy_raw not in valid_prompt_strategies:
+        msg = (
+            f"[softprompt].prompt_strategy must be one of"
+            f" {valid_prompt_strategies!r}, got {prompt_strategy_raw!r}"
+        )
+        raise ValueError(msg)
+
     return SoftPromptConfig(
         mode=mode_raw,
         n_tokens=n_tokens_raw,
@@ -762,4 +828,9 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
         target_prefixes=target_prefixes,
         max_gen_tokens=max_gen_raw,
         seed=seed,
+        embed_reg_weight=float(embed_reg_raw),
+        patience=patience_raw,
+        lr_schedule=lr_schedule_raw,
+        n_restarts=n_restarts_raw,
+        prompt_strategy=prompt_strategy_raw,
     )

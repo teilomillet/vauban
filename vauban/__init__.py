@@ -567,4 +567,7 @@ def _softprompt_to_dict(result: SoftPromptResult) -> dict[str, object]:
         "token_ids": result.token_ids,
         "token_text": result.token_text,
         "eval_responses": result.eval_responses,
+        "accessibility_score": result.accessibility_score,
+        "per_prompt_losses": result.per_prompt_losses,
+        "early_stopped": result.early_stopped,
     }
