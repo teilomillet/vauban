@@ -11,6 +11,7 @@ from vauban.types import (
     MeasureConfig,
     OptimizeConfig,
     PipelineConfig,
+    SoftPromptConfig,
     SurfaceConfig,
 )
 
@@ -58,6 +59,7 @@ def load_config(path: str | Path) -> PipelineConfig:
     surface_config = _parse_surface(base_dir, raw)
     detect_config = _parse_detect(raw)
     optimize_config = _parse_optimize(raw)
+    softprompt_config = _parse_softprompt(raw)
 
     eval_path: Path | None = None
     eval_section = raw.get("eval")
@@ -93,6 +95,7 @@ def load_config(path: str | Path) -> PipelineConfig:
         surface=surface_config,
         detect=detect_config,
         optimize=optimize_config,
+        softprompt=softprompt_config,
         eval_prompts_path=eval_path,
         output_dir=output_dir,
         borderline_path=borderline_path,
@@ -614,4 +617,149 @@ def _parse_optimize(raw: TomlDict) -> OptimizeConfig | None:
         max_tokens=max_tokens_raw,
         seed=seed,
         timeout=timeout,
+    )
+
+
+def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
+    """Parse the optional [softprompt] section into a SoftPromptConfig.
+
+    Returns None if the section is absent.
+    """
+    sec = raw.get("softprompt")
+    if sec is None:
+        return None
+    if not isinstance(sec, dict):
+        msg = f"[softprompt] must be a table, got {type(sec).__name__}"
+        raise TypeError(msg)
+
+    mode_raw = sec.get("mode", "continuous")  # type: ignore[arg-type]
+    if not isinstance(mode_raw, str):
+        msg = f"[softprompt].mode must be a string, got {type(mode_raw).__name__}"
+        raise TypeError(msg)
+    valid_modes = ("continuous", "gcg")
+    if mode_raw not in valid_modes:
+        msg = (
+            f"[softprompt].mode must be one of {valid_modes!r},"
+            f" got {mode_raw!r}"
+        )
+        raise ValueError(msg)
+
+    n_tokens_raw = sec.get("n_tokens", 16)  # type: ignore[arg-type]
+    if not isinstance(n_tokens_raw, int):
+        msg = (
+            f"[softprompt].n_tokens must be an integer,"
+            f" got {type(n_tokens_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if n_tokens_raw < 1:
+        msg = f"[softprompt].n_tokens must be >= 1, got {n_tokens_raw}"
+        raise ValueError(msg)
+
+    n_steps_raw = sec.get("n_steps", 200)  # type: ignore[arg-type]
+    if not isinstance(n_steps_raw, int):
+        msg = (
+            f"[softprompt].n_steps must be an integer,"
+            f" got {type(n_steps_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if n_steps_raw < 1:
+        msg = f"[softprompt].n_steps must be >= 1, got {n_steps_raw}"
+        raise ValueError(msg)
+
+    lr_raw = sec.get("learning_rate", 0.01)  # type: ignore[arg-type]
+    if not isinstance(lr_raw, int | float):
+        msg = (
+            f"[softprompt].learning_rate must be a number,"
+            f" got {type(lr_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if float(lr_raw) <= 0:
+        msg = f"[softprompt].learning_rate must be > 0, got {lr_raw}"
+        raise ValueError(msg)
+
+    init_scale_raw = sec.get("init_scale", 0.1)  # type: ignore[arg-type]
+    if not isinstance(init_scale_raw, int | float):
+        msg = (
+            f"[softprompt].init_scale must be a number,"
+            f" got {type(init_scale_raw).__name__}"
+        )
+        raise TypeError(msg)
+
+    batch_size_raw = sec.get("batch_size", 64)  # type: ignore[arg-type]
+    if not isinstance(batch_size_raw, int):
+        msg = (
+            f"[softprompt].batch_size must be an integer,"
+            f" got {type(batch_size_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if batch_size_raw < 1:
+        msg = f"[softprompt].batch_size must be >= 1, got {batch_size_raw}"
+        raise ValueError(msg)
+
+    top_k_raw = sec.get("top_k", 256)  # type: ignore[arg-type]
+    if not isinstance(top_k_raw, int):
+        msg = (
+            f"[softprompt].top_k must be an integer,"
+            f" got {type(top_k_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if top_k_raw < 1:
+        msg = f"[softprompt].top_k must be >= 1, got {top_k_raw}"
+        raise ValueError(msg)
+
+    dw_raw = sec.get("direction_weight", 0.0)  # type: ignore[arg-type]
+    if not isinstance(dw_raw, int | float):
+        msg = (
+            f"[softprompt].direction_weight must be a number,"
+            f" got {type(dw_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if float(dw_raw) < 0.0:
+        msg = (
+            f"[softprompt].direction_weight must be >= 0.0, got {dw_raw}"
+        )
+        raise ValueError(msg)
+
+    target_raw = sec.get(  # type: ignore[arg-type]
+        "target_prefixes", ["Sure", "Here"],
+    )
+    if not isinstance(target_raw, list):
+        msg = (
+            f"[softprompt].target_prefixes must be a list,"
+            f" got {type(target_raw).__name__}"
+        )
+        raise TypeError(msg)
+    target_prefixes: list[str] = [str(t) for t in target_raw]
+
+    max_gen_raw = sec.get("max_gen_tokens", 100)  # type: ignore[arg-type]
+    if not isinstance(max_gen_raw, int):
+        msg = (
+            f"[softprompt].max_gen_tokens must be an integer,"
+            f" got {type(max_gen_raw).__name__}"
+        )
+        raise TypeError(msg)
+
+    seed_raw = sec.get("seed")  # type: ignore[arg-type]
+    seed: int | None = None
+    if seed_raw is not None:
+        if not isinstance(seed_raw, int):
+            msg = (
+                f"[softprompt].seed must be an integer,"
+                f" got {type(seed_raw).__name__}"
+            )
+            raise TypeError(msg)
+        seed = seed_raw
+
+    return SoftPromptConfig(
+        mode=mode_raw,
+        n_tokens=n_tokens_raw,
+        n_steps=n_steps_raw,
+        learning_rate=float(lr_raw),
+        init_scale=float(init_scale_raw),
+        batch_size=batch_size_raw,
+        top_k=top_k_raw,
+        direction_weight=float(dw_raw),
+        target_prefixes=target_prefixes,
+        max_gen_tokens=max_gen_raw,
+        seed=seed,
     )

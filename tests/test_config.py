@@ -544,3 +544,79 @@ class TestLoadConfig:
         )
         with pytest.raises(ValueError, match="alpha_min"):
             load_config(toml_file)
+
+    def test_softprompt_defaults(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.mode == "continuous"
+        assert config.softprompt.n_tokens == 16
+        assert config.softprompt.n_steps == 200
+        assert config.softprompt.learning_rate == 0.01
+        assert config.softprompt.init_scale == 0.1
+        assert config.softprompt.batch_size == 64
+        assert config.softprompt.top_k == 256
+        assert config.softprompt.direction_weight == 0.0
+        assert config.softprompt.target_prefixes == ["Sure", "Here"]
+        assert config.softprompt.max_gen_tokens == 100
+        assert config.softprompt.seed is None
+
+    def test_softprompt_gcg_mode(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+            'mode = "gcg"\n'
+            "n_tokens = 32\n"
+            "n_steps = 100\n"
+            "batch_size = 128\n"
+            "top_k = 512\n"
+            "direction_weight = 0.5\n"
+            'target_prefixes = ["OK", "Yes"]\n'
+            "seed = 42\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.mode == "gcg"
+        assert config.softprompt.n_tokens == 32
+        assert config.softprompt.n_steps == 100
+        assert config.softprompt.batch_size == 128
+        assert config.softprompt.top_k == 512
+        assert config.softprompt.direction_weight == 0.5
+        assert config.softprompt.target_prefixes == ["OK", "Yes"]
+        assert config.softprompt.seed == 42
+
+    def test_softprompt_absent_is_none(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is None
+
+    def test_softprompt_invalid_mode_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\nmode = "invalid"\n'
+        )
+        with pytest.raises(ValueError, match="mode"):
+            load_config(toml_file)
+
+    def test_softprompt_invalid_n_tokens_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\nn_tokens = 0\n"
+        )
+        with pytest.raises(ValueError, match="n_tokens"):
+            load_config(toml_file)

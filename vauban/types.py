@@ -261,6 +261,39 @@ class SurfaceComparison:
 
 
 @dataclass(frozen=True, slots=True)
+class SoftPromptConfig:
+    """Configuration for soft prompt attack."""
+
+    mode: str = "continuous"  # "continuous" or "gcg"
+    n_tokens: int = 16  # number of soft prompt tokens
+    n_steps: int = 200  # optimization steps
+    learning_rate: float = 0.01  # Adam LR (continuous mode)
+    init_scale: float = 0.1  # embedding initialization scale
+    batch_size: int = 64  # candidate batch size (GCG mode)
+    top_k: int = 256  # top-k token candidates per position (GCG mode)
+    direction_weight: float = 0.0  # 0.0 = standalone, >0.0 = direction-guided
+    target_prefixes: list[str] = field(default_factory=lambda: ["Sure", "Here"])
+    max_gen_tokens: int = 100  # tokens to generate for evaluation
+    seed: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SoftPromptResult:
+    """Output of a soft prompt attack."""
+
+    mode: str
+    success_rate: float  # fraction of prompts that bypassed refusal
+    final_loss: float
+    loss_history: list[float]
+    n_steps: int
+    n_tokens: int
+    embeddings: mx.array | None  # continuous mode: optimized (1, n_tokens, d_model)
+    token_ids: list[int] | None  # GCG mode: optimized token IDs
+    token_text: str | None  # GCG mode: decoded token string
+    eval_responses: list[str]  # generated responses for each eval prompt
+
+
+@dataclass(frozen=True, slots=True)
 class DetectConfig:
     """Configuration for the defense detection step."""
 
@@ -347,6 +380,7 @@ class PipelineConfig:
     surface: SurfaceConfig | None = None
     detect: DetectConfig | None = None
     optimize: OptimizeConfig | None = None
+    softprompt: SoftPromptConfig | None = None
     eval_prompts_path: Path | None = None
     output_dir: Path = field(default_factory=lambda: Path("output"))
     borderline_path: Path | DatasetRef | None = None

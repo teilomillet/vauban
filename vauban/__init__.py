@@ -31,6 +31,7 @@ from vauban.measure import (
 )
 from vauban.optimize import optimize
 from vauban.probe import multi_probe, probe, steer
+from vauban.softprompt import softprompt_attack
 from vauban.subspace import (
     effective_rank,
     explained_variance_ratio,
@@ -63,6 +64,8 @@ from vauban.types import (
     OptimizeResult,
     PipelineConfig,
     ProbeResult,
+    SoftPromptConfig,
+    SoftPromptResult,
     SteerResult,
     SubspaceResult,
     SurfaceComparison,
@@ -90,6 +93,8 @@ __all__ = [
     "OptimizeResult",
     "PipelineConfig",
     "ProbeResult",
+    "SoftPromptConfig",
+    "SoftPromptResult",
     "SteerResult",
     "SubspaceResult",
     "SurfaceComparison",
@@ -141,6 +146,7 @@ __all__ = [
     "scan",
     "select_target_layers",
     "silhouette_scores",
+    "softprompt_attack",
     "sparsify_direction",
     "steer",
     "subspace_overlap",
@@ -233,6 +239,25 @@ def run(config_path: str | Path) -> None:
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(
             json.dumps(_optimize_to_dict(opt_result), indent=2),
+        )
+        return
+
+    # Soft prompt attack: optimize a learnable prefix, write report, return
+    if config.softprompt is not None:
+        direction_vec = (
+            direction_result.direction if direction_result is not None else None
+        )
+        if config.eval_prompts_path is not None:
+            sp_prompts: list[str] = load_prompts(config.eval_prompts_path)
+        else:
+            sp_prompts = harmful[:20]
+        sp_result = softprompt_attack(
+            model, tokenizer, sp_prompts, config.softprompt, direction_vec,  # type: ignore[arg-type]
+        )
+        report_path = config.output_dir / "softprompt_report.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            json.dumps(_softprompt_to_dict(sp_result), indent=2),
         )
         return
 
@@ -527,4 +552,19 @@ def _optimize_to_dict(result: OptimizeResult) -> dict[str, object]:
         ),
         "pareto_trials": [_trial_to_dict(t) for t in result.pareto_trials],
         "all_trials": [_trial_to_dict(t) for t in result.all_trials],
+    }
+
+
+def _softprompt_to_dict(result: SoftPromptResult) -> dict[str, object]:
+    """Serialize a SoftPromptResult to a JSON-compatible dict."""
+    return {
+        "mode": result.mode,
+        "success_rate": result.success_rate,
+        "final_loss": result.final_loss,
+        "loss_history": result.loss_history,
+        "n_steps": result.n_steps,
+        "n_tokens": result.n_tokens,
+        "token_ids": result.token_ids,
+        "token_text": result.token_text,
+        "eval_responses": result.eval_responses,
     }
