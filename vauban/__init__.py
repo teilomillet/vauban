@@ -20,6 +20,7 @@ from vauban.export import export_model
 from vauban.measure import (
     default_eval_path,
     default_prompt_paths,
+    detect_layer_types,
     find_instruction_boundary,
     load_prompts,
     measure,
@@ -28,6 +29,7 @@ from vauban.measure import (
     select_target_layers,
     silhouette_scores,
 )
+from vauban.optimize import optimize
 from vauban.probe import multi_probe, probe, steer
 from vauban.subspace import (
     effective_rank,
@@ -57,6 +59,8 @@ from vauban.types import (
     DirectionResult,
     EvalResult,
     MeasureConfig,
+    OptimizeConfig,
+    OptimizeResult,
     PipelineConfig,
     ProbeResult,
     SteerResult,
@@ -68,6 +72,7 @@ from vauban.types import (
     SurfacePoint,
     SurfacePrompt,
     SurfaceResult,
+    TrialResult,
 )
 
 __version__ = "0.2.1"
@@ -81,6 +86,8 @@ __all__ = [
     "DirectionResult",
     "EvalResult",
     "MeasureConfig",
+    "OptimizeConfig",
+    "OptimizeResult",
     "PipelineConfig",
     "ProbeResult",
     "SteerResult",
@@ -92,6 +99,7 @@ __all__ = [
     "SurfacePoint",
     "SurfacePrompt",
     "SurfaceResult",
+    "TrialResult",
     "aggregate",
     "compare_surfaces",
     "cut",
@@ -103,6 +111,7 @@ __all__ = [
     "default_surface_path",
     "dequantize_model",
     "detect",
+    "detect_layer_types",
     "effective_rank",
     "evaluate",
     "explained_variance_ratio",
@@ -120,6 +129,7 @@ __all__ = [
     "measure_dbdi",
     "measure_subspace",
     "multi_probe",
+    "optimize",
     "orthonormalize",
     "principal_angles",
     "probe",
@@ -187,6 +197,7 @@ def run(config_path: str | Path) -> None:
                 cosine_scores=dbdi_result.red_cosine_scores,
                 d_model=dbdi_result.d_model,
                 model_path=dbdi_result.model_path,
+                layer_types=dbdi_result.layer_types,
             )
             cosine_scores = dbdi_result.red_cosine_scores
         else:  # "hdd"
@@ -196,6 +207,7 @@ def run(config_path: str | Path) -> None:
                 cosine_scores=dbdi_result.hdd_cosine_scores,
                 d_model=dbdi_result.d_model,
                 model_path=dbdi_result.model_path,
+                layer_types=dbdi_result.layer_types,
             )
             cosine_scores = dbdi_result.hdd_cosine_scores
     else:
@@ -203,6 +215,33 @@ def run(config_path: str | Path) -> None:
             model, tokenizer, harmful, harmless, clip_q,  # type: ignore[arg-type]
         )
         cosine_scores = direction_result.cosine_scores
+
+    # Optimization mode: search over cut parameters, write report, return early
+    if config.optimize is not None and direction_result is not None:
+        eval_prompts_opt: list[str] = []
+        if config.eval_prompts_path is not None:
+            eval_prompts_opt = load_prompts(config.eval_prompts_path)
+        else:
+            eval_prompts_opt = harmful[:20]
+
+        opt_result = optimize(
+            model, tokenizer, direction_result,  # type: ignore[arg-type]
+            eval_prompts_opt, config.optimize,
+        )
+
+        report_path = config.output_dir / "optimize_report.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            json.dumps(_optimize_to_dict(opt_result), indent=2),
+        )
+        return
+
+    # Resolve layer types from whichever result is available
+    layer_types: list[str] | None = None
+    if direction_result is not None:
+        layer_types = direction_result.layer_types
+    elif subspace_result is not None:
+        layer_types = subspace_result.layer_types
 
     # Determine target layers
     if config.cut.layers is not None:
@@ -214,7 +253,11 @@ def run(config_path: str | Path) -> None:
             msg = "Probe-guided layer selection requires 'direction' mode"
             raise ValueError(msg)
         target_layers = select_target_layers(
-            cosine_scores, config.cut.layer_strategy, config.cut.layer_top_k,
+            cosine_scores,
+            config.cut.layer_strategy,
+            config.cut.layer_top_k,
+            layer_types=layer_types,
+            type_filter=config.cut.layer_type_filter,
         )
     else:
         # Default: all layers
@@ -233,6 +276,7 @@ def run(config_path: str | Path) -> None:
             cosine_scores=direction_result.cosine_scores,
             d_model=direction_result.d_model,
             model_path=direction_result.model_path,
+            layer_types=direction_result.layer_types,
         )
 
     # False refusal orthogonalization: measure borderline direction and
@@ -257,6 +301,7 @@ def run(config_path: str | Path) -> None:
             cosine_scores=direction_result.cosine_scores,
             d_model=direction_result.d_model,
             model_path=direction_result.model_path,
+            layer_types=direction_result.layer_types,
         )
 
     # Extract direction for surface use
@@ -332,6 +377,7 @@ def run(config_path: str | Path) -> None:
             cosine_scores=dbdi_result.hdd_cosine_scores,
             d_model=dbdi_result.d_model,
             model_path=dbdi_result.model_path,
+            layer_types=dbdi_result.layer_types,
         )
         modified_weights = cut(
             modified_weights,
@@ -444,4 +490,41 @@ def _detect_to_dict(result: DetectResult) -> dict[str, object]:
         "residual_refusal_rate": result.residual_refusal_rate,
         "mean_refusal_position": result.mean_refusal_position,
         "evidence": result.evidence,
+    }
+
+
+def _trial_to_dict(t: TrialResult) -> dict[str, object]:
+    """Serialize a TrialResult to a JSON-compatible dict."""
+    return {
+        "trial_number": t.trial_number,
+        "alpha": t.alpha,
+        "sparsity": t.sparsity,
+        "norm_preserve": t.norm_preserve,
+        "layer_strategy": t.layer_strategy,
+        "layer_top_k": t.layer_top_k,
+        "target_layers": t.target_layers,
+        "refusal_rate": t.refusal_rate,
+        "perplexity_delta": t.perplexity_delta,
+        "kl_divergence": t.kl_divergence,
+    }
+
+
+def _optimize_to_dict(result: OptimizeResult) -> dict[str, object]:
+    """Serialize an OptimizeResult to a JSON-compatible dict."""
+    return {
+        "n_trials": result.n_trials,
+        "baseline_refusal_rate": result.baseline_refusal_rate,
+        "baseline_perplexity": result.baseline_perplexity,
+        "best_refusal": (
+            _trial_to_dict(result.best_refusal)
+            if result.best_refusal is not None
+            else None
+        ),
+        "best_balanced": (
+            _trial_to_dict(result.best_balanced)
+            if result.best_balanced is not None
+            else None
+        ),
+        "pareto_trials": [_trial_to_dict(t) for t in result.pareto_trials],
+        "all_trials": [_trial_to_dict(t) for t in result.all_trials],
     }

@@ -73,6 +73,7 @@ def measure(
         harmful_acts, harmless_acts,
     )
     d_model = harmful_acts[0].shape[-1]
+    layer_types = detect_layer_types(model)
 
     return DirectionResult(
         direction=direction,
@@ -80,6 +81,7 @@ def measure(
         cosine_scores=cosine_scores,
         d_model=int(d_model),
         model_path="",
+        layer_types=layer_types,
     )
 
 
@@ -282,6 +284,7 @@ def measure_dbdi(
     hdd_dir, hdd_layer, hdd_scores = _best_direction(hdd_harmful, hdd_harmless)
 
     d_model = int(red_harmful[0].shape[-1])
+    layer_types = detect_layer_types(model)
 
     return DBDIResult(
         hdd=hdd_dir,
@@ -292,6 +295,7 @@ def measure_dbdi(
         red_cosine_scores=red_scores,
         d_model=d_model,
         model_path="",
+        layer_types=layer_types,
     )
 
 
@@ -369,6 +373,8 @@ def measure_subspace(
             best_variance = topk_variance
             best_layer = i
 
+    layer_types = detect_layer_types(model)
+
     return SubspaceResult(
         basis=per_layer_bases[best_layer],
         singular_values=per_layer_sv[best_layer],
@@ -377,6 +383,7 @@ def measure_subspace(
         d_model=d_model,
         model_path="",
         per_layer_bases=per_layer_bases,
+        layer_types=layer_types,
     )
 
 
@@ -522,10 +529,42 @@ def _forward_collect(
     return residuals
 
 
+def detect_layer_types(model: CausalLM) -> list[str] | None:
+    """Detect per-layer attention types from model config.
+
+    Returns ``None`` for uniform models. Returns a list of type strings
+    (``"global"`` / ``"sliding"``) for interleaved architectures (Cohere2).
+
+    Detection works via ``model.model.args.sliding_window_pattern`` — present
+    on Cohere2 models, absent on everything else.
+
+    Args:
+        model: The causal language model.
+
+    Returns:
+        Per-layer type list, or ``None`` if the model has uniform layers.
+    """
+    transformer = model.model
+    args = getattr(transformer, "args", None)
+    if args is None:
+        return None
+    pattern = getattr(args, "sliding_window_pattern", None)
+    if pattern is None or pattern < 2:
+        return None
+
+    num_layers = len(transformer.layers)
+    return [
+        "global" if i % pattern == pattern - 1 else "sliding"
+        for i in range(num_layers)
+    ]
+
+
 def select_target_layers(
     cosine_scores: list[float],
     strategy: str = "above_median",
     top_k: int = 10,
+    layer_types: list[str] | None = None,
+    type_filter: str | None = None,
 ) -> list[int]:
     """Select target layers for cutting based on per-layer scores.
 
@@ -535,6 +574,10 @@ def select_target_layers(
         - ``"silhouette"``: same as ``"above_median"`` — works with
           silhouette scores passed in place of cosine scores.
 
+    When ``type_filter`` is set and ``layer_types`` is provided, only
+    layers matching the given type are considered as candidates. The
+    strategy (median, top-k) is then applied to the filtered subset.
+
     The ``cosine_scores`` parameter accepts any per-layer score list
     (cosine separation, silhouette scores, etc.).
 
@@ -543,6 +586,9 @@ def select_target_layers(
             ``silhouette_scores()``.
         strategy: Selection strategy name.
         top_k: Number of layers to select when using ``"top_k"`` strategy.
+        layer_types: Per-layer type strings from ``detect_layer_types()``.
+        type_filter: If set, restrict candidates to this layer type
+            (e.g. ``"global"`` or ``"sliding"``).
 
     Returns:
         Sorted list of layer indices to target.
@@ -550,14 +596,27 @@ def select_target_layers(
     if not cosine_scores:
         return []
 
+    # Build candidate set: all layers, or filtered by type
+    if type_filter is not None and layer_types is not None:
+        candidates = [
+            i for i, t in enumerate(layer_types) if t == type_filter
+        ]
+    else:
+        candidates = list(range(len(cosine_scores)))
+
+    if not candidates:
+        return []
+
     if strategy in ("above_median", "silhouette"):
-        sorted_scores = sorted(cosine_scores)
-        median = sorted_scores[len(sorted_scores) // 2]
-        return [i for i, s in enumerate(cosine_scores) if s > median]
+        filtered_scores = sorted(cosine_scores[i] for i in candidates)
+        median = filtered_scores[len(filtered_scores) // 2]
+        return [i for i in candidates if cosine_scores[i] > median]
 
     if strategy == "top_k":
         indexed = sorted(
-            enumerate(cosine_scores), key=lambda x: x[1], reverse=True,
+            ((i, cosine_scores[i]) for i in candidates),
+            key=lambda x: x[1],
+            reverse=True,
         )
         return sorted(i for i, _ in indexed[:top_k])
 

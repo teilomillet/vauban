@@ -8,6 +8,7 @@ from tests.conftest import D_MODEL, NUM_LAYERS, MockCausalLM, MockTokenizer
 from vauban.measure import (
     _forward_collect,
     _match_suffix,
+    detect_layer_types,
     find_instruction_boundary,
     load_prompts,
     measure,
@@ -209,3 +210,144 @@ class TestSilhouetteScores:
         median = sorted(scores)[2]  # 0.3
         expected = [i for i, s in enumerate(scores) if s > median]
         assert layers == expected
+
+
+class TestDetectLayerTypes:
+    def test_returns_none_for_mock_model(
+        self, mock_model: MockCausalLM,
+    ) -> None:
+        """Mock model has no args attribute, so detection returns None."""
+        result = detect_layer_types(mock_model)
+        assert result is None
+
+    def test_returns_pattern_for_interleaved_model(
+        self, mock_model: MockCausalLM,
+    ) -> None:
+        """Model with sliding_window_pattern=4 returns correct types."""
+
+        class FakeArgs:
+            sliding_window_pattern: int = 4
+
+        mock_model.model.args = FakeArgs()
+        # With pattern=4 and NUM_LAYERS=2:
+        # layer 0: 0 % 4 != 3 -> "sliding"
+        # layer 1: 1 % 4 != 3 -> "sliding"
+        result = detect_layer_types(mock_model)
+        assert result == ["sliding", "sliding"]
+
+    def test_pattern_4_with_8_layers(
+        self, mock_model: MockCausalLM,
+    ) -> None:
+        """Verify global layers at positions where i % pattern == pattern - 1."""
+
+        class FakeArgs:
+            sliding_window_pattern: int = 4
+
+        mock_model.model.args = FakeArgs()
+        # Add extra mock layers to get 8 total
+        from tests.conftest import D_MODEL, NUM_HEADS, MockTransformerBlock
+
+        mock_model.model.layers = [
+            MockTransformerBlock(D_MODEL, NUM_HEADS) for _ in range(8)
+        ]
+        result = detect_layer_types(mock_model)
+        assert result is not None
+        assert len(result) == 8
+        # Global layers at indices 3, 7 (i % 4 == 3)
+        expected = [
+            "global" if i % 4 == 3 else "sliding" for i in range(8)
+        ]
+        assert result == expected
+
+    def test_pattern_1_returns_none(
+        self, mock_model: MockCausalLM,
+    ) -> None:
+        """Pattern < 2 means uniform layers, returns None."""
+
+        class FakeArgs:
+            sliding_window_pattern: int = 1
+
+        mock_model.model.args = FakeArgs()
+        assert detect_layer_types(mock_model) is None
+
+
+class TestSelectTargetLayersWithTypeFilter:
+    def test_no_filter_unchanged_behavior(self) -> None:
+        """Without type_filter, behavior is identical to original."""
+        scores = [0.1, 0.5, 0.8, 0.3, 0.9, 0.2]
+        result_no_filter = select_target_layers(scores, strategy="above_median")
+        result_none_filter = select_target_layers(
+            scores, strategy="above_median", layer_types=None, type_filter=None,
+        )
+        assert result_no_filter == result_none_filter
+
+    def test_filter_global_above_median(self) -> None:
+        """above_median + type_filter='global' selects only global layers."""
+        # 8 layers, pattern=4: global at 3, 7
+        scores = [0.1, 0.2, 0.3, 0.9, 0.15, 0.25, 0.35, 0.4]
+        layer_types = [
+            "global" if i % 4 == 3 else "sliding" for i in range(8)
+        ]
+        result = select_target_layers(
+            scores, strategy="above_median",
+            layer_types=layer_types, type_filter="global",
+        )
+        # Global layers: 3 (score=0.9) and 7 (score=0.4)
+        # Median of [0.4, 0.9] = 0.9 (index 1 of 2)
+        # Only layer 3 has score > 0.9? No, 0.9 > 0.9 is False.
+        # sorted = [0.4, 0.9], median = sorted[1] = 0.9
+        # So no layers above median=0.9.
+        # Let's adjust: median = sorted[len//2] = sorted[1] = 0.9
+        # Actually with 2 items, [0.4, 0.9], len=2, index = 2//2 = 1, median=0.9
+        # No layers strictly above 0.9, so result is empty
+        assert result == []
+
+    def test_filter_sliding_above_median(self) -> None:
+        """above_median + type_filter='sliding' selects only sliding layers."""
+        scores = [0.1, 0.2, 0.3, 0.9, 0.15, 0.8, 0.35, 0.4]
+        layer_types = [
+            "global" if i % 4 == 3 else "sliding" for i in range(8)
+        ]
+        result = select_target_layers(
+            scores, strategy="above_median",
+            layer_types=layer_types, type_filter="sliding",
+        )
+        # Sliding layers: 0,1,2,4,5,6 with scores [0.1,0.2,0.3,0.15,0.8,0.35]
+        # sorted = [0.1, 0.15, 0.2, 0.3, 0.35, 0.8], median = sorted[3] = 0.3
+        # Layers with score > 0.3: 5 (0.8), 6 (0.35)
+        assert result == [5, 6]
+
+    def test_filter_global_top_k(self) -> None:
+        """top_k + type_filter='global' picks top-k from global layers only."""
+        scores = [0.1, 0.2, 0.3, 0.9, 0.15, 0.25, 0.35, 0.4]
+        layer_types = [
+            "global" if i % 4 == 3 else "sliding" for i in range(8)
+        ]
+        result = select_target_layers(
+            scores, strategy="top_k", top_k=1,
+            layer_types=layer_types, type_filter="global",
+        )
+        # Global layers: 3 (0.9), 7 (0.4). Top 1 = [3]
+        assert result == [3]
+
+    def test_filter_with_none_layer_types_ignored(self) -> None:
+        """type_filter is ignored when layer_types is None."""
+        scores = [0.1, 0.5, 0.8, 0.3]
+        result_filtered = select_target_layers(
+            scores, strategy="above_median",
+            layer_types=None, type_filter="global",
+        )
+        result_normal = select_target_layers(
+            scores, strategy="above_median",
+        )
+        assert result_filtered == result_normal
+
+    def test_filter_no_matching_layers(self) -> None:
+        """type_filter that matches no layers returns empty list."""
+        scores = [0.1, 0.5, 0.8, 0.3]
+        layer_types = ["sliding", "sliding", "sliding", "sliding"]
+        result = select_target_layers(
+            scores, strategy="above_median",
+            layer_types=layer_types, type_filter="global",
+        )
+        assert result == []

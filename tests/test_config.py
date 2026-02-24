@@ -418,3 +418,129 @@ class TestLoadConfig:
         )
         config = load_config(toml_file)
         assert config.detect is None
+
+    def test_layer_type_filter_absent_is_none(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+        )
+        config = load_config(toml_file)
+        assert config.cut.layer_type_filter is None
+
+    def test_layer_type_filter_global(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[cut]\nlayer_type_filter = "global"\n'
+        )
+        config = load_config(toml_file)
+        assert config.cut.layer_type_filter == "global"
+
+    def test_layer_type_filter_sliding(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[cut]\nlayer_type_filter = "sliding"\n'
+        )
+        config = load_config(toml_file)
+        assert config.cut.layer_type_filter == "sliding"
+
+    def test_layer_type_filter_invalid_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[cut]\nlayer_type_filter = "invalid"\n'
+        )
+        with pytest.raises(ValueError, match="layer_type_filter"):
+            load_config(toml_file)
+
+    def test_optimize_defaults(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[optimize]\n"
+        )
+        config = load_config(toml_file)
+        assert config.optimize is not None
+        assert config.optimize.n_trials == 50
+        assert config.optimize.alpha_min == 0.1
+        assert config.optimize.alpha_max == 5.0
+        assert config.optimize.sparsity_min == 0.0
+        assert config.optimize.sparsity_max == 0.9
+        assert config.optimize.search_norm_preserve is True
+        assert config.optimize.search_strategies == [
+            "all", "above_median", "top_k",
+        ]
+        assert config.optimize.layer_top_k_min == 3
+        assert config.optimize.layer_top_k_max is None
+        assert config.optimize.max_tokens == 100
+        assert config.optimize.seed is None
+        assert config.optimize.timeout is None
+
+    def test_optimize_parsed(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[optimize]\n"
+            "n_trials = 100\n"
+            "alpha_min = 0.5\n"
+            "alpha_max = 3.0\n"
+            "sparsity_min = 0.1\n"
+            "sparsity_max = 0.8\n"
+            "search_norm_preserve = false\n"
+            'search_strategies = ["all", "top_k"]\n'
+            "layer_top_k_min = 5\n"
+            "layer_top_k_max = 20\n"
+            "max_tokens = 50\n"
+            "seed = 42\n"
+            "timeout = 3600\n"
+        )
+        config = load_config(toml_file)
+        assert config.optimize is not None
+        assert config.optimize.n_trials == 100
+        assert config.optimize.alpha_min == 0.5
+        assert config.optimize.alpha_max == 3.0
+        assert config.optimize.sparsity_min == 0.1
+        assert config.optimize.sparsity_max == 0.8
+        assert config.optimize.search_norm_preserve is False
+        assert config.optimize.search_strategies == ["all", "top_k"]
+        assert config.optimize.layer_top_k_min == 5
+        assert config.optimize.layer_top_k_max == 20
+        assert config.optimize.max_tokens == 50
+        assert config.optimize.seed == 42
+        assert config.optimize.timeout == 3600.0
+
+    def test_optimize_absent_is_none(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+        )
+        config = load_config(toml_file)
+        assert config.optimize is None
+
+    def test_optimize_invalid_n_trials_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[optimize]\nn_trials = 0\n"
+        )
+        with pytest.raises(ValueError, match="n_trials"):
+            load_config(toml_file)
+
+    def test_optimize_alpha_range_validation(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[optimize]\nalpha_min = 5.0\nalpha_max = 1.0\n"
+        )
+        with pytest.raises(ValueError, match="alpha_min"):
+            load_config(toml_file)

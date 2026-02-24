@@ -65,6 +65,7 @@ class DirectionResult:
     cosine_scores: list[float]
     d_model: int
     model_path: str
+    layer_types: list[str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +79,7 @@ class SubspaceResult:
     d_model: int
     model_path: str
     per_layer_bases: list[mx.array]  # basis for every layer
+    layer_types: list[str] | None = None
 
     def best_direction(self) -> DirectionResult:
         """Extract the rank-1 direction (first basis vector) for compatibility."""
@@ -87,6 +89,7 @@ class SubspaceResult:
             cosine_scores=[],
             d_model=self.d_model,
             model_path=self.model_path,
+            layer_types=self.layer_types,
         )
 
 
@@ -102,6 +105,7 @@ class DBDIResult:
     red_cosine_scores: list[float]
     d_model: int
     model_path: str
+    layer_types: list[str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +122,7 @@ class CutConfig:
     sparsity: float = 0.0  # fraction of direction components to zero out
     dbdi_target: str = "red"  # "red", "hdd", or "both" (for DBDI mode)
     false_refusal_ortho: bool = False  # orthogonalize against false refusal
+    layer_type_filter: str | None = None  # "global", "sliding", or None
 
 
 @dataclass(frozen=True, slots=True)
@@ -267,6 +272,55 @@ class DetectConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class OptimizeConfig:
+    """Configuration for Optuna multi-objective optimization of cut parameters."""
+
+    n_trials: int = 50
+    alpha_min: float = 0.1
+    alpha_max: float = 5.0
+    sparsity_min: float = 0.0
+    sparsity_max: float = 0.9
+    search_norm_preserve: bool = True
+    search_strategies: list[str] = field(
+        default_factory=lambda: ["all", "above_median", "top_k"],
+    )
+    layer_top_k_min: int = 3
+    layer_top_k_max: int | None = None  # defaults to num_layers at runtime
+    max_tokens: int = 100
+    seed: int | None = None
+    timeout: float | None = None  # seconds
+
+
+@dataclass(frozen=True, slots=True)
+class TrialResult:
+    """Result of a single optimization trial."""
+
+    trial_number: int
+    alpha: float
+    sparsity: float
+    norm_preserve: bool
+    layer_strategy: str
+    layer_top_k: int | None
+    target_layers: list[int]
+    refusal_rate: float
+    perplexity_delta: float
+    kl_divergence: float
+
+
+@dataclass(frozen=True, slots=True)
+class OptimizeResult:
+    """Result of the full optimization run with Pareto front."""
+
+    all_trials: list[TrialResult]
+    pareto_trials: list[TrialResult]
+    baseline_refusal_rate: float
+    baseline_perplexity: float
+    n_trials: int
+    best_refusal: TrialResult | None  # best on refusal alone
+    best_balanced: TrialResult | None  # best normalized sum of all 3 objectives
+
+
+@dataclass(frozen=True, slots=True)
 class DetectResult:
     """Output of the defense detection step."""
 
@@ -292,6 +346,7 @@ class PipelineConfig:
     measure: MeasureConfig = field(default_factory=MeasureConfig)
     surface: SurfaceConfig | None = None
     detect: DetectConfig | None = None
+    optimize: OptimizeConfig | None = None
     eval_prompts_path: Path | None = None
     output_dir: Path = field(default_factory=lambda: Path("output"))
     borderline_path: Path | DatasetRef | None = None
