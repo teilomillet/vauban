@@ -14,6 +14,7 @@ from vauban.cut import (
 )
 from vauban.dataset import load_hf_prompts, resolve_prompts
 from vauban.dequantize import dequantize_model, is_quantized
+from vauban.detect import detect
 from vauban.evaluate import evaluate
 from vauban.export import export_model
 from vauban.measure import (
@@ -51,6 +52,8 @@ from vauban.types import (
     CutConfig,
     DatasetRef,
     DBDIResult,
+    DetectConfig,
+    DetectResult,
     DirectionResult,
     EvalResult,
     MeasureConfig,
@@ -73,6 +76,8 @@ __all__ = [
     "CutConfig",
     "DBDIResult",
     "DatasetRef",
+    "DetectConfig",
+    "DetectResult",
     "DirectionResult",
     "EvalResult",
     "MeasureConfig",
@@ -97,6 +102,7 @@ __all__ = [
     "default_prompt_paths",
     "default_surface_path",
     "dequantize_model",
+    "detect",
     "effective_rank",
     "evaluate",
     "explained_variance_ratio",
@@ -149,6 +155,13 @@ def run(config_path: str | Path) -> None:
 
     harmful = resolve_prompts(config.harmful_path)
     harmless = resolve_prompts(config.harmless_path)
+
+    # Defense detection (runs before measure/cut)
+    if config.detect is not None:
+        detect_result = detect(model, tokenizer, harmful, harmless, config.detect)  # type: ignore[arg-type]
+        report_path = config.output_dir / "detect_report.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(_detect_to_dict(detect_result), indent=2))
 
     # Branch on measure mode
     direction_result = None
@@ -416,4 +429,19 @@ def _surface_comparison_to_dict(
         "label_deltas": [
             _group_delta_to_dict(d) for d in comparison.label_deltas
         ],
+    }
+
+
+def _detect_to_dict(result: DetectResult) -> dict[str, object]:
+    """Serialize a DetectResult to a JSON-compatible dict."""
+    return {
+        "hardened": result.hardened,
+        "confidence": result.confidence,
+        "effective_rank": result.effective_rank,
+        "cosine_concentration": result.cosine_concentration,
+        "silhouette_peak": result.silhouette_peak,
+        "hdd_red_distance": result.hdd_red_distance,
+        "residual_refusal_rate": result.residual_refusal_rate,
+        "mean_refusal_position": result.mean_refusal_position,
+        "evidence": result.evidence,
     }

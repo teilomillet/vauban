@@ -256,6 +256,32 @@ class SurfaceComparison:
 
 
 @dataclass(frozen=True, slots=True)
+class DetectConfig:
+    """Configuration for the defense detection step."""
+
+    mode: str = "full"  # "fast", "probe", or "full"
+    top_k: int = 5  # subspace dimensions for SVD
+    clip_quantile: float = 0.0
+    alpha: float = 1.0  # alpha for test cut in "full" mode
+    max_tokens: int = 100  # max tokens for generation in "full" mode
+
+
+@dataclass(frozen=True, slots=True)
+class DetectResult:
+    """Output of the defense detection step."""
+
+    hardened: bool
+    confidence: float  # 0.0 - 1.0
+    effective_rank: float  # refusal subspace dimensionality
+    cosine_concentration: float  # max/mean of cosine scores
+    silhouette_peak: float  # best-layer silhouette
+    hdd_red_distance: float | None  # Grassmann distance (probe/full only)
+    residual_refusal_rate: float | None  # post-abliteration refusal (full only)
+    mean_refusal_position: float | None  # token position of first refusal (full only)
+    evidence: list[str]  # human-readable evidence strings
+
+
+@dataclass(frozen=True, slots=True)
 class PipelineConfig:
     """Full pipeline configuration loaded from TOML."""
 
@@ -265,6 +291,7 @@ class PipelineConfig:
     cut: CutConfig = field(default_factory=CutConfig)
     measure: MeasureConfig = field(default_factory=MeasureConfig)
     surface: SurfaceConfig | None = None
+    detect: DetectConfig | None = None
     eval_prompts_path: Path | None = None
     output_dir: Path = field(default_factory=lambda: Path("output"))
     borderline_path: Path | DatasetRef | None = None

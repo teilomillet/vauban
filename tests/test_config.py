@@ -369,3 +369,52 @@ class TestLoadConfig:
         )
         config = load_config(toml_file)
         assert config.borderline_path is None
+
+    def test_detect_defaults(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[detect]\n"
+        )
+        config = load_config(toml_file)
+        assert config.detect is not None
+        assert config.detect.mode == "full"
+        assert config.detect.top_k == 5
+        assert config.detect.alpha == 1.0
+        assert config.detect.max_tokens == 100
+        assert config.detect.clip_quantile == 0.0
+
+    def test_detect_parsed(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[detect]\nmode = "probe"\ntop_k = 3\nalpha = 0.5\n'
+            "max_tokens = 50\n"
+        )
+        config = load_config(toml_file)
+        assert config.detect is not None
+        assert config.detect.mode == "probe"
+        assert config.detect.top_k == 3
+        assert config.detect.alpha == 0.5
+        assert config.detect.max_tokens == 50
+
+    def test_detect_invalid_mode_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[detect]\nmode = "invalid"\n'
+        )
+        with pytest.raises(ValueError, match="mode"):
+            load_config(toml_file)
+
+    def test_detect_absent_is_none(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+        )
+        config = load_config(toml_file)
+        assert config.detect is None
