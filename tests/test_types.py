@@ -1,0 +1,169 @@
+"""Tests for vauban.types: dataclass construction, frozen, protocol compliance."""
+
+from dataclasses import FrozenInstanceError
+from pathlib import Path
+
+import mlx.core as mx
+import pytest
+
+from tests.conftest import MockCausalLM, MockTokenizer
+from vauban.types import (
+    CutConfig,
+    DirectionResult,
+    EvalResult,
+    MeasureConfig,
+    PipelineConfig,
+    ProbeResult,
+    SteerResult,
+    SubspaceResult,
+    Tokenizer,
+)
+
+
+class TestProtocols:
+    """Protocol compliance checks.
+
+    nn.Module stores attributes in an internal dict, so runtime_checkable
+    isinstance checks don't work. We verify structural conformance directly.
+    """
+
+    def test_transformer_model_has_required_attrs(
+        self, mock_model: MockCausalLM,
+    ) -> None:
+        model = mock_model.model
+        assert hasattr(model, "embed_tokens")
+        assert hasattr(model, "layers")
+        assert hasattr(model, "norm")
+        assert callable(model)
+
+    def test_causal_lm_has_required_attrs(
+        self, mock_model: MockCausalLM,
+    ) -> None:
+        assert hasattr(mock_model, "model")
+        assert callable(mock_model)
+
+    def test_tokenizer_protocol(
+        self, mock_tokenizer: MockTokenizer,
+    ) -> None:
+        assert isinstance(mock_tokenizer, Tokenizer)
+
+
+class TestDirectionResult:
+    def test_construction(self) -> None:
+        d = mx.zeros((16,))
+        result = DirectionResult(
+            direction=d,
+            layer_index=5,
+            cosine_scores=[0.1, 0.2],
+            d_model=16,
+            model_path="test",
+        )
+        assert result.layer_index == 5
+        assert result.d_model == 16
+
+    def test_frozen(self) -> None:
+        d = mx.zeros((16,))
+        result = DirectionResult(
+            direction=d, layer_index=0, cosine_scores=[], d_model=16, model_path="",
+        )
+        with pytest.raises(FrozenInstanceError):
+            result.layer_index = 1  # type: ignore[misc]
+
+
+class TestCutConfig:
+    def test_defaults(self) -> None:
+        config = CutConfig()
+        assert config.alpha == 1.0
+        assert config.layers is None
+        assert config.norm_preserve is False
+        assert config.biprojected is False
+
+    def test_custom(self) -> None:
+        config = CutConfig(alpha=0.5, layers=[1, 2], norm_preserve=True)
+        assert config.alpha == 0.5
+        assert config.layers == [1, 2]
+
+
+class TestEvalResult:
+    def test_construction(self) -> None:
+        result = EvalResult(
+            refusal_rate_original=0.8,
+            refusal_rate_modified=0.1,
+            perplexity_original=10.0,
+            perplexity_modified=12.0,
+            kl_divergence=0.5,
+            num_prompts=10,
+        )
+        assert result.num_prompts == 10
+
+
+class TestProbeResult:
+    def test_construction(self) -> None:
+        result = ProbeResult(projections=[0.1, 0.2], layer_count=2, prompt="test")
+        assert result.layer_count == 2
+
+
+class TestSteerResult:
+    def test_construction(self) -> None:
+        result = SteerResult(
+            text="hello",
+            projections_before=[1.0],
+            projections_after=[0.1],
+        )
+        assert result.text == "hello"
+
+
+class TestSubspaceResult:
+    def test_construction(self) -> None:
+        basis = mx.zeros((3, 16))
+        result = SubspaceResult(
+            basis=basis,
+            singular_values=[3.0, 2.0, 1.0],
+            explained_variance=[0.6, 0.3, 0.1],
+            layer_index=5,
+            d_model=16,
+            model_path="test",
+            per_layer_bases=[basis],
+        )
+        assert result.layer_index == 5
+        assert len(result.singular_values) == 3
+
+    def test_best_direction(self) -> None:
+        basis = mx.eye(3, 16)
+        result = SubspaceResult(
+            basis=basis,
+            singular_values=[3.0, 2.0, 1.0],
+            explained_variance=[0.6, 0.3, 0.1],
+            layer_index=2,
+            d_model=16,
+            model_path="test",
+            per_layer_bases=[basis],
+        )
+        direction = result.best_direction()
+        assert direction.direction.shape == (16,)
+        assert direction.layer_index == 2
+        assert direction.d_model == 16
+
+
+class TestMeasureConfig:
+    def test_defaults(self) -> None:
+        config = MeasureConfig()
+        assert config.mode == "direction"
+        assert config.top_k == 5
+
+    def test_custom(self) -> None:
+        config = MeasureConfig(mode="subspace", top_k=10)
+        assert config.mode == "subspace"
+        assert config.top_k == 10
+
+
+class TestPipelineConfig:
+    def test_defaults(self) -> None:
+        config = PipelineConfig(
+            model_path="test",
+            harmful_path=Path("harmful.jsonl"),
+            harmless_path=Path("harmless.jsonl"),
+        )
+        assert config.output_dir == Path("output")
+        assert config.eval_prompts_path is None
+        assert config.measure.mode == "direction"

@@ -1,0 +1,18 @@
+[model]
+path = "mlx-community/tiny-llama"
+
+[data]
+harmful = "harmful.jsonl"
+harmless = "harmless.jsonl"
+
+[cut]
+alpha = 1.0
+layers = "auto"
+norm_preserve = false
+biprojected = false
+
+[eval]
+prompts = "eval.jsonl"
+
+[output]
+dir = "output"

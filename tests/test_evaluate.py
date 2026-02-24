@@ -1,0 +1,76 @@
+"""Tests for vauban.evaluate: metric computation."""
+
+
+from tests.conftest import MockCausalLM, MockTokenizer
+from vauban.evaluate import (
+    DEFAULT_REFUSAL_PHRASES,
+    _kl_divergence,
+    _perplexity,
+    _refusal_rate,
+    evaluate,
+)
+
+
+class TestRefusalRate:
+    def test_counts_refusals(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+    ) -> None:
+        # With a random model, refusal rate should be between 0 and 1
+        rate = _refusal_rate(
+            mock_model, mock_tokenizer, ["test prompt"],
+            DEFAULT_REFUSAL_PHRASES, max_tokens=10,
+        )
+        assert 0.0 <= rate <= 1.0
+
+    def test_empty_prompts(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+    ) -> None:
+        rate = _refusal_rate(
+            mock_model, mock_tokenizer, [],
+            DEFAULT_REFUSAL_PHRASES, max_tokens=10,
+        )
+        assert rate == 0.0
+
+
+class TestPerplexity:
+    def test_positive_perplexity(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+    ) -> None:
+        ppl = _perplexity(mock_model, mock_tokenizer, ["hello world"])
+        assert ppl > 0.0
+
+    def test_empty_prompts(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+    ) -> None:
+        ppl = _perplexity(mock_model, mock_tokenizer, [])
+        assert ppl == 0.0
+
+
+class TestKLDivergence:
+    def test_same_model_near_zero(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+    ) -> None:
+        kl = _kl_divergence(
+            mock_model, mock_model, mock_tokenizer, ["test"],
+        )
+        assert abs(kl) < 1e-4
+
+    def test_empty_prompts(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+    ) -> None:
+        kl = _kl_divergence(mock_model, mock_model, mock_tokenizer, [])
+        assert kl == 0.0
+
+
+class TestEvaluate:
+    def test_returns_eval_result(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+    ) -> None:
+        result = evaluate(
+            mock_model, mock_model, mock_tokenizer,
+            ["test prompt"], max_tokens=5,
+        )
+        assert result.num_prompts == 1
+        assert 0.0 <= result.refusal_rate_original <= 1.0
+        assert result.perplexity_original > 0
+        assert abs(result.kl_divergence) < 1e-4  # same model
