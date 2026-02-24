@@ -61,7 +61,7 @@ def optimize(
         ImportError: If optuna is not installed.
     """
     try:
-        import optuna  # type: ignore[unresolved-import]
+        import optuna
     except ImportError:
         msg = (
             "optuna is required for optimization. "
@@ -188,11 +188,7 @@ def optimize(
         return refusal, perplexity_delta, kl
 
     # Create study
-    sampler_kwargs: dict[str, int] = {}
-    if config.seed is not None:
-        sampler_kwargs["seed"] = config.seed
-
-    sampler = optuna.samplers.TPESampler(**sampler_kwargs)
+    sampler = optuna.samplers.TPESampler(seed=config.seed)
     study = optuna.create_study(
         directions=["minimize", "minimize", "minimize"],
         sampler=sampler,
