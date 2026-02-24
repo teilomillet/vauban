@@ -12,6 +12,8 @@ from vauban.measure import (
     load_prompts,
     measure,
     measure_dbdi,
+    select_target_layers,
+    silhouette_scores,
 )
 
 
@@ -182,3 +184,28 @@ class TestMeasureDBDI:
         # HDD and RED are extracted at different token positions,
         # so they should at least have compatible shapes
         assert result.hdd.shape == result.red.shape
+
+
+class TestSilhouetteScores:
+    def test_returns_per_layer_scores(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        harmful = ["bad one", "bad two", "bad three"]
+        harmless = ["good one", "good two", "good three"]
+        scores = silhouette_scores(
+            mock_model, mock_tokenizer, harmful, harmless,
+        )
+        assert len(scores) == NUM_LAYERS
+        # Silhouette scores are in [-1, 1]
+        for s in scores:
+            assert -1.0 <= s <= 1.0
+
+    def test_select_target_layers_silhouette_strategy(self) -> None:
+        scores = [0.1, 0.5, 0.8, 0.3]
+        layers = select_target_layers(scores, strategy="silhouette")
+        # "silhouette" acts like "above_median"
+        median = sorted(scores)[2]  # 0.3
+        expected = [i for i, s in enumerate(scores) if s > median]
+        assert layers == expected

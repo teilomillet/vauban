@@ -285,3 +285,84 @@ class TestCutFalseRefusalOrtho:
         )
 
         assert not mx.array_equal(result[o_key], weights[o_key])
+
+
+class TestDBDIBothCut:
+    """Test DBDI 'both' target: sequential RED + HDD cuts."""
+
+    def test_both_directions_applied(self) -> None:
+        mx.random.seed(42)
+        d = 16
+        o_key = "model.layers.0.self_attn.o_proj.weight"
+        weights = {o_key: mx.random.normal((d, d))}
+
+        red = mx.random.normal((d,))
+        red = red / mx.linalg.norm(red)
+        hdd = mx.random.normal((d,))
+        hdd = hdd / mx.linalg.norm(hdd)
+        mx.eval(weights[o_key], red, hdd)
+
+        # Apply RED cut first, then HDD cut (simulating "both" mode)
+        after_red = cut(weights, red, target_layers=[0])
+        after_both = cut(after_red, hdd, target_layers=[0])
+
+        # After both cuts, HDD projection should be ~removed (last cut)
+        proj_hdd = hdd @ after_both[o_key]
+        mx.eval(proj_hdd)
+        assert float(mx.linalg.norm(proj_hdd).item()) < 1e-4
+
+        # The combined result should differ from just RED cut
+        assert not mx.array_equal(after_both[o_key], after_red[o_key])
+
+    def test_both_differs_from_single(self) -> None:
+        mx.random.seed(42)
+        d = 16
+        o_key = "model.layers.0.self_attn.o_proj.weight"
+        weights = {o_key: mx.random.normal((d, d))}
+
+        red = mx.random.normal((d,))
+        red = red / mx.linalg.norm(red)
+        hdd = mx.random.normal((d,))
+        hdd = hdd / mx.linalg.norm(hdd)
+        mx.eval(weights[o_key], red, hdd)
+
+        after_red_only = cut(weights, red, target_layers=[0])
+        after_red = cut(weights, red, target_layers=[0])
+        after_both = cut(after_red, hdd, target_layers=[0])
+
+        # "both" should differ from "red only"
+        assert not mx.array_equal(
+            after_both[o_key], after_red_only[o_key],
+        )
+
+
+class TestFalseRefusalOrthoPreservesDirection:
+    """Test that false-refusal ortho preserves the false-refusal direction."""
+
+    def test_false_refusal_direction_preserved_in_weights(self) -> None:
+        mx.random.seed(42)
+        d = 16
+        o_key = "model.layers.0.self_attn.o_proj.weight"
+        weights = {o_key: mx.random.normal((d, d))}
+
+        # Use orthogonal directions to maximize the difference
+        refusal = mx.zeros((d,))
+        refusal = refusal.at[0].add(1.0)
+        false_refusal = mx.zeros((d,))
+        false_refusal = false_refusal.at[1].add(1.0)
+        mx.eval(weights[o_key], refusal, false_refusal)
+
+        # Cut with false-refusal ortho
+        result_ortho = cut_false_refusal_ortho(
+            weights, refusal, false_refusal, target_layers=[0],
+        )
+
+        # The ortho direction should be orthogonal to false_refusal,
+        # so the false_refusal component of weights should be fully
+        # preserved. Verify: false_refusal @ W_ortho == false_refusal @ W_orig
+        proj_ortho = false_refusal @ result_ortho[o_key]
+        proj_orig = false_refusal @ weights[o_key]
+        mx.eval(proj_ortho, proj_orig)
+
+        diff = float(mx.linalg.norm(proj_ortho - proj_orig).item())
+        assert diff < 1e-5

@@ -5,6 +5,7 @@ import math
 import mlx.core as mx
 import mlx.nn as nn
 
+from vauban.probe import _make_cache
 from vauban.types import EvalResult, Tokenizer
 
 DEFAULT_REFUSAL_PHRASES: list[str] = [
@@ -93,11 +94,21 @@ def _generate(
     tokenizer: Tokenizer,
     prompt: str,
     max_tokens: int,
+    eos_token_id: int | None = None,
 ) -> str:
-    """Simple greedy generation loop.
+    """Greedy generation with KV cache.
 
-    Accumulates full token sequence each step (no KV cache) to preserve
-    context across generation steps.
+    Prefills the cache with the full prompt, then decodes one token per
+    step — O(n) instead of O(n²).
+
+    Args:
+        model: The causal language model.
+        tokenizer: Tokenizer with chat template support.
+        prompt: The prompt text.
+        max_tokens: Maximum tokens to generate.
+        eos_token_id: Token ID to stop on. If None, attempts to read
+            ``tokenizer.eos_token_id``; if unavailable, generates
+            all ``max_tokens``.
     """
     messages = [{"role": "user", "content": prompt}]
     text = tokenizer.apply_chat_template(messages, tokenize=False)
@@ -107,12 +118,20 @@ def _generate(
     tokens = tokenizer.encode(text)
     generated: list[int] = []
 
+    if eos_token_id is None:
+        eos_token_id = getattr(tokenizer, "eos_token_id", None)
+
+    cache = _make_cache(model)
+    token_ids = mx.array([tokens])  # prefill: full prompt
+
     for _ in range(max_tokens):
-        token_ids = mx.array([tokens + generated])
-        result = model(token_ids)
+        result = model(token_ids, cache=cache)
         logits = _extract_logits(result)
         next_token = int(mx.argmax(logits[:, -1, :], axis=-1).item())
         generated.append(next_token)
+        if eos_token_id is not None and next_token == eos_token_id:
+            break
+        token_ids = mx.array([[next_token]])  # decode: single token
 
     return tokenizer.decode(generated)
 

@@ -19,11 +19,11 @@ import gc
 import sys
 
 import mlx.core as mx
-import mlx.nn as nn
 import mlx_lm
 from mlx.utils import tree_flatten
 
 from vauban.cut import cut, target_weight_keys
+from vauban.dequantize import dequantize_model, is_quantized
 from vauban.evaluate import (
     DEFAULT_REFUSAL_PHRASES,
     _perplexity,
@@ -65,101 +65,16 @@ HARMLESS_PROMPTS = [
 ]
 
 
-def _dequantize_model(model: nn.Module) -> bool:
-    """Replace all quantized layers with dequantized equivalents.
-
-    Handles both QuantizedLinear (standard) and QuantizedSwitchLinear
-    (MoE batched experts). Returns True if any layer was dequantized.
-    """
-    # Import MoE switch layer types if available
-    try:
-        from mlx_lm.models.switch_layers import (
-            QuantizedSwitchLinear,
-            SwitchLinear,
-        )
-    except ImportError:
-        QuantizedSwitchLinear = None  # type: ignore[assignment, misc]  # noqa: N806
-        SwitchLinear = None  # type: ignore[assignment, misc]  # noqa: N806
-
-    changed = False
-
-    def _recurse(mod: nn.Module) -> None:
-        nonlocal changed
-        for key in list(mod.keys()):
-            child = mod[key]
-            if isinstance(child, nn.QuantizedLinear):
-                w = mx.dequantize(
-                    child.weight,
-                    child.scales,
-                    child.biases,
-                    child.group_size,
-                    child.bits,
-                )
-                has_bias = (
-                    hasattr(child, "bias")
-                    and child.bias is not None
-                )
-                linear = nn.Linear(
-                    w.shape[1], w.shape[0], bias=has_bias,
-                )
-                linear.weight = w
-                if has_bias:
-                    linear.bias = child.bias
-                mx.eval(linear.parameters())
-                mod[key] = linear
-                changed = True
-            elif (
-                QuantizedSwitchLinear is not None
-                and SwitchLinear is not None
-                and isinstance(child, QuantizedSwitchLinear)
-            ):
-                w = mx.dequantize(
-                    child.weight,
-                    child.scales,
-                    child.biases,
-                    child.group_size,
-                    child.bits,
-                )
-                has_bias = "bias" in child
-                switch = SwitchLinear(
-                    child.input_dims,
-                    child.output_dims,
-                    child.num_experts,
-                    bias=has_bias,
-                )
-                switch.weight = w
-                if has_bias:
-                    switch.bias = child.bias
-                mx.eval(switch.parameters())
-                mod[key] = switch
-                changed = True
-            elif isinstance(child, nn.Module):
-                _recurse(child)
-            elif isinstance(child, list):
-                for item in child:
-                    if isinstance(item, nn.Module):
-                        _recurse(item)
-
-    _recurse(model)
-    return changed
-
-
-def _is_quantized(model: nn.Module) -> bool:
-    """Check if model contains any quantized layers."""
-    flat = dict(tree_flatten(model.parameters()))
-    return any(v.dtype == mx.uint32 for v in flat.values())
-
-
 def main() -> None:
     model_id = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_MODEL
     print(f"Loading model: {model_id}")
     model, tokenizer = mlx_lm.load(model_id)  # type: ignore[assignment]
     num_layers = len(model.model.layers)
-    quantized = _is_quantized(model)
+    quantized = is_quantized(model)
 
     # Dequantize if needed (quantized weights break cut)
     if quantized:
-        _dequantize_model(model)
+        dequantize_model(model)
         print("  Dequantized quantized layers to float")
 
     d_model = model.model.layers[0].self_attn.o_proj.weight.shape[0]
@@ -291,7 +206,7 @@ def main() -> None:
     print("\n  Loading modified weights into fresh model...")
     modified_model, _ = mlx_lm.load(model_id)  # type: ignore[assignment]
     if quantized:
-        _dequantize_model(modified_model)
+        dequantize_model(modified_model)
     modified_model.load_weights(list(modified_weights.items()))
     del modified_weights
     gc.collect()

@@ -25,6 +25,7 @@ from vauban.measure import (
     measure_dbdi,
     measure_subspace,
     select_target_layers,
+    silhouette_scores,
 )
 from vauban.probe import multi_probe, probe, steer
 from vauban.subspace import (
@@ -123,6 +124,7 @@ __all__ = [
     "save_weights",
     "scan",
     "select_target_layers",
+    "silhouette_scores",
     "sparsify_direction",
     "steer",
     "subspace_overlap",
