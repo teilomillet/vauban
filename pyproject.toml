@@ -16,6 +16,9 @@ dependencies = [
 [project.scripts]
 vauban = "vauban.__main__:main"
 
+[project.optional-dependencies]
+optimize = ["optuna>=4.0"]
+
 [dependency-groups]
 dev = [
     "pytest",
