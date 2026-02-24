@@ -39,11 +39,35 @@ This project builds upon abliteration research — the discovery that refusal in
 - Maxime Labonne's abliteration tutorial — huggingface.co/blog/mlabonne/abliteration
 - Jim Lai on norm-preserving biprojected abliteration — huggingface.co/blog/grimjim/norm-preserving-biprojected-abliteration
 
-### Additional Papers
+### Additional Abliteration Papers
 - **Young (UNLV, 2024)** — "Comparative Analysis of LLM Abliteration Methods" — First systematic benchmark of 4 tools (Heretic, DECCP, ErisForge, FailSpy) across 16 models. Key finding: single-pass methods preserve math reasoning better than Bayesian optimization. — arxiv.org/abs/2512.13655
 - **GRP-Obliteration** — "Unaligning LLMs With a Single Unlabeled Prompt" — Uses GRPO to invert safety alignment. Outperforms abliteration and TwinBreak on attack success while preserving more utility. Works on diffusion models too. — arxiv.org/pdf/2602.06258
+
+### Soft Prompt Attack Papers
+- **Schwinn et al. (2024)** — "Soft Prompt Threats: Attacking Safety Alignment and Unlearning in Open-Source LLMs through the Embedding Space" — Continuous embedding optimization bypasses alignment and unlearning. More efficient than discrete token attacks. Code: github.com/SchwinnL/LLM_Embedding_Attack — arxiv.org/abs/2402.09063
+- **Zou et al. (2023)** — "Universal and Transferable Adversarial Attacks on Aligned Language Models" (GCG) — Foundational greedy coordinate gradient descent for adversarial suffix optimization. Suffixes transfer to closed-source models. ICML 2024. — arxiv.org/abs/2307.15043
 - **Nordby (2025)** — "Soft Prompts for Evaluation: Measuring Conditional Distance of Capabilities" — Optimized soft prompts as quantitative safety metric; accessibility scoring. — arxiv.org/abs/2505.14943
 - **Huang et al. (2025)** — "Optimizing Soft Prompt Tuning via Structural Evolution" — Topological analysis of soft prompt convergence; embedding norm regularization. — arxiv.org/abs/2602.16500
+- **RAID** — "Refusal-Aware and Integrated Decoding for Jailbreaking LLMs" — Relaxes discrete tokens into continuous embeddings with a refusal-aware regularizer that steers away from refusal directions during optimization. Bridges soft prompt search with measured refusal directions. — arxiv.org/abs/2510.13901
+- **LARGO** — "Latent Adversarial Reflection through Gradient Optimization" — Latent vector optimization via gradient descent + self-reflective decoding loop. Outperforms AutoDAN by 44 ASR points. NeurIPS 2025. — arxiv.org/abs/2505.10838
+- **COLD-Attack** — "Jailbreaking LLMs with Stealthiness and Controllability" — Energy-based constrained decoding with Langevin dynamics for continuous prompt search under fluency/position constraints. ICML 2024. — arxiv.org/abs/2402.08679
+- **AmpleGCG** — "Learning a Universal and Transferable Generative Model of Adversarial Suffixes" — Trains a generator on intermediate GCG successes; produces hundreds of adversarial suffixes per query in minutes. Near-100% ASR. — arxiv.org/abs/2404.07921
+- **EGD Attack** — "Universal and Transferable Adversarial Attack Using Exponentiated Gradient Descent" — Relaxed one-hot optimization with Bregman projection on probability simplex. Cleaner convergence than GCG. — arxiv.org/abs/2508.14853
+- **UJA** — "Untargeted Jailbreak Attack" — First gradient-based untargeted jailbreak: maximizes probability of any unsafe response instead of a fixed target. 80%+ ASR in 100 iterations. — arxiv.org/abs/2510.02999
+
+### Latent Space Geometry
+- **Latent Fusion Jailbreak** — "Blending Harmful and Harmless Representations to Elicit Unsafe LLM Outputs" — Fuses hidden states of harmful + benign queries in continuous latent space. The prompt-side dual of abliteration. — arxiv.org/abs/2508.10029
+- **Latent Space Discontinuities** — "Exploiting Latent Space Discontinuities for Building Universal LLM Jailbreaks" — Identifies poorly-conditioned latent regions associated with low-frequency training data. Geometric complement to refusal-direction analysis. — arxiv.org/abs/2511.00346
+- **Linearly Decoding Refused Knowledge** — Shrivastava & Holtzman (2025) — Refused information remains linearly decodable from hidden states via simple probes. Probes transfer from base to instruction-tuned models. Validates that refusal is a linear gate. — arxiv.org/abs/2507.00239
+
+### Defense Duals
+- **CAST** — "Programming Refusal with Conditional Activation Steering" — Context-dependent steering rules at inference time without weight modification. ICLR 2025 Spotlight. Code: github.com/IBM/activation-steering — arxiv.org/abs/2409.05907
+- **RepBend** — "Representation Bending for Large Language Model Safety" — Loss-based fine-tuning to push harmful activations apart from safe ones. The defense dual of abliteration. ACL 2025. — arxiv.org/abs/2504.01550
+
+### Theoretical Backing
+- **C-AdvIPO** — "Efficient Adversarial Training in LLMs with Continuous Attacks" — Proves continuous embedding attacks are the fundamental threat model: robustness to them predicts robustness to discrete attacks. — arxiv.org/abs/2405.15589
+- **Model Tampering Attacks** — "Model Tampering Attacks Enable More Rigorous Evaluations of LLM Capabilities" — Capability elicitation via activation/weight modification. Robustness lies on a low-dimensional subspace. Unlearning undone in 16 fine-tuning steps. TMLR 2025. — arxiv.org/abs/2502.05209
+- **Latent Adversarial Training** — Casper, Xhonneux et al. (2024) — Training against continuous latent perturbations improves robustness to jailbreaks with orders of magnitude less compute. Defines the threat model soft prompt attacks instantiate. — arxiv.org/abs/2407.15549
 
 ## Why MLX
 

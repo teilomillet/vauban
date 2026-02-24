@@ -375,11 +375,12 @@ def main() -> None:
     print(f"  Prompts used: {len(multi_prompts)}")
     print(f"  Per-prompt losses: {result_multi.per_prompt_losses}")
     print(f"  Accessibility score: {result_multi.accessibility_score:.6f}")
-    print(f"  Loss: {result_multi.loss_history[0]:.4f} -> {result_multi.loss_history[-1]:.4f}")
+    first, last = result_multi.loss_history[0], result_multi.loss_history[-1]
+    print(f"  Loss: {first:.4f} -> {last:.4f}")
     print(f"  Success rate: {result_multi.success_rate:.2f}")
 
     all_finite = all(
-        loss > 0 and not (loss != loss)  # noqa: PLR0124
+        loss > 0 and loss == loss
         for loss in result_multi.per_prompt_losses
     )
     has_all_losses = len(result_multi.per_prompt_losses) == len(multi_prompts)
@@ -414,7 +415,8 @@ def main() -> None:
     )
 
     print(f"  Per-prompt losses: {result_cycle.per_prompt_losses}")
-    print(f"  Loss: {result_cycle.loss_history[0]:.4f} -> {result_cycle.loss_history[-1]:.4f}")
+    first, last = result_cycle.loss_history[0], result_cycle.loss_history[-1]
+    print(f"  Loss: {first:.4f} -> {last:.4f}")
 
     cycle_ok = (
         len(result_cycle.per_prompt_losses) == len(multi_prompts)
@@ -450,7 +452,7 @@ def main() -> None:
         model, tokenizer, [test_prompt], config_early, None,  # type: ignore[arg-type]
     )
 
-    print(f"  Configured steps: 500")
+    print("  Configured steps: 500")
     print(f"  Actual steps:     {result_early.n_steps}")
     print(f"  Early stopped:    {result_early.early_stopped}")
 
@@ -483,10 +485,11 @@ def main() -> None:
     )
 
     cosine_finite = all(
-        not (loss != loss) for loss in result_cosine.loss_history  # noqa: PLR0124
+        loss == loss for loss in result_cosine.loss_history
     )
     cosine_reduced = result_cosine.loss_history[-1] < result_cosine.loss_history[0]
-    print(f"  Loss: {result_cosine.loss_history[0]:.4f} -> {result_cosine.loss_history[-1]:.4f}")
+    first, last = result_cosine.loss_history[0], result_cosine.loss_history[-1]
+    print(f"  Loss: {first:.4f} -> {last:.4f}")
     print(f"  All finite: {cosine_finite}")
     print(f"  Reduced: {cosine_reduced}")
 
@@ -518,10 +521,11 @@ def main() -> None:
     )
 
     reg_finite = all(
-        not (loss != loss) for loss in result_reg.loss_history  # noqa: PLR0124
+        loss == loss for loss in result_reg.loss_history
     )
     reg_reduced = result_reg.loss_history[-1] < result_reg.loss_history[0]
-    print(f"  Loss: {result_reg.loss_history[0]:.4f} -> {result_reg.loss_history[-1]:.4f}")
+    first, last = result_reg.loss_history[0], result_reg.loss_history[-1]
+    print(f"  Loss: {first:.4f} -> {last:.4f}")
     print(f"  All finite: {reg_finite}")
     print(f"  Reduced: {reg_reduced}")
 
