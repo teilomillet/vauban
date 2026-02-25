@@ -61,7 +61,7 @@ def optimize(
         ImportError: If optuna is not installed.
     """
     try:
-        import optuna
+        import optuna  # type: ignore[unresolved-import]
     except ImportError:
         msg = (
             "optuna is required for optimization. "
