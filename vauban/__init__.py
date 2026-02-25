@@ -330,7 +330,7 @@ def run(config_path: str | Path) -> None:
         _log("Dequantizing model weights", verbose=v)
         dequantize_model(model)
 
-    _log("Loading prompts")
+    _log("Loading prompts", verbose=v)
     harmful = resolve_prompts(config.harmful_path)
     harmless = resolve_prompts(config.harmless_path)
 
@@ -341,7 +341,7 @@ def run(config_path: str | Path) -> None:
 
     # Defense detection (runs before measure/cut)
     if config.detect is not None:
-        _log("Running defense detection")
+        _log("Running defense detection", verbose=v)
         detect_result = detect(model, tokenizer, harmful, harmless, config.detect)  # type: ignore[arg-type]
         report_path = config.output_dir / "detect_report.json"
         report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -354,7 +354,7 @@ def run(config_path: str | Path) -> None:
 
     clip_q = config.measure.clip_quantile
 
-    _log(f"Measuring refusal direction (mode={config.measure.mode})")
+    _log(f"Measuring refusal direction (mode={config.measure.mode})", verbose=v)
     if config.measure.mode == "subspace":
         subspace_result = measure_subspace(
             model, tokenizer, harmful, harmless,  # type: ignore[arg-type]
@@ -393,7 +393,7 @@ def run(config_path: str | Path) -> None:
 
     # SIC sanitization: standalone early-return mode
     if config.sic is not None:
-        _log(f"Running SIC sanitization (mode={config.sic.mode})")
+        _log(f"Running SIC sanitization (mode={config.sic.mode})", verbose=v)
         direction_vec = (
             direction_result.direction if direction_result is not None
             else None
@@ -423,12 +423,12 @@ def run(config_path: str | Path) -> None:
         report_path.write_text(
             json.dumps(_sic_to_dict(sic_result), indent=2),
         )
-        _log(f"Done — SIC report written to {report_path}")
+        _log(f"Done — SIC report written to {report_path}", verbose=v)
         return
 
     # Optimization mode: search over cut parameters, write report, return early
     if config.optimize is not None and direction_result is not None:
-        _log(f"Running optimization ({config.optimize.n_trials} trials)")
+        _log(f"Running optimization ({config.optimize.n_trials} trials)", verbose=v)
         eval_prompts_opt: list[str] = []
         if config.eval.prompts_path is not None:
             eval_prompts_opt = load_prompts(config.eval.prompts_path)
@@ -445,12 +445,12 @@ def run(config_path: str | Path) -> None:
         report_path.write_text(
             json.dumps(_optimize_to_dict(opt_result), indent=2),
         )
-        _log(f"Done — optimize report written to {report_path}")
+        _log(f"Done — optimize report written to {report_path}", verbose=v)
         return
 
     # Soft prompt attack: optimize a learnable prefix, write report, return
     if config.softprompt is not None:
-        _log(f"Running soft prompt attack (mode={config.softprompt.mode})")
+        _log(f"Running soft prompt attack (mode={config.softprompt.mode})", verbose=v)
         direction_vec = (
             direction_result.direction if direction_result is not None else None
         )
@@ -528,7 +528,7 @@ def run(config_path: str | Path) -> None:
         report_path.write_text(
             json.dumps(_softprompt_to_dict(sp_result), indent=2),
         )
-        _log(f"Done — softprompt report written to {report_path}")
+        _log(f"Done — softprompt report written to {report_path}", verbose=v)
         return
 
     # Resolve layer types from whichever result is available
@@ -614,7 +614,7 @@ def run(config_path: str | Path) -> None:
     surface_before: SurfaceResult | None = None
     surface_prompts: list[SurfacePrompt] | None = None
     if config.surface is not None and surface_direction is not None:
-        _log("Mapping refusal surface (before cut)")
+        _log("Mapping refusal surface (before cut)", verbose=v)
         surface_prompts = load_surface_prompts(
             default_surface_path()
             if config.surface.prompts_path == "default"
@@ -633,7 +633,7 @@ def run(config_path: str | Path) -> None:
         )
 
     # Apply the appropriate cut
-    _log(f"Cutting {len(target_layers)} layers (alpha={config.cut.alpha})")
+    _log(f"Cutting {len(target_layers)} layers (alpha={config.cut.alpha})", verbose=v)
     lw = config.cut.layer_weights
     if config.measure.mode == "subspace":
         assert subspace_result is not None
@@ -688,7 +688,7 @@ def run(config_path: str | Path) -> None:
         )
 
     # Export as a complete loadable model directory
-    _log(f"Exporting modified model to {config.output_dir}")
+    _log(f"Exporting modified model to {config.output_dir}", verbose=v)
     export_model(config.model_path, modified_weights, config.output_dir)
 
     # Load modified model if needed for surface-after or eval
@@ -704,7 +704,7 @@ def run(config_path: str | Path) -> None:
 
     # "After" surface map + comparison
     if surface_before is not None:
-        _log("Mapping refusal surface (after cut)")
+        _log("Mapping refusal surface (after cut)", verbose=v)
         assert modified_model is not None
         assert surface_prompts is not None
         assert surface_direction is not None
@@ -728,7 +728,7 @@ def run(config_path: str | Path) -> None:
 
     # Evaluate if eval prompts are provided
     if config.eval.prompts_path is not None and modified_model is not None:
-        _log("Evaluating modified model")
+        _log("Evaluating modified model", verbose=v)
         eval_prompts = load_prompts(config.eval.prompts_path)
 
         result = evaluate(
@@ -748,4 +748,4 @@ def run(config_path: str | Path) -> None:
         }
         report_path.write_text(json.dumps(report, indent=2))
 
-    _log(f"Done — output written to {config.output_dir}")
+    _log(f"Done — output written to {config.output_dir}", verbose=v)
