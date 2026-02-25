@@ -85,6 +85,19 @@ Output:   output
 No issues found.
 ```
 
+## Built-in manual
+
+For onboarding or quick lookup, use the built-in manual:
+
+```bash
+uv run vauban man
+uv run vauban man quickstart
+uv run vauban man cut
+```
+
+It is generated at runtime from typed config dataclasses and parser constraints,
+so key types/defaults stay aligned with the implementation.
+
 ## Add evaluation
 
 Extend your TOML to measure how much the surgery helped (and what it cost):
@@ -220,9 +233,12 @@ These activate specialized pipelines. If multiple are present, only the first on
 
 | Priority | Section | What it does | Output |
 |----------|---------|--------------|--------|
-| 1 | `[sic]` | Iterative input sanitization defense | `sic_report.json` |
-| 2 | `[optimize]` | Optuna hyperparameter search over cut params | `optimize_report.json` |
-| 3 | `[softprompt]` | Adversarial soft prompt / suffix attack | `softprompt_report.json` |
+| 1 | `[depth]` | Deep-thinking token analysis | `depth_report.json` |
+| 2 | `[probe]` | Per-layer projection inspection | `probe_report.json` |
+| 3 | `[steer]` | Runtime steered generation | `steer_report.json` |
+| 4 | `[sic]` | Iterative input sanitization defense | `sic_report.json` |
+| 5 | `[optimize]` | Optuna hyperparameter search over cut params | `optimize_report.json` |
+| 6 | `[softprompt]` | Adversarial soft prompt / suffix attack | `softprompt_report.json` |
 
 > **Warning:** If you include more than one early-return section, `--validate` will warn you. The extra sections are silently ignored at runtime.
 

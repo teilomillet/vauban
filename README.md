@@ -56,6 +56,17 @@ uv run vauban --validate run.toml
 
 Checks types, ranges, file paths, and mode conflicts — without loading any model.
 
+**Need help first?** Use the built-in manual:
+
+```bash
+uv run vauban man
+uv run vauban man quickstart
+uv run vauban man softprompt
+```
+
+The manual is generated from typed config dataclasses plus parser constraints,
+so defaults and field types stay in sync with code.
+
 **3. Run:**
 
 ```bash
@@ -87,11 +98,14 @@ The TOML sections you include determine what vauban does. The default is measure
 | `[surface]` | Map the refusal landscape before and after | `surface_report.json` |
 | `[eval]` | Refusal rate, perplexity, KL divergence | `eval_report.json` |
 | `[detect]` | Check if a model has been hardened against abliteration | `detect_report.json` |
+| `[depth]` | Deep-thinking token analysis | `depth_report.json` |
+| `[probe]` | Per-layer projection inspection | `probe_report.json` |
+| `[steer]` | Runtime steered generation | `steer_report.json` |
 | `[optimize]` | Optuna search for best cut parameters | `optimize_report.json` |
 | `[softprompt]` | Optimize learnable prefixes in embedding space (GCG, continuous, EGD) | `softprompt_report.json` |
 | `[sic]` | Iterative input sanitization (SIC) | `sic_report.json` |
 
-`[sic]`, `[optimize]`, and `[softprompt]` are mutually exclusive early-return modes — only the highest-priority one runs. Use `--validate` to catch conflicts.
+Early-return precedence is: `[depth]` > `[probe]` > `[steer]` > `[sic]` > `[optimize]` > `[softprompt]`. Use `--validate` to catch conflicts.
 
 ## Python API
 

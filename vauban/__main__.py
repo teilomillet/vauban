@@ -3,18 +3,23 @@
 Usage:
     vauban <config.toml>
     vauban --validate <config.toml>
+    vauban man [topic]
 """
 
 import sys
 
 USAGE = """\
 Usage: vauban [--validate] <config.toml>
+       vauban man [topic]
 
 Run the full measure -> cut -> evaluate pipeline from a TOML config file.
 All configuration lives in the TOML file.
 
 Options:
   --validate    Check config for errors without loading the model.
+  man           Show built-in manual (topics: quickstart, modes, formats,
+                model, data, measure, cut, eval, surface, detect, optimize,
+                softprompt, sic, depth, probe, steer, output, verbose).
   -h, --help    Show this message and exit.
 """
 
@@ -26,6 +31,33 @@ def main() -> None:
     if not args or args[0] in ("--help", "-h"):
         sys.stdout.write(USAGE)
         raise SystemExit(0 if args else 1)
+
+    if args[0] == "--man":
+        sys.stderr.write(
+            "Error: '--man' is no longer supported. "
+            "Use 'vauban man [topic]'.\n\n",
+        )
+        sys.stderr.write(USAGE)
+        raise SystemExit(1)
+
+    if args[0] == "man":
+        topic: str | None = None
+        if len(args) > 2:
+            sys.stderr.write(
+                f"Error: expected at most one manual topic, got {len(args) - 1}\n\n",
+            )
+            sys.stderr.write(USAGE)
+            raise SystemExit(1)
+        if len(args) == 2:
+            topic = args[1]
+        from vauban.manual import render_manual
+
+        try:
+            sys.stdout.write(render_manual(topic))
+        except ValueError as exc:
+            sys.stderr.write(f"Error: {exc}\n")
+            raise SystemExit(1) from exc
+        raise SystemExit(0)
 
     validate_mode = False
     if args[0] == "--validate":
