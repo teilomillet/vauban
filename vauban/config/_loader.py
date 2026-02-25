@@ -2,21 +2,16 @@
 
 import tomllib
 from pathlib import Path
+from typing import cast
 
-from vauban.config._parse_cut import _parse_cut
-from vauban.config._parse_depth import _parse_depth
-from vauban.config._parse_detect import _parse_detect
-from vauban.config._parse_eval import _parse_eval
-from vauban.config._parse_measure import _parse_measure
-from vauban.config._parse_optimize import _parse_optimize
-from vauban.config._parse_probe import _parse_probe
-from vauban.config._parse_sic import _parse_sic
-from vauban.config._parse_softprompt import _parse_softprompt
-from vauban.config._parse_steer import _parse_steer
-from vauban.config._parse_surface import _parse_surface
+from vauban.config._registry import (
+    ConfigParseContext,
+    parse_registered_section,
+    parse_registered_sections,
+)
 from vauban.config._types import TomlDict
 from vauban.measure import default_prompt_paths
-from vauban.types import DatasetRef, PipelineConfig
+from vauban.types import DatasetRef, DepthConfig, PipelineConfig
 
 
 def load_config(path: str | Path) -> PipelineConfig:
@@ -48,28 +43,29 @@ def load_config(path: str | Path) -> PipelineConfig:
         raise TypeError(msg)
     model_path: str = model_path_raw
 
-    depth_config = _parse_depth(raw)
+    parse_context = ConfigParseContext(base_dir=base_dir, raw=raw)
+    depth_config = cast(
+        "DepthConfig | None",
+        parse_registered_section(parse_context, "depth"),
+    )
     harmful_path, harmless_path = _resolve_data_paths(
         base_dir, raw, depth_only=depth_config is not None,
     )
 
-    cut_raw = raw.get("cut")
-    cut_config = _parse_cut(cut_raw if isinstance(cut_raw, dict) else {})
-
-    measure_raw = raw.get("measure")
-    measure_config = _parse_measure(
-        measure_raw if isinstance(measure_raw, dict) else {},
+    parsed_sections = parse_registered_sections(
+        parse_context,
+        depth_override=depth_config,
     )
-
-    surface_config = _parse_surface(base_dir, raw)
-    detect_config = _parse_detect(raw)
-    optimize_config = _parse_optimize(raw)
-    softprompt_config = _parse_softprompt(raw)
-    sic_config = _parse_sic(raw)
-    probe_config = _parse_probe(raw)
-    steer_config = _parse_steer(raw)
-
-    eval_config = _parse_eval(base_dir, raw)
+    cut_config = parsed_sections.cut
+    measure_config = parsed_sections.measure
+    surface_config = parsed_sections.surface
+    detect_config = parsed_sections.detect
+    optimize_config = parsed_sections.optimize
+    softprompt_config = parsed_sections.softprompt
+    sic_config = parsed_sections.sic
+    probe_config = parsed_sections.probe
+    steer_config = parsed_sections.steer
+    eval_config = parsed_sections.eval
 
     output_section = raw.get("output")
     output_dir_str = "output"
