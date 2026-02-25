@@ -295,7 +295,7 @@ When not specified, vauban uses a built-in list of 17 common refusal phrases.
 
 ## Full config reference
 
-All sections except `[model]` and `[data]` are optional. Omitted sections use defaults. For a complete annotated example with every field, see [`examples/config.toml`](../examples/config.toml).
+All sections except `[model]` and `[data]` are optional. Omitted sections use defaults. For a complete annotated example with every field, see [`examples/config.toml`](https://github.com/teilomillet/vauban/blob/main/examples/config.toml).
 
 ### Top-level
 
@@ -541,5 +541,5 @@ print(f"Perplexity: {eval_result.perplexity_original:.2f} -> "
 
 - [Surface mapping reference](surface.md) — full API, bundled dataset breakdown, reading results
 - [HuggingFace datasets](hf-datasets.md) — use large HF prompt sets instead of bundled defaults
-- [`examples/config.toml`](../examples/config.toml) — annotated config with every field
-- [AGENTS.md](../AGENTS.md) — architecture principles, module design, and foundational references
+- [`examples/config.toml`](https://github.com/teilomillet/vauban/blob/main/examples/config.toml) — annotated config with every field
+- [AGENTS.md](https://github.com/teilomillet/vauban/blob/main/AGENTS.md) — architecture principles, module design, and foundational references

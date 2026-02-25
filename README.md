@@ -209,10 +209,14 @@ The API also exposes `probe()`, `steer()`, `evaluate()`, and `map_surface()` —
 
 ## Documentation
 
+Full docs at [vauban.readthedocs.io](https://vauban.readthedocs.io/).
+
 | Resource | Description |
 |----------|-------------|
-| [`docs/getting-started.md`](docs/getting-started.md) | Guided walkthrough — all pipeline modes, data formats, config fields, Python API |
-| [`docs/surface.md`](docs/surface.md) | Surface mapping reference and dataset format |
+| [Spinning Up in Abliteration](https://vauban.readthedocs.io/class/index/) | Seven-part progressive curriculum — theory to production |
+| [Getting Started](https://vauban.readthedocs.io/getting-started/) | Guided walkthrough — all pipeline modes, data formats, Python API |
+| [Configuration Reference](https://vauban.readthedocs.io/config/) | Every TOML field documented |
+| [Surface Mapping](https://vauban.readthedocs.io/surface/) | Surface mapping reference and dataset format |
 | [`examples/config.toml`](examples/config.toml) | Annotated config with every field documented |
 
 ## License

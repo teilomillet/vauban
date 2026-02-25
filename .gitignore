@@ -33,6 +33,9 @@ htmlcov/
 # Data
 .lancedb/
 
+# Docs
+site/
+
 # dev
 CLAUDE.md
 AGENTS.md
