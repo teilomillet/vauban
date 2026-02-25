@@ -2257,3 +2257,85 @@ class TestLoadConfig:
         config = load_config(toml_file)
         assert config.surface is not None
         assert config.surface.prompts_path == "default_multilingual"
+
+    # -- measure diff mode --
+
+    def test_measure_diff_mode(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[measure]\nmode = "diff"\ndiff_model = "base-model"\n'
+        )
+        config = load_config(toml_file)
+        assert config.measure.mode == "diff"
+        assert config.measure.diff_model == "base-model"
+
+    def test_measure_diff_without_diff_model_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[measure]\nmode = "diff"\n'
+        )
+        with pytest.raises(ValueError, match="diff_model"):
+            load_config(toml_file)
+
+    # -- cast condition_direction --
+
+    def test_cast_condition_direction_parsed(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[cast]\n"
+            'prompts = ["test prompt"]\n'
+            'condition_direction = "hdd.npy"\n'
+        )
+        config = load_config(toml_file)
+        assert config.cast is not None
+        assert config.cast.condition_direction_path == "hdd.npy"
+
+    # -- cast alpha_tiers --
+
+    def test_cast_alpha_tiers_parsed(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[cast]\n"
+            'prompts = ["test prompt"]\n'
+            "[[cast.alpha_tiers]]\n"
+            "threshold = 0.0\n"
+            "alpha = 0.5\n"
+            "[[cast.alpha_tiers]]\n"
+            "threshold = 1.0\n"
+            "alpha = 2.5\n"
+        )
+        config = load_config(toml_file)
+        assert config.cast is not None
+        assert config.cast.alpha_tiers is not None
+        assert len(config.cast.alpha_tiers) == 2
+        assert config.cast.alpha_tiers[0].threshold == 0.0
+        assert config.cast.alpha_tiers[0].alpha == 0.5
+        assert config.cast.alpha_tiers[1].threshold == 1.0
+        assert config.cast.alpha_tiers[1].alpha == 2.5
+
+    def test_cast_alpha_tiers_unsorted_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[cast]\n"
+            'prompts = ["test prompt"]\n'
+            "[[cast.alpha_tiers]]\n"
+            "threshold = 1.0\n"
+            "alpha = 2.5\n"
+            "[[cast.alpha_tiers]]\n"
+            "threshold = 0.0\n"
+            "alpha = 0.5\n"
+        )
+        with pytest.raises(ValueError, match="sorted"):
+            load_config(toml_file)

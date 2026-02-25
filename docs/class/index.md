@@ -4,7 +4,7 @@ A progressive, hands-on curriculum for understanding and applying refusal-direct
 
 ## What This Is
 
-This is a seven-part educational series that takes you from first intuition to production workflows in **abliteration** — the discovery that safety refusal in language models is mediated by a single direction in activation space, and the techniques to measure, remove, and defend against that direction.
+This is an eight-part educational series that takes you from first intuition to production workflows in **abliteration** — the discovery that safety refusal in language models is mediated by a single direction in activation space, and the techniques to measure, remove, and defend against that direction.
 
 Each part follows a **Define → Derive → Code → Extend** progression. Theory is conversational but formally correct; every code example calls the real vauban API (no pseudocode). By the end, you will be able to measure refusal directions, perform weight surgery, map refusal surfaces, run soft prompt attacks, deploy defenses, and optimize production pipelines — all from a single Mac.
 
@@ -39,6 +39,7 @@ You should be comfortable reading and writing Python. You do not need prior expe
 - **Part 5** if you want to go deeper into geometry and detection.
 - **Part 6** if you are interested in attacks and defenses.
 - **Part 7** if you are building production pipelines.
+- **Part 8** if you want weight-diff directions, enhanced CAST, or safety hardening.
 
 ## Table of Contents
 
@@ -51,6 +52,7 @@ You should be comfortable reading and writing Python. You do not need prior expe
 | [Part 5](part5_going_deeper.md) | Going Deeper | Depth analysis, subspaces, DBDI, detection, transfer |
 | [Part 6](part6_attacks_and_defenses.md) | Attacks and Defenses | Soft prompt attacks and SIC defense |
 | [Part 7](part7_production_workflows.md) | Production Workflows | TOML pipelines, optimization, experiment management |
+| [Part 8](part8_model_diffing_and_defense.md) | Model Diffing and Enhanced Defense | Weight-diff directions, dual-direction CAST, LoX amplification |
 
 Supporting materials: [References](references.md) · [Glossary](glossary.md)
 

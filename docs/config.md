@@ -81,16 +81,19 @@ Data sources can be:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `mode` | `"direction"` \| `"subspace"` \| `"dbdi"` | `"direction"` | Extraction mode. |
-| `top_k` | int ≥ 1 | `5` | Number of singular directions for subspace/dbdi modes. |
+| `mode` | `"direction"` \| `"subspace"` \| `"dbdi"` \| `"diff"` | `"direction"` | Extraction mode. |
+| `top_k` | int ≥ 1 | `5` | Number of singular directions for subspace/diff modes. |
 | `clip_quantile` | float in [0.0, 0.5) | `0.0` | Winsorize extreme projections. 0.0 = off. |
 | `transfer_models` | list of strings | `[]` | Model IDs to test direction transfer against. |
+| `diff_model` | string | — | Base model for weight-diff measurement. Required when `mode = "diff"`. |
+
+**Diff mode** extracts safety directions by computing `W_aligned - W_base` for `o_proj` and `down_proj` weights at each layer, then running SVD to find the principal difference directions. This captures distributed safety effects that single-model activation measurement may miss. See [Part 8](class/part8_model_diffing_and_defense.md) for details.
 
 ## `[cut]` — Weight modification
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `alpha` | float ≥ 0 | `1.0` | Cut strength. 0 = no-op, 1 = full removal, >1 = overshoot. |
+| `alpha` | float | `1.0` | Cut strength. 0 = no-op, 1 = full removal, >1 = overshoot. Negative values amplify the direction (LoX-style safety hardening). |
 | `layers` | `"auto"` or list of ints | all layers | Explicit layer list overrides `layer_strategy`. |
 | `norm_preserve` | bool | `false` | Rescale weight rows to preserve L2 norm after projection. |
 | `biprojected` | bool | `false` | Orthogonalize refusal direction against harmless direction first. |
@@ -209,6 +212,12 @@ See [`examples/config.toml`](https://github.com/teilomillet/vauban/blob/main/exa
 | `alpha` | float ≥ 0 | `1.0` | Steering strength when projection exceeds threshold. |
 | `threshold` | float | `0.0` | Trigger steering only if projection > threshold. |
 | `max_tokens` | int ≥ 1 | `100` | Max tokens to generate. |
+| `condition_direction` | path | — | Separate `.npy` direction for gating (detect vs. steer split). |
+| `alpha_tiers` | list of tables | — | Adaptive alpha tiers: `[[cast.alpha_tiers]]` with `threshold` and `alpha` keys. Must be sorted ascending. |
+
+**Dual-direction mode**: When `condition_direction` is set, gating uses that direction (detect) while correction uses the primary direction (steer). This implements the AdaSteer dual-direction pattern.
+
+**Adaptive alpha**: `alpha_tiers` maps projection magnitude to different steering strengths, avoiding the non-monotonic danger zone identified by TRYLOCK. See [Part 8](class/part8_model_diffing_and_defense.md) for examples.
 
 ## `[output]` — Output directory
 

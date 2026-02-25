@@ -6,6 +6,7 @@ from vauban.measure._activations import (
     _forward_collect,
 )
 from vauban.measure._core import measure, measure_dbdi, measure_subspace
+from vauban.measure._diff import measure_diff
 from vauban.measure._direction import (
     _match_suffix,
     find_instruction_boundary,
@@ -30,6 +31,7 @@ __all__ = [
     "load_prompts",
     "measure",
     "measure_dbdi",
+    "measure_diff",
     "measure_subspace",
     "select_target_layers",
     "silhouette_scores",

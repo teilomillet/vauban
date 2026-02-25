@@ -1,7 +1,7 @@
 """Parse the [cast] section of a TOML config."""
 
 from vauban.config._types import TomlDict
-from vauban.types import CastConfig
+from vauban.types import AlphaTier, CastConfig
 
 
 def _parse_cast(raw: TomlDict) -> CastConfig | None:
@@ -87,11 +87,74 @@ def _parse_cast(raw: TomlDict) -> CastConfig | None:
         msg = f"[cast].max_tokens must be >= 1, got {max_tokens_raw}"
         raise ValueError(msg)
 
+    # -- condition_direction (optional) --
+    condition_direction_raw = sec.get("condition_direction")  # type: ignore[arg-type]
+    condition_direction: str | None = None
+    if condition_direction_raw is not None:
+        if not isinstance(condition_direction_raw, str):
+            msg = (
+                f"[cast].condition_direction must be a string,"
+                f" got {type(condition_direction_raw).__name__}"
+            )
+            raise TypeError(msg)
+        condition_direction = condition_direction_raw
+
+    # -- alpha_tiers (optional) --
+    alpha_tiers_raw = sec.get("alpha_tiers")  # type: ignore[arg-type]
+    alpha_tiers: list[AlphaTier] | None = None
+    if alpha_tiers_raw is not None:
+        if not isinstance(alpha_tiers_raw, list):
+            msg = (
+                f"[cast].alpha_tiers must be a list of tables,"
+                f" got {type(alpha_tiers_raw).__name__}"
+            )
+            raise TypeError(msg)
+        alpha_tiers = []
+        for i, tier_raw in enumerate(alpha_tiers_raw):
+            if not isinstance(tier_raw, dict):
+                msg = (
+                    f"[cast].alpha_tiers[{i}] must be a table,"
+                    f" got {type(tier_raw).__name__}"
+                )
+                raise TypeError(msg)
+            t_threshold = tier_raw.get("threshold")
+            t_alpha = tier_raw.get("alpha")
+            if t_threshold is None or t_alpha is None:
+                msg = (
+                    f"[cast].alpha_tiers[{i}] must have 'threshold'"
+                    f" and 'alpha' keys"
+                )
+                raise ValueError(msg)
+            if not isinstance(t_threshold, int | float):
+                msg = (
+                    f"[cast].alpha_tiers[{i}].threshold must be a number,"
+                    f" got {type(t_threshold).__name__}"
+                )
+                raise TypeError(msg)
+            if not isinstance(t_alpha, int | float):
+                msg = (
+                    f"[cast].alpha_tiers[{i}].alpha must be a number,"
+                    f" got {type(t_alpha).__name__}"
+                )
+                raise TypeError(msg)
+            alpha_tiers.append(
+                AlphaTier(threshold=float(t_threshold), alpha=float(t_alpha)),
+            )
+
+        # Validate tiers are sorted by ascending threshold
+        for i in range(1, len(alpha_tiers)):
+            if alpha_tiers[i].threshold < alpha_tiers[i - 1].threshold:
+                msg = (
+                    "[cast].alpha_tiers must be sorted by ascending threshold"
+                )
+                raise ValueError(msg)
+
     return CastConfig(
         prompts=list(prompts_raw),
         layers=layers,
         alpha=float(alpha_raw),
         threshold=float(threshold_raw),
         max_tokens=max_tokens_raw,
+        condition_direction_path=condition_direction,
+        alpha_tiers=alpha_tiers,
     )
-

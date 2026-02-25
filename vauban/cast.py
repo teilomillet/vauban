@@ -3,7 +3,30 @@
 import mlx.core as mx
 import mlx.nn as nn
 
-from vauban.types import CastResult, CausalLM, LayerCache, Tokenizer
+from vauban.types import AlphaTier, CastResult, CausalLM, LayerCache, Tokenizer
+
+
+def _resolve_alpha(
+    projection_value: float,
+    base_alpha: float,
+    alpha_tiers: list[AlphaTier] | None,
+) -> float:
+    """Resolve the effective alpha from tiered thresholds.
+
+    Walks sorted tiers (ascending threshold) and returns the alpha of
+    the highest tier where ``projection_value >= tier.threshold``.
+    Returns ``base_alpha`` if no tiers are configured or no tier matches.
+    """
+    if alpha_tiers is None or len(alpha_tiers) == 0:
+        return base_alpha
+
+    resolved = base_alpha
+    for tier in alpha_tiers:
+        if projection_value >= tier.threshold:
+            resolved = tier.alpha
+        else:
+            break
+    return resolved
 
 
 def cast_generate(
@@ -15,11 +38,22 @@ def cast_generate(
     alpha: float = 1.0,
     threshold: float = 0.0,
     max_tokens: int = 100,
+    condition_direction: mx.array | None = None,
+    alpha_tiers: list[AlphaTier] | None = None,
 ) -> CastResult:
     """Generate text with conditional activation steering.
 
     Steering is applied only when the per-layer projection of the current
-    last-token activation on ``direction`` is greater than ``threshold``.
+    last-token activation on the detection direction is greater than
+    ``threshold``.
+
+    When ``condition_direction`` is provided, it is used for the gating
+    check (detect), while ``direction`` is always used for the actual
+    steering correction (steer). This implements the dual-direction
+    pattern from AdaSteer.
+
+    When ``alpha_tiers`` is provided, the effective alpha is resolved
+    from the projection magnitude via ``_resolve_alpha()``.
     """
     messages = [{"role": "user", "content": prompt}]
     text = tokenizer.apply_chat_template(messages, tokenize=False)
@@ -50,6 +84,8 @@ def cast_generate(
             alpha,
             threshold,
             cache,
+            condition_direction=condition_direction,
+            alpha_tiers=alpha_tiers,
         )
         next_token = mx.argmax(logits[:, -1, :], axis=-1)
         token_id = int(next_token.item())
@@ -94,6 +130,9 @@ def _cast_forward(
     alpha: float,
     threshold: float,
     cache: list[LayerCache],
+    *,
+    condition_direction: mx.array | None = None,
+    alpha_tiers: list[AlphaTier] | None = None,
 ) -> tuple[mx.array, list[float], list[float], int, int]:
     """Run one forward step with conditional steering.
 
@@ -105,6 +144,9 @@ def _cast_forward(
     h = transformer.embed_tokens(token_ids)
     mask = nn.MultiHeadAttention.create_additive_causal_mask(h.shape[1])
     mask = mask.astype(h.dtype)
+
+    # Use condition_direction for gating if provided, else primary direction
+    detect_dir = condition_direction if condition_direction is not None else direction
 
     projections_before: list[float] = []
     projections_after: list[float] = []
@@ -119,14 +161,24 @@ def _cast_forward(
             continue
 
         last_token = h[0, -1, :]
-        projection = mx.sum(last_token * direction)
-        mx.eval(projection)
-        projection_value = float(projection.item())
+
+        # Detect: project onto condition direction for gating
+        detect_projection = mx.sum(last_token * detect_dir)
+        mx.eval(detect_projection)
+        detect_value = float(detect_projection.item())
+
+        # Report the steer-direction projection as "before"
+        steer_projection = mx.sum(last_token * direction)
+        mx.eval(steer_projection)
+        projection_value = float(steer_projection.item())
         projections_before.append(projection_value)
         considered += 1
 
-        if projection_value > threshold:
-            correction = alpha * projection * direction
+        if detect_value > threshold:
+            effective_alpha = _resolve_alpha(
+                detect_value, alpha, alpha_tiers,
+            )
+            correction = effective_alpha * steer_projection * direction
             h_list = [h[0, j, :] for j in range(h.shape[1])]
             h_list[-1] = h_list[-1] - correction
             h = mx.stack(h_list)[None, :, :]
@@ -146,4 +198,3 @@ def _cast_forward(
 
     mx.eval(logits)
     return logits, projections_before, projections_after, interventions, considered
-

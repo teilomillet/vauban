@@ -290,11 +290,11 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
             FieldSpec(
                 key="mode",
                 description="Measurement algorithm.",
-                constraints="one of: direction, subspace, dbdi.",
+                constraints="one of: direction, subspace, dbdi, diff.",
             ),
             FieldSpec(
                 key="top_k",
-                description="Number of directions to keep in subspace workflows.",
+                description="Number of directions to keep in subspace/diff workflows.",
                 constraints="integer.",
             ),
             FieldSpec(
@@ -307,6 +307,15 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 description="HuggingFace model IDs for direction transfer testing.",
                 constraints="list of strings; empty by default.",
             ),
+            FieldSpec(
+                key="diff_model",
+                description="Base model for weight-diff measurement.",
+                constraints="string; required when mode = 'diff'.",
+                notes=(
+                    "The diff direction is extracted by SVD of"
+                    " W_aligned - W_base for o_proj and down_proj.",
+                ),
+            ),
         ),
     ),
     SectionSpec(
@@ -318,6 +327,10 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 key="alpha",
                 description="Global cut strength multiplier.",
                 constraints="number.",
+                notes=(
+                    "Negative values amplify the direction instead of"
+                    " removing it (LoX-style safety hardening).",
+                ),
             ),
             FieldSpec(
                 key="layers",
@@ -903,6 +916,32 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 key="max_tokens",
                 description="Generation cap per prompt.",
                 constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="condition_direction",
+                attr="condition_direction_path",
+                description="Path to a separate direction .npy for gating.",
+                constraints="string path or null.",
+                notes=(
+                    "When set, this direction is used to decide whether to"
+                    " steer (detect), while the primary direction is used"
+                    " for the actual correction (steer). Implements the"
+                    " dual-direction pattern from AdaSteer.",
+                ),
+            ),
+            FieldSpec(
+                key="alpha_tiers",
+                description="Adaptive alpha tiers based on projection magnitude.",
+                constraints=(
+                    "list of tables with 'threshold' and 'alpha' keys;"
+                    " must be sorted by ascending threshold."
+                ),
+                notes=(
+                    "Each tier defines a projection threshold and the alpha"
+                    " to use when projection >= that threshold. The highest"
+                    " matching tier wins. Implements TRYLOCK-style adaptive"
+                    " steering.",
+                ),
             ),
         ),
     ),

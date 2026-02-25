@@ -5,6 +5,7 @@ from vauban.types import (
     DepthDirectionResult,
     DepthResult,
     DetectResult,
+    DiffResult,
     DirectionTransferResult,
     OptimizeResult,
     ProbeResult,
@@ -16,6 +17,19 @@ from vauban.types import (
     TransferEvalResult,
     TrialResult,
 )
+
+
+def _diff_result_to_dict(result: DiffResult) -> dict[str, object]:
+    """Serialize a DiffResult to a JSON-compatible dict (skips mx.array)."""
+    return {
+        "singular_values": result.singular_values,
+        "explained_variance": result.explained_variance,
+        "best_layer": result.best_layer,
+        "d_model": result.d_model,
+        "source_model": result.source_model,
+        "target_model": result.target_model,
+        "per_layer_singular_values": result.per_layer_singular_values,
+    }
 
 
 def _cast_to_dict(result: CastResult) -> dict[str, object]:

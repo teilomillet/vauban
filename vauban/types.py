@@ -91,6 +91,43 @@ class DirectionResult:
 
 
 @dataclass(frozen=True, slots=True)
+class AlphaTier:
+    """A single tier for adaptive alpha in CAST steering.
+
+    When the projection magnitude is at or below ``threshold``, the
+    corresponding ``alpha`` value is used.
+    """
+
+    threshold: float
+    alpha: float
+
+
+@dataclass(frozen=True, slots=True)
+class DiffResult:
+    """Output of weight-diff measurement between base and aligned models."""
+
+    basis: mx.array  # shape (k, d_model)
+    singular_values: list[float]
+    explained_variance: list[float]
+    best_layer: int
+    d_model: int
+    source_model: str
+    target_model: str
+    per_layer_bases: list[mx.array]
+    per_layer_singular_values: list[list[float]]
+
+    def best_direction(self) -> "DirectionResult":
+        """Extract the rank-1 direction for downstream compatibility."""
+        return DirectionResult(
+            direction=self.basis[0],
+            layer_index=self.best_layer,
+            cosine_scores=[],
+            d_model=self.d_model,
+            model_path=self.target_model,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class SubspaceResult:
     """Output of the subspace measure step: top-k orthonormal directions."""
 
@@ -162,10 +199,11 @@ class DatasetRef:
 class MeasureConfig:
     """Configuration for the measure step."""
 
-    mode: str = "direction"  # "direction", "subspace", or "dbdi"
+    mode: str = "direction"  # "direction", "subspace", "dbdi", or "diff"
     top_k: int = 5
     clip_quantile: float = 0.0  # winsorization quantile (0.0 = disabled)
     transfer_models: list[str] = field(default_factory=list)
+    diff_model: str | None = None  # base model for diff mode
 
 
 @dataclass(frozen=True, slots=True)
@@ -643,6 +681,8 @@ class CastConfig:
     alpha: float = 1.0
     threshold: float = 0.0  # steer only when projection > threshold
     max_tokens: int = 100
+    condition_direction_path: str | None = None  # separate detect direction
+    alpha_tiers: list[AlphaTier] | None = None  # adaptive alpha tiers
 
 
 @dataclass(frozen=True, slots=True)

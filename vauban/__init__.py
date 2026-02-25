@@ -57,6 +57,7 @@ from vauban.measure import (
     load_prompts,
     measure,
     measure_dbdi,
+    measure_diff,
     measure_subspace,
     select_target_layers,
     silhouette_scores,
@@ -87,6 +88,7 @@ from vauban.surface import (
     scan,
 )
 from vauban.types import (
+    AlphaTier,
     CastConfig,
     CastResult,
     CutConfig,
@@ -97,6 +99,7 @@ from vauban.types import (
     DepthResult,
     DetectConfig,
     DetectResult,
+    DiffResult,
     DirectionResult,
     DirectionTransferResult,
     EvalConfig,
@@ -130,6 +133,7 @@ from vauban.types import (
 __version__ = "0.2.5"
 
 __all__ = [
+    "AlphaTier",
     "CastConfig",
     "CastResult",
     "CutConfig",
@@ -140,6 +144,7 @@ __all__ = [
     "DepthResult",
     "DetectConfig",
     "DetectResult",
+    "DiffResult",
     "DirectionGeometryResult",
     "DirectionPair",
     "DirectionResult",
@@ -204,6 +209,7 @@ __all__ = [
     "map_surface",
     "measure",
     "measure_dbdi",
+    "measure_diff",
     "measure_subspace",
     "multi_probe",
     "optimize",
@@ -573,6 +579,9 @@ def _run_cast_mode(context: _EarlyModeContext) -> None:
     """Run [cast] early-return mode and write its report."""
     import time
 
+    import mlx.core as mx
+    import numpy as np
+
     config = context.config
     assert config.cast is not None
     assert context.direction_result is not None
@@ -585,6 +594,28 @@ def _run_cast_mode(context: _EarlyModeContext) -> None:
         verbose=v,
         elapsed=time.monotonic() - context.t0,
     )
+
+    # Load condition direction if configured
+    condition_direction: mx.array | None = None
+    if config.cast.condition_direction_path is not None:
+        cond_path = Path(config.cast.condition_direction_path)
+        if not cond_path.is_absolute():
+            cond_path = config.output_dir.parent / cond_path
+        _log(
+            f"Loading condition direction from {cond_path}",
+            verbose=v,
+            elapsed=time.monotonic() - context.t0,
+        )
+        cond_np = np.load(str(cond_path))
+        condition_direction = mx.array(cond_np)
+        if condition_direction.shape[-1] != context.direction_result.d_model:
+            msg = (
+                f"condition_direction d_model mismatch:"
+                f" {condition_direction.shape[-1]}"
+                f" != {context.direction_result.d_model}"
+            )
+            raise ValueError(msg)
+
     cast_layers = config.cast.layers or list(range(len(model.model.layers)))
     cast_results = [
         cast_generate(
@@ -596,6 +627,8 @@ def _run_cast_mode(context: _EarlyModeContext) -> None:
             config.cast.alpha,
             config.cast.threshold,
             config.cast.max_tokens,
+            condition_direction=condition_direction,
+            alpha_tiers=config.cast.alpha_tiers,
         )
         for prompt in config.cast.prompts
     ]
@@ -954,6 +987,28 @@ def run(config_path: str | Path) -> None:
             model, tokenizer, harmful, harmless,  # type: ignore[arg-type]
             config.measure.top_k, clip_q,
         )
+    elif config.measure.mode == "diff":
+        assert config.measure.diff_model is not None
+        _log(
+            f"Loading base model for diff: {config.measure.diff_model}",
+            verbose=v, elapsed=time.monotonic() - t0,
+        )
+        base_model, _ = mlx_lm.load(config.measure.diff_model)  # type: ignore[assignment]
+        if is_quantized(base_model):
+            _log(
+                "Dequantizing base model weights",
+                verbose=v, elapsed=time.monotonic() - t0,
+            )
+            dequantize_model(base_model)
+        diff_result = measure_diff(
+            base_model,
+            model,
+            top_k=config.measure.top_k,
+            source_model_id=config.measure.diff_model,
+            target_model_id=config.model_path,
+        )
+        direction_result = diff_result.best_direction()
+        cosine_scores = []
     elif config.measure.mode == "dbdi":
         dbdi_result = measure_dbdi(
             model, tokenizer, harmful, harmless, clip_q,  # type: ignore[arg-type]

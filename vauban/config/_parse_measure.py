@@ -10,10 +10,10 @@ def _parse_measure(raw: TomlDict) -> MeasureConfig:
     if not isinstance(mode_raw, str):
         msg = f"[measure].mode must be a string, got {type(mode_raw).__name__}"
         raise TypeError(msg)
-    if mode_raw not in ("direction", "subspace", "dbdi"):
+    if mode_raw not in ("direction", "subspace", "dbdi", "diff"):
         msg = (
-            f"[measure].mode must be 'direction', 'subspace', or 'dbdi',"
-            f" got {mode_raw!r}"
+            f"[measure].mode must be 'direction', 'subspace', 'dbdi',"
+            f" or 'diff', got {mode_raw!r}"
         )
         raise ValueError(msg)
 
@@ -57,9 +57,26 @@ def _parse_measure(raw: TomlDict) -> MeasureConfig:
             raise TypeError(msg)
         transfer_models.append(item)
 
+    # -- diff_model (required when mode="diff") --
+    diff_model_raw = raw.get("diff_model")
+    diff_model: str | None = None
+    if diff_model_raw is not None:
+        if not isinstance(diff_model_raw, str):
+            msg = (
+                f"[measure].diff_model must be a string,"
+                f" got {type(diff_model_raw).__name__}"
+            )
+            raise TypeError(msg)
+        diff_model = diff_model_raw
+
+    if mode_raw == "diff" and diff_model is None:
+        msg = "[measure].diff_model is required when mode = 'diff'"
+        raise ValueError(msg)
+
     return MeasureConfig(
         mode=mode_raw,
         top_k=int(top_k_raw),
         clip_quantile=clip_quantile,
         transfer_models=transfer_models,
+        diff_model=diff_model,
     )

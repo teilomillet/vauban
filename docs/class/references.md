@@ -103,6 +103,30 @@ A consolidated bibliography of all papers, tooling repositories, and blog posts 
 
 ---
 
+## Model Diffing and Weight Arithmetic
+
+**Ilharco, G., Ribeiro, M. T., Wortsman, M., Gururangan, S., Schmidt, L., Hajishirzi, H., Farhadi, A.** (2023). "Editing Models with Task Arithmetic." *ICLR 2023*. [arxiv.org/abs/2212.04089](https://arxiv.org/abs/2212.04089)
+— Introduces task vectors: the weight difference between a fine-tuned and pre-trained model encodes the task. Task vectors can be added, negated, and combined arithmetically. Foundation for weight-diff direction extraction. Cited in Part 8.
+
+**Perin, G., et al.** (2025). "LoX: Understanding and Fixing Broken LLM Safety via Logit Extraction." *COLM 2025*.
+— Demonstrates that SVD of weight diffs between base and aligned models extracts safety directions more completely than activation-based measurement. Negative application (amplification) hardens models against abliteration. Cited in Part 8.
+
+**Lermen, S., et al.** (2025). "Weight Arithmetic Steering." *arXiv:2511.05408*. [arxiv.org/abs/2511.05408](https://arxiv.org/abs/2511.05408)
+— Combines SVD of weight diffs across layers with arithmetic steering. Shows that weight-space directions capture distributed safety effects invisible to token-level activation probes. Cited in Part 8.
+
+## Adaptive and Dual-Direction Steering
+
+**AdaSteer.** (2025). *arXiv:2504.09466*. [arxiv.org/abs/2504.09466](https://arxiv.org/abs/2504.09466)
+— Proposes separate detect and steer directions for conditional activation steering. The detect direction gates whether to intervene; the steer direction applies the correction. Cited in Part 8.
+
+**TRYLOCK.** (2025). *arXiv:2601.03300*. [arxiv.org/abs/2601.03300](https://arxiv.org/abs/2601.03300)
+— Identifies the non-monotonic danger zone in fixed-alpha steering: optimal alpha depends on projection magnitude. Proposes tiered alpha schedules. Cited in Part 8.
+
+**AlphaSteer.** (2025). *arXiv:2506.07022*. [arxiv.org/abs/2506.07022](https://arxiv.org/abs/2506.07022)
+— Adaptive alpha selection for activation steering based on per-token signal strength. Complements TRYLOCK's tier-based approach. Cited in Part 8.
+
+---
+
 ## Depth Analysis
 
 **Chen, Y., et al.** (2026). "Deep-Thinking in Large Language Models." *arXiv:2602.13517*. [arxiv.org/abs/2602.13517](https://arxiv.org/abs/2602.13517)

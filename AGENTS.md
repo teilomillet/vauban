@@ -56,6 +56,16 @@ This project builds upon abliteration research — the discovery that refusal in
 - **UJA** — "Untargeted Jailbreak Attack" — First gradient-based untargeted jailbreak: maximizes probability of any unsafe response instead of a fixed target. 80%+ ASR in 100 iterations. — arxiv.org/abs/2510.02999
 - **Geiping et al. (2024)** — "Coercing LLMs to do and reveal (almost) anything" — Systematizes adversarial objectives beyond jailbreaking: extraction, misdirection, DoS, control, and collision attacks. All solved with GCG under different loss formulations. Introduces token constraint sets (ASCII, non-Latin, emoji) and KL-divergence collision loss. — arxiv.org/abs/2402.14020
 
+### Model Diffing and Weight Arithmetic
+- **Task Arithmetic** — Ilharco et al. (ICLR 2023) — "Editing Models with Task Arithmetic" — Weight diffs between fine-tuned and base models encode tasks; can be added/negated/combined. Foundation for weight-diff direction extraction. — arxiv.org/abs/2212.04089
+- **LoX** — Perin et al. (COLM 2025) — SVD of weight diffs extracts safety directions more completely than activation-based measurement. Negative application amplifies safety (hardening).
+- **Weight Arithmetic Steering** — Lermen et al. (2025) — Combines SVD of weight diffs across layers with arithmetic steering. Captures distributed safety effects. — arxiv.org/abs/2511.05408
+
+### Adaptive and Dual-Direction Steering
+- **AdaSteer** — Separate detect and steer directions for conditional activation steering. — arxiv.org/abs/2504.09466
+- **TRYLOCK** — Identifies non-monotonic danger zone in fixed-alpha steering; proposes tiered alpha schedules. — arxiv.org/abs/2601.03300
+- **AlphaSteer** — Adaptive alpha selection based on per-token signal strength. — arxiv.org/abs/2506.07022
+
 ### Latent Space Geometry
 - **Latent Fusion Jailbreak** — "Blending Harmful and Harmless Representations to Elicit Unsafe LLM Outputs" — Fuses hidden states of harmful + benign queries in continuous latent space. The prompt-side dual of abliteration. — arxiv.org/abs/2508.10029
 - **Latent Space Discontinuities** — "Exploiting Latent Space Discontinuities for Building Universal LLM Jailbreaks" — Identifies poorly-conditioned latent regions associated with low-frequency training data. Geometric complement to refusal-direction analysis. — arxiv.org/abs/2511.00346
@@ -111,10 +121,10 @@ The abliteration workflow is thin Python glue over mlx-lm. Four modules, each in
 ### 1. Measure (extract a behavioral direction)
 - **Input:** model (HuggingFace ID or local path), two prompt sets (`harmful.jsonl`, `harmless.jsonl`)
 - **Output:** direction vector (`.npy`) + metadata
-- Load model with mlx-lm, run each prompt, capture residual stream at every layer after last prompt token
-- Direction = difference-in-means between harmful and harmless activations
-- Select best layer (highest cosine separation or silhouette score)
-- ~150 lines
+- Modes: `direction` (mean-diff), `subspace` (SVD top-k), `dbdi` (HDD + RED), `diff` (weight-diff SVD)
+- `diff` mode compares base vs. aligned model weights via SVD of `W_aligned - W_base`
+- Select best layer (highest cosine separation, silhouette score, or explained variance)
+- ~200 lines
 
 ### 2. Cut / Inject (modify weights)
 - **Input:** model weights (safetensors), direction vector (`.npy`), target layers, alpha
@@ -129,11 +139,12 @@ The abliteration workflow is thin Python glue over mlx-lm. Four modules, each in
 - Run eval prompts through both models, count refusals, compute perplexity on harmless set, token-level KL divergence
 - ~100 lines
 
-### 4. Probe / Steer (runtime inspection)
+### 4. Probe / Steer / CAST (runtime inspection and defense)
 - **Input:** model, prompt, direction(s)
 - **Output:** per-layer projection magnitudes, steered generation
 - The "microscope" — watch activations in real time, steer generation at specific layers during inference
-- ~200 lines
+- CAST supports dual-direction (separate detect vs. steer) and adaptive alpha tiers
+- ~250 lines
 
 **Total scope:** ~550 lines of Python. The port from PyTorch/CUDA to MLX is straightforward — the community just hasn't done it yet.
 
