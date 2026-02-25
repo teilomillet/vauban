@@ -9,12 +9,14 @@ Named after [Sébastien Le Prestre de Vauban](https://en.wikipedia.org/wiki/Vaub
 Refusal in language models is mediated by a single direction in activation space ([Arditi et al., 2024](https://arxiv.org/abs/2406.11717)). Vauban operates directly on this geometry:
 
 - **Measure** a behavioral direction from the model's activations
-- **Cut** it from the weights to remove refusal (abliteration)
-- **Probe** per-layer projections to understand what the model is doing
+- **Cut** it from the weights (abliteration)
+- **Probe** per-layer projections to see what the model encodes
 - **Steer** generation at runtime by modifying activations mid-forward-pass
 - **Map** the full refusal surface across diverse prompts
-- **Attack** with adversarial soft prompts (GCG, continuous, EGD)
-- **Defend** with iterative input sanitization (SIC) and hardening detection
+- **Optimize** cut parameters automatically (Optuna search)
+- **Soft-prompt** — optimize learnable prefixes in embedding space (GCG, continuous, EGD)
+- **Sanitize** inputs iteratively before they reach the model (SIC)
+- **Detect** whether a model has been hardened against abliteration
 
 Everything runs natively on Apple Silicon via [MLX](https://github.com/ml-explore/mlx) — no CUDA, no Docker, no hooks. All configuration lives in TOML files.
 
@@ -79,15 +81,15 @@ Add `[eval]` for post-cut evaluation (refusal rate, perplexity, KL divergence) a
 
 The TOML sections you include determine what vauban does. The default is measure-cut-export, but specialized sections activate different pipelines:
 
-| Section | Side | What it does | Output |
-|---------|------|-------------|--------|
-| *(default)* | Offense | Measure refusal direction, cut it, export modified model | model directory |
-| `[surface]` | Recon | Map the refusal landscape before and after | `surface_report.json` |
-| `[eval]` | Recon | Refusal rate, perplexity, KL divergence | `eval_report.json` |
-| `[detect]` | Defense | Check if a model has been hardened against abliteration | `detect_report.json` |
-| `[optimize]` | Offense | Optuna search for best cut parameters | `optimize_report.json` |
-| `[softprompt]` | Offense | Adversarial soft prompt attack (GCG, continuous, EGD) | `softprompt_report.json` |
-| `[sic]` | Defense | Iterative input sanitization against adversarial prompts | `sic_report.json` |
+| Section | What it does | Output |
+|---------|-------------|--------|
+| *(default)* | Measure refusal direction, cut it, export modified model | model directory |
+| `[surface]` | Map the refusal landscape before and after | `surface_report.json` |
+| `[eval]` | Refusal rate, perplexity, KL divergence | `eval_report.json` |
+| `[detect]` | Check if a model has been hardened against abliteration | `detect_report.json` |
+| `[optimize]` | Optuna search for best cut parameters | `optimize_report.json` |
+| `[softprompt]` | Optimize learnable prefixes in embedding space (GCG, continuous, EGD) | `softprompt_report.json` |
+| `[sic]` | Iterative input sanitization (SIC) | `sic_report.json` |
 
 `[sic]`, `[optimize]`, and `[softprompt]` are mutually exclusive early-return modes — only the highest-priority one runs. Use `--validate` to catch conflicts.
 
