@@ -295,6 +295,11 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 description="Winsorization quantile for activation clipping.",
                 constraints="number in [0.0, 0.5).",
             ),
+            FieldSpec(
+                key="transfer_models",
+                description="HuggingFace model IDs for direction transfer testing.",
+                constraints="list of strings; empty by default.",
+            ),
         ),
     ),
     SectionSpec(
@@ -390,6 +395,11 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 attr="refusal_phrases_path",
                 description="Custom refusal phrase file.",
                 constraints="string path; one phrase per line.",
+            ),
+            FieldSpec(
+                key="refusal_mode",
+                description="Refusal detection method.",
+                constraints='one of: "phrases", "judge".',
             ),
         ),
     ),
