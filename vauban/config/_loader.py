@@ -8,8 +8,10 @@ from vauban.config._parse_detect import _parse_detect
 from vauban.config._parse_eval import _parse_eval
 from vauban.config._parse_measure import _parse_measure
 from vauban.config._parse_optimize import _parse_optimize
+from vauban.config._parse_probe import _parse_probe
 from vauban.config._parse_sic import _parse_sic
 from vauban.config._parse_softprompt import _parse_softprompt
+from vauban.config._parse_steer import _parse_steer
 from vauban.config._parse_surface import _parse_surface
 from vauban.config._types import TomlDict
 from vauban.measure import default_prompt_paths
@@ -60,6 +62,8 @@ def load_config(path: str | Path) -> PipelineConfig:
     optimize_config = _parse_optimize(raw)
     softprompt_config = _parse_softprompt(raw)
     sic_config = _parse_sic(raw)
+    probe_config = _parse_probe(raw)
+    steer_config = _parse_steer(raw)
 
     eval_config = _parse_eval(base_dir, raw)
 
@@ -104,6 +108,8 @@ def load_config(path: str | Path) -> PipelineConfig:
         optimize=optimize_config,
         softprompt=softprompt_config,
         sic=sic_config,
+        probe=probe_config,
+        steer=steer_config,
         eval=eval_config,
         output_dir=output_dir,
         borderline_path=borderline_path,

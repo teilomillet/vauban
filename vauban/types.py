@@ -381,6 +381,23 @@ class SICResult:
 
 
 @dataclass(frozen=True, slots=True)
+class ProbeConfig:
+    """Configuration for the probe inspection step."""
+
+    prompts: list[str]
+
+
+@dataclass(frozen=True, slots=True)
+class SteerConfig:
+    """Configuration for the steer generation step."""
+
+    prompts: list[str]
+    layers: list[int] | None = None  # None → all layers
+    alpha: float = 1.0
+    max_tokens: int = 100
+
+
+@dataclass(frozen=True, slots=True)
 class DetectConfig:
     """Configuration for the defense detection step."""
 
@@ -469,6 +486,8 @@ class PipelineConfig:
     optimize: OptimizeConfig | None = None
     softprompt: SoftPromptConfig | None = None
     sic: SICConfig | None = None
+    probe: ProbeConfig | None = None
+    steer: SteerConfig | None = None
     eval: EvalConfig = field(default_factory=EvalConfig)
     output_dir: Path = field(default_factory=lambda: Path("output"))
     borderline_path: Path | DatasetRef | None = None

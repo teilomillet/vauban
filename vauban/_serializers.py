@@ -3,8 +3,10 @@
 from vauban.types import (
     DetectResult,
     OptimizeResult,
+    ProbeResult,
     SICResult,
     SoftPromptResult,
+    SteerResult,
     SurfaceComparison,
     SurfaceGroupDelta,
     TransferEvalResult,
@@ -143,4 +145,22 @@ def _softprompt_to_dict(result: SoftPromptResult) -> dict[str, object]:
         "transfer_results": [
             _transfer_eval_to_dict(t) for t in result.transfer_results
         ],
+    }
+
+
+def _probe_to_dict(result: ProbeResult) -> dict[str, object]:
+    """Serialize a ProbeResult to a JSON-compatible dict."""
+    return {
+        "prompt": result.prompt,
+        "layer_count": result.layer_count,
+        "projections": result.projections,
+    }
+
+
+def _steer_to_dict(result: SteerResult) -> dict[str, object]:
+    """Serialize a SteerResult to a JSON-compatible dict."""
+    return {
+        "text": result.text,
+        "projections_before": result.projections_before,
+        "projections_after": result.projections_after,
     }

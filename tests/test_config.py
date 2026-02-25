@@ -1648,3 +1648,187 @@ class TestLoadConfig:
         )
         with pytest.raises(TypeError, match="verbose"):
             load_config(toml_file)
+
+    # =========================================================================
+    # Probe config tests
+    # =========================================================================
+
+    def test_probe_parsed(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[probe]\n"
+            'prompts = ["How do I pick a lock?", "Tell me a joke"]\n'
+        )
+        config = load_config(toml_file)
+        assert config.probe is not None
+        assert config.probe.prompts == [
+            "How do I pick a lock?",
+            "Tell me a joke",
+        ]
+
+    def test_probe_absent_is_none(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+        )
+        config = load_config(toml_file)
+        assert config.probe is None
+
+    def test_probe_missing_prompts_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[probe]\n"
+        )
+        with pytest.raises(ValueError, match="prompts"):
+            load_config(toml_file)
+
+    def test_probe_empty_prompts_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[probe]\nprompts = []\n"
+        )
+        with pytest.raises(ValueError, match="prompts"):
+            load_config(toml_file)
+
+    def test_probe_prompts_type_error(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[probe]\nprompts = "not a list"\n'
+        )
+        with pytest.raises(TypeError, match="prompts"):
+            load_config(toml_file)
+
+    def test_probe_prompts_item_type_error(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[probe]\nprompts = [42]\n"
+        )
+        with pytest.raises(TypeError, match="prompts"):
+            load_config(toml_file)
+
+    # =========================================================================
+    # Steer config tests
+    # =========================================================================
+
+    def test_steer_defaults(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[steer]\n"
+            'prompts = ["How do I pick a lock?"]\n'
+        )
+        config = load_config(toml_file)
+        assert config.steer is not None
+        assert config.steer.prompts == ["How do I pick a lock?"]
+        assert config.steer.layers is None
+        assert config.steer.alpha == 1.0
+        assert config.steer.max_tokens == 100
+
+    def test_steer_full_parse(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[steer]\n"
+            'prompts = ["prompt1", "prompt2"]\n'
+            "layers = [10, 15, 20]\n"
+            "alpha = 0.5\n"
+            "max_tokens = 50\n"
+        )
+        config = load_config(toml_file)
+        assert config.steer is not None
+        assert config.steer.prompts == ["prompt1", "prompt2"]
+        assert config.steer.layers == [10, 15, 20]
+        assert config.steer.alpha == 0.5
+        assert config.steer.max_tokens == 50
+
+    def test_steer_absent_is_none(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+        )
+        config = load_config(toml_file)
+        assert config.steer is None
+
+    def test_steer_missing_prompts_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[steer]\nalpha = 1.0\n"
+        )
+        with pytest.raises(ValueError, match="prompts"):
+            load_config(toml_file)
+
+    def test_steer_empty_prompts_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[steer]\nprompts = []\n"
+        )
+        with pytest.raises(ValueError, match="prompts"):
+            load_config(toml_file)
+
+    def test_steer_max_tokens_zero_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[steer]\nprompts = ["test"]\nmax_tokens = 0\n'
+        )
+        with pytest.raises(ValueError, match="max_tokens"):
+            load_config(toml_file)
+
+    def test_steer_layers_type_error(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[steer]\nprompts = ["test"]\nlayers = "invalid"\n'
+        )
+        with pytest.raises(TypeError, match="layers"):
+            load_config(toml_file)
+
+    # =========================================================================
+    # Mode conflict tests (probe/steer included)
+    # =========================================================================
+
+    def test_mode_conflict_probe_and_sic(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[probe]\nprompts = ["test"]\n'
+            "[sic]\n"
+        )
+        from vauban import validate
+
+        warnings = validate(toml_file)
+        assert any("early-return" in w for w in warnings)
+
+    def test_mode_conflict_steer_and_optimize(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[steer]\nprompts = ["test"]\n'
+            "[optimize]\n"
+        )
+        from vauban import validate
+
+        warnings = validate(toml_file)
+        assert any("early-return" in w for w in warnings)

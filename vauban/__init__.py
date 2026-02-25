@@ -5,8 +5,10 @@ from pathlib import Path
 from vauban._serializers import (
     _detect_to_dict,
     _optimize_to_dict,
+    _probe_to_dict,
     _sic_to_dict,
     _softprompt_to_dict,
+    _steer_to_dict,
     _surface_comparison_to_dict,
 )
 from vauban.config import load_config
@@ -73,12 +75,14 @@ from vauban.types import (
     OptimizeConfig,
     OptimizeResult,
     PipelineConfig,
+    ProbeConfig,
     ProbeResult,
     SICConfig,
     SICPromptResult,
     SICResult,
     SoftPromptConfig,
     SoftPromptResult,
+    SteerConfig,
     SteerResult,
     SubspaceResult,
     SurfaceComparison,
@@ -92,7 +96,7 @@ from vauban.types import (
     TrialResult,
 )
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 __all__ = [
     "CutConfig",
@@ -107,12 +111,14 @@ __all__ = [
     "OptimizeConfig",
     "OptimizeResult",
     "PipelineConfig",
+    "ProbeConfig",
     "ProbeResult",
     "SICConfig",
     "SICPromptResult",
     "SICResult",
     "SoftPromptConfig",
     "SoftPromptResult",
+    "SteerConfig",
     "SteerResult",
     "SubspaceResult",
     "SurfaceComparison",
@@ -239,6 +245,10 @@ def validate(config_path: str | Path) -> list[str]:
 
     # Early-return mode conflicts
     early_modes = []
+    if config.probe is not None:
+        early_modes.append("[probe]")
+    if config.steer is not None:
+        early_modes.append("[steer]")
     if config.sic is not None:
         early_modes.append("[sic]")
     if config.optimize is not None:
@@ -248,8 +258,8 @@ def validate(config_path: str | Path) -> list[str]:
     if len(early_modes) > 1:
         warnings.append(
             f"Multiple early-return modes active: {', '.join(early_modes)}"
-            " — only the first will run (precedence: sic > optimize"
-            " > softprompt)"
+            " — only the first will run (precedence: probe > steer"
+            " > sic > optimize > softprompt)"
         )
 
     # Surface + eval without eval prompts is fine but worth noting
@@ -258,7 +268,11 @@ def validate(config_path: str | Path) -> list[str]:
 
     # Print summary
     mode = "measure → cut → export"
-    if config.sic is not None:
+    if config.probe is not None:
+        mode = "probe inspection"
+    elif config.steer is not None:
+        mode = "steer generation"
+    elif config.sic is not None:
         mode = "SIC sanitization"
     elif config.optimize is not None:
         mode = "Optuna optimization"
@@ -408,6 +422,56 @@ def run(config_path: str | Path) -> None:
             model, tokenizer, harmful, harmless, clip_q,  # type: ignore[arg-type]
         )
         cosine_scores = direction_result.cosine_scores
+
+    # Probe inspection: measure per-layer projections, write report, return
+    if config.probe is not None and direction_result is not None:
+        _log(
+            "Running probe inspection",
+            verbose=v, elapsed=time.monotonic() - t0,
+        )
+        probe_results = [
+            probe(model, tokenizer, p, direction_result.direction)  # type: ignore[arg-type]
+            for p in config.probe.prompts
+        ]
+        report_path = config.output_dir / "probe_report.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            json.dumps([_probe_to_dict(r) for r in probe_results], indent=2),
+        )
+        _log(
+            f"Done — probe report written to {report_path}",
+            verbose=v, elapsed=time.monotonic() - t0,
+        )
+        return
+
+    # Steer generation: generate with direction removal, write report, return
+    if config.steer is not None and direction_result is not None:
+        _log(
+            "Running steer generation",
+            verbose=v, elapsed=time.monotonic() - t0,
+        )
+        steer_layers = config.steer.layers or list(
+            range(len(model.model.layers)),
+        )
+        steer_results = [
+            steer(
+                model, tokenizer, p, direction_result.direction,  # type: ignore[arg-type]
+                steer_layers,
+                config.steer.alpha,
+                config.steer.max_tokens,
+            )
+            for p in config.steer.prompts
+        ]
+        report_path = config.output_dir / "steer_report.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            json.dumps([_steer_to_dict(r) for r in steer_results], indent=2),
+        )
+        _log(
+            f"Done — steer report written to {report_path}",
+            verbose=v, elapsed=time.monotonic() - t0,
+        )
+        return
 
     # SIC sanitization: standalone early-return mode
     if config.sic is not None:

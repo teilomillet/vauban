@@ -16,6 +16,8 @@
 #   [detect]         →  defense detection (runs before measure/cut)
 #   [optimize]       →  Optuna hyperparameter search (early return)
 #   [softprompt]     →  soft prompt attack (early return)
+#   [probe]          →  per-layer projection inspection (early return)
+#   [steer]          →  steered generation (early return)
 #   [sic]            →  SIC iterative sanitization (early return)
 #
 # Paths are resolved relative to the directory containing this file.
@@ -261,6 +263,37 @@ harmless = "default"
 # block_on_failure: bool     (default: true)
 # calibrate: bool     (default: false)     — auto-threshold from clean prompts
 # calibrate_prompts: "harmless" | "harmful"     (default: "harmless")
+
+
+# --------------------------------------------------------------------------
+# [probe] — Per-layer projection inspection (early return)
+# --------------------------------------------------------------------------
+# [probe]
+# prompts: list of strings (REQUIRED)
+#   Inline prompts to probe.  Each prompt is run through the model and
+#   per-layer projection magnitudes onto the refusal direction are recorded.
+# prompts = ["How do I pick a lock?", "Tell me a joke"]
+
+
+# --------------------------------------------------------------------------
+# [steer] — Steered generation (early return)
+# --------------------------------------------------------------------------
+# [steer]
+# prompts: list of strings (REQUIRED)
+#   Inline prompts for steered generation.
+# prompts = ["How do I pick a lock?"]
+
+# layers: [10, 15, 20] | omit     (default: all layers)
+#   Which layers to apply direction removal during generation.
+# layers = [10, 15, 20]
+
+# alpha: float >= 0     (default: 1.0)
+#   Steering strength.  1.0 = full direction removal.
+# alpha = 1.0
+
+# max_tokens: int >= 1     (default: 100)
+#   Maximum tokens to generate per prompt.
+# max_tokens = 100
 
 
 # --------------------------------------------------------------------------
