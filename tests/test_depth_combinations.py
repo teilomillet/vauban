@@ -326,6 +326,94 @@ class TestDepthValidateSummary:
         assert "+ detect" not in captured.err
 
 
+class TestNonDepthSkippedSections:
+    """All early-return modes should warn about skipped [surface]/[eval]."""
+
+    def test_probe_plus_surface_warns(self, tmp_path: Path) -> None:
+        """[probe] + [surface] should warn that surface is skipped."""
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(_MODEL + _DATA + _PROBE + _SURFACE)
+        warnings = validate(toml_file)
+        assert any(
+            "skip" in w.lower() and "[surface]" in w for w in warnings
+        )
+
+    def test_probe_plus_eval_warns(self, tmp_path: Path) -> None:
+        """[probe] + [eval] should warn that eval is skipped."""
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(_MODEL + _DATA + _PROBE + _EVAL)
+        warnings = validate(toml_file)
+        assert any(
+            "skip" in w.lower() and "[eval]" in w for w in warnings
+        )
+
+    def test_steer_plus_surface_warns(self, tmp_path: Path) -> None:
+        """[steer] + [surface] should warn that surface is skipped."""
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(_MODEL + _DATA + _STEER + _SURFACE)
+        warnings = validate(toml_file)
+        assert any(
+            "skip" in w.lower() and "[surface]" in w for w in warnings
+        )
+
+    def test_sic_plus_surface_eval_warns_both(self, tmp_path: Path) -> None:
+        """[sic] + [surface] + [eval] should warn about both."""
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(_MODEL + _DATA + _SIC + _SURFACE + _EVAL)
+        warnings = validate(toml_file)
+        skip_w = [w for w in warnings if "skip" in w.lower()]
+        assert len(skip_w) >= 1
+        assert "[surface]" in skip_w[0]
+        assert "[eval]" in skip_w[0]
+
+    def test_optimize_plus_surface_warns(self, tmp_path: Path) -> None:
+        """[optimize] + [surface] should warn that surface is skipped."""
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(_MODEL + _DATA + _OPTIMIZE + _SURFACE)
+        warnings = validate(toml_file)
+        assert any(
+            "skip" in w.lower() and "[surface]" in w for w in warnings
+        )
+
+    def test_softprompt_plus_eval_warns(self, tmp_path: Path) -> None:
+        """[softprompt] + [eval] should warn that eval is skipped."""
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(_MODEL + _DATA + _SOFTPROMPT + _EVAL)
+        warnings = validate(toml_file)
+        assert any(
+            "skip" in w.lower() and "[eval]" in w for w in warnings
+        )
+
+    def test_probe_plus_detect_no_skip_warning(self, tmp_path: Path) -> None:
+        """[probe] + [detect] should NOT warn — detect runs before measure."""
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(_MODEL + _DATA + _PROBE + _DETECT)
+        warnings = validate(toml_file)
+        # detect should appear as a composable extra, not a skipped section
+        assert not any(
+            "skip" in w.lower() and "[detect]" in w for w in warnings
+        )
+
+    def test_probe_plus_detect_shows_detect_extra(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """[probe] + [detect] should show 'probe inspection + detect'."""
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(_MODEL + _DATA + _PROBE + _DETECT)
+        validate(toml_file)
+        captured = capsys.readouterr()
+        assert "probe inspection + detect" in captured.err
+
+    def test_skip_warning_names_active_mode(self, tmp_path: Path) -> None:
+        """Skip warning should name the active early-return mode."""
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(_MODEL + _DATA + _STEER + _SURFACE)
+        warnings = validate(toml_file)
+        skip_w = [w for w in warnings if "early-return will skip" in w]
+        assert len(skip_w) == 1
+        assert "[steer]" in skip_w[0]
+
+
 class TestNonDepthNotBroken:
     """Regression: existing modes should still work as before."""
 
@@ -345,10 +433,10 @@ class TestNonDepthNotBroken:
         assert config.depth is None
         assert config.probe is None
 
-    def test_detect_plus_surface_no_spurious_depth_warning(
+    def test_detect_plus_surface_no_spurious_skip_warning(
         self, tmp_path: Path,
     ) -> None:
-        """[detect] + [surface] without [depth] should not trigger skip warning."""
+        """[detect]+[surface] in normal pipeline should not trigger skip warning."""
         toml_file = tmp_path / "test.toml"
         toml_file.write_text(
             _MODEL + _DATA_DEFAULT + _DETECT + _SURFACE,
@@ -373,3 +461,14 @@ class TestNonDepthNotBroken:
         toml_file.write_text('[model]\npath = "test"\n')
         with pytest.raises(ValueError, match="data"):
             load_config(toml_file)
+
+    def test_normal_pipeline_with_surface_eval_no_warning(
+        self, tmp_path: Path,
+    ) -> None:
+        """Normal pipeline + [surface] + [eval] should have no skip warning."""
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            _MODEL + _DATA_DEFAULT + _SURFACE + _EVAL,
+        )
+        warnings = validate(toml_file)
+        assert not any("skip" in w.lower() for w in warnings)
