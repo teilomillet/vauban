@@ -257,6 +257,42 @@ class TestLoadConfig:
         assert config.surface.generate is False
         assert config.surface.max_tokens == 50
 
+    def test_surface_gate_thresholds_parsed(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[surface]\n"
+            "max_worst_cell_refusal_after = 0.25\n"
+            "max_worst_cell_refusal_delta = 0.10\n"
+            "min_coverage_score = 0.60\n"
+        )
+        config = load_config(toml_file)
+        assert config.surface is not None
+        assert config.surface.max_worst_cell_refusal_after == 0.25
+        assert config.surface.max_worst_cell_refusal_delta == 0.10
+        assert config.surface.min_coverage_score == 0.60
+
+    def test_surface_gate_threshold_type_error(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[surface]\nmax_worst_cell_refusal_after = "high"\n'
+        )
+        with pytest.raises(TypeError, match="max_worst_cell_refusal_after"):
+            load_config(toml_file)
+
+    def test_surface_gate_threshold_range_error(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[surface]\nmin_coverage_score = 1.2\n"
+        )
+        with pytest.raises(ValueError, match="min_coverage_score"):
+            load_config(toml_file)
+
     def test_surface_absent_is_none(self, tmp_path: Path) -> None:
         toml_file = tmp_path / "test.toml"
         toml_file.write_text(

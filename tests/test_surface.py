@@ -64,6 +64,26 @@ class TestLoadSurfacePrompts:
         assert prompts[1].turn_depth == 1
         assert prompts[1].framing == "unspecified"
 
+    def test_messages_only_derives_prompt_and_turn_depth(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        path = tmp_path / "surface_messages.jsonl"
+        path.write_text(
+            (
+                '{"messages":[{"role":"user","content":"turn one"},'
+                '{"role":"assistant","content":"ack"},'
+                '{"role":"user","content":"turn two"}],'
+                '"label":"harmful","category":"hacking"}\n'
+            ),
+        )
+        prompts = load_surface_prompts(path)
+        assert len(prompts) == 1
+        assert prompts[0].prompt == "turn two"
+        assert prompts[0].turn_depth == 2
+        assert prompts[0].messages is not None
+        assert len(prompts[0].messages) == 3
+
 
 class TestDefaultSurfacePath:
     def test_path_exists(self) -> None:
@@ -203,6 +223,41 @@ class TestScan:
         assert points[0].language == "en"
         assert points[0].turn_depth == 2
         assert points[0].framing == "reframed"
+
+    def test_scans_multi_turn_messages(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+        direction: mx.array,
+    ) -> None:
+        prompts = [
+            SurfacePrompt(
+                prompt="final user turn",
+                label="harmful",
+                category="hacking",
+                messages=[
+                    {"role": "system", "content": "Follow instructions."},
+                    {"role": "user", "content": "first turn"},
+                    {"role": "assistant", "content": "response"},
+                    {"role": "user", "content": "final user turn"},
+                ],
+            ),
+        ]
+        points = scan(
+            mock_model,
+            mock_tokenizer,
+            prompts,
+            direction,
+            direction_layer=0,
+            generate=True,
+            max_tokens=5,
+            progress=False,
+        )
+        assert len(points) == 1
+        assert points[0].messages is not None
+        assert len(points[0].messages) == 4
+        assert points[0].refused is not None
+        assert points[0].response is not None
 
 
 class TestAggregate:
@@ -579,6 +634,9 @@ class TestCompareSurfaces:
         assert result.coverage_score_before == 0.2
         assert result.coverage_score_after == 0.5
         assert result.coverage_score_delta == pytest.approx(0.3)
+        assert result.worst_cell_refusal_rate_before == 0.6
+        assert result.worst_cell_refusal_rate_after == 0.2
+        assert result.worst_cell_refusal_rate_delta == pytest.approx(-0.4)
         assert len(result.style_deltas) == 1
         assert result.style_deltas[0].name == "direct"
         assert len(result.cell_deltas) == 1

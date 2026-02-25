@@ -136,7 +136,11 @@ _PIPELINE_MODES: tuple[PipelineModeDoc, ...] = (
 
 _FORMAT_NOTES: tuple[str, ...] = (
     "Prompt JSONL ([data] + [eval]): one object per line with key 'prompt'.",
-    "Surface JSONL ([surface].prompts): keys 'prompt', 'label', and 'category'.",
+    (
+        "Surface JSONL ([surface].prompts): required keys 'label' and"
+        " 'category' plus either 'prompt' or 'messages'; optional keys"
+        " 'style', 'language', 'turn_depth', and 'framing'."
+    ),
     "Refusal phrases file: plain text, one phrase per line ('#' comments allowed).",
     "All relative paths resolve from the directory of the loaded TOML file.",
 )
@@ -398,7 +402,7 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 key="prompts",
                 attr="prompts_path",
                 description="Surface prompt source.",
-                constraints='string path or "default".',
+                constraints='string path, "default", or "default_multilingual".',
             ),
             FieldSpec(
                 key="generate",
@@ -414,6 +418,27 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 key="progress",
                 description="Show scan progress logs.",
                 constraints="boolean.",
+            ),
+            FieldSpec(
+                key="max_worst_cell_refusal_after",
+                description=(
+                    "Fail run if post-cut worst cell refusal rate exceeds"
+                    " this."
+                ),
+                constraints="number in [0, 1] or omitted.",
+            ),
+            FieldSpec(
+                key="max_worst_cell_refusal_delta",
+                description=(
+                    "Fail run if any surface cell refusal-rate increase"
+                    " exceeds this."
+                ),
+                constraints="number in [0, 1] or omitted.",
+            ),
+            FieldSpec(
+                key="min_coverage_score",
+                description="Fail run if post-cut matrix coverage falls below this.",
+                constraints="number in [0, 1] or omitted.",
             ),
         ),
     ),

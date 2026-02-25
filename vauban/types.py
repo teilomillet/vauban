@@ -187,6 +187,9 @@ class SurfaceConfig:
     generate: bool = True
     max_tokens: int = 20
     progress: bool = True
+    max_worst_cell_refusal_after: float | None = None
+    max_worst_cell_refusal_delta: float | None = None
+    min_coverage_score: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -298,6 +301,7 @@ class SurfacePrompt:
     language: str = "unspecified"
     turn_depth: int = 1
     framing: str = "unspecified"
+    messages: list[dict[str, str]] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -315,6 +319,7 @@ class SurfacePoint:
     language: str = "unspecified"
     turn_depth: int = 1
     framing: str = "unspecified"
+    messages: list[dict[str, str]] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -383,6 +388,9 @@ class SurfaceComparison:
     coverage_score_before: float = 0.0
     coverage_score_after: float = 0.0
     coverage_score_delta: float = 0.0
+    worst_cell_refusal_rate_before: float = 0.0
+    worst_cell_refusal_rate_after: float = 0.0
+    worst_cell_refusal_rate_delta: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)

@@ -117,6 +117,41 @@ class TestDiffReports:
         assert metrics["mean_dtr"].delta == pytest.approx(0.3)
         assert "mean_settling_depth" in metrics
 
+    def test_surface_reports_include_coverage_delta(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        dir_a = tmp_path / "a"
+        dir_b = tmp_path / "b"
+        dir_a.mkdir()
+        dir_b.mkdir()
+
+        (dir_a / "surface_report.json").write_text(json.dumps({
+            "summary": {
+                "refusal_rate_delta": -0.4,
+                "threshold_delta": 2.1,
+                "coverage_score_delta": 0.0,
+                "worst_cell_refusal_rate_after": 0.3,
+                "worst_cell_refusal_rate_delta": -0.2,
+            },
+        }))
+        (dir_b / "surface_report.json").write_text(json.dumps({
+            "summary": {
+                "refusal_rate_delta": -0.3,
+                "threshold_delta": 2.5,
+                "coverage_score_delta": 0.2,
+                "worst_cell_refusal_rate_after": 0.1,
+                "worst_cell_refusal_rate_delta": -0.4,
+            },
+        }))
+
+        results = diff_reports(dir_a, dir_b)
+        assert len(results) == 1
+        metrics = {m.name: m for m in results[0].metrics}
+        assert metrics["coverage_score_delta"].delta == pytest.approx(0.2)
+        assert metrics["worst_cell_refusal_rate_after"].delta == pytest.approx(-0.2)
+        assert metrics["worst_cell_refusal_rate_delta"].delta == pytest.approx(-0.2)
+
 
 class TestPercentChange:
     def test_positive_delta(self) -> None:

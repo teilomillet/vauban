@@ -36,7 +36,15 @@ _KNOWN_KEYS: dict[str, frozenset[str]] = {
         "prompts", "max_tokens", "num_prompts", "refusal_phrases",
         "refusal_mode",
     }),
-    "surface": frozenset({"prompts", "generate", "max_tokens", "progress"}),
+    "surface": frozenset({
+        "prompts",
+        "generate",
+        "max_tokens",
+        "progress",
+        "max_worst_cell_refusal_after",
+        "max_worst_cell_refusal_delta",
+        "min_coverage_score",
+    }),
     "detect": frozenset({
         "mode", "top_k", "clip_quantile", "alpha", "max_tokens",
     }),

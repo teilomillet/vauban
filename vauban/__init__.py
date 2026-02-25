@@ -387,6 +387,7 @@ def validate(config_path: str | Path) -> list[str]:
             missing_fix=(
                 "set [surface].prompts to an existing JSONL path"
                 ' or use [surface].prompts = "default"'
+                ' / "default_multilingual"'
             ),
         )
         if surface_count is not None and surface_count < 8:
@@ -398,6 +399,26 @@ def validate(config_path: str | Path) -> list[str]:
                     " category/label aggregates may be unstable"
                 ),
                 fix="use a broader surface prompt set (16+ recommended)",
+            )
+        if (
+            not config.surface.generate
+            and (
+                config.surface.max_worst_cell_refusal_after is not None
+                or config.surface.max_worst_cell_refusal_delta is not None
+            )
+        ):
+            _add_warning(
+                warnings,
+                "MEDIUM",
+                (
+                    "[surface] refusal-rate gates are set but"
+                    " [surface].generate = false; refusal labels are not"
+                    " computed in projection-only mode"
+                ),
+                fix=(
+                    "set [surface].generate = true for refusal-rate gates,"
+                    " or remove max_worst_cell_refusal_* gates"
+                ),
             )
 
     # Output dir sanity
@@ -701,11 +722,13 @@ def _validate_surface_jsonl_file(
     """Validate JSONL surface schema for prompt/label/category records.
 
     Optional keys, when present:
+    - ``messages``: non-empty list of {role, content}
     - ``style``: non-empty string
     - ``language``: non-empty string
     - ``turn_depth``: integer >= 1
     - ``framing``: non-empty string
     """
+    allowed_roles: frozenset[str] = frozenset({"system", "user", "assistant"})
     if not path.exists():
         _add_warning(
             warnings,
@@ -736,6 +759,7 @@ def _validate_surface_jsonl_file(
                     fix=(
                         'use JSONL lines like {"prompt": "...",'
                         ' "label": "harmful", "category": "weapons",'
+                        ' "messages": [{"role": "user", "content": "..."}],'
                         ' "style": "direct", "language": "en",'
                         ' "turn_depth": 1, "framing": "explicit"}'
                     ),
@@ -749,17 +773,18 @@ def _validate_surface_jsonl_file(
                     fix=(
                         'use JSONL lines like {"prompt": "...",'
                         ' "label": "harmful", "category": "weapons",'
+                        ' "messages": [{"role": "user", "content": "..."}],'
                         ' "style": "direct", "language": "en",'
                         ' "turn_depth": 1, "framing": "explicit"}'
                     ),
                 )
                 return None
             prompt_raw = obj_raw.get("prompt")
+            messages_raw = obj_raw.get("messages")
             label_raw = obj_raw.get("label")
             category_raw = obj_raw.get("category")
             if (
-                not isinstance(prompt_raw, str) or not prompt_raw.strip()
-                or not isinstance(label_raw, str) or not label_raw.strip()
+                not isinstance(label_raw, str) or not label_raw.strip()
                 or not isinstance(category_raw, str) or not category_raw.strip()
             ):
                 _add_warning(
@@ -767,7 +792,7 @@ def _validate_surface_jsonl_file(
                     "HIGH",
                     (
                         f"{key} line {line_no} must include non-empty string"
-                        " keys: prompt, label, category"
+                        " keys: label, category"
                     ),
                     fix=(
                         'use JSONL lines like {"prompt": "...",'
@@ -775,6 +800,89 @@ def _validate_surface_jsonl_file(
                     ),
                 )
                 return None
+
+            has_prompt = isinstance(prompt_raw, str) and bool(prompt_raw.strip())
+            if prompt_raw is not None and not has_prompt:
+                _add_warning(
+                    warnings,
+                    "HIGH",
+                    (
+                        f"{key} line {line_no} has invalid key 'prompt':"
+                        " expected non-empty string"
+                    ),
+                    fix='set "prompt" to a non-empty string',
+                )
+                return None
+
+            has_messages = False
+            if messages_raw is not None:
+                if not isinstance(messages_raw, list) or not messages_raw:
+                    _add_warning(
+                        warnings,
+                        "HIGH",
+                        (
+                            f"{key} line {line_no} has invalid key 'messages':"
+                            " expected non-empty list"
+                        ),
+                        fix=(
+                            'set "messages" to a non-empty list like'
+                            ' [{"role": "user", "content": "..."}]'
+                        ),
+                    )
+                    return None
+                for i, message in enumerate(messages_raw):
+                    if not isinstance(message, dict):
+                        _add_warning(
+                            warnings,
+                            "HIGH",
+                            (
+                                f"{key} line {line_no} has invalid"
+                                f" messages[{i}] (expected object)"
+                            ),
+                            fix=(
+                                'use {"role": "user|assistant|system",'
+                                ' "content": "..."}'
+                            ),
+                        )
+                        return None
+                    role_raw = message.get("role")
+                    content_raw = message.get("content")
+                    if (
+                        not isinstance(role_raw, str)
+                        or role_raw not in allowed_roles
+                        or not isinstance(content_raw, str)
+                        or not content_raw.strip()
+                    ):
+                        _add_warning(
+                            warnings,
+                            "HIGH",
+                            (
+                                f"{key} line {line_no} has invalid messages[{i}]"
+                                " (role/content)"
+                            ),
+                            fix=(
+                                'use {"role": "user|assistant|system",'
+                                ' "content": "..."}'
+                            ),
+                        )
+                        return None
+                has_messages = True
+
+            if not has_prompt and not has_messages:
+                _add_warning(
+                    warnings,
+                    "HIGH",
+                    (
+                        f"{key} line {line_no} must include either"
+                        " non-empty 'prompt' or non-empty 'messages'"
+                    ),
+                    fix=(
+                        'add "prompt": "..." or "messages":'
+                        ' [{"role": "user", "content": "..."}]'
+                    ),
+                )
+                return None
+
             style_raw = obj_raw.get("style")
             language_raw = obj_raw.get("language")
             framing_raw = obj_raw.get("framing")
@@ -863,6 +971,55 @@ def _validate_surface_jsonl_file(
         return 0
 
     return valid_count
+
+
+def _surface_gate_failures(
+    surface: SurfaceConfig,
+    comparison: SurfaceComparison,
+) -> list[str]:
+    """Return human-readable failures for configured surface gate thresholds."""
+    failures: list[str] = []
+
+    max_worst_after = surface.max_worst_cell_refusal_after
+    if (
+        max_worst_after is not None
+        and comparison.worst_cell_refusal_rate_after > max_worst_after
+    ):
+        failures.append(
+            (
+                "worst-cell refusal rate after cut"
+                f" {comparison.worst_cell_refusal_rate_after:.4f}"
+                f" exceeds max_worst_cell_refusal_after={max_worst_after:.4f}"
+            ),
+        )
+
+    max_worst_delta = surface.max_worst_cell_refusal_delta
+    if (
+        max_worst_delta is not None
+        and comparison.worst_cell_refusal_rate_delta > max_worst_delta
+    ):
+        failures.append(
+            (
+                "worst-cell refusal-rate delta"
+                f" {comparison.worst_cell_refusal_rate_delta:.4f}"
+                f" exceeds max_worst_cell_refusal_delta={max_worst_delta:.4f}"
+            ),
+        )
+
+    min_coverage = surface.min_coverage_score
+    if (
+        min_coverage is not None
+        and comparison.coverage_score_after < min_coverage
+    ):
+        failures.append(
+            (
+                "coverage score after cut"
+                f" {comparison.coverage_score_after:.4f}"
+                f" is below min_coverage_score={min_coverage:.4f}"
+            ),
+        )
+
+    return failures
 
 
 def _load_refusal_phrases(path: Path) -> list[str]:
@@ -1594,6 +1751,15 @@ def run(config_path: str | Path) -> None:
         report_path.write_text(
             json.dumps(_surface_comparison_to_dict(comparison), indent=2),
         )
+        gate_failures = _surface_gate_failures(config.surface, comparison)
+        if gate_failures:
+            joined = "\n".join(f"- {failure}" for failure in gate_failures)
+            msg = (
+                "Surface quality gates failed:\n"
+                f"{joined}\n"
+                "Adjust [surface] gate thresholds or improve model behavior."
+            )
+            raise RuntimeError(msg)
 
     # Evaluate if eval prompts are provided
     if config.eval.prompts_path is not None and modified_model is not None:

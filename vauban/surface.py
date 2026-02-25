@@ -6,9 +6,10 @@ from collections.abc import Callable
 from pathlib import Path
 
 import mlx.core as mx
+import mlx.nn as nn
 
-from vauban.evaluate import DEFAULT_REFUSAL_PHRASES, _generate, _judge_single
-from vauban.probe import probe
+from vauban.evaluate import DEFAULT_REFUSAL_PHRASES, _judge_single
+from vauban.probe import _make_cache
 from vauban.types import (
     CausalLM,
     SurfaceComparison,
@@ -24,6 +25,9 @@ DEFAULT_SURFACE_STYLE = "unspecified"
 DEFAULT_SURFACE_LANGUAGE = "unspecified"
 DEFAULT_SURFACE_FRAMING = "unspecified"
 DEFAULT_SURFACE_TURN_DEPTH = 1
+_ALLOWED_SURFACE_ROLES: frozenset[str] = frozenset(
+    {"system", "user", "assistant"},
+)
 
 
 def default_surface_path() -> Path:
@@ -39,9 +43,11 @@ def default_multilingual_surface_path() -> Path:
 def load_surface_prompts(path: str | Path) -> list[SurfacePrompt]:
     """Load surface prompts from a JSONL file.
 
-    Each line must have ``prompt``, ``label``, and ``category`` keys.
+    Each line must have ``label`` and ``category``. It must include either a
+    non-empty ``prompt`` string, a non-empty ``messages`` list, or both.
     Optional keys ``style``, ``language``, ``turn_depth``, and ``framing``
-    are validated when present and defaulted when missing.
+    are validated when present and defaulted when missing. For message-only
+    records, ``prompt`` is derived from the last user message.
     """
     path_obj = Path(path)
     prompts: list[SurfacePrompt] = []
@@ -67,15 +73,34 @@ def load_surface_prompts(path: str | Path) -> list[SurfacePrompt]:
                     raise ValueError(msg)
                 obj[raw_key] = raw_value
 
-            prompt = _require_non_empty_text(
-                obj, "prompt", line_no, path_obj,
-            )
             label = _require_non_empty_text(
                 obj, "label", line_no, path_obj,
             )
             category = _require_non_empty_text(
                 obj, "category", line_no, path_obj,
             )
+            messages = _optional_messages(
+                obj, "messages", line_no, path_obj,
+            )
+            prompt_raw = obj.get("prompt")
+            if prompt_raw is None:
+                if messages is None:
+                    msg = (
+                        "surface prompts line"
+                        f" {line_no} must include key 'prompt' or 'messages'"
+                        f" in {path_obj}"
+                    )
+                    raise ValueError(msg)
+                prompt = _derive_prompt_from_messages(messages)
+            elif not isinstance(prompt_raw, str) or not prompt_raw.strip():
+                msg = (
+                    f"surface prompts line {line_no} has invalid key 'prompt'"
+                    f" in {path_obj}; expected a non-empty string"
+                )
+                raise ValueError(msg)
+            else:
+                prompt = prompt_raw
+
             style = _optional_non_empty_text(
                 obj,
                 "style",
@@ -100,7 +125,7 @@ def load_surface_prompts(path: str | Path) -> list[SurfacePrompt]:
             turn_depth = _optional_turn_depth(
                 obj,
                 "turn_depth",
-                DEFAULT_SURFACE_TURN_DEPTH,
+                _infer_turn_depth(messages),
                 line_no,
                 path_obj,
             )
@@ -114,6 +139,7 @@ def load_surface_prompts(path: str | Path) -> list[SurfacePrompt]:
                     language=language,
                     turn_depth=turn_depth,
                     framing=framing,
+                    messages=messages,
                 ),
             )
     return prompts
@@ -164,13 +190,24 @@ def scan(
                 flush=True,
             )
 
-        probe_result = probe(model, tokenizer, sp.prompt, direction)
-        direction_proj = probe_result.projections[direction_layer]
+        messages = _surface_messages(sp)
+        projections = _probe_with_messages(
+            model,
+            tokenizer,
+            messages,
+            direction,
+        )
+        direction_proj = projections[direction_layer]
 
         refused: bool | None = None
         response: str | None = None
         if generate:
-            response = _generate(model, tokenizer, sp.prompt, max_tokens)  # type: ignore[arg-type]
+            response = _generate_with_messages(
+                model,
+                tokenizer,
+                messages,
+                max_tokens,
+            )
             if refusal_mode == "judge":
                 refused = _judge_single(model, tokenizer, sp.prompt, response)  # type: ignore[arg-type]
             else:
@@ -184,7 +221,7 @@ def scan(
                 prompt=sp.prompt,
                 label=sp.label,
                 category=sp.category,
-                projections=probe_result.projections,
+                projections=projections,
                 direction_projection=direction_proj,
                 refused=refused,
                 response=response,
@@ -192,6 +229,7 @@ def scan(
                 language=sp.language,
                 turn_depth=sp.turn_depth,
                 framing=sp.framing,
+                messages=sp.messages,
             ),
         )
 
@@ -334,6 +372,40 @@ def compare_surfaces(
         else 0.0
     )
 
+    category_deltas = _compute_group_deltas(
+        before.groups_by_category,
+        after.groups_by_category,
+    )
+    label_deltas = _compute_group_deltas(
+        before.groups_by_label,
+        after.groups_by_label,
+    )
+    style_deltas = _compute_group_deltas(
+        before.groups_by_style,
+        after.groups_by_style,
+    )
+    language_deltas = _compute_group_deltas(
+        before.groups_by_language,
+        after.groups_by_language,
+    )
+    turn_depth_deltas = _compute_group_deltas(
+        before.groups_by_turn_depth,
+        after.groups_by_turn_depth,
+    )
+    framing_deltas = _compute_group_deltas(
+        before.groups_by_framing,
+        after.groups_by_framing,
+    )
+    cell_deltas = _compute_group_deltas(
+        before.groups_by_surface_cell,
+        after.groups_by_surface_cell,
+    )
+    worst_before = _max_refusal_rate(before.groups_by_surface_cell)
+    worst_after = _max_refusal_rate(after.groups_by_surface_cell)
+    worst_delta = (
+        max((d.refusal_rate_delta for d in cell_deltas), default=0.0)
+    )
+
     return SurfaceComparison(
         before=before,
         after=after,
@@ -343,30 +415,19 @@ def compare_surfaces(
         threshold_before=before.threshold,
         threshold_after=after.threshold,
         threshold_delta=after.threshold - before.threshold,
-        category_deltas=_compute_group_deltas(
-            before.groups_by_category, after.groups_by_category,
-        ),
-        label_deltas=_compute_group_deltas(
-            before.groups_by_label, after.groups_by_label,
-        ),
-        style_deltas=_compute_group_deltas(
-            before.groups_by_style, after.groups_by_style,
-        ),
-        language_deltas=_compute_group_deltas(
-            before.groups_by_language, after.groups_by_language,
-        ),
-        turn_depth_deltas=_compute_group_deltas(
-            before.groups_by_turn_depth, after.groups_by_turn_depth,
-        ),
-        framing_deltas=_compute_group_deltas(
-            before.groups_by_framing, after.groups_by_framing,
-        ),
-        cell_deltas=_compute_group_deltas(
-            before.groups_by_surface_cell, after.groups_by_surface_cell,
-        ),
+        category_deltas=category_deltas,
+        label_deltas=label_deltas,
+        style_deltas=style_deltas,
+        language_deltas=language_deltas,
+        turn_depth_deltas=turn_depth_deltas,
+        framing_deltas=framing_deltas,
+        cell_deltas=cell_deltas,
         coverage_score_before=before.coverage_score,
         coverage_score_after=after.coverage_score,
         coverage_score_delta=after.coverage_score - before.coverage_score,
+        worst_cell_refusal_rate_before=worst_before,
+        worst_cell_refusal_rate_after=worst_after,
+        worst_cell_refusal_rate_delta=worst_delta,
     )
 
 
@@ -489,6 +550,144 @@ def _optional_turn_depth(
     return value
 
 
+def _optional_messages(
+    obj: dict[str, object],
+    key: str,
+    line_no: int,
+    path: Path,
+) -> list[dict[str, str]] | None:
+    """Read optional chat messages from one surface prompt record."""
+    value = obj.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, list) or not value:
+        msg = (
+            f"surface prompts line {line_no} has invalid key {key!r}"
+            f" in {path}; expected a non-empty list"
+        )
+        raise ValueError(msg)
+
+    messages: list[dict[str, str]] = []
+    for i, item in enumerate(value):
+        if not isinstance(item, dict):
+            msg = (
+                f"surface prompts line {line_no} has invalid {key}[{i}]"
+                f" in {path}; expected an object"
+            )
+            raise ValueError(msg)
+        role_raw = item.get("role")
+        content_raw = item.get("content")
+        if (
+            not isinstance(role_raw, str)
+            or role_raw not in _ALLOWED_SURFACE_ROLES
+            or not isinstance(content_raw, str)
+            or not content_raw.strip()
+        ):
+            msg = (
+                f"surface prompts line {line_no} has invalid {key}[{i}]"
+                f" in {path}; expected role/content strings with role in"
+                f" {sorted(_ALLOWED_SURFACE_ROLES)}"
+            )
+            raise ValueError(msg)
+        messages.append({"role": role_raw, "content": content_raw})
+
+    return messages
+
+
+def _derive_prompt_from_messages(messages: list[dict[str, str]]) -> str:
+    """Derive a display prompt from messages (prefer the last user turn)."""
+    for message in reversed(messages):
+        if message["role"] == "user":
+            return message["content"]
+    return messages[-1]["content"]
+
+
+def _infer_turn_depth(messages: list[dict[str, str]] | None) -> int:
+    """Infer turn depth from message history (number of user turns)."""
+    if messages is None:
+        return DEFAULT_SURFACE_TURN_DEPTH
+
+    user_turns = sum(1 for message in messages if message["role"] == "user")
+    return user_turns if user_turns > 0 else DEFAULT_SURFACE_TURN_DEPTH
+
+
+def _surface_messages(surface_prompt: SurfacePrompt) -> list[dict[str, str]]:
+    """Return full chat history for probing/generation."""
+    if surface_prompt.messages is not None:
+        return [
+            {"role": message["role"], "content": message["content"]}
+            for message in surface_prompt.messages
+        ]
+    return [{"role": "user", "content": surface_prompt.prompt}]
+
+
+def _probe_with_messages(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    messages: list[dict[str, str]],
+    direction: mx.array,
+) -> list[float]:
+    """Compute per-layer projections for a full message list."""
+    text = tokenizer.apply_chat_template(messages, tokenize=False)
+    if not isinstance(text, str):
+        msg = "apply_chat_template must return str when tokenize=False"
+        raise TypeError(msg)
+    token_ids = mx.array(tokenizer.encode(text))[None, :]
+
+    transformer = model.model
+    h = transformer.embed_tokens(token_ids)
+    mask = nn.MultiHeadAttention.create_additive_causal_mask(h.shape[1])
+    mask = mask.astype(h.dtype)
+
+    projections: list[float] = []
+    for layer in transformer.layers:
+        h = layer(h, mask)
+        last_token = h[0, -1, :]
+        proj = mx.sum(last_token * direction)
+        mx.eval(proj)
+        projections.append(float(proj.item()))
+    return projections
+
+
+def _generate_with_messages(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    messages: list[dict[str, str]],
+    max_tokens: int,
+    eos_token_id: int | None = None,
+) -> str:
+    """Greedy generation over an arbitrary chat message list."""
+    text = tokenizer.apply_chat_template(messages, tokenize=False)
+    if not isinstance(text, str):
+        msg = "apply_chat_template must return str when tokenize=False"
+        raise TypeError(msg)
+    tokens = tokenizer.encode(text)
+    generated: list[int] = []
+
+    if eos_token_id is None:
+        eos_token_id = getattr(tokenizer, "eos_token_id", None)
+
+    cache = _make_cache(model)
+    token_ids = mx.array([tokens])
+    for _ in range(max_tokens):
+        result = model(token_ids, cache=cache)  # type: ignore[call-non-callable]
+        logits = _extract_logits(result)
+        next_token = int(mx.argmax(logits[:, -1, :], axis=-1).item())
+        generated.append(next_token)
+        if eos_token_id is not None and next_token == eos_token_id:
+            break
+        token_ids = mx.array([[next_token]])
+
+    return tokenizer.decode(generated)
+
+
+def _extract_logits(result: mx.array | tuple[mx.array, ...]) -> mx.array:
+    """Extract logits from a model output tuple/bare tensor."""
+    if isinstance(result, tuple):
+        return result[0]
+    return result
+
+
 def _surface_cell_name(point: SurfacePoint) -> str:
     """Return a canonical name for one surface-matrix cell."""
     return (
@@ -524,3 +723,8 @@ def _coverage_score(points: list[SurfacePoint]) -> float:
         for p in points
     }
     return len(observed_cells) / max_cells
+
+
+def _max_refusal_rate(groups: list[SurfaceGroup]) -> float:
+    """Return maximum refusal rate over groups (0.0 when empty)."""
+    return max((group.refusal_rate for group in groups), default=0.0)

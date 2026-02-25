@@ -82,6 +82,15 @@ def _surface_comparison_to_dict(
             "coverage_score_before": comparison.coverage_score_before,
             "coverage_score_after": comparison.coverage_score_after,
             "coverage_score_delta": comparison.coverage_score_delta,
+            "worst_cell_refusal_rate_before": (
+                comparison.worst_cell_refusal_rate_before
+            ),
+            "worst_cell_refusal_rate_after": (
+                comparison.worst_cell_refusal_rate_after
+            ),
+            "worst_cell_refusal_rate_delta": (
+                comparison.worst_cell_refusal_rate_delta
+            ),
             "total_scanned": comparison.before.total_scanned,
         },
         "category_deltas": [
