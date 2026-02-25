@@ -165,5 +165,5 @@ class TestPipelineConfig:
             harmless_path=Path("harmless.jsonl"),
         )
         assert config.output_dir == Path("output")
-        assert config.eval_prompts_path is None
+        assert config.eval.prompts_path is None
         assert config.measure.mode == "direction"

@@ -45,8 +45,17 @@ def _parse_surface(base_dir: Path, raw: TomlDict) -> SurfaceConfig | None:
         )
         raise TypeError(msg)
 
+    progress_raw = sec.get("progress", True)  # type: ignore[arg-type]
+    if not isinstance(progress_raw, bool):
+        msg = (
+            f"[surface].progress must be a boolean,"
+            f" got {type(progress_raw).__name__}"
+        )
+        raise TypeError(msg)
+
     return SurfaceConfig(
         prompts_path=prompts_path,
         generate=generate_raw,
         max_tokens=max_tokens_raw,
+        progress=progress_raw,
     )

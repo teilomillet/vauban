@@ -5,6 +5,7 @@ from pathlib import Path
 
 from vauban.config._parse_cut import _parse_cut
 from vauban.config._parse_detect import _parse_detect
+from vauban.config._parse_eval import _parse_eval
 from vauban.config._parse_measure import _parse_measure
 from vauban.config._parse_optimize import _parse_optimize
 from vauban.config._parse_sic import _parse_sic
@@ -60,12 +61,7 @@ def load_config(path: str | Path) -> PipelineConfig:
     softprompt_config = _parse_softprompt(raw)
     sic_config = _parse_sic(raw)
 
-    eval_path: Path | None = None
-    eval_section = raw.get("eval")
-    if isinstance(eval_section, dict) and "prompts" in eval_section:
-        prompts_raw = eval_section["prompts"]
-        if isinstance(prompts_raw, str):
-            eval_path = base_dir / prompts_raw
+    eval_config = _parse_eval(base_dir, raw)
 
     output_section = raw.get("output")
     output_dir_str = "output"
@@ -96,7 +92,7 @@ def load_config(path: str | Path) -> PipelineConfig:
         optimize=optimize_config,
         softprompt=softprompt_config,
         sic=sic_config,
-        eval_prompts_path=eval_path,
+        eval=eval_config,
         output_dir=output_dir,
         borderline_path=borderline_path,
     )

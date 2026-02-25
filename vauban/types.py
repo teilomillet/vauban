@@ -146,12 +146,23 @@ class MeasureConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class EvalConfig:
+    """Configuration for the evaluation step."""
+
+    prompts_path: Path | None = None
+    max_tokens: int = 100
+    num_prompts: int = 20  # fallback count when prompts_path is absent
+    refusal_phrases_path: Path | None = None  # custom refusal phrases file
+
+
+@dataclass(frozen=True, slots=True)
 class SurfaceConfig:
     """Configuration for pre/post surface mapping."""
 
     prompts_path: Path | str  # resolved Path or "default" sentinel
     generate: bool = True
     max_tokens: int = 20
+    progress: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -458,6 +469,6 @@ class PipelineConfig:
     optimize: OptimizeConfig | None = None
     softprompt: SoftPromptConfig | None = None
     sic: SICConfig | None = None
-    eval_prompts_path: Path | None = None
+    eval: EvalConfig = field(default_factory=EvalConfig)
     output_dir: Path = field(default_factory=lambda: Path("output"))
     borderline_path: Path | DatasetRef | None = None

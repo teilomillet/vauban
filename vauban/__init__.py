@@ -67,6 +67,7 @@ from vauban.types import (
     DetectConfig,
     DetectResult,
     DirectionResult,
+    EvalConfig,
     EvalResult,
     MeasureConfig,
     OptimizeConfig,
@@ -100,6 +101,7 @@ __all__ = [
     "DetectConfig",
     "DetectResult",
     "DirectionResult",
+    "EvalConfig",
     "EvalResult",
     "MeasureConfig",
     "OptimizeConfig",
@@ -174,6 +176,19 @@ __all__ = [
 ]
 
 
+def _load_refusal_phrases(path: Path) -> list[str]:
+    """Load refusal phrases from a text file (one per line)."""
+    phrases: list[str] = []
+    for line in path.read_text().splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            phrases.append(stripped)
+    if not phrases:
+        msg = f"Refusal phrases file is empty: {path}"
+        raise ValueError(msg)
+    return phrases
+
+
 def run(config_path: str | Path) -> None:
     """Run the full measure -> cut -> evaluate pipeline from a TOML config."""
     import json
@@ -192,6 +207,11 @@ def run(config_path: str | Path) -> None:
 
     harmful = resolve_prompts(config.harmful_path)
     harmless = resolve_prompts(config.harmless_path)
+
+    # Load custom refusal phrases if configured
+    refusal_phrases: list[str] | None = None
+    if config.eval.refusal_phrases_path is not None:
+        refusal_phrases = _load_refusal_phrases(config.eval.refusal_phrases_path)
 
     # Defense detection (runs before measure/cut)
     if config.detect is not None:
@@ -253,10 +273,10 @@ def run(config_path: str | Path) -> None:
             direction_result.layer_index if direction_result is not None
             else 0
         )
-        if config.eval_prompts_path is not None:
-            sic_prompts: list[str] = load_prompts(config.eval_prompts_path)
+        if config.eval.prompts_path is not None:
+            sic_prompts: list[str] = load_prompts(config.eval.prompts_path)
         else:
-            sic_prompts = harmful[:20]
+            sic_prompts = harmful[:config.eval.num_prompts]
 
         cal_prompts: list[str] | None = None
         if config.sic.calibrate:
@@ -279,10 +299,10 @@ def run(config_path: str | Path) -> None:
     # Optimization mode: search over cut parameters, write report, return early
     if config.optimize is not None and direction_result is not None:
         eval_prompts_opt: list[str] = []
-        if config.eval_prompts_path is not None:
-            eval_prompts_opt = load_prompts(config.eval_prompts_path)
+        if config.eval.prompts_path is not None:
+            eval_prompts_opt = load_prompts(config.eval.prompts_path)
         else:
-            eval_prompts_opt = harmful[:20]
+            eval_prompts_opt = harmful[:config.eval.num_prompts]
 
         opt_result = optimize(
             model, tokenizer, direction_result,  # type: ignore[arg-type]
@@ -301,10 +321,10 @@ def run(config_path: str | Path) -> None:
         direction_vec = (
             direction_result.direction if direction_result is not None else None
         )
-        if config.eval_prompts_path is not None:
-            sp_prompts: list[str] = load_prompts(config.eval_prompts_path)
+        if config.eval.prompts_path is not None:
+            sp_prompts: list[str] = load_prompts(config.eval.prompts_path)
         else:
-            sp_prompts = harmful[:20]
+            sp_prompts = harmful[:config.eval.num_prompts]
 
         # Load reference model for KL collision loss if configured
         ref_model = None
@@ -473,6 +493,8 @@ def run(config_path: str | Path) -> None:
             surface_layer,
             generate=config.surface.generate,
             max_tokens=config.surface.max_tokens,
+            refusal_phrases=refusal_phrases,
+            progress=config.surface.progress,
         )
 
     # Apply the appropriate cut
@@ -534,7 +556,7 @@ def run(config_path: str | Path) -> None:
 
     # Load modified model if needed for surface-after or eval
     needs_modified = (
-        config.eval_prompts_path is not None or surface_before is not None
+        config.eval.prompts_path is not None or surface_before is not None
     )
     modified_model = None
     if needs_modified:
@@ -557,6 +579,8 @@ def run(config_path: str | Path) -> None:
             surface_layer,
             generate=config.surface.generate,
             max_tokens=config.surface.max_tokens,
+            refusal_phrases=refusal_phrases,
+            progress=config.surface.progress,
         )
         comparison = compare_surfaces(surface_before, surface_after)
         report_path = config.output_dir / "surface_report.json"
@@ -565,11 +589,13 @@ def run(config_path: str | Path) -> None:
         )
 
     # Evaluate if eval prompts are provided
-    if config.eval_prompts_path is not None and modified_model is not None:
-        eval_prompts = load_prompts(config.eval_prompts_path)
+    if config.eval.prompts_path is not None and modified_model is not None:
+        eval_prompts = load_prompts(config.eval.prompts_path)
 
         result = evaluate(
             model, modified_model, tokenizer, eval_prompts,  # type: ignore[arg-type]
+            refusal_phrases=refusal_phrases,
+            max_tokens=config.eval.max_tokens,
         )
 
         report_path = config.output_dir / "eval_report.json"

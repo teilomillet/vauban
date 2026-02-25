@@ -14,7 +14,7 @@ class TestLoadConfig:
         assert config.model_path == "mlx-community/tiny-llama"
         assert config.harmful_path == fixtures_dir / "harmful.jsonl"
         assert config.harmless_path == fixtures_dir / "harmless.jsonl"
-        assert config.eval_prompts_path == fixtures_dir / "eval.jsonl"
+        assert config.eval.prompts_path == fixtures_dir / "eval.jsonl"
         assert config.output_dir == fixtures_dir / "output"
 
     def test_cut_defaults(self, fixtures_dir: Path) -> None:
@@ -1475,4 +1475,143 @@ class TestLoadConfig:
             '[softprompt]\ntransfer_models = "not-a-list"\n'
         )
         with pytest.raises(TypeError, match="transfer_models"):
+            load_config(toml_file)
+
+    # =========================================================================
+    # Eval config tests
+    # =========================================================================
+
+    def test_eval_max_tokens_default(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+        )
+        config = load_config(toml_file)
+        assert config.eval.max_tokens == 100
+
+    def test_eval_max_tokens_parsed(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[eval]\nmax_tokens = 200\n"
+        )
+        config = load_config(toml_file)
+        assert config.eval.max_tokens == 200
+
+    def test_eval_max_tokens_zero_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[eval]\nmax_tokens = 0\n"
+        )
+        with pytest.raises(ValueError, match="max_tokens"):
+            load_config(toml_file)
+
+    def test_eval_num_prompts_default(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+        )
+        config = load_config(toml_file)
+        assert config.eval.num_prompts == 20
+
+    def test_eval_num_prompts_parsed(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[eval]\nnum_prompts = 50\n"
+        )
+        config = load_config(toml_file)
+        assert config.eval.num_prompts == 50
+
+    def test_eval_num_prompts_zero_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[eval]\nnum_prompts = 0\n"
+        )
+        with pytest.raises(ValueError, match="num_prompts"):
+            load_config(toml_file)
+
+    def test_eval_refusal_phrases_default_none(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+        )
+        config = load_config(toml_file)
+        assert config.eval.refusal_phrases_path is None
+
+    def test_eval_refusal_phrases_parsed(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[eval]\nrefusal_phrases = "phrases.txt"\n'
+        )
+        config = load_config(toml_file)
+        assert config.eval.refusal_phrases_path == tmp_path / "phrases.txt"
+
+    def test_eval_prompts_backward_compat(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[eval]\nprompts = "eval.jsonl"\n'
+        )
+        config = load_config(toml_file)
+        assert config.eval.prompts_path == tmp_path / "eval.jsonl"
+
+    def test_eval_absent_defaults(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+        )
+        config = load_config(toml_file)
+        assert config.eval.prompts_path is None
+        assert config.eval.max_tokens == 100
+        assert config.eval.num_prompts == 20
+        assert config.eval.refusal_phrases_path is None
+
+    # =========================================================================
+    # Surface progress config tests
+    # =========================================================================
+
+    def test_surface_progress_default_true(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[surface]\n"
+        )
+        config = load_config(toml_file)
+        assert config.surface is not None
+        assert config.surface.progress is True
+
+    def test_surface_progress_false(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[surface]\nprogress = false\n"
+        )
+        config = load_config(toml_file)
+        assert config.surface is not None
+        assert config.surface.progress is False
+
+    def test_surface_progress_type_error(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[surface]\nprogress = "yes"\n'
+        )
+        with pytest.raises(TypeError, match="progress"):
             load_config(toml_file)
