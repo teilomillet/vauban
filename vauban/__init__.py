@@ -173,7 +173,121 @@ __all__ = [
     "steer",
     "subspace_overlap",
     "target_weight_keys",
+    "validate",
 ]
+
+
+def validate(config_path: str | Path) -> list[str]:
+    """Validate a TOML config without loading any model.
+
+    Checks:
+    - TOML parses and all fields are well-typed
+    - Referenced file paths exist on disk
+    - Refusal phrases file is non-empty
+    - Pipeline mode is unambiguous
+
+    Returns a list of warnings (empty = clean).  Raises on hard errors.
+    """
+    import sys
+
+    config = load_config(config_path)
+    warnings: list[str] = []
+
+    # Check data paths exist (skip HF dataset refs and "default")
+    for name, p in [
+        ("harmful", config.harmful_path),
+        ("harmless", config.harmless_path),
+    ]:
+        if isinstance(p, Path) and not p.exists():
+            warnings.append(f"[data].{name} file not found: {p}")
+
+    if (
+        isinstance(config.borderline_path, Path)
+        and not config.borderline_path.exists()
+    ):
+        warnings.append(
+            f"[data].borderline file not found: {config.borderline_path}"
+        )
+
+    # Eval prompts path
+    if (
+        config.eval.prompts_path is not None
+        and not config.eval.prompts_path.exists()
+    ):
+        warnings.append(
+            f"[eval].prompts file not found: {config.eval.prompts_path}"
+        )
+
+    # Refusal phrases file
+    if config.eval.refusal_phrases_path is not None:
+        rp = config.eval.refusal_phrases_path
+        if not rp.exists():
+            warnings.append(f"[eval].refusal_phrases file not found: {rp}")
+        else:
+            phrases = _load_refusal_phrases(rp)
+            if len(phrases) < 2:
+                warnings.append(
+                    f"[eval].refusal_phrases has only {len(phrases)}"
+                    " phrase(s) — consider adding more"
+                )
+
+    # Surface prompts path
+    if config.surface is not None:
+        sp = config.surface.prompts_path
+        if isinstance(sp, Path) and not sp.exists():
+            warnings.append(f"[surface].prompts file not found: {sp}")
+
+    # Early-return mode conflicts
+    early_modes = []
+    if config.sic is not None:
+        early_modes.append("[sic]")
+    if config.optimize is not None:
+        early_modes.append("[optimize]")
+    if config.softprompt is not None:
+        early_modes.append("[softprompt]")
+    if len(early_modes) > 1:
+        warnings.append(
+            f"Multiple early-return modes active: {', '.join(early_modes)}"
+            " — only the first will run (precedence: sic > optimize"
+            " > softprompt)"
+        )
+
+    # Surface + eval without eval prompts is fine but worth noting
+    if config.surface is not None and not early_modes:
+        pass  # surface runs in normal pipeline
+
+    # Print summary
+    mode = "measure → cut → export"
+    if config.sic is not None:
+        mode = "SIC sanitization"
+    elif config.optimize is not None:
+        mode = "Optuna optimization"
+    elif config.softprompt is not None:
+        mode = "soft prompt attack"
+    extras = []
+    if config.detect is not None:
+        extras.append("detect")
+    if config.surface is not None and not early_modes:
+        extras.append("surface")
+    if config.eval.prompts_path is not None and not early_modes:
+        extras.append("eval")
+    mode_str = mode
+    if extras:
+        mode_str += f" + {', '.join(extras)}"
+
+    print(f"Config:   {config_path}", file=sys.stderr)
+    print(f"Model:    {config.model_path}", file=sys.stderr)
+    print(f"Pipeline: {mode_str}", file=sys.stderr)
+    print(f"Output:   {config.output_dir}", file=sys.stderr)
+
+    if warnings:
+        print(f"\nWarnings ({len(warnings)}):", file=sys.stderr)
+        for w in warnings:
+            print(f"  - {w}", file=sys.stderr)
+    else:
+        print("\nNo issues found.", file=sys.stderr)
+
+    return warnings
 
 
 def _load_refusal_phrases(path: Path) -> list[str]:
@@ -189,6 +303,14 @@ def _load_refusal_phrases(path: Path) -> list[str]:
     return phrases
 
 
+def _log(msg: str, *, verbose: bool = True) -> None:
+    """Print a one-line status message to stderr."""
+    if not verbose:
+        return
+    import sys
+    print(f"[vauban] {msg}", file=sys.stderr, flush=True)
+
+
 def run(config_path: str | Path) -> None:
     """Run the full measure -> cut -> evaluate pipeline from a TOML config."""
     import json
@@ -198,13 +320,17 @@ def run(config_path: str | Path) -> None:
     from mlx.utils import tree_flatten
 
     config = load_config(config_path)
+    v = config.verbose
 
+    _log(f"Loading model {config.model_path}", verbose=v)
     model, tokenizer = mlx_lm.load(config.model_path)  # type: ignore[invalid-assignment]
 
     # Auto-dequantize if model has quantized weights
     if is_quantized(model):
+        _log("Dequantizing model weights", verbose=v)
         dequantize_model(model)
 
+    _log("Loading prompts")
     harmful = resolve_prompts(config.harmful_path)
     harmless = resolve_prompts(config.harmless_path)
 
@@ -215,6 +341,7 @@ def run(config_path: str | Path) -> None:
 
     # Defense detection (runs before measure/cut)
     if config.detect is not None:
+        _log("Running defense detection")
         detect_result = detect(model, tokenizer, harmful, harmless, config.detect)  # type: ignore[arg-type]
         report_path = config.output_dir / "detect_report.json"
         report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -227,6 +354,7 @@ def run(config_path: str | Path) -> None:
 
     clip_q = config.measure.clip_quantile
 
+    _log(f"Measuring refusal direction (mode={config.measure.mode})")
     if config.measure.mode == "subspace":
         subspace_result = measure_subspace(
             model, tokenizer, harmful, harmless,  # type: ignore[arg-type]
@@ -265,6 +393,7 @@ def run(config_path: str | Path) -> None:
 
     # SIC sanitization: standalone early-return mode
     if config.sic is not None:
+        _log(f"Running SIC sanitization (mode={config.sic.mode})")
         direction_vec = (
             direction_result.direction if direction_result is not None
             else None
@@ -294,10 +423,12 @@ def run(config_path: str | Path) -> None:
         report_path.write_text(
             json.dumps(_sic_to_dict(sic_result), indent=2),
         )
+        _log(f"Done — SIC report written to {report_path}")
         return
 
     # Optimization mode: search over cut parameters, write report, return early
     if config.optimize is not None and direction_result is not None:
+        _log(f"Running optimization ({config.optimize.n_trials} trials)")
         eval_prompts_opt: list[str] = []
         if config.eval.prompts_path is not None:
             eval_prompts_opt = load_prompts(config.eval.prompts_path)
@@ -314,10 +445,12 @@ def run(config_path: str | Path) -> None:
         report_path.write_text(
             json.dumps(_optimize_to_dict(opt_result), indent=2),
         )
+        _log(f"Done — optimize report written to {report_path}")
         return
 
     # Soft prompt attack: optimize a learnable prefix, write report, return
     if config.softprompt is not None:
+        _log(f"Running soft prompt attack (mode={config.softprompt.mode})")
         direction_vec = (
             direction_result.direction if direction_result is not None else None
         )
@@ -395,6 +528,7 @@ def run(config_path: str | Path) -> None:
         report_path.write_text(
             json.dumps(_softprompt_to_dict(sp_result), indent=2),
         )
+        _log(f"Done — softprompt report written to {report_path}")
         return
 
     # Resolve layer types from whichever result is available
@@ -480,6 +614,7 @@ def run(config_path: str | Path) -> None:
     surface_before: SurfaceResult | None = None
     surface_prompts: list[SurfacePrompt] | None = None
     if config.surface is not None and surface_direction is not None:
+        _log("Mapping refusal surface (before cut)")
         surface_prompts = load_surface_prompts(
             default_surface_path()
             if config.surface.prompts_path == "default"
@@ -498,6 +633,7 @@ def run(config_path: str | Path) -> None:
         )
 
     # Apply the appropriate cut
+    _log(f"Cutting {len(target_layers)} layers (alpha={config.cut.alpha})")
     lw = config.cut.layer_weights
     if config.measure.mode == "subspace":
         assert subspace_result is not None
@@ -552,6 +688,7 @@ def run(config_path: str | Path) -> None:
         )
 
     # Export as a complete loadable model directory
+    _log(f"Exporting modified model to {config.output_dir}")
     export_model(config.model_path, modified_weights, config.output_dir)
 
     # Load modified model if needed for surface-after or eval
@@ -567,6 +704,7 @@ def run(config_path: str | Path) -> None:
 
     # "After" surface map + comparison
     if surface_before is not None:
+        _log("Mapping refusal surface (after cut)")
         assert modified_model is not None
         assert surface_prompts is not None
         assert surface_direction is not None
@@ -590,6 +728,7 @@ def run(config_path: str | Path) -> None:
 
     # Evaluate if eval prompts are provided
     if config.eval.prompts_path is not None and modified_model is not None:
+        _log("Evaluating modified model")
         eval_prompts = load_prompts(config.eval.prompts_path)
 
         result = evaluate(
@@ -609,4 +748,4 @@ def run(config_path: str | Path) -> None:
         }
         report_path.write_text(json.dumps(report, indent=2))
 
-
+    _log(f"Done — output written to {config.output_dir}")

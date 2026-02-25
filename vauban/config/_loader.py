@@ -81,6 +81,18 @@ def load_config(path: str | Path) -> PipelineConfig:
         )
         raise ValueError(msg)
 
+    # -- verbose --
+    verbose = True
+    verbose_raw = raw.get("verbose")
+    if verbose_raw is not None:
+        if not isinstance(verbose_raw, bool):
+            msg = (
+                f"verbose must be a boolean,"
+                f" got {type(verbose_raw).__name__}"
+            )
+            raise TypeError(msg)
+        verbose = verbose_raw
+
     return PipelineConfig(
         model_path=model_path,
         harmful_path=harmful_path,
@@ -95,6 +107,7 @@ def load_config(path: str | Path) -> PipelineConfig:
         eval=eval_config,
         output_dir=output_dir,
         borderline_path=borderline_path,
+        verbose=verbose,
     )
 
 

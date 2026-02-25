@@ -1,0 +1,272 @@
+# ==========================================================================
+# Vauban — Full Configuration Reference
+# ==========================================================================
+#
+# Usage:  vauban config.toml
+#         vauban --validate config.toml   (check without loading model)
+#
+# Only [model] and [data] are required.  All other sections are optional
+# and activate different pipeline modes when present:
+#
+#   Section present  →  Pipeline mode
+#   ─────────────────────────────────────
+#   (none)           →  measure → cut → export
+#   [surface]        →  … + before/after refusal surface maps
+#   [eval]           →  … + refusal rate / perplexity / KL evaluation
+#   [detect]         →  defense detection (runs before measure/cut)
+#   [optimize]       →  Optuna hyperparameter search (early return)
+#   [softprompt]     →  soft prompt attack (early return)
+#   [sic]            →  SIC iterative sanitization (early return)
+#
+# Paths are resolved relative to the directory containing this file.
+#
+# Data file formats:
+#   harmful/harmless/eval JSONL — one JSON object per line:
+#       {"prompt": "How do I pick a lock?"}
+#   surface JSONL — three required keys:
+#       {"prompt": "...", "label": "harmful", "category": "weapons"}
+#   refusal phrases — plain text, one phrase per line:
+#       I cannot
+#       I'm sorry
+#       # lines starting with # are ignored
+#
+# ==========================================================================
+
+
+# --------------------------------------------------------------------------
+# [model] — REQUIRED
+# --------------------------------------------------------------------------
+[model]
+# HuggingFace model ID or local path.  Must be loadable by mlx_lm.load().
+path = "mlx-community/Llama-3.2-3B-Instruct-4bit"
+
+
+# --------------------------------------------------------------------------
+# [data] — REQUIRED
+# --------------------------------------------------------------------------
+[data]
+# Each source can be:
+#   "default"              → bundled prompt set
+#   "path/to/file.jsonl"   → local JSONL
+#   "hf:org/dataset"       → HuggingFace dataset (short form)
+#   { hf = "org/dataset", split = "train", column = "prompt",
+#     config = "default", limit = 200 }   → HuggingFace dataset (long form)
+harmful  = "default"
+harmless = "default"
+
+# borderline: optional neutral/ambiguous prompts.
+# Required only if [cut].false_refusal_ortho = true.
+# borderline = "borderline.jsonl"
+
+
+# --------------------------------------------------------------------------
+# [measure] — Direction extraction
+# --------------------------------------------------------------------------
+[measure]
+# mode: "direction" | "subspace" | "dbdi"     (default: "direction")
+#   direction  — single refusal direction via mean difference
+#   subspace   — top-k orthonormal directions via SVD
+#   dbdi       — harm detection (HDD) + refusal execution (RED)
+# mode = "direction"
+
+# top_k: int >= 1     (default: 5)
+#   Number of singular directions for subspace/dbdi modes.
+# top_k = 5
+
+# clip_quantile: float in [0.0, 0.5)     (default: 0.0)
+#   Winsorize extreme projections.  0.0 = off, 0.01 = clip top/bottom 1%.
+# clip_quantile = 0.0
+
+
+# --------------------------------------------------------------------------
+# [cut] — Weight modification (abliteration)
+# --------------------------------------------------------------------------
+[cut]
+# alpha: float >= 0     (default: 1.0)
+#   Cut strength.  0 = no-op, 1 = full rank-1 removal, >1 = overshoot.
+# alpha = 1.0
+
+# layers: "auto" | [14, 15, 20] | omit     (default: all layers)
+#   "auto" or omit → all layers.  Explicit list overrides layer_strategy.
+# layers = "auto"
+
+# norm_preserve: bool     (default: false)
+#   Rescale weight rows to preserve L2 norm after projection removal.
+# norm_preserve = false
+
+# biprojected: bool     (default: false)
+#   Orthogonalize refusal direction against harmless direction first.
+# biprojected = false
+
+# layer_strategy: "all" | "above_median" | "top_k"     (default: "all")
+#   Probe-guided layer selection.  Requires mode = "direction".
+# layer_strategy = "all"
+
+# layer_top_k: int >= 1     (default: 10)
+#   How many layers to select when layer_strategy = "top_k".
+# layer_top_k = 10
+
+# layer_weights: [0.5, 1.0, 1.5] | omit     (default: null)
+#   Per-layer alpha multipliers.  Length must match the number of layers.
+# layer_weights = [0.5, 1.0, 1.5]
+
+# sparsity: float in [0.0, 1.0)     (default: 0.0)
+#   Zero out this fraction of direction components before cutting.
+# sparsity = 0.0
+
+# dbdi_target: "red" | "hdd" | "both"     (default: "red")
+#   Which DBDI component to remove.  Only used with measure.mode = "dbdi".
+# dbdi_target = "red"
+
+# false_refusal_ortho: bool     (default: false)
+#   Orthogonalize against false-refusal direction (from borderline prompts).
+#   Requires [data].borderline to be set.
+# false_refusal_ortho = false
+
+# layer_type_filter: "global" | "sliding" | omit     (default: null)
+#   Filter layers by attention type before cutting.
+# layer_type_filter = null
+
+
+# --------------------------------------------------------------------------
+# [eval] — Post-cut evaluation
+# --------------------------------------------------------------------------
+[eval]
+# prompts: path     (default: null → use harmful[:num_prompts])
+#   JSONL file with evaluation prompts.  If omitted, the first num_prompts
+#   harmful prompts are used as a fallback for optimize/softprompt/sic modes.
+# prompts = "eval.jsonl"
+
+# max_tokens: int >= 1     (default: 100)
+#   Max tokens to generate when measuring refusal rate.
+# max_tokens = 100
+
+# num_prompts: int >= 1     (default: 20)
+#   Fallback prompt count when prompts path is absent.
+# num_prompts = 20
+
+# refusal_phrases: path     (default: null → built-in list)
+#   Text file with custom refusal phrases, one per line.
+#   Lines starting with # are ignored.
+# refusal_phrases = "my_phrases.txt"
+
+
+# --------------------------------------------------------------------------
+# [surface] — Refusal surface mapping (before and after cut)
+# --------------------------------------------------------------------------
+# [surface]
+# prompts: path | "default"     (default: "default")
+#   JSONL with prompt/label/category keys.
+# prompts = "default"
+
+# generate: bool     (default: true)
+#   Generate responses and detect refusals.  False = projections only.
+# generate = true
+
+# max_tokens: int >= 1     (default: 20)
+#   Max tokens per prompt during scan.
+# max_tokens = 20
+
+# progress: bool     (default: true)
+#   Print scan progress to stderr.
+# progress = true
+
+
+# --------------------------------------------------------------------------
+# [detect] — Defense hardening detection (runs before measure/cut)
+# --------------------------------------------------------------------------
+# [detect]
+# mode: "fast" | "probe" | "full"     (default: "full")
+#   fast  — cosine concentration check (no model eval)
+#   probe — SVD + Grassmann distance
+#   full  — test cut + refusal evaluation
+# mode = "full"
+
+# top_k: int >= 1     (default: 5)
+# clip_quantile: float in [0.0, 0.5)     (default: 0.0)
+# alpha: float >= 0     (default: 1.0)     — test cut strength
+# max_tokens: int >= 1     (default: 100)  — generation limit in full mode
+
+
+# --------------------------------------------------------------------------
+# [optimize] — Optuna multi-objective search (early return)
+# --------------------------------------------------------------------------
+# [optimize]
+# n_trials: int >= 1     (default: 50)
+# alpha_min: float     (default: 0.1)
+# alpha_max: float     (default: 5.0)      — must be > alpha_min
+# sparsity_min: float     (default: 0.0)
+# sparsity_max: float     (default: 0.9)   — must be > sparsity_min
+# search_norm_preserve: bool     (default: true)
+# search_strategies: ["all", "above_median", "top_k"]     (default: all three)
+# layer_top_k_min: int >= 1     (default: 3)
+# layer_top_k_max: int | null     (default: null → num_layers)
+# max_tokens: int >= 1     (default: 100)
+# seed: int | null     (default: null)
+# timeout: float (seconds) | null     (default: null)
+
+
+# --------------------------------------------------------------------------
+# [softprompt] — Soft prompt / adversarial suffix attack (early return)
+# --------------------------------------------------------------------------
+# [softprompt]
+# mode: "continuous" | "gcg" | "egd"     (default: "continuous")
+#   continuous — Adam over embedding space (Schwinn et al.)
+#   gcg        — Greedy Coordinate Gradient (Zou et al.)
+#   egd        — Exponentiated Gradient Descent (EGD Attack)
+
+# n_tokens: int >= 1     (default: 16)     — learnable prefix length
+# n_steps: int >= 1     (default: 200)     — optimization iterations
+# learning_rate: float > 0     (default: 0.01)     — continuous mode
+# init_scale: float >= 0     (default: 0.1)
+# batch_size: int >= 1     (default: 64)     — GCG candidates per position
+# top_k: int >= 1     (default: 256)     — GCG token candidates
+# direction_weight: float >= 0     (default: 0.0)     — 0 = standalone
+# target_prefixes: ["Sure", "Here"]     (default: ["Sure", "Here"])
+# max_gen_tokens: int >= 1     (default: 100)
+# seed: int | null     (default: null)
+# embed_reg_weight: float >= 0     (default: 0.0)     — Huang et al. norm reg
+# patience: int >= 0     (default: 0)     — early stopping (0 = off)
+# lr_schedule: "constant" | "cosine"     (default: "constant")
+# n_restarts: int >= 1     (default: 1)     — GCG random restarts
+# prompt_strategy: "all" | "cycle" | "first" | "worst_k"     (default: "all")
+# direction_mode: "last" | "raid" | "all_positions"     (default: "last")
+# direction_layers: [10, 15] | null     (default: null → all)
+# loss_mode: "targeted" | "untargeted" | "defensive"     (default: "targeted")
+# egd_temperature: float > 0     (default: 1.0)
+# token_constraint: "ascii" | "alpha" | "alphanumeric" | null     (default: null)
+# eos_loss_mode: "none" | "force" | "suppress"     (default: "none")
+# eos_loss_weight: float >= 0     (default: 0.0)
+# kl_ref_weight: float >= 0     (default: 0.0)     — requires ref_model if > 0
+# ref_model: "hf-id-or-path" | null     (default: null)
+# worst_k: int >= 1     (default: 5)
+# grad_accum_steps: int >= 1     (default: 1)
+# transfer_models: ["model-a", "model-b"]     (default: [])
+
+
+# --------------------------------------------------------------------------
+# [sic] — Soft Instruction Control defense (early return)
+# --------------------------------------------------------------------------
+# [sic]
+# mode: "direction" | "generation"     (default: "direction")
+#   direction  — project onto refusal direction
+#   generation — generate and check for refusal phrases
+
+# threshold: float     (default: 0.0)     — detection threshold
+# max_iterations: int >= 1     (default: 3)
+# max_tokens: int >= 1     (default: 100)     — generation mode
+# target_layer: int | null     (default: null → from measurement)
+# sanitize_system_prompt: string     (default: built-in prompt)
+# max_sanitize_tokens: int >= 1     (default: 200)
+# block_on_failure: bool     (default: true)
+# calibrate: bool     (default: false)     — auto-threshold from clean prompts
+# calibrate_prompts: "harmless" | "harmful"     (default: "harmless")
+
+
+# --------------------------------------------------------------------------
+# [output] — Output directory
+# --------------------------------------------------------------------------
+[output]
+# dir: path     (default: "output")
+#   Where to write modified weights, reports, and measurements.
+dir = "output"

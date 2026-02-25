@@ -472,3 +472,4 @@ class PipelineConfig:
     eval: EvalConfig = field(default_factory=EvalConfig)
     output_dir: Path = field(default_factory=lambda: Path("output"))
     borderline_path: Path | DatasetRef | None = None
+    verbose: bool = True
