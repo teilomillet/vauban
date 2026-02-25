@@ -79,6 +79,16 @@ class DirectionResult:
             f" model={self.model_path}"
         )
 
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to dict, skipping mx.array fields."""
+        return {
+            "layer_index": self.layer_index,
+            "cosine_scores": self.cosine_scores,
+            "d_model": self.d_model,
+            "model_path": self.model_path,
+            "layer_types": self.layer_types,
+        }
+
 
 @dataclass(frozen=True, slots=True)
 class SubspaceResult:
@@ -199,6 +209,17 @@ class EvalResult:
             f" prompts={self.num_prompts}"
         )
 
+    def to_dict(self) -> dict[str, object]:
+        """Serialize all scalar fields to dict."""
+        return {
+            "refusal_rate_original": self.refusal_rate_original,
+            "refusal_rate_modified": self.refusal_rate_modified,
+            "perplexity_original": self.perplexity_original,
+            "perplexity_modified": self.perplexity_modified,
+            "kl_divergence": self.kl_divergence,
+            "num_prompts": self.num_prompts,
+        }
+
 
 @dataclass(frozen=True, slots=True)
 class ProbeResult:
@@ -223,6 +244,14 @@ class ProbeResult:
             f" min={min_p:.4f}, max={max_p:.4f}, mean={mean_p:.4f}"
         )
 
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to dict."""
+        return {
+            "prompt": self.prompt,
+            "layer_count": self.layer_count,
+            "projections": self.projections,
+        }
+
 
 @dataclass(frozen=True, slots=True)
 class SteerResult:
@@ -246,6 +275,14 @@ class SteerResult:
             f" max_proj_before={max_before:.4f},"
             f" max_proj_after={max_after:.4f}"
         )
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to dict."""
+        return {
+            "text": self.text,
+            "projections_before": self.projections_before,
+            "projections_after": self.projections_after,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -385,6 +422,31 @@ class SoftPromptResult:
     per_prompt_losses: list[float] = field(default_factory=list)
     early_stopped: bool = False
     transfer_results: list[TransferEvalResult] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to dict, skipping mx.array embeddings."""
+        return {
+            "mode": self.mode,
+            "success_rate": self.success_rate,
+            "final_loss": self.final_loss,
+            "loss_history": self.loss_history,
+            "n_steps": self.n_steps,
+            "n_tokens": self.n_tokens,
+            "token_ids": self.token_ids,
+            "token_text": self.token_text,
+            "eval_responses": self.eval_responses,
+            "accessibility_score": self.accessibility_score,
+            "per_prompt_losses": self.per_prompt_losses,
+            "early_stopped": self.early_stopped,
+            "transfer_results": [
+                {
+                    "model_id": tr.model_id,
+                    "success_rate": tr.success_rate,
+                    "eval_responses": tr.eval_responses,
+                }
+                for tr in self.transfer_results
+            ],
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -576,6 +638,20 @@ class DetectResult:
     residual_refusal_rate: float | None  # post-abliteration refusal (full only)
     mean_refusal_position: float | None  # token position of first refusal (full only)
     evidence: list[str]  # human-readable evidence strings
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize all fields to dict."""
+        return {
+            "hardened": self.hardened,
+            "confidence": self.confidence,
+            "effective_rank": self.effective_rank,
+            "cosine_concentration": self.cosine_concentration,
+            "silhouette_peak": self.silhouette_peak,
+            "hdd_red_distance": self.hdd_red_distance,
+            "residual_refusal_rate": self.residual_refusal_rate,
+            "mean_refusal_position": self.mean_refusal_position,
+            "evidence": self.evidence,
+        }
 
 
 @dataclass(frozen=True, slots=True)

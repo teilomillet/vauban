@@ -13,6 +13,7 @@ from vauban.dequantize import dequantize_model, is_quantized
 from vauban.types import (
     CausalLM,
     DirectionResult,
+    EvalResult,
     ProbeResult,
     SteerResult,
     SurfaceResult,
@@ -222,3 +223,33 @@ def scan(
         model, tokenizer, prompts, direction_vec, direction_layer,
         progress=False,
     )
+
+
+def evaluate(
+    original: CausalLM,
+    modified: CausalLM,
+    tokenizer: Tokenizer,
+    prompts: list[str] | None = None,
+    *,
+    max_tokens: int = 100,
+) -> EvalResult:
+    """Evaluate original vs modified model. Uses bundled harmful prompts if None.
+
+    Args:
+        original: Original (unmodified) causal language model.
+        modified: Modified (abliterated) causal language model.
+        tokenizer: Tokenizer with chat template support.
+        prompts: Eval prompt list, or None to use first 20 bundled harmful prompts.
+        max_tokens: Maximum tokens to generate per prompt.
+
+    Returns:
+        EvalResult with refusal rates, perplexity, and KL divergence.
+    """
+    from vauban.evaluate import evaluate as _evaluate
+    from vauban.measure import default_prompt_paths, load_prompts
+
+    if prompts is None:
+        h_path, _ = default_prompt_paths()
+        prompts = load_prompts(h_path)[:20]
+
+    return _evaluate(original, modified, tokenizer, prompts, max_tokens=max_tokens)  # type: ignore[arg-type]

@@ -9,12 +9,13 @@ from tests.conftest import D_MODEL, NUM_LAYERS, MockCausalLM, MockTokenizer
 from vauban.quick import (
     abliterate,
     compare,
+    evaluate,
     measure_direction,
     probe_prompt,
     scan,
     steer_prompt,
 )
-from vauban.types import DirectionResult
+from vauban.types import DirectionResult, EvalResult
 
 
 class TestMeasureDirection:
@@ -148,6 +149,37 @@ class TestCompare:
 
         result = compare(dir_a, dir_b)
         assert "No shared reports" in result
+
+
+class TestEvaluate:
+    def test_returns_eval_result(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """evaluate() should return an EvalResult."""
+        prompts = ["test prompt 1", "test prompt 2"]
+        result = evaluate(
+            mock_model, mock_model, mock_tokenizer, prompts,
+            max_tokens=5,
+        )
+        assert isinstance(result, EvalResult)
+        assert result.num_prompts == 2
+        assert 0.0 <= result.refusal_rate_original <= 1.0
+        assert 0.0 <= result.refusal_rate_modified <= 1.0
+
+    def test_with_defaults(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """evaluate() with None prompts uses bundled defaults."""
+        result = evaluate(
+            mock_model, mock_model, mock_tokenizer,
+            max_tokens=5,
+        )
+        assert isinstance(result, EvalResult)
+        assert result.num_prompts <= 20
 
 
 class TestScan:

@@ -50,6 +50,7 @@ def test_commands_section_contains_format_flag() -> None:
     output = render_manual("commands")
     assert "--format" in output
     assert "--threshold" in output
+    assert "CI gate" in output
 
 
 def test_quick_section_contains_compare_scan() -> None:
@@ -78,3 +79,16 @@ def test_main_old_flag_man_shows_migration_hint(
     captured = capsys.readouterr()
     assert "'--man' is no longer supported" in captured.err
     assert "Use 'vauban man [topic]'" in captured.err
+
+
+def test_main_typo_command_suggests_valid_command(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["vauban", "men"])
+    with pytest.raises(SystemExit) as exc:
+        main()
+    assert exc.value.code == 1
+    captured = capsys.readouterr()
+    assert "unknown command 'men'" in captured.err
+    assert "Did you mean 'man'" in captured.err

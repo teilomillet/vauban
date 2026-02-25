@@ -156,3 +156,20 @@ class TestInitCli:
         assert exc.value.code == 1
         captured = capsys.readouterr()
         assert "unexpected argument" in captured.err
+
+    def test_init_help(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setattr(
+            sys, "argv", ["vauban", "init", "--help"],
+        )
+        from vauban.__main__ import main
+
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        captured = capsys.readouterr()
+        assert "Usage: vauban init" in captured.out
+        assert "Modes:" in captured.out

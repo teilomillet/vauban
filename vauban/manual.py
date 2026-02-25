@@ -190,6 +190,8 @@ _EXAMPLE_NOTES: tuple[str, ...] = (
     "  vauban run.toml",
     "Compare two experiment outputs:",
     "  vauban diff runs/baseline runs/experiment_a",
+    "CI gate for regression checks:",
+    "  vauban diff --threshold 0.05 runs/baseline runs/candidate",
     "Open manual for one topic:",
     "  vauban man softprompt",
 )
@@ -1010,7 +1012,7 @@ def render_manual(topic: str | None = None) -> str:
             "      --format: output format (default: text).",
         )
         lines.append(
-            "      --threshold: exit code 1 if any |delta| exceeds value.",
+            "      --threshold: CI gate; exit code 1 if any |delta| exceeds value.",
         )
         lines.append(f"      report files: {', '.join(_known_diff_reports())}")
         lines.append("    vauban man [topic]")

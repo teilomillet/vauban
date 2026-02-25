@@ -106,7 +106,7 @@ from vauban.types import (
     TrialResult,
 )
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 
 __all__ = [
     "CutConfig",
@@ -226,10 +226,15 @@ def validate(config_path: str | Path) -> list[str]:
     raw = _load_raw_toml(config_path)
 
     # Check for unknown/typo'd top-level sections before parsing
-    from vauban._suggestions import check_unknown_keys, check_unknown_sections
+    from vauban._suggestions import (
+        check_unknown_keys,
+        check_unknown_sections,
+        check_value_constraints,
+    )
 
     unknown_warnings = check_unknown_sections(raw)
     unknown_warnings.extend(check_unknown_keys(raw))
+    unknown_warnings.extend(check_value_constraints(raw))
 
     config = load_config(config_path)
     warnings: list[str] = []
@@ -788,6 +793,42 @@ def _log(msg: str, *, verbose: bool = True, elapsed: float | None = None) -> Non
     print(f"{prefix} {msg}", file=sys.stderr, flush=True)
 
 
+def _write_experiment_log(
+    config_path: str | Path,
+    config: PipelineConfig,
+    mode: str,
+    reports: list[str],
+    metrics: dict[str, float],
+    elapsed: float,
+) -> None:
+    """Append an experiment entry to output_dir/experiment_log.jsonl.
+
+    Best-effort: never crashes the pipeline on I/O errors.
+    """
+    import datetime
+    import json as _json
+
+    try:
+        entry = {
+            "timestamp": datetime.datetime.now(
+                tz=datetime.UTC,
+            ).isoformat(timespec="seconds"),
+            "config_path": str(Path(config_path).resolve()),
+            "model_path": config.model_path,
+            "pipeline_mode": mode,
+            "output_dir": str(config.output_dir),
+            "reports": reports,
+            "metrics": metrics,
+            "elapsed_seconds": round(elapsed, 2),
+        }
+        log_path = config.output_dir / "experiment_log.jsonl"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a") as f:
+            f.write(_json.dumps(entry) + "\n")
+    except Exception:
+        pass
+
+
 def run(config_path: str | Path) -> None:
     """Run the full measure -> cut -> evaluate pipeline from a TOML config."""
     import json
@@ -890,6 +931,11 @@ def run(config_path: str | Path) -> None:
             f"Done — depth report written to {report_path}",
             verbose=v, elapsed=time.monotonic() - t0,
         )
+        _write_experiment_log(
+            config_path, config, "depth",
+            ["depth_report.json"], {},
+            time.monotonic() - t0,
+        )
         return
 
     _log(
@@ -981,6 +1027,11 @@ def run(config_path: str | Path) -> None:
             f"Done — probe report written to {report_path}",
             verbose=v, elapsed=time.monotonic() - t0,
         )
+        _write_experiment_log(
+            config_path, config, "probe",
+            ["probe_report.json"], {},
+            time.monotonic() - t0,
+        )
         return
 
     # Steer generation: generate with direction removal, write report, return
@@ -1009,6 +1060,11 @@ def run(config_path: str | Path) -> None:
         _log(
             f"Done — steer report written to {report_path}",
             verbose=v, elapsed=time.monotonic() - t0,
+        )
+        _write_experiment_log(
+            config_path, config, "steer",
+            ["steer_report.json"], {},
+            time.monotonic() - t0,
         )
         return
 
@@ -1051,6 +1107,11 @@ def run(config_path: str | Path) -> None:
             f"Done — SIC report written to {report_path}",
             verbose=v, elapsed=time.monotonic() - t0,
         )
+        _write_experiment_log(
+            config_path, config, "sic",
+            ["sic_report.json"], {},
+            time.monotonic() - t0,
+        )
         return
 
     # Optimization mode: search over cut parameters, write report, return early
@@ -1078,6 +1139,12 @@ def run(config_path: str | Path) -> None:
         _log(
             f"Done — optimize report written to {report_path}",
             verbose=v, elapsed=time.monotonic() - t0,
+        )
+        _write_experiment_log(
+            config_path, config, "optimize",
+            ["optimize_report.json"],
+            {"n_trials": float(config.optimize.n_trials)},
+            time.monotonic() - t0,
         )
         return
 
@@ -1167,6 +1234,12 @@ def run(config_path: str | Path) -> None:
         _log(
             f"Done — softprompt report written to {report_path}",
             verbose=v, elapsed=time.monotonic() - t0,
+        )
+        _write_experiment_log(
+            config_path, config, "softprompt",
+            ["softprompt_report.json"],
+            {"success_rate": sp_result.success_rate},
+            time.monotonic() - t0,
         )
         return
 
@@ -1402,7 +1475,21 @@ def run(config_path: str | Path) -> None:
         }
         report_path.write_text(json.dumps(report, indent=2))
 
+    # Collect reports and metrics for experiment log
+    normal_reports: list[str] = []
+    normal_metrics: dict[str, float] = {}
+    if surface_before is not None:
+        normal_reports.append("surface_report.json")
+    if config.eval.prompts_path is not None and modified_model is not None:
+        normal_reports.append("eval_report.json")
+        normal_metrics["refusal_rate_modified"] = result.refusal_rate_modified
+
     _log(
         f"Done — output written to {config.output_dir}",
         verbose=v, elapsed=time.monotonic() - t0,
+    )
+    _write_experiment_log(
+        config_path, config, "default",
+        normal_reports, normal_metrics,
+        time.monotonic() - t0,
     )

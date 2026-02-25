@@ -1,6 +1,7 @@
 """Typo detection and help hints for TOML config validation."""
 
 import difflib
+from typing import cast
 
 from vauban.config._types import TomlDict
 
@@ -106,7 +107,7 @@ def check_unknown_keys(raw: TomlDict) -> list[str]:
         section_data = raw.get(section)
         if not isinstance(section_data, dict):
             continue
-        section_dict: dict[str, object] = section_data  # type: ignore[assignment]
+        section_dict = cast("dict[str, object]", section_data)
         for key in section_dict:
             if key in known_keys:
                 continue
@@ -126,4 +127,85 @@ def check_unknown_keys(raw: TomlDict) -> list[str]:
                     f"Unknown key [{section}].{key}"
                     f" — not a recognized key in [{section}]",
                 )
+    return warnings
+
+
+# ---------------------------------------------------------------------------
+# Value-level validation: enum values and numeric ranges
+# ---------------------------------------------------------------------------
+
+_KNOWN_VALUES: dict[tuple[str, str], frozenset[str]] = {
+    ("measure", "mode"): frozenset({"direction", "subspace", "dbdi"}),
+    ("cut", "layer_strategy"): frozenset({"all", "above_median", "top_k"}),
+    ("cut", "dbdi_target"): frozenset({"red", "hdd", "both"}),
+    ("cut", "layer_type_filter"): frozenset({"global", "sliding"}),
+    ("softprompt", "mode"): frozenset({"continuous", "gcg", "egd"}),
+    ("softprompt", "prompt_strategy"): frozenset({"all", "cycle", "first", "worst_k"}),
+    ("softprompt", "direction_mode"): frozenset({"last", "raid", "all_positions"}),
+    ("softprompt", "loss_mode"): frozenset({"targeted", "untargeted", "defensive"}),
+    ("softprompt", "lr_schedule"): frozenset({"constant", "cosine"}),
+    ("softprompt", "token_constraint"): frozenset({"ascii", "alpha", "alphanumeric"}),
+    ("softprompt", "eos_loss_mode"): frozenset({"none", "force", "suppress"}),
+    ("sic", "mode"): frozenset({"direction", "generation"}),
+    ("sic", "calibrate_prompts"): frozenset({"harmless", "harmful"}),
+    ("detect", "mode"): frozenset({"fast", "probe", "full"}),
+}
+
+# (min_inclusive, max_exclusive) — None = unbounded
+_NUMERIC_RANGES: dict[tuple[str, str], tuple[float | None, float | None]] = {
+    ("measure", "clip_quantile"): (0.0, 0.5),
+    ("cut", "sparsity"): (0.0, 1.0),
+    ("depth", "clip_quantile"): (0.0, 0.5),
+    ("softprompt", "n_tokens"): (1, None),
+    ("softprompt", "n_steps"): (1, None),
+    ("eval", "max_tokens"): (1, None),
+    ("eval", "num_prompts"): (1, None),
+}
+
+
+def check_value_constraints(raw: TomlDict) -> list[str]:
+    """Check enum values and numeric ranges in TOML config.
+
+    Returns a list of warning strings for invalid enum values or
+    out-of-range numeric values.
+    """
+    warnings: list[str] = []
+
+    for (section, key), allowed in _KNOWN_VALUES.items():
+        section_data = raw.get(section)
+        if not isinstance(section_data, dict):
+            continue
+        section_dict = cast("dict[str, object]", section_data)
+        value = section_dict.get(key)
+        if value is None or not isinstance(value, str):
+            continue
+        if value not in allowed:
+            matches = difflib.get_close_matches(
+                value, sorted(allowed), n=1, cutoff=0.5,
+            )
+            hint = f" — did you mean {matches[0]!r}?" if matches else ""
+            warnings.append(
+                f"Invalid value [{section}].{key} = {value!r}"
+                f" — expected one of: {', '.join(sorted(allowed))}{hint}",
+            )
+
+    for (section, key), (lo, hi) in _NUMERIC_RANGES.items():
+        section_data = raw.get(section)
+        if not isinstance(section_data, dict):
+            continue
+        num_dict = cast("dict[str, object]", section_data)
+        value = num_dict.get(key)
+        if value is None or not isinstance(value, (int, float)):
+            continue
+        if lo is not None and value < lo:
+            warnings.append(
+                f"Out-of-range [{section}].{key} = {value}"
+                f" — must be >= {lo}",
+            )
+        if hi is not None and value >= hi:
+            warnings.append(
+                f"Out-of-range [{section}].{key} = {value}"
+                f" — must be < {hi}",
+            )
+
     return warnings

@@ -8,7 +8,9 @@ Usage:
     vauban man [topic]
 """
 
+import difflib
 import sys
+from pathlib import Path
 
 USAGE = """\
 Usage: vauban [--validate] <config.toml>
@@ -22,6 +24,7 @@ All configuration lives in the TOML file.
 Commands:
   init            Generate a starter TOML config file.
   diff            Compare JSON reports from two output directories.
+                  Use --threshold as a CI gate (exit 1 on large deltas).
   man             Show built-in manual (topics: quickstart, commands,
                   validate, playbook, quick, examples, print, modes, formats,
                   model, data, measure, cut, eval, surface, detect, optimize,
@@ -32,12 +35,45 @@ Options:
   -h, --help    Show this message and exit.
 """
 
+_INIT_USAGE = (
+    "Usage: vauban init [--mode MODE] [--model PATH]"
+    " [--output FILE] [--force]\n"
+)
+
+_DIFF_USAGE = (
+    "Usage: vauban diff [--format text|markdown]"
+    " [--threshold FLOAT] <dir_a> <dir_b>\n"
+)
+
+_DIFF_HELP = (
+    "Usage: vauban diff [--format text|markdown]"
+    " [--threshold FLOAT] <dir_a> <dir_b>\n"
+    "\n"
+    "Options:\n"
+    "  --format text|markdown   Output format (default: text).\n"
+    "  --threshold FLOAT        CI gate:"
+    " exit 1 if any absolute metric delta exceeds threshold.\n"
+)
+
+
+def _command_suggestion(token: str) -> str | None:
+    """Return a suggested command for typo'd subcommands."""
+    candidates = ("man", "init", "diff", "validate")
+    aliases = {"validate": "--validate"}
+    matches = difflib.get_close_matches(token, candidates, n=1, cutoff=0.6)
+    if not matches:
+        return None
+    return aliases.get(matches[0], matches[0])
+
 
 def _run_init(args: list[str]) -> None:
     """Handle `vauban init` subcommand."""
-    from pathlib import Path
-
     from vauban._init import KNOWN_MODES, init_config
+
+    if len(args) == 1 and args[0] in ("--help", "-h"):
+        sys.stdout.write(_INIT_USAGE)
+        sys.stdout.write(f"Modes: {', '.join(sorted(KNOWN_MODES))}\n")
+        return
 
     mode = "default"
     model = "mlx-community/Llama-3.2-3B-Instruct-4bit"
@@ -46,6 +82,10 @@ def _run_init(args: list[str]) -> None:
 
     i = 0
     while i < len(args):
+        if args[i] in ("--help", "-h"):
+            sys.stdout.write(_INIT_USAGE)
+            sys.stdout.write(f"Modes: {', '.join(sorted(KNOWN_MODES))}\n")
+            return
         if args[i] == "--mode" and i + 1 < len(args):
             mode = args[i + 1]
             i += 2
@@ -62,11 +102,8 @@ def _run_init(args: list[str]) -> None:
             sys.stderr.write(
                 f"Error: unexpected argument {args[i]!r}\n\n",
             )
-            sys.stderr.write(
-                f"Usage: vauban init [--mode MODE] [--model PATH]"
-                f" [--output FILE] [--force]\n"
-                f"Modes: {', '.join(sorted(KNOWN_MODES))}\n",
-            )
+            sys.stderr.write(_INIT_USAGE)
+            sys.stderr.write(f"Modes: {', '.join(sorted(KNOWN_MODES))}\n")
             raise SystemExit(1)
 
     output_path = Path(output)
@@ -83,7 +120,9 @@ def _run_init(args: list[str]) -> None:
 
 def _run_diff(args: list[str]) -> None:
     """Handle ``vauban diff`` with optional --format and --threshold flags."""
-    from pathlib import Path
+    if len(args) == 1 and args[0] in ("--help", "-h"):
+        sys.stdout.write(_DIFF_HELP)
+        raise SystemExit(0)
 
     fmt = "text"
     threshold: float | None = None
@@ -91,6 +130,9 @@ def _run_diff(args: list[str]) -> None:
 
     i = 0
     while i < len(args):
+        if args[i] in ("--help", "-h"):
+            sys.stdout.write(_DIFF_HELP)
+            raise SystemExit(0)
         if args[i] == "--format" and i + 1 < len(args):
             fmt = args[i + 1]
             if fmt not in ("text", "markdown"):
@@ -114,10 +156,7 @@ def _run_diff(args: list[str]) -> None:
             sys.stderr.write(
                 f"Error: unexpected flag {args[i]!r}\n\n",
             )
-            sys.stderr.write(
-                "Usage: vauban diff [--format text|markdown]"
-                " [--threshold FLOAT] <dir_a> <dir_b>\n",
-            )
+            sys.stderr.write(_DIFF_USAGE)
             raise SystemExit(1)
         else:
             positional.append(args[i])
@@ -127,10 +166,7 @@ def _run_diff(args: list[str]) -> None:
         sys.stderr.write(
             f"Error: expected 2 directory paths, got {len(positional)}\n\n",
         )
-        sys.stderr.write(
-            "Usage: vauban diff [--format text|markdown]"
-            " [--threshold FLOAT] <dir_a> <dir_b>\n",
-        )
+        sys.stderr.write(_DIFF_USAGE)
         raise SystemExit(1)
 
     from vauban._diff import diff_reports, format_diff, format_diff_markdown
@@ -200,6 +236,18 @@ def main() -> None:
     if args[0] == "diff":
         _run_diff(args[1:])
         raise SystemExit(0)
+
+    known_prefixes = {"--validate", "--help", "-h"}
+    if args[0] not in known_prefixes:
+        arg0_path = Path(args[0])
+        suggestion = _command_suggestion(args[0])
+        if suggestion is not None and not arg0_path.exists():
+            sys.stderr.write(
+                f"Error: unknown command {args[0]!r}. "
+                f"Did you mean {suggestion!r}?\n\n",
+            )
+            sys.stderr.write(USAGE)
+            raise SystemExit(1)
 
     validate_mode = False
     if args[0] == "--validate":

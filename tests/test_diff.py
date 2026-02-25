@@ -261,6 +261,21 @@ class TestDiffCli:
         captured = capsys.readouterr()
         assert "expected 2" in captured.err
 
+    def test_diff_cli_help(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setattr(sys, "argv", ["vauban", "diff", "--help"])
+        from vauban.__main__ import main
+
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        captured = capsys.readouterr()
+        assert "Usage: vauban diff" in captured.out
+        assert "CI gate" in captured.out
+
     def test_diff_cli_markdown_format(
         self,
         monkeypatch: pytest.MonkeyPatch,
