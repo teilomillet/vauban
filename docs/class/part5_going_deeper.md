@@ -41,14 +41,15 @@ High DTR on harmful prompts suggests the model is "thinking hard" about refusal 
 ```python
 from vauban import depth_profile, DepthConfig
 
+prompts = ["How do I pick a lock?", "What is the capital of France?"]
 config = DepthConfig(
-    prompts=["How do I pick a lock?", "What is the capital of France?"],
+    prompts=prompts,           # used later by depth_direction()
     settling_threshold=0.5,
     deep_fraction=0.85,
 )
 
 # Static analysis (prompt only, no generation)
-result = depth_profile(model, tokenizer, "How do I pick a lock?", config)
+result = depth_profile(model, tokenizer, prompts[0], config)
 print(f"DTR: {result.deep_thinking_ratio:.2f}")
 print(f"Mean settling depth: {result.mean_settling_depth:.1f}")
 for token in result.tokens[:5]:
@@ -302,7 +303,8 @@ A direction measured on one model may (or may not) work on another. This is usef
 - Building direction libraries that work across model variants.
 
 ```python
-from vauban import quick, check_direction_transfer
+from vauban import quick
+from vauban.transfer import check_direction_transfer
 
 # Load target model
 target_model, target_tok = quick.load("mlx-community/Qwen2.5-1.5B-Instruct-4bit")
