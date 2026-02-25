@@ -15,6 +15,13 @@ class MetricDelta:
     delta: float
     lower_is_better: bool
 
+    @property
+    def percent_change(self) -> float | None:
+        """Return percent change relative to value_a, or None if value_a is zero."""
+        if self.value_a == 0.0:
+            return None
+        return (self.delta / abs(self.value_a)) * 100.0
+
 
 @dataclass(frozen=True, slots=True)
 class ReportDiff:
@@ -50,6 +57,11 @@ _EXTRACTORS: dict[str, list[tuple[list[str], str, bool]]] = {
         # best_refusal.refusal_rate
     ],
 }
+
+
+def known_report_filenames() -> tuple[str, ...]:
+    """Return report filenames that have built-in diff extractors."""
+    return tuple(sorted(_EXTRACTORS))
 
 
 def _extract_value(data: dict[str, object], path: list[str]) -> float | None:
@@ -253,10 +265,57 @@ def format_diff(
             # Skip quality label for zero delta
             quality_str = "" if m.delta == 0.0 else f" {quality}"
 
+            pct = m.percent_change
+            pct_str = f" [{pct:+.1f}%]" if pct is not None else ""
+
             lines.append(
                 f"  {m.name:<30s}"
                 f" {m.value_a:.3f} → {m.value_b:.3f}"
-                f"  ({sign}{m.delta:.3f}){quality_str}",
+                f"  ({sign}{m.delta:.3f}){pct_str}{quality_str}",
+            )
+        lines.append("")
+
+    return "\n".join(lines) + "\n"
+
+
+def format_diff_markdown(
+    dir_a: Path,
+    dir_b: Path,
+    reports: list[ReportDiff],
+) -> str:
+    """Format diff reports as a Markdown table.
+
+    Args:
+        dir_a: First directory (for header).
+        dir_b: Second directory (for header).
+        reports: ReportDiff list from diff_reports().
+
+    Returns:
+        Markdown-formatted string with metric tables.
+    """
+    if not reports:
+        return f"## DIFF {dir_a} vs {dir_b}\n\nNo shared reports found.\n"
+
+    lines: list[str] = [f"## DIFF {dir_a} vs {dir_b}\n"]
+
+    for report in reports:
+        lines.append(f"### {report.filename}\n")
+        lines.append("| Metric | A | B | Delta | % Change | Quality |")
+        lines.append("|--------|---|---|-------|----------|---------|")
+        for m in report.metrics:
+            sign = "+" if m.delta >= 0 else ""
+            if m.lower_is_better:
+                quality = "better" if m.delta < 0 else "worse"
+            else:
+                quality = "better" if m.delta > 0 else "worse"
+            quality = "" if m.delta == 0.0 else quality
+
+            pct = m.percent_change
+            pct_str = f"{pct:+.1f}%" if pct is not None else "—"
+
+            lines.append(
+                f"| {m.name} | {m.value_a:.3f} | {m.value_b:.3f}"
+                f" | {sign}{m.delta:.3f} | {pct_str} | {quality} |",
             )
         lines.append("")
 

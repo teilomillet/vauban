@@ -55,6 +55,8 @@ uv run vauban --validate run.toml
 ```
 
 Checks types, ranges, file paths, and mode conflicts — without loading any model.
+It also validates JSONL schemas (`prompt`/`label`/`category`) and prints
+actionable `fix:` hints for ambiguous or broken configs.
 
 **Need help first?** Use the built-in manual:
 

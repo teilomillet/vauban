@@ -4,7 +4,7 @@ Usage:
     vauban <config.toml>
     vauban --validate <config.toml>
     vauban init [--mode MODE] [--model PATH] [--output FILE] [--force]
-    vauban diff <dir_a> <dir_b>
+    vauban diff [--format text|markdown] [--threshold FLOAT] <dir_a> <dir_b>
     vauban man [topic]
 """
 
@@ -13,7 +13,7 @@ import sys
 USAGE = """\
 Usage: vauban [--validate] <config.toml>
        vauban init [--mode MODE] [--model PATH] [--output FILE] [--force]
-       vauban diff <dir_a> <dir_b>
+       vauban diff [--format text|markdown] [--threshold FLOAT] <dir_a> <dir_b>
        vauban man [topic]
 
 Run the full measure -> cut -> evaluate pipeline from a TOML config file.
@@ -22,7 +22,8 @@ All configuration lives in the TOML file.
 Commands:
   init            Generate a starter TOML config file.
   diff            Compare JSON reports from two output directories.
-  man             Show built-in manual (topics: quickstart, modes, formats,
+  man             Show built-in manual (topics: quickstart, commands,
+                  validate, playbook, quick, examples, print, modes, formats,
                   model, data, measure, cut, eval, surface, detect, optimize,
                   softprompt, sic, depth, probe, steer, output, verbose).
 
@@ -81,20 +82,61 @@ def _run_init(args: list[str]) -> None:
 
 
 def _run_diff(args: list[str]) -> None:
-    """Handle `vauban diff <dir_a> <dir_b>` subcommand."""
+    """Handle ``vauban diff`` with optional --format and --threshold flags."""
     from pathlib import Path
 
-    if len(args) != 2:
+    fmt = "text"
+    threshold: float | None = None
+    positional: list[str] = []
+
+    i = 0
+    while i < len(args):
+        if args[i] == "--format" and i + 1 < len(args):
+            fmt = args[i + 1]
+            if fmt not in ("text", "markdown"):
+                sys.stderr.write(
+                    f"Error: --format must be 'text' or 'markdown',"
+                    f" got {fmt!r}\n",
+                )
+                raise SystemExit(1)
+            i += 2
+        elif args[i] == "--threshold" and i + 1 < len(args):
+            try:
+                threshold = float(args[i + 1])
+            except ValueError as exc:
+                sys.stderr.write(
+                    f"Error: --threshold must be a number,"
+                    f" got {args[i + 1]!r}\n",
+                )
+                raise SystemExit(1) from exc
+            i += 2
+        elif args[i].startswith("--"):
+            sys.stderr.write(
+                f"Error: unexpected flag {args[i]!r}\n\n",
+            )
+            sys.stderr.write(
+                "Usage: vauban diff [--format text|markdown]"
+                " [--threshold FLOAT] <dir_a> <dir_b>\n",
+            )
+            raise SystemExit(1)
+        else:
+            positional.append(args[i])
+            i += 1
+
+    if len(positional) != 2:
         sys.stderr.write(
-            f"Error: expected 2 directory paths, got {len(args)}\n\n",
+            f"Error: expected 2 directory paths, got {len(positional)}\n\n",
         )
-        sys.stderr.write("Usage: vauban diff <dir_a> <dir_b>\n")
+        sys.stderr.write(
+            "Usage: vauban diff [--format text|markdown]"
+            " [--threshold FLOAT] <dir_a> <dir_b>\n",
+        )
         raise SystemExit(1)
 
-    from vauban._diff import diff_reports, format_diff
+    from vauban._diff import diff_reports, format_diff, format_diff_markdown
 
-    dir_a = Path(args[0])
-    dir_b = Path(args[1])
+    dir_a = Path(positional[0])
+    dir_b = Path(positional[1])
 
     try:
         reports = diff_reports(dir_a, dir_b)
@@ -102,7 +144,18 @@ def _run_diff(args: list[str]) -> None:
         sys.stderr.write(f"Error: {exc}\n")
         raise SystemExit(1) from exc
 
-    sys.stdout.write(format_diff(dir_a, dir_b, reports))
+    if fmt == "markdown":
+        sys.stdout.write(format_diff_markdown(dir_a, dir_b, reports))
+    else:
+        sys.stdout.write(format_diff(dir_a, dir_b, reports))
+
+    # Threshold exit code
+    if threshold is not None:
+        for report in reports:
+            for m in report.metrics:
+                if abs(m.delta) > threshold:
+                    raise SystemExit(1)
+    raise SystemExit(0)
 
 
 def main() -> None:

@@ -99,6 +99,17 @@ def init_config(
 
     content = _BASE.format(model=model) + _MODE_TEMPLATES[mode]
 
+    # Roundtrip validation: parse generated TOML to catch template bugs
+    import tomllib
+
+    parsed = tomllib.loads(content)
+    if "model" not in parsed or "data" not in parsed:
+        msg = (
+            f"Internal error: generated config for mode {mode!r}"
+            " is missing required sections"
+        )
+        raise ValueError(msg)
+
     if output_path is not None:
         if output_path.exists() and not force:
             msg = (

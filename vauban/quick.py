@@ -10,7 +10,14 @@ from pathlib import Path
 import mlx.core as mx
 
 from vauban.dequantize import dequantize_model, is_quantized
-from vauban.types import CausalLM, DirectionResult, ProbeResult, SteerResult, Tokenizer
+from vauban.types import (
+    CausalLM,
+    DirectionResult,
+    ProbeResult,
+    SteerResult,
+    SurfaceResult,
+    Tokenizer,
+)
 
 _DEFAULT_MODEL = "mlx-community/Llama-3.2-3B-Instruct-4bit"
 
@@ -158,3 +165,60 @@ def abliterate(
     export_model(model_path, modified_weights, output_dir)
 
     return direction_result
+
+
+def compare(dir_a: str | Path, dir_b: str | Path) -> str:
+    """Compare JSON reports from two output directories.
+
+    Wraps diff_reports + format_diff for REPL use.
+
+    Args:
+        dir_a: First output directory.
+        dir_b: Second output directory.
+
+    Returns:
+        Formatted diff string.
+    """
+    from vauban._diff import diff_reports, format_diff
+
+    a = Path(dir_a)
+    b = Path(dir_b)
+    reports = diff_reports(a, b)
+    return format_diff(a, b, reports)
+
+
+def scan(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    direction: DirectionResult | mx.array,
+    direction_layer: int | None = None,
+) -> SurfaceResult:
+    """One-liner surface scan with bundled default prompts.
+
+    Args:
+        model: Loaded causal language model.
+        tokenizer: Tokenizer with chat template support.
+        direction: A DirectionResult or raw mx.array direction vector.
+        direction_layer: Layer index for direction projection.
+            Inferred from DirectionResult if not provided; defaults to 0
+            for raw arrays.
+
+    Returns:
+        SurfaceResult from the default surface prompt set.
+    """
+    from vauban.surface import default_surface_path, load_surface_prompts, map_surface
+
+    if isinstance(direction, DirectionResult):
+        if direction_layer is None:
+            direction_layer = direction.layer_index
+        direction_vec = direction.direction
+    else:
+        if direction_layer is None:
+            direction_layer = 0
+        direction_vec = direction
+
+    prompts = load_surface_prompts(default_surface_path())
+    return map_surface(
+        model, tokenizer, prompts, direction_vec, direction_layer,
+        progress=False,
+    )

@@ -1,9 +1,19 @@
 """Tests for vauban.quick — REPL convenience API."""
 
+import json
+from pathlib import Path
+
 import mlx.core as mx
 
 from tests.conftest import D_MODEL, NUM_LAYERS, MockCausalLM, MockTokenizer
-from vauban.quick import abliterate, measure_direction, probe_prompt, steer_prompt
+from vauban.quick import (
+    abliterate,
+    compare,
+    measure_direction,
+    probe_prompt,
+    scan,
+    steer_prompt,
+)
 from vauban.types import DirectionResult
 
 
@@ -104,3 +114,102 @@ class TestAbliterate:
         mock_export.assert_called_once()
         call_args = mock_export.call_args
         assert str(call_args[0][2]) == str(out)
+
+
+class TestCompare:
+    def test_compare_with_fixture_dirs(self, tmp_path: Path) -> None:
+        """compare() should return formatted diff string."""
+        dir_a = tmp_path / "a"
+        dir_b = tmp_path / "b"
+        dir_a.mkdir()
+        dir_b.mkdir()
+
+        (dir_a / "eval_report.json").write_text(json.dumps({
+            "refusal_rate_modified": 0.8,
+            "perplexity_modified": 4.0,
+            "kl_divergence": 0.02,
+        }))
+        (dir_b / "eval_report.json").write_text(json.dumps({
+            "refusal_rate_modified": 0.1,
+            "perplexity_modified": 4.1,
+            "kl_divergence": 0.03,
+        }))
+
+        result = compare(dir_a, dir_b)
+        assert isinstance(result, str)
+        assert "DIFF" in result
+        assert "eval_report.json" in result
+
+    def test_compare_no_shared_reports(self, tmp_path: Path) -> None:
+        dir_a = tmp_path / "a"
+        dir_b = tmp_path / "b"
+        dir_a.mkdir()
+        dir_b.mkdir()
+
+        result = compare(dir_a, dir_b)
+        assert "No shared reports" in result
+
+
+class TestScan:
+    def test_scan_with_direction_result(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """scan() should return a SurfaceResult."""
+        from unittest.mock import patch
+
+        from vauban.types import SurfaceResult
+
+        dr = measure_direction(mock_model, mock_tokenizer)
+
+        mock_prompts: list[object] = []
+        mock_surface_result = SurfaceResult(
+            points=[], groups_by_label=[], groups_by_category=[],
+            threshold=0.0, total_scanned=0, total_refused=0,
+        )
+        with (
+            patch(
+                "vauban.surface.load_surface_prompts",
+                return_value=mock_prompts,
+            ),
+            patch(
+                "vauban.surface.map_surface",
+                return_value=mock_surface_result,
+            ),
+        ):
+            result = scan(mock_model, mock_tokenizer, dr)
+        assert isinstance(result, SurfaceResult)
+
+    def test_scan_with_raw_array(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+        direction: mx.array,
+    ) -> None:
+        """scan() should accept raw mx.array direction."""
+        from unittest.mock import patch
+
+        from vauban.types import SurfaceResult
+
+        mock_surface_result = SurfaceResult(
+            points=[], groups_by_label=[], groups_by_category=[],
+            threshold=0.0, total_scanned=0, total_refused=0,
+        )
+        with (
+            patch(
+                "vauban.surface.load_surface_prompts",
+                return_value=[],
+            ),
+            patch(
+                "vauban.surface.map_surface",
+                return_value=mock_surface_result,
+            ) as mock_map,
+        ):
+            result = scan(
+                mock_model, mock_tokenizer, direction,
+                direction_layer=3,
+            )
+        assert isinstance(result, SurfaceResult)
+        # Verify direction_layer was passed
+        assert mock_map.call_args[0][4] == 3

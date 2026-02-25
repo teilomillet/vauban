@@ -67,6 +67,18 @@ class DirectionResult:
     model_path: str
     layer_types: list[str] | None = None
 
+    def summary(self) -> str:
+        """Return a human-readable summary of the direction result."""
+        max_cos = max(self.cosine_scores) if self.cosine_scores else 0.0
+        shape = tuple(self.direction.shape)
+        return (
+            f"DirectionResult: layer={self.layer_index},"
+            f" d_model={self.d_model},"
+            f" shape={shape},"
+            f" max_cosine={max_cos:.4f},"
+            f" model={self.model_path}"
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class SubspaceResult:
@@ -176,6 +188,17 @@ class EvalResult:
     kl_divergence: float
     num_prompts: int
 
+    def summary(self) -> str:
+        """Return a human-readable summary of the evaluation result."""
+        return (
+            f"EvalResult: refusal={self.refusal_rate_original:.2%}"
+            f" → {self.refusal_rate_modified:.2%},"
+            f" perplexity={self.perplexity_original:.2f}"
+            f" → {self.perplexity_modified:.2f},"
+            f" kl={self.kl_divergence:.4f},"
+            f" prompts={self.num_prompts}"
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class ProbeResult:
@@ -185,6 +208,21 @@ class ProbeResult:
     layer_count: int
     prompt: str
 
+    def summary(self) -> str:
+        """Return a human-readable summary of the probe result."""
+        truncated = self.prompt[:50] + ("..." if len(self.prompt) > 50 else "")
+        min_p = min(self.projections) if self.projections else 0.0
+        max_p = max(self.projections) if self.projections else 0.0
+        mean_p = (
+            sum(self.projections) / len(self.projections)
+            if self.projections else 0.0
+        )
+        return (
+            f"ProbeResult: prompt={truncated!r},"
+            f" layers={self.layer_count},"
+            f" min={min_p:.4f}, max={max_p:.4f}, mean={mean_p:.4f}"
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class SteerResult:
@@ -193,6 +231,21 @@ class SteerResult:
     text: str
     projections_before: list[float]
     projections_after: list[float]
+
+    def summary(self) -> str:
+        """Return a human-readable summary of the steer result."""
+        truncated = self.text[:50] + ("..." if len(self.text) > 50 else "")
+        max_before = (
+            max(self.projections_before) if self.projections_before else 0.0
+        )
+        max_after = (
+            max(self.projections_after) if self.projections_after else 0.0
+        )
+        return (
+            f"SteerResult: text={truncated!r},"
+            f" max_proj_before={max_before:.4f},"
+            f" max_proj_after={max_after:.4f}"
+        )
 
 
 @dataclass(frozen=True, slots=True)

@@ -226,9 +226,10 @@ def validate(config_path: str | Path) -> list[str]:
     raw = _load_raw_toml(config_path)
 
     # Check for unknown/typo'd top-level sections before parsing
-    from vauban._suggestions import check_unknown_sections
+    from vauban._suggestions import check_unknown_keys, check_unknown_sections
 
     unknown_warnings = check_unknown_sections(raw)
+    unknown_warnings.extend(check_unknown_keys(raw))
 
     config = load_config(config_path)
     warnings: list[str] = []

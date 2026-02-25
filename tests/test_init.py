@@ -70,6 +70,20 @@ class TestInitConfig:
         assert out.exists()
 
 
+class TestInitRoundtrip:
+    @pytest.mark.parametrize("mode", sorted(KNOWN_MODES))
+    def test_roundtrip_through_load_config(
+        self, mode: str, tmp_path: Path,
+    ) -> None:
+        """Every mode template should roundtrip through load_config."""
+        from vauban.config import load_config
+
+        out = tmp_path / f"{mode}.toml"
+        init_config(mode, output_path=out)
+        config = load_config(out)
+        assert config.model_path == "mlx-community/Llama-3.2-3B-Instruct-4bit"
+
+
 class TestInitCli:
     def test_init_default(
         self,

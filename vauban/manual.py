@@ -1,6 +1,7 @@
 """Runtime-generated manual for vauban's TOML-first interface."""
 
 import ast
+import inspect
 import json
 from dataclasses import dataclass
 from functools import lru_cache
@@ -142,9 +143,10 @@ _FORMAT_NOTES: tuple[str, ...] = (
 
 _QUICKSTART_NOTES: tuple[str, ...] = (
     "1. Create run.toml with the minimal config shown below.",
-    "2. Validate first: uv run vauban --validate run.toml",
-    "3. Run: uv run vauban run.toml",
+    "2. Validate first: vauban --validate run.toml",
+    "3. Run: vauban run.toml",
     "4. Inspect outputs in [output].dir (default: output/).",
+    "5. If vauban is installed through uv project deps, use: uv run vauban ...",
 )
 
 _MINIMAL_CONFIG_EXAMPLE: tuple[str, ...] = (
@@ -154,6 +156,67 @@ _MINIMAL_CONFIG_EXAMPLE: tuple[str, ...] = (
     "[data]",
     'harmful = "default"',
     'harmless = "default"',
+)
+
+_VALIDATE_NOTES: tuple[str, ...] = (
+    "Use validate before running heavy experiments.",
+    "Warnings are tagged [LOW], [MEDIUM], or [HIGH].",
+    "Most warnings include a 'fix:' hint for direct remediation.",
+    (
+        "Validate checks JSONL schema, missing files, mode conflicts,"
+        " skipped sections, and key-level typos within each section."
+    ),
+)
+
+_PLAYBOOK_NOTES: tuple[str, ...] = (
+    "1. Scaffold a config: vauban init --mode default --output run.toml",
+    "2. Validate and iterate until warnings are understood/fixed.",
+    "3. Run one experiment per TOML file for reproducibility.",
+    "4. Compare two runs with: vauban diff out_a out_b",
+    "5. Keep an experiment log (config path + output dir + key metrics).",
+)
+
+_QUICK_NOTES: tuple[str, ...] = (
+    "Use vauban.quick in Python REPL/Jupyter for rapid experiments.",
+    "This is complementary to TOML runs; use TOML for reproducible reports.",
+)
+
+_EXAMPLE_NOTES: tuple[str, ...] = (
+    "Scaffold a starter config:",
+    "  vauban init --mode default --output run.toml",
+    "Validate before expensive runs:",
+    "  vauban --validate run.toml",
+    "Run default pipeline:",
+    "  vauban run.toml",
+    "Compare two experiment outputs:",
+    "  vauban diff runs/baseline runs/experiment_a",
+    "Open manual for one topic:",
+    "  vauban man softprompt",
+)
+
+_PRINT_NOTES: tuple[str, ...] = (
+    "Full manual to text file:",
+    "  vauban man > VAUBAN_MANUAL.txt",
+    "Focused topic to text file:",
+    "  vauban man cut > VAUBAN_CUT.txt",
+    "Read in pager (Unix):",
+    "  vauban man | less",
+    "Print from Unix shell:",
+    "  lpr VAUBAN_MANUAL.txt",
+)
+
+_QUICK_EXAMPLE: tuple[str, ...] = (
+    "from vauban import quick",
+    "",
+    'model, tokenizer = quick.load("mlx-community/Llama-3.2-3B-Instruct-4bit")',
+    "direction = quick.measure_direction(model, tokenizer)",
+    "probe = quick.probe_prompt(model, tokenizer, \"Explain lockpicking\", direction)",
+    (
+        "steered = quick.steer_prompt("
+        "model, tokenizer, \"Explain lockpicking\", direction, alpha=1.0)"
+    ),
+    "surface = quick.scan(model, tokenizer, direction)",
+    'print(quick.compare("output_a", "output_b"))',
 )
 
 _SECTION_SPECS: tuple[SectionSpec, ...] = (
@@ -796,6 +859,27 @@ _TOPIC_ALIASES: dict[str, str] = {
     "start": "quickstart",
     "getting-started": "quickstart",
     "getting_started": "quickstart",
+    "command": "commands",
+    "cmd": "commands",
+    "checks": "validate",
+    "validation": "validate",
+    "lint": "validate",
+    "playbooks": "playbook",
+    "experiment": "playbook",
+    "experiments": "playbook",
+    "recipe": "playbook",
+    "recipes": "playbook",
+    "repl": "quick",
+    "python": "quick",
+    "quick-api": "quick",
+    "quick_api": "quick",
+    "example": "examples",
+    "demo": "examples",
+    "demos": "examples",
+    "printing": "print",
+    "share": "print",
+    "sharing": "print",
+    "pdf": "print",
     "mode": "modes",
     "pipeline": "modes",
     "pipelines": "modes",
@@ -810,10 +894,44 @@ def manual_topics() -> list[str]:
     return [
         "all",
         "quickstart",
+        "commands",
+        "validate",
+        "playbook",
+        "quick",
+        "examples",
+        "print",
         "modes",
         "formats",
         *[spec.name for spec in _SECTION_SPECS],
     ]
+
+
+@lru_cache(maxsize=1)
+def _known_init_modes() -> tuple[str, ...]:
+    from vauban._init import KNOWN_MODES
+
+    return tuple(sorted(KNOWN_MODES))
+
+
+@lru_cache(maxsize=1)
+def _known_diff_reports() -> tuple[str, ...]:
+    from vauban._diff import known_report_filenames
+
+    return known_report_filenames()
+
+
+@lru_cache(maxsize=1)
+def _known_quick_functions() -> tuple[str, ...]:
+    import vauban.quick as quick
+
+    names: list[str] = []
+    for name in dir(quick):
+        if name.startswith("_"):
+            continue
+        value = getattr(quick, name)
+        if inspect.isfunction(value) and value.__module__ == quick.__name__:
+            names.append(name)
+    return tuple(sorted(names))
 
 
 def render_manual(topic: str | None = None) -> str:
@@ -822,6 +940,12 @@ def render_manual(topic: str | None = None) -> str:
     sections = _build_sections()
     selected = _select_sections(sections, normalized)
     include_quickstart = normalized in (None, "all", "quickstart")
+    include_commands = normalized in (None, "all", "commands")
+    include_validate = normalized in (None, "all", "validate")
+    include_playbook = normalized in (None, "all", "playbook")
+    include_quick = normalized in (None, "all", "quick")
+    include_examples = normalized in (None, "all", "examples")
+    include_print = normalized in (None, "all", "print")
     include_modes = normalized in (None, "all", "modes")
     include_formats = normalized in (None, "all", "formats")
 
@@ -834,6 +958,14 @@ def render_manual(topic: str | None = None) -> str:
     lines.append("SYNOPSIS")
     lines.append("    vauban <config.toml>")
     lines.append("    vauban --validate <config.toml>")
+    lines.append(
+        "    vauban init [--mode MODE] [--model PATH]"
+        " [--output FILE] [--force]",
+    )
+    lines.append(
+        "    vauban diff [--format text|markdown]"
+        " [--threshold FLOAT] <dir_a> <dir_b>",
+    )
     lines.append("    vauban man [topic]")
     lines.append("")
     lines.append("DESCRIPTION")
@@ -851,10 +983,75 @@ def render_manual(topic: str | None = None) -> str:
         for note in _QUICKSTART_NOTES:
             lines.append(f"    {note}")
         lines.append("    Minimal run.toml:")
-        lines.append("    ```toml")
         for line in _MINIMAL_CONFIG_EXAMPLE:
             lines.append(f"    {line}")
-        lines.append("    ```")
+        lines.append("")
+
+    if include_commands:
+        lines.append("COMMANDS")
+        lines.append("    vauban <config.toml>")
+        lines.append("      Run the configured pipeline from a TOML file.")
+        lines.append("    vauban --validate <config.toml>")
+        lines.append(
+            "      Validate config + prompt files without loading model weights.",
+        )
+        lines.append(
+            "    vauban init [--mode MODE] [--model PATH]"
+            " [--output FILE] [--force]",
+        )
+        lines.append("      Generate a starter config file.")
+        lines.append(f"      known modes: {', '.join(_known_init_modes())}")
+        lines.append(
+            "    vauban diff [--format text|markdown]"
+            " [--threshold FLOAT] <dir_a> <dir_b>",
+        )
+        lines.append("      Compare report metrics from two output directories.")
+        lines.append(
+            "      --format: output format (default: text).",
+        )
+        lines.append(
+            "      --threshold: exit code 1 if any |delta| exceeds value.",
+        )
+        lines.append(f"      report files: {', '.join(_known_diff_reports())}")
+        lines.append("    vauban man [topic]")
+        lines.append("      Show this manual or one focused topic.")
+        lines.append("")
+
+    if include_validate:
+        lines.append("VALIDATE WORKFLOW")
+        for note in _VALIDATE_NOTES:
+            lines.append(f"    - {note}")
+        lines.append("    Example:")
+        lines.append("      vauban --validate run.toml")
+        lines.append("")
+
+    if include_playbook:
+        lines.append("EXPERIMENT PLAYBOOK")
+        for note in _PLAYBOOK_NOTES:
+            lines.append(f"    {note}")
+        lines.append("    Common loop: init -> validate -> run -> diff -> tune.")
+        lines.append("")
+
+    if include_quick:
+        lines.append("PYTHON QUICK API")
+        for note in _QUICK_NOTES:
+            lines.append(f"    - {note}")
+        lines.append(f"    helpers: {', '.join(_known_quick_functions())}")
+        lines.append("    Minimal interactive flow:")
+        for line in _QUICK_EXAMPLE:
+            lines.append(f"    {line}")
+        lines.append("")
+
+    if include_examples:
+        lines.append("EXAMPLES")
+        for note in _EXAMPLE_NOTES:
+            lines.append(f"    {note}")
+        lines.append("")
+
+    if include_print:
+        lines.append("PRINTING AND SHARING")
+        for note in _PRINT_NOTES:
+            lines.append(f"    {note}")
         lines.append("")
 
     if include_modes:
@@ -1119,7 +1316,17 @@ def _select_sections(
 ) -> tuple[ManualSection, ...]:
     if topic is None or topic == "all":
         return sections
-    if topic in {"quickstart", "modes", "formats"}:
+    if topic in {
+        "quickstart",
+        "commands",
+        "validate",
+        "playbook",
+        "quick",
+        "examples",
+        "print",
+        "modes",
+        "formats",
+    }:
         return ()
     for section in sections:
         if section.name == topic:

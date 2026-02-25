@@ -70,6 +70,73 @@ class TestDirectionResult:
             result.layer_index = 1  # type: ignore[misc]
 
 
+class TestDirectionResultSummary:
+    def test_summary_returns_str(self) -> None:
+        d = mx.zeros((16,))
+        result = DirectionResult(
+            direction=d, layer_index=5, cosine_scores=[0.1, 0.5, 0.3],
+            d_model=16, model_path="test-model",
+        )
+        s = result.summary()
+        assert isinstance(s, str)
+        assert "layer=5" in s
+        assert "d_model=16" in s
+        assert "max_cosine=0.5000" in s
+        assert "test-model" in s
+
+    def test_summary_empty_cosine(self) -> None:
+        d = mx.zeros((16,))
+        result = DirectionResult(
+            direction=d, layer_index=0, cosine_scores=[],
+            d_model=16, model_path="x",
+        )
+        assert "max_cosine=0.0000" in result.summary()
+
+
+class TestEvalResultSummary:
+    def test_summary_returns_str(self) -> None:
+        result = EvalResult(
+            refusal_rate_original=0.8, refusal_rate_modified=0.1,
+            perplexity_original=10.0, perplexity_modified=12.0,
+            kl_divergence=0.5, num_prompts=20,
+        )
+        s = result.summary()
+        assert isinstance(s, str)
+        assert "prompts=20" in s
+        assert "kl=" in s
+
+
+class TestProbeResultSummary:
+    def test_summary_returns_str(self) -> None:
+        result = ProbeResult(
+            projections=[0.1, 0.5, 0.3], layer_count=3, prompt="test prompt",
+        )
+        s = result.summary()
+        assert isinstance(s, str)
+        assert "layers=3" in s
+        assert "test prompt" in s
+
+    def test_summary_truncates_long_prompt(self) -> None:
+        long_prompt = "a" * 100
+        result = ProbeResult(
+            projections=[1.0], layer_count=1, prompt=long_prompt,
+        )
+        s = result.summary()
+        assert "..." in s
+
+
+class TestSteerResultSummary:
+    def test_summary_returns_str(self) -> None:
+        result = SteerResult(
+            text="generated text", projections_before=[1.0, 2.0],
+            projections_after=[0.1, 0.2],
+        )
+        s = result.summary()
+        assert isinstance(s, str)
+        assert "max_proj_before=2.0000" in s
+        assert "max_proj_after=0.2000" in s
+
+
 class TestCutConfig:
     def test_defaults(self) -> None:
         config = CutConfig()

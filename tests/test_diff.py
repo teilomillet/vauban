@@ -6,7 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from vauban._diff import MetricDelta, ReportDiff, diff_reports, format_diff
+from vauban._diff import (
+    MetricDelta,
+    ReportDiff,
+    diff_reports,
+    format_diff,
+    format_diff_markdown,
+)
 
 
 class TestDiffReports:
@@ -112,6 +118,46 @@ class TestDiffReports:
         assert "mean_settling_depth" in metrics
 
 
+class TestPercentChange:
+    def test_positive_delta(self) -> None:
+        m = MetricDelta("test", 0.5, 0.75, 0.25, True)
+        assert m.percent_change == pytest.approx(50.0)
+
+    def test_negative_delta(self) -> None:
+        m = MetricDelta("test", 0.8, 0.4, -0.4, True)
+        assert m.percent_change == pytest.approx(-50.0)
+
+    def test_zero_value_a_returns_none(self) -> None:
+        m = MetricDelta("test", 0.0, 0.5, 0.5, True)
+        assert m.percent_change is None
+
+    def test_zero_delta(self) -> None:
+        m = MetricDelta("test", 1.0, 1.0, 0.0, True)
+        assert m.percent_change == pytest.approx(0.0)
+
+
+class TestFormatDiffMarkdown:
+    def test_markdown_table_format(self) -> None:
+        reports = [
+            ReportDiff(
+                filename="eval_report.json",
+                metrics=[
+                    MetricDelta("refusal_rate", 0.85, 0.12, -0.73, True),
+                ],
+            ),
+        ]
+        output = format_diff_markdown(Path("a"), Path("b"), reports)
+        assert "## DIFF" in output
+        assert "| Metric |" in output
+        assert "eval_report.json" in output
+        assert "refusal_rate" in output
+        assert "better" in output
+
+    def test_markdown_empty(self) -> None:
+        output = format_diff_markdown(Path("a"), Path("b"), [])
+        assert "No shared reports" in output
+
+
 class TestFormatDiff:
     def test_format_with_metrics(self, tmp_path: Path) -> None:
         reports = [
@@ -129,6 +175,18 @@ class TestFormatDiff:
         assert "refusal_rate" in output
         assert "better" in output
         assert "worse" in output
+
+    def test_format_includes_percent(self) -> None:
+        reports = [
+            ReportDiff(
+                filename="eval_report.json",
+                metrics=[
+                    MetricDelta("refusal_rate", 0.50, 0.25, -0.25, True),
+                ],
+            ),
+        ]
+        output = format_diff(Path("a"), Path("b"), reports)
+        assert "%" in output
 
     def test_format_empty(self) -> None:
         output = format_diff(Path("a"), Path("b"), [])
@@ -202,3 +260,99 @@ class TestDiffCli:
         assert exc.value.code == 1
         captured = capsys.readouterr()
         assert "expected 2" in captured.err
+
+    def test_diff_cli_markdown_format(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        tmp_path: Path,
+    ) -> None:
+        dir_a = tmp_path / "a"
+        dir_b = tmp_path / "b"
+        dir_a.mkdir()
+        dir_b.mkdir()
+
+        (dir_a / "eval_report.json").write_text(json.dumps({
+            "refusal_rate_modified": 0.8,
+            "perplexity_modified": 4.0,
+            "kl_divergence": 0.02,
+        }))
+        (dir_b / "eval_report.json").write_text(json.dumps({
+            "refusal_rate_modified": 0.1,
+            "perplexity_modified": 4.1,
+            "kl_divergence": 0.03,
+        }))
+
+        monkeypatch.setattr(
+            sys, "argv",
+            ["vauban", "diff", "--format", "markdown", str(dir_a), str(dir_b)],
+        )
+        from vauban.__main__ import main
+
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        captured = capsys.readouterr()
+        assert "| Metric |" in captured.out
+
+    def test_diff_cli_threshold_pass(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        dir_a = tmp_path / "a"
+        dir_b = tmp_path / "b"
+        dir_a.mkdir()
+        dir_b.mkdir()
+
+        (dir_a / "eval_report.json").write_text(json.dumps({
+            "refusal_rate_modified": 0.5,
+            "perplexity_modified": 4.0,
+            "kl_divergence": 0.02,
+        }))
+        (dir_b / "eval_report.json").write_text(json.dumps({
+            "refusal_rate_modified": 0.5,
+            "perplexity_modified": 4.01,
+            "kl_divergence": 0.021,
+        }))
+
+        monkeypatch.setattr(
+            sys, "argv",
+            ["vauban", "diff", "--threshold", "0.1", str(dir_a), str(dir_b)],
+        )
+        from vauban.__main__ import main
+
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+
+    def test_diff_cli_threshold_fail(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        dir_a = tmp_path / "a"
+        dir_b = tmp_path / "b"
+        dir_a.mkdir()
+        dir_b.mkdir()
+
+        (dir_a / "eval_report.json").write_text(json.dumps({
+            "refusal_rate_modified": 0.8,
+            "perplexity_modified": 4.0,
+            "kl_divergence": 0.02,
+        }))
+        (dir_b / "eval_report.json").write_text(json.dumps({
+            "refusal_rate_modified": 0.1,
+            "perplexity_modified": 4.0,
+            "kl_divergence": 0.02,
+        }))
+
+        monkeypatch.setattr(
+            sys, "argv",
+            ["vauban", "diff", "--threshold", "0.1", str(dir_a), str(dir_b)],
+        )
+        from vauban.__main__ import main
+
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 1

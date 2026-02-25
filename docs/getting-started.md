@@ -74,7 +74,9 @@ Before committing to a long run, check your config:
 uv run vauban --validate run.toml
 ```
 
-This parses the TOML, verifies field types and ranges, checks that referenced files exist, and warns about mode conflicts — all without loading the model. Example output:
+This parses the TOML, verifies field types and ranges, validates prompt/surface
+JSONL schemas, checks referenced files, and warns about mode conflicts with
+actionable `fix:` hints — all without loading the model. Example output:
 
 ```
 Config:   run.toml

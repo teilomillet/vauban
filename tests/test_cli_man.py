@@ -44,6 +44,29 @@ def test_main_man_rejects_extra_args(
     assert "expected at most one manual topic" in captured.err
 
 
+def test_commands_section_contains_format_flag() -> None:
+    from vauban.manual import render_manual
+
+    output = render_manual("commands")
+    assert "--format" in output
+    assert "--threshold" in output
+
+
+def test_quick_section_contains_compare_scan() -> None:
+    from vauban.manual import render_manual
+
+    output = render_manual("quick")
+    assert "compare" in output
+    assert "scan" in output
+
+
+def test_validate_section_mentions_key_level_typos() -> None:
+    from vauban.manual import render_manual
+
+    output = render_manual("validate")
+    assert "key-level" in output
+
+
 def test_main_old_flag_man_shows_migration_hint(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
