@@ -184,6 +184,7 @@ dir = "output"
 | `prompts` | string | `"default"` | `"default"` for bundled dataset, or path relative to TOML file |
 | `generate` | bool | `true` | Whether to generate responses and detect refusal |
 | `max_tokens` | int | `20` | Maximum tokens per generation |
+| `progress` | bool | `true` | Print scan progress to stderr |
 
 When `[surface]` is absent, surface mapping is skipped entirely.
 
@@ -269,6 +270,7 @@ class SurfaceConfig:
     prompts_path: Path | str  # resolved Path or "default"
     generate: bool = True
     max_tokens: int = 20
+    progress: bool = True
 
 @dataclass(frozen=True, slots=True)
 class SurfaceGroupDelta:
