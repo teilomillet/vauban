@@ -1,5 +1,7 @@
 """Vauban - MLX-native abliteration toolkit for Apple Silicon."""
 
+import json
+import tomllib
 from pathlib import Path
 
 from vauban._serializers import (
@@ -14,6 +16,7 @@ from vauban._serializers import (
     _surface_comparison_to_dict,
 )
 from vauban.config import load_config
+from vauban.config._types import TomlDict
 from vauban.cut import (
     cut,
     cut_biprojected,
@@ -196,6 +199,15 @@ __all__ = [
     "validate",
 ]
 
+_EARLY_RETURN_PRECEDENCE: tuple[str, ...] = (
+    "[depth]",
+    "[probe]",
+    "[steer]",
+    "[sic]",
+    "[optimize]",
+    "[softprompt]",
+)
+
 
 def validate(config_path: str | Path) -> list[str]:
     """Validate a TOML config without loading any model.
@@ -210,72 +222,188 @@ def validate(config_path: str | Path) -> list[str]:
     """
     import sys
 
+    config_path = Path(config_path)
+    raw = _load_raw_toml(config_path)
+
+    # Check for unknown/typo'd top-level sections before parsing
+    from vauban._suggestions import check_unknown_sections
+
+    unknown_warnings = check_unknown_sections(raw)
+
     config = load_config(config_path)
     warnings: list[str] = []
+    for uw in unknown_warnings:
+        _add_warning(warnings, "MEDIUM", uw)
 
-    # Check data paths exist (skip HF dataset refs and "default")
-    for name, p in [
-        ("harmful", config.harmful_path),
-        ("harmless", config.harmless_path),
-    ]:
-        if isinstance(p, Path) and not p.exists():
-            warnings.append(f"[data].{name} file not found: {p}")
-
-    if (
-        isinstance(config.borderline_path, Path)
-        and not config.borderline_path.exists()
-    ):
-        warnings.append(
-            f"[data].borderline file not found: {config.borderline_path}"
+    harmful_count = _validate_prompt_source(
+        config.harmful_path,
+        "[data].harmful",
+        warnings,
+        min_recommended=16,
+        missing_fix=(
+            "set [data].harmful to an existing JSONL path"
+            ' or use [data].harmful = "default"'
+        ),
+    )
+    harmless_count = _validate_prompt_source(
+        config.harmless_path,
+        "[data].harmless",
+        warnings,
+        min_recommended=16,
+        missing_fix=(
+            "set [data].harmless to an existing JSONL path"
+            ' or use [data].harmless = "default"'
+        ),
+    )
+    if config.borderline_path is not None:
+        _validate_prompt_source(
+            config.borderline_path,
+            "[data].borderline",
+            warnings,
+            min_recommended=8,
+            missing_fix=(
+                "set [data].borderline to an existing JSONL path"
+                " or disable [cut].false_refusal_ortho"
+            ),
         )
 
-    # Eval prompts path
     if (
-        config.eval.prompts_path is not None
-        and not config.eval.prompts_path.exists()
+        harmful_count is not None
+        and harmless_count is not None
+        and harmful_count > 0
+        and harmless_count > 0
     ):
-        warnings.append(
-            f"[eval].prompts file not found: {config.eval.prompts_path}"
+        ratio = (
+            harmful_count / harmless_count
+            if harmful_count >= harmless_count
+            else harmless_count / harmful_count
         )
+        if ratio > 4.0:
+            _add_warning(
+                warnings,
+                "LOW",
+                (
+                    "[data] prompt set sizes are highly imbalanced"
+                    f" (harmful={harmful_count}, harmless={harmless_count})"
+                ),
+                fix=(
+                    "use similarly sized harmful/harmless datasets"
+                    " for more stable direction estimates"
+                ),
+            )
+
+    # Eval prompts path + schema
+    if config.eval.prompts_path is not None:
+        eval_count = _validate_prompt_jsonl_file(
+            config.eval.prompts_path,
+            "[eval].prompts",
+            warnings,
+            min_recommended=8,
+            missing_fix=(
+                "set [eval].prompts to an existing JSONL path"
+                " or remove [eval] if you do not want eval reports"
+            ),
+        )
+        if eval_count is not None and eval_count < 3:
+            _add_warning(
+                warnings,
+                "MEDIUM",
+                (
+                    f"[eval].prompts has only {eval_count} prompt(s);"
+                    " evaluation metrics may be noisy"
+                ),
+                fix="use at least 8-20 prompts for reliable evaluation",
+            )
 
     # Refusal phrases file
     if config.eval.refusal_phrases_path is not None:
         rp = config.eval.refusal_phrases_path
         if not rp.exists():
-            warnings.append(f"[eval].refusal_phrases file not found: {rp}")
+            _add_warning(
+                warnings,
+                "HIGH",
+                f"[eval].refusal_phrases file not found: {rp}",
+                fix=(
+                    "set [eval].refusal_phrases to an existing text file,"
+                    " or remove it to use built-in refusal phrases"
+                ),
+            )
         else:
-            phrases = _load_refusal_phrases(rp)
+            try:
+                phrases = _load_refusal_phrases(rp)
+            except ValueError as exc:
+                msg = (
+                    f"{exc} — fix: add one refusal phrase per line in"
+                    f" {rp}, or remove [eval].refusal_phrases"
+                )
+                raise ValueError(msg) from exc
             if len(phrases) < 2:
-                warnings.append(
-                    f"[eval].refusal_phrases has only {len(phrases)}"
-                    " phrase(s) — consider adding more"
+                _add_warning(
+                    warnings,
+                    "MEDIUM",
+                    (
+                        f"[eval].refusal_phrases has only {len(phrases)}"
+                        " phrase(s)"
+                    ),
+                    fix=(
+                        "add multiple refusal phrases to reduce false negatives"
+                    ),
                 )
 
-    # Surface prompts path
+    # Surface prompts path + schema
     if config.surface is not None:
-        sp = config.surface.prompts_path
-        if isinstance(sp, Path) and not sp.exists():
-            warnings.append(f"[surface].prompts file not found: {sp}")
+        sp_raw = config.surface.prompts_path
+        if sp_raw == "default":
+            sp = default_surface_path()
+        elif isinstance(sp_raw, Path):
+            sp = sp_raw
+        else:
+            sp = Path(sp_raw)
+        surface_count = _validate_surface_jsonl_file(
+            sp,
+            "[surface].prompts",
+            warnings,
+            missing_fix=(
+                "set [surface].prompts to an existing JSONL path"
+                ' or use [surface].prompts = "default"'
+            ),
+        )
+        if surface_count is not None and surface_count < 8:
+            _add_warning(
+                warnings,
+                "LOW",
+                (
+                    f"[surface].prompts has only {surface_count} record(s);"
+                    " category/label aggregates may be unstable"
+                ),
+                fix="use a broader surface prompt set (16+ recommended)",
+            )
+
+    # Output dir sanity
+    if config.output_dir.exists() and not config.output_dir.is_dir():
+        _add_warning(
+            warnings,
+            "HIGH",
+            (
+                f"[output].dir points to a file, not a directory:"
+                f" {config.output_dir}"
+            ),
+            fix="set [output].dir to a directory path",
+        )
 
     # Early-return mode conflicts
-    early_modes = []
-    if config.depth is not None:
-        early_modes.append("[depth]")
-    if config.probe is not None:
-        early_modes.append("[probe]")
-    if config.steer is not None:
-        early_modes.append("[steer]")
-    if config.sic is not None:
-        early_modes.append("[sic]")
-    if config.optimize is not None:
-        early_modes.append("[optimize]")
-    if config.softprompt is not None:
-        early_modes.append("[softprompt]")
+    early_modes = _active_early_modes(config)
     if len(early_modes) > 1:
-        warnings.append(
-            f"Multiple early-return modes active: {', '.join(early_modes)}"
-            " — only the first will run (precedence: depth > probe > steer"
-            " > sic > optimize > softprompt)"
+        _add_warning(
+            warnings,
+                "HIGH",
+                f"Multiple early-return modes active: {', '.join(early_modes)}"
+                " — only the first will run (precedence: depth > probe > steer"
+                " > sic > optimize > softprompt)",
+                fix=(
+                    "keep one early-return mode per config,"
+                    " and split other modes into separate TOML files"
+            ),
         )
 
     # Depth direction: warn if extract_direction=True but not enough prompts
@@ -291,14 +419,37 @@ def validate(config_path: str | Path) -> list[str]:
                 if config.depth.direction_prompts is not None
                 else "prompts"
             )
-            warnings.append(
+            _add_warning(
+                warnings,
+                "HIGH",
                 f"[depth].extract_direction = true but {src}"
-                f" has only {len(effective)} entry — need >= 2"
+                f" has only {len(effective)} entry — need >= 2",
+                fix=(
+                    "add at least 2 prompts to the selected source,"
+                    " or set [depth].extract_direction = false"
+                ),
             )
 
-    # Surface + eval without eval prompts is fine but worth noting
-    if config.surface is not None and not early_modes:
-        pass  # surface runs in normal pipeline
+    # [eval] present without prompts in normal pipeline does not run eval.
+    eval_raw = raw.get("eval")
+    if (
+        isinstance(eval_raw, dict)
+        and "prompts" not in eval_raw
+        and config.eval.prompts_path is None
+        and not early_modes
+    ):
+        _add_warning(
+            warnings,
+            "LOW",
+            (
+                "[eval] section is present but [eval].prompts is not set;"
+                " eval_report.json will not be produced in default pipeline"
+            ),
+            fix=(
+                'set [eval].prompts = "eval.jsonl"'
+                " or remove the [eval] section"
+            ),
+        )
 
     # Sections silently skipped by early-return modes
     if early_modes:
@@ -317,11 +468,17 @@ def validate(config_path: str | Path) -> list[str]:
             skipped.append("[eval]")
 
         if skipped:
-            warnings.append(
+            _add_warning(
+                warnings,
+                "MEDIUM",
                 f"{active_mode} early-return will skip:"
                 f" {', '.join(skipped)}"
                 f" — these sections have no effect in"
-                f" {active_mode.strip('[]')} mode"
+                f" {active_mode.strip('[]')} mode",
+                fix=(
+                    "remove skipped sections from this config,"
+                    " or run them in a separate non-early-return config"
+                ),
             )
 
     # Print summary
@@ -364,6 +521,242 @@ def validate(config_path: str | Path) -> list[str]:
         print("\nNo issues found.", file=sys.stderr)
 
     return warnings
+
+
+def _load_raw_toml(path: Path) -> TomlDict:
+    """Load raw TOML mapping for intent-level validation checks."""
+    with path.open("rb") as f:
+        raw: TomlDict = tomllib.load(f)
+    return raw
+
+
+def _active_early_modes(config: PipelineConfig) -> list[str]:
+    """Return active early-return modes in runtime precedence order."""
+    active: dict[str, bool] = {
+        "[depth]": config.depth is not None,
+        "[probe]": config.probe is not None,
+        "[steer]": config.steer is not None,
+        "[sic]": config.sic is not None,
+        "[optimize]": config.optimize is not None,
+        "[softprompt]": config.softprompt is not None,
+    }
+    return [name for name in _EARLY_RETURN_PRECEDENCE if active[name]]
+
+
+def _add_warning(
+    warnings: list[str],
+    severity: str,
+    message: str,
+    *,
+    fix: str | None = None,
+) -> None:
+    """Append a structured warning with optional fix guidance."""
+    full = f"[{severity}] {message}"
+    if fix is not None:
+        full += f" — fix: {fix}"
+    warnings.append(full)
+
+
+def _validate_prompt_source(
+    source: Path | DatasetRef,
+    key: str,
+    warnings: list[str],
+    *,
+    min_recommended: int,
+    missing_fix: str,
+) -> int | None:
+    """Validate a prompt source (local JSONL or HF dataset reference)."""
+    if isinstance(source, DatasetRef):
+        if source.limit is not None and source.limit < 2:
+            _add_warning(
+                warnings,
+                "MEDIUM",
+                (
+                    f"{key} uses HF dataset limit={source.limit};"
+                    " this is likely too small for stable estimation"
+                ),
+                fix="increase [data.*].limit or remove it",
+            )
+        return None
+    return _validate_prompt_jsonl_file(
+        source,
+        key,
+        warnings,
+        min_recommended=min_recommended,
+        missing_fix=missing_fix,
+    )
+
+
+def _validate_prompt_jsonl_file(
+    path: Path,
+    key: str,
+    warnings: list[str],
+    *,
+    min_recommended: int,
+    missing_fix: str,
+) -> int | None:
+    """Validate JSONL prompt schema for files using {'prompt': str} lines."""
+    if not path.exists():
+        _add_warning(
+            warnings,
+            "HIGH",
+            f"{key} file not found: {path}",
+            fix=missing_fix,
+        )
+        return None
+
+    valid_count = 0
+    seen_non_empty = 0
+    with path.open() as f:
+        for line_no, line in enumerate(f, start=1):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            seen_non_empty += 1
+            try:
+                obj_raw = json.loads(stripped)
+            except json.JSONDecodeError as exc:
+                _add_warning(
+                    warnings,
+                    "HIGH",
+                    (
+                        f"{key} line {line_no} is not valid JSON"
+                        f" ({exc.msg}) in {path}"
+                    ),
+                    fix='use JSONL lines like {"prompt": "your text"}',
+                )
+                return None
+            if not isinstance(obj_raw, dict):
+                _add_warning(
+                    warnings,
+                    "HIGH",
+                    f"{key} line {line_no} must be a JSON object in {path}",
+                    fix='use JSONL lines like {"prompt": "your text"}',
+                )
+                return None
+            prompt_raw = obj_raw.get("prompt")
+            if not isinstance(prompt_raw, str) or not prompt_raw.strip():
+                _add_warning(
+                    warnings,
+                    "HIGH",
+                    (
+                        f"{key} line {line_no} must contain a non-empty"
+                        f" string key 'prompt' in {path}"
+                    ),
+                    fix='ensure each line has {"prompt": "..."}',
+                )
+                return None
+            valid_count += 1
+
+    if seen_non_empty == 0:
+        _add_warning(
+            warnings,
+            "HIGH",
+            f"{key} is empty: {path}",
+            fix='add JSONL records like {"prompt": "..."}',
+        )
+        return 0
+
+    if valid_count < min_recommended:
+        _add_warning(
+            warnings,
+            "LOW",
+            (
+                f"{key} has only {valid_count} prompt(s);"
+                " results may be noisy on small sets"
+            ),
+            fix=f"use at least {min_recommended} prompts",
+        )
+    return valid_count
+
+
+def _validate_surface_jsonl_file(
+    path: Path,
+    key: str,
+    warnings: list[str],
+    *,
+    missing_fix: str,
+) -> int | None:
+    """Validate JSONL surface schema for prompt/label/category records."""
+    if not path.exists():
+        _add_warning(
+            warnings,
+            "HIGH",
+            f"{key} file not found: {path}",
+            fix=missing_fix,
+        )
+        return None
+
+    valid_count = 0
+    seen_non_empty = 0
+    with path.open() as f:
+        for line_no, line in enumerate(f, start=1):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            seen_non_empty += 1
+            try:
+                obj_raw = json.loads(stripped)
+            except json.JSONDecodeError as exc:
+                _add_warning(
+                    warnings,
+                    "HIGH",
+                    (
+                        f"{key} line {line_no} is not valid JSON"
+                        f" ({exc.msg}) in {path}"
+                    ),
+                    fix=(
+                        'use JSONL lines like {"prompt": "...",'
+                        ' "label": "harmful", "category": "weapons"}'
+                    ),
+                )
+                return None
+            if not isinstance(obj_raw, dict):
+                _add_warning(
+                    warnings,
+                    "HIGH",
+                    f"{key} line {line_no} must be a JSON object in {path}",
+                    fix=(
+                        'use JSONL lines like {"prompt": "...",'
+                        ' "label": "harmful", "category": "weapons"}'
+                    ),
+                )
+                return None
+            prompt_raw = obj_raw.get("prompt")
+            label_raw = obj_raw.get("label")
+            category_raw = obj_raw.get("category")
+            if (
+                not isinstance(prompt_raw, str) or not prompt_raw.strip()
+                or not isinstance(label_raw, str) or not label_raw.strip()
+                or not isinstance(category_raw, str) or not category_raw.strip()
+            ):
+                _add_warning(
+                    warnings,
+                    "HIGH",
+                    (
+                        f"{key} line {line_no} must include non-empty string"
+                        " keys: prompt, label, category"
+                    ),
+                    fix=(
+                        'use JSONL lines like {"prompt": "...",'
+                        ' "label": "harmful", "category": "weapons"}'
+                    ),
+                )
+                return None
+            valid_count += 1
+
+    if seen_non_empty == 0:
+        _add_warning(
+            warnings,
+            "HIGH",
+            f"{key} is empty: {path}",
+            fix=(
+                'add JSONL records with prompt/label/category keys'
+            ),
+        )
+        return 0
+
+    return valid_count
 
 
 def _load_refusal_phrases(path: Path) -> list[str]:
