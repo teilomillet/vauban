@@ -278,6 +278,24 @@ def validate(config_path: str | Path) -> list[str]:
             " > sic > optimize > softprompt)"
         )
 
+    # Depth direction: warn if extract_direction=True but not enough prompts
+    if config.depth is not None and config.depth.extract_direction:
+        effective = (
+            config.depth.direction_prompts
+            if config.depth.direction_prompts is not None
+            else config.depth.prompts
+        )
+        if len(effective) < 2:
+            src = (
+                "direction_prompts"
+                if config.depth.direction_prompts is not None
+                else "prompts"
+            )
+            warnings.append(
+                f"[depth].extract_direction = true but {src}"
+                f" has only {len(effective)} entry — need >= 2"
+            )
+
     # Surface + eval without eval prompts is fine but worth noting
     if config.surface is not None and not early_modes:
         pass  # surface runs in normal pipeline

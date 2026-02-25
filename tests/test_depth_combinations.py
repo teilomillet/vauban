@@ -326,6 +326,34 @@ class TestDepthValidateSummary:
         assert "+ detect" not in captured.err
 
 
+class TestDepthDirectionValidation:
+    """Validate extract_direction prompt count warnings."""
+
+    def test_extract_direction_single_prompt_warns(
+        self, tmp_path: Path,
+    ) -> None:
+        """extract_direction=true with 1 prompt should be caught at parse time."""
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            _MODEL + _DATA
+            + '[depth]\nprompts = ["only_one"]\nextract_direction = true\n'
+        )
+        with pytest.raises(ValueError, match="extract_direction"):
+            load_config(toml_file)
+
+    def test_extract_direction_two_prompts_no_warning(
+        self, tmp_path: Path,
+    ) -> None:
+        """extract_direction=true with 2 prompts should produce no warnings."""
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            _MODEL + _DATA_DEFAULT
+            + '[depth]\nprompts = ["a", "b"]\nextract_direction = true\n'
+        )
+        warnings = validate(toml_file)
+        assert not any("extract_direction" in w for w in warnings)
+
+
 class TestNonDepthSkippedSections:
     """All early-return modes should warn about skipped [surface]/[eval]."""
 

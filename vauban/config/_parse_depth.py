@@ -160,6 +160,17 @@ def _parse_depth(raw: TomlDict) -> DepthConfig | None:
                 raise TypeError(msg)
         direction_prompts = list(dp_raw)
 
+    # Cross-field validation: extract_direction needs >= 2 effective prompts
+    if extract_direction:
+        effective = direction_prompts if direction_prompts is not None else prompts
+        if len(effective) < 2:
+            src = "direction_prompts" if direction_prompts is not None else "prompts"
+            msg = (
+                f"[depth].extract_direction = true requires >= 2"
+                f" {src}, got {len(effective)}"
+            )
+            raise ValueError(msg)
+
     return DepthConfig(
         prompts=prompts,
         settling_threshold=settling_threshold,

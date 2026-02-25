@@ -1646,6 +1646,50 @@ class TestLoadConfig:
         with pytest.raises(ValueError, match="clip_quantile"):
             load_config(toml_file)
 
+    def test_depth_extract_direction_too_few_prompts_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[depth]\n"
+            'prompts = ["only_one"]\n'
+            "extract_direction = true\n"
+        )
+        with pytest.raises(ValueError, match=r"extract_direction.*>= 2"):
+            load_config(toml_file)
+
+    def test_depth_extract_direction_too_few_direction_prompts_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[depth]\n"
+            'prompts = ["a", "b", "c"]\n'
+            "extract_direction = true\n"
+            'direction_prompts = ["only_one"]\n'
+        )
+        with pytest.raises(ValueError, match=r"extract_direction.*>= 2"):
+            load_config(toml_file)
+
+    def test_depth_extract_direction_enough_prompts_ok(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[depth]\n"
+            'prompts = ["a", "b"]\n'
+            "extract_direction = true\n"
+        )
+        config = load_config(toml_file)
+        assert config.depth is not None
+        assert config.depth.extract_direction is True
+
     def test_depth_mode_conflict(self, tmp_path: Path) -> None:
         toml_file = tmp_path / "test.toml"
         toml_file.write_text(
