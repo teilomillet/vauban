@@ -12,6 +12,7 @@ Refusal in language models is mediated by a single direction in activation space
 - **Cut** it from the weights (abliteration)
 - **Probe** per-layer projections to see what the model encodes
 - **Steer** generation at runtime by modifying activations mid-forward-pass
+- **CAST** runtime generation with conditional activation steering rules
 - **Map** the full refusal surface across diverse prompts
 - **Optimize** cut parameters automatically (Optuna search)
 - **Soft-prompt** — optimize learnable prefixes in embedding space (GCG, continuous, EGD)
@@ -172,11 +173,12 @@ The TOML sections you include determine what vauban does. The default is measure
 | `[depth]` | Deep-thinking token analysis | `depth_report.json` |
 | `[probe]` | Per-layer projection inspection | `probe_report.json` |
 | `[steer]` | Runtime steered generation | `steer_report.json` |
+| `[cast]` | Conditional activation steering generation | `cast_report.json` |
 | `[optimize]` | Optuna search for best cut parameters | `optimize_report.json` |
 | `[softprompt]` | Optimize learnable prefixes in embedding space (GCG, continuous, EGD) | `softprompt_report.json` |
 | `[sic]` | Iterative input sanitization (SIC) | `sic_report.json` |
 
-Early-return precedence is: `[depth]` > `[probe]` > `[steer]` > `[sic]` > `[optimize]` > `[softprompt]`. Use `--validate` to catch conflicts.
+Early-return precedence is: `[depth]` > `[probe]` > `[steer]` > `[cast]` > `[sic]` > `[optimize]` > `[softprompt]`. Use `--validate` to catch conflicts.
 
 ## Python API
 

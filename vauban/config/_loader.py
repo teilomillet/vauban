@@ -56,6 +56,7 @@ def load_config(path: str | Path) -> PipelineConfig:
         parse_context,
         depth_override=depth_config,
     )
+    cast_config = parsed_sections.cast
     cut_config = parsed_sections.cut
     measure_config = parsed_sections.measure
     surface_config = parsed_sections.surface
@@ -111,6 +112,7 @@ def load_config(path: str | Path) -> PipelineConfig:
         depth=depth_config,
         probe=probe_config,
         steer=steer_config,
+        cast=cast_config,
         eval=eval_config,
         output_dir=output_dir,
         borderline_path=borderline_path,

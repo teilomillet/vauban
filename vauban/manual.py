@@ -84,6 +84,7 @@ EARLY_RETURN_PRECEDENCE: tuple[str, ...] = (
     "depth",
     "probe",
     "steer",
+    "cast",
     "sic",
     "optimize",
     "softprompt",
@@ -112,6 +113,12 @@ _PIPELINE_MODES: tuple[PipelineModeDoc, ...] = (
         mode="steer",
         trigger="[steer] section present.",
         output="steer_report.json.",
+        early_return=True,
+    ),
+    PipelineModeDoc(
+        mode="cast",
+        trigger="[cast] section present.",
+        output="cast_report.json.",
         early_return=True,
     ),
     PipelineModeDoc(
@@ -857,6 +864,40 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 key="alpha",
                 description="Steering strength.",
                 constraints="number.",
+            ),
+            FieldSpec(
+                key="max_tokens",
+                description="Generation cap per prompt.",
+                constraints="integer >= 1.",
+            ),
+        ),
+    ),
+    SectionSpec(
+        name="cast",
+        description="Conditional activation steering (CAST) generation.",
+        early_return=True,
+        config_class="CastConfig",
+        fields=(
+            FieldSpec(
+                key="prompts",
+                description="Inline prompts used for CAST generation.",
+                constraints="required non-empty list of strings.",
+                required=True,
+            ),
+            FieldSpec(
+                key="layers",
+                description="Layer subset to conditionally steer.",
+                constraints="list of integers or null (null means all layers).",
+            ),
+            FieldSpec(
+                key="alpha",
+                description="Steering strength when CAST triggers.",
+                constraints="number.",
+            ),
+            FieldSpec(
+                key="threshold",
+                description="Intervention trigger threshold on projection value.",
+                constraints="number (steer if projection > threshold).",
             ),
             FieldSpec(
                 key="max_tokens",

@@ -13,6 +13,7 @@ from vauban.config._mode_registry import (
 )
 from vauban.config._validation import VALIDATION_RULE_SPECS, validate_config
 from vauban.types import (
+    CastConfig,
     DepthConfig,
     OptimizeConfig,
     PipelineConfig,
@@ -39,6 +40,7 @@ _EXPECTED_EARLY_MODE_ORDER: list[str] = [
     "[depth]",
     "[probe]",
     "[steer]",
+    "[cast]",
     "[sic]",
     "[optimize]",
     "[softprompt]",
@@ -127,7 +129,7 @@ def test_validation_warning_content_and_order_for_conflict_fixture(
         (
             "[HIGH] Multiple early-return modes active: [depth], [probe]"
             " — only the first will run (precedence: depth > probe > steer"
-            " > sic > optimize > softprompt)"
+            " > cast > sic > optimize > softprompt)"
             " — fix: keep one early-return mode per config,"
             " and split other modes into separate TOML files"
         ),
@@ -171,6 +173,7 @@ def test_active_early_modes_precedence_matches_legacy_behavior() -> None:
         depth=DepthConfig(prompts=["a", "b"]),
         probe=ProbeConfig(prompts=["probe"]),
         steer=SteerConfig(prompts=["steer"]),
+        cast=CastConfig(prompts=["cast"]),
         sic=SICConfig(),
         optimize=OptimizeConfig(),
         softprompt=SoftPromptConfig(),

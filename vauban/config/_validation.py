@@ -413,6 +413,8 @@ def _print_summary(
         mode = "probe inspection"
     elif config.steer is not None:
         mode = "steer generation"
+    elif config.cast is not None:
+        mode = "CAST steering"
     elif config.sic is not None:
         mode = "SIC sanitization"
     elif config.optimize is not None:

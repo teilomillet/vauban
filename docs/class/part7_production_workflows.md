@@ -94,7 +94,7 @@ Without any early-return sections, the pipeline runs the standard flow:
 6. If `[surface]` is present: surface scan + quality gates.
 7. If `[detect]` is present: defense detection.
 
-### Early-Return: depth > probe > steer > sic > optimize > softprompt
+### Early-Return: depth > probe > steer > cast > sic > optimize > softprompt
 
 Some pipeline modes short-circuit before reaching the cut step. If any of these sections are present in the TOML, the pipeline runs only that mode and exits:
 
@@ -103,6 +103,7 @@ Some pipeline modes short-circuit before reaching the cut step. If any of these 
 | `[depth]` | Depth profiling | DTR, settling depths, JSD profiles |
 | `[probe]` | Direction probing | Per-layer projections for each prompt |
 | `[steer]` | Steered generation | Generated text with direction removal |
+| `[cast]` | Conditional activation steering | Generated text with threshold-gated interventions |
 | `[sic]` | SIC defense | Sanitization results |
 | `[optimize]` | Optuna hyperparameter search | Pareto front, best configs |
 | `[softprompt]` | Soft prompt attack | Optimized embeddings/tokens, success rates |
@@ -111,7 +112,7 @@ Some pipeline modes short-circuit before reaching the cut step. If any of these 
 
 If multiple early-return sections are present, only the highest-priority one runs. Priority order (highest first):
 
-`depth` > `probe` > `steer` > `sic` > `optimize` > `softprompt`
+`depth` > `probe` > `steer` > `cast` > `sic` > `optimize` > `softprompt`
 
 Example: if both `[probe]` and `[optimize]` are present, only the probe runs.
 
@@ -349,7 +350,7 @@ The pipeline will:
 
 > **Always validate first.** `vauban --validate` catches typos, missing files, and mode conflicts in milliseconds. It is the cheapest debugging tool you have.
 
-> **Early-return precedence.** If you accidentally include both `[probe]` and `[optimize]` in the same config, only `[probe]` runs (higher priority). Check the output carefully if you get unexpected behavior.
+> **Early-return precedence.** If you accidentally include both `[steer]` and `[cast]` in the same config, only `[steer]` runs (higher priority). Check the output carefully if you get unexpected behavior.
 
 > **Experiment log.** Every run appends to `experiment_log.jsonl`. This is your audit trail. To start fresh, either use a new output directory or manually clear the log.
 
@@ -359,7 +360,7 @@ The pipeline will:
 
 1. **`vauban config.toml`** is the only CLI — everything is declarative.
 2. **`vauban --validate`** catches config errors before loading any model.
-3. **Pipeline modes** — default (measure → cut → export) or early-return (depth, probe, steer, sic, optimize, softprompt).
+3. **Pipeline modes** — default (measure → cut → export) or early-return (depth, probe, steer, cast, sic, optimize, softprompt).
 4. **Optimization** — Optuna searches over alpha, sparsity, norm-preserve, and layer strategy. Returns Pareto front and convenience picks.
 5. **Advanced cut techniques** — biprojected, norm-preserving, sparsified, subspace, false-refusal orthogonalization, per-layer weights, layer type filtering.
 6. **Experiment management** — `experiment_log.jsonl` for audit, `quick.compare()` for diff, CI/CD integration via exit codes.

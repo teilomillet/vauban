@@ -1,6 +1,7 @@
 """JSON serialization helpers for pipeline result types."""
 
 from vauban.types import (
+    CastResult,
     DepthDirectionResult,
     DepthResult,
     DetectResult,
@@ -15,6 +16,18 @@ from vauban.types import (
     TransferEvalResult,
     TrialResult,
 )
+
+
+def _cast_to_dict(result: CastResult) -> dict[str, object]:
+    """Serialize a CastResult to a JSON-compatible dict."""
+    return {
+        "prompt": result.prompt,
+        "text": result.text,
+        "projections_before": result.projections_before,
+        "projections_after": result.projections_after,
+        "interventions": result.interventions,
+        "considered": result.considered,
+    }
 
 
 def _depth_to_dict(result: DepthResult) -> dict[str, object]:

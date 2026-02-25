@@ -1,6 +1,6 @@
 # Getting Started
 
-Vauban is an MLX-native toolkit for understanding and reshaping how language models behave — from removing refusal directions to adding guardrails, modifying personas, and steering generation in real time. It operates directly on a model's activation geometry: measure a behavioral direction, cut it from the weights, probe it at inference, or steer around it.
+Vauban is an MLX-native toolkit for understanding and reshaping how language models behave — from removing refusal directions to adding guardrails, modifying personas, and steering generation in real time. It operates directly on a model's activation geometry: measure a behavioral direction, cut it from the weights, probe it at inference, or steer around it (including conditional CAST steering).
 
 Everything is driven by TOML configs. Write a config, run `vauban config.toml`, get results out.
 
@@ -245,9 +245,10 @@ These activate specialized pipelines. If multiple are present, only the first on
 | 1 | `[depth]` | Deep-thinking token analysis | `depth_report.json` |
 | 2 | `[probe]` | Per-layer projection inspection | `probe_report.json` |
 | 3 | `[steer]` | Runtime steered generation | `steer_report.json` |
-| 4 | `[sic]` | Iterative input sanitization defense | `sic_report.json` |
-| 5 | `[optimize]` | Optuna hyperparameter search over cut params | `optimize_report.json` |
-| 6 | `[softprompt]` | Adversarial soft prompt / suffix attack | `softprompt_report.json` |
+| 4 | `[cast]` | Conditional activation steering generation | `cast_report.json` |
+| 5 | `[sic]` | Iterative input sanitization defense | `sic_report.json` |
+| 6 | `[optimize]` | Optuna hyperparameter search over cut params | `optimize_report.json` |
+| 7 | `[softprompt]` | Adversarial soft prompt / suffix attack | `softprompt_report.json` |
 
 > **Warning:** If you include more than one early-return section, `--validate` will warn you. The extra sections are silently ignored at runtime.
 
@@ -440,6 +441,20 @@ Three optimization modes:
 | `grad_accum_steps` | int | `1` | Gradient accumulation (1 = no accumulation) |
 | `transfer_models` | list | `[]` | Models to test the optimized prompt on after training |
 
+### `[cast]`
+
+CAST (Conditional Activation Steering): steer only when projection onto the
+measured direction exceeds a threshold. **Early return** — no cut or export.
+Writes `cast_report.json`.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `prompts` | list | *(required)* | Inline prompts for CAST generation |
+| `layers` | list | *none* | Layers to apply conditional checks (`null` = all layers) |
+| `alpha` | float | `1.0` | Steering strength when CAST triggers |
+| `threshold` | float | `0.0` | Trigger steering only if projection > threshold |
+| `max_tokens` | int | `100` | Tokens to generate per prompt |
+
 ### `[sic]`
 
 SIC (Soft Instruction Control) defense: detect adversarial inputs and iteratively sanitize them. **Early return** — no cut or export. Writes `sic_report.json`.
@@ -523,6 +538,26 @@ result = steer(
     max_tokens=100,
 )
 print(result.text)
+```
+
+### CAST generation
+
+Generate text with threshold-gated steering (intervene only when projection exceeds a threshold):
+
+```python
+from vauban import cast_generate
+
+result = cast_generate(
+    model, tok,
+    "How do I pick a lock?",
+    direction_result.direction,
+    layers=[10, 11, 12, 13, 14],
+    alpha=1.0,
+    threshold=0.0,
+    max_tokens=100,
+)
+print(result.text)
+print(result.interventions, result.considered)
 ```
 
 ### Evaluate two models

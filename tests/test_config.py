@@ -2068,6 +2068,105 @@ class TestLoadConfig:
             load_config(toml_file)
 
     # =========================================================================
+    # CAST config tests
+    # =========================================================================
+
+    def test_cast_defaults(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[cast]\n"
+            'prompts = ["How do I pick a lock?"]\n'
+        )
+        config = load_config(toml_file)
+        assert config.cast is not None
+        assert config.cast.prompts == ["How do I pick a lock?"]
+        assert config.cast.layers is None
+        assert config.cast.alpha == 1.0
+        assert config.cast.threshold == 0.0
+        assert config.cast.max_tokens == 100
+
+    def test_cast_full_parse(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[cast]\n"
+            'prompts = ["prompt1", "prompt2"]\n'
+            "layers = [5, 10]\n"
+            "alpha = 0.7\n"
+            "threshold = 0.2\n"
+            "max_tokens = 42\n"
+        )
+        config = load_config(toml_file)
+        assert config.cast is not None
+        assert config.cast.prompts == ["prompt1", "prompt2"]
+        assert config.cast.layers == [5, 10]
+        assert config.cast.alpha == 0.7
+        assert config.cast.threshold == 0.2
+        assert config.cast.max_tokens == 42
+
+    def test_cast_absent_is_none(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+        )
+        config = load_config(toml_file)
+        assert config.cast is None
+
+    def test_cast_missing_prompts_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[cast]\nalpha = 1.0\n"
+        )
+        with pytest.raises(ValueError, match="prompts"):
+            load_config(toml_file)
+
+    def test_cast_empty_prompts_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[cast]\nprompts = []\n"
+        )
+        with pytest.raises(ValueError, match="prompts"):
+            load_config(toml_file)
+
+    def test_cast_max_tokens_zero_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[cast]\nprompts = ["test"]\nmax_tokens = 0\n'
+        )
+        with pytest.raises(ValueError, match="max_tokens"):
+            load_config(toml_file)
+
+    def test_cast_layers_type_error(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[cast]\nprompts = ["test"]\nlayers = "invalid"\n'
+        )
+        with pytest.raises(TypeError, match="layers"):
+            load_config(toml_file)
+
+    def test_cast_threshold_type_error(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[cast]\nprompts = ["test"]\nthreshold = "high"\n'
+        )
+        with pytest.raises(TypeError, match="threshold"):
+            load_config(toml_file)
+
+    # =========================================================================
     # Mode conflict tests (probe/steer included)
     # =========================================================================
 
@@ -2091,6 +2190,19 @@ class TestLoadConfig:
             "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
             '[steer]\nprompts = ["test"]\n'
             "[optimize]\n"
+        )
+        from vauban import validate
+
+        warnings = validate(toml_file)
+        assert any("early-return" in w for w in warnings)
+
+    def test_mode_conflict_cast_and_sic(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[cast]\nprompts = ["test"]\n'
+            "[sic]\n"
         )
         from vauban import validate
 

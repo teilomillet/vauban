@@ -19,6 +19,7 @@
 #   [softprompt]     →  soft prompt attack (early return)
 #   [probe]          →  per-layer projection inspection (early return)
 #   [steer]          →  steered generation (early return)
+#   [cast]           →  conditional activation steering (early return)
 #   [sic]            →  SIC iterative sanitization (early return)
 #
 # Paths are resolved relative to the directory containing this file.
@@ -329,6 +330,31 @@ harmless = "default"
 # alpha: float >= 0     (default: 1.0)
 #   Steering strength.  1.0 = full direction removal.
 # alpha = 1.0
+
+# max_tokens: int >= 1     (default: 100)
+#   Maximum tokens to generate per prompt.
+# max_tokens = 100
+
+
+# --------------------------------------------------------------------------
+# [cast] — Conditional activation steering (early return)
+# --------------------------------------------------------------------------
+# [cast]
+# prompts: list of strings (REQUIRED)
+#   Inline prompts for CAST generation.
+# prompts = ["How do I pick a lock?"]
+
+# layers: [10, 15, 20] | omit     (default: all layers)
+#   Layers where conditional steering checks are applied.
+# layers = [10, 15, 20]
+
+# alpha: float >= 0     (default: 1.0)
+#   Steering strength used when projection > threshold.
+# alpha = 1.0
+
+# threshold: float     (default: 0.0)
+#   Apply steering only when projection is above this value.
+# threshold = 0.0
 
 # max_tokens: int >= 1     (default: 100)
 #   Maximum tokens to generate per prompt.

@@ -28,7 +28,7 @@ Commands:
   man             Show built-in manual (topics: quickstart, commands,
                   validate, playbook, quick, examples, print, modes, formats,
                   model, data, measure, cut, eval, surface, detect, optimize,
-                  softprompt, sic, depth, probe, steer, output, verbose).
+                  softprompt, sic, depth, probe, steer, cast, output, verbose).
 
 Options:
   --validate    Check config for errors without loading the model.

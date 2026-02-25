@@ -20,11 +20,12 @@ Only `[model]` and `[data]` are required. All other sections are optional and ac
 | `[depth]` | deep-thinking token analysis (early return) |
 | `[probe]` | per-layer projection inspection (early return) |
 | `[steer]` | steered generation (early return) |
+| `[cast]` | conditional activation steering (early return) |
 | `[sic]` | SIC iterative sanitization (early return) |
 | `[optimize]` | Optuna hyperparameter search (early return) |
 | `[softprompt]` | soft prompt attack (early return) |
 
-Early-return precedence: `[depth]` > `[probe]` > `[steer]` > `[sic]` > `[optimize]` > `[softprompt]`.
+Early-return precedence: `[depth]` > `[probe]` > `[steer]` > `[cast]` > `[sic]` > `[optimize]` > `[softprompt]`.
 
 ## Data file formats
 
@@ -197,6 +198,16 @@ See [`examples/config.toml`](https://github.com/teilomillet/vauban/blob/main/exa
 | `prompts` | list of strings | *(required)* | Prompts for steered generation. |
 | `layers` | list of ints | all layers | Layers to apply steering. |
 | `alpha` | float ≥ 0 | `1.0` | Steering strength. |
+| `max_tokens` | int ≥ 1 | `100` | Max tokens to generate. |
+
+## `[cast]` — Conditional activation steering
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `prompts` | list of strings | *(required)* | Prompts for CAST generation. |
+| `layers` | list of ints | all layers | Layers where conditional checks run. |
+| `alpha` | float ≥ 0 | `1.0` | Steering strength when projection exceeds threshold. |
+| `threshold` | float | `0.0` | Trigger steering only if projection > threshold. |
 | `max_tokens` | int ≥ 1 | `100` | Max tokens to generate. |
 
 ## `[output]` — Output directory

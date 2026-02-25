@@ -36,6 +36,11 @@ def _has_steer(config: PipelineConfig) -> bool:
     return config.steer is not None
 
 
+def _has_cast(config: PipelineConfig) -> bool:
+    """Return whether [cast] mode is active."""
+    return config.cast is not None
+
+
 def _has_sic(config: PipelineConfig) -> bool:
     """Return whether [sic] mode is active."""
     return config.sic is not None
@@ -55,6 +60,7 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
     EarlyModeSpec("[depth]", "depth", "before_prompts", False, _has_depth),
     EarlyModeSpec("[probe]", "probe", "after_measure", True, _has_probe),
     EarlyModeSpec("[steer]", "steer", "after_measure", True, _has_steer),
+    EarlyModeSpec("[cast]", "cast", "after_measure", True, _has_cast),
     EarlyModeSpec("[sic]", "sic", "after_measure", False, _has_sic),
     EarlyModeSpec("[optimize]", "optimize", "after_measure", True, _has_optimize),
     EarlyModeSpec(
@@ -85,4 +91,3 @@ def active_early_mode_for_phase(
         if spec.phase == phase and spec.enabled(config):
             return spec
     return None
-

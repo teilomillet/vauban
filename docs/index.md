@@ -12,6 +12,7 @@ Refusal in language models is mediated by a single direction in activation space
 - **Cut** it from the weights (abliteration)
 - **Probe** per-layer projections to see what the model encodes
 - **Steer** generation at runtime by modifying activations mid-forward-pass
+- **CAST** runtime generation with conditional activation steering rules
 - **Map** the full refusal surface across diverse prompts
 - **Optimize** cut parameters automatically (Optuna search)
 - **Soft-prompt** — optimize learnable prefixes in embedding space (GCG, continuous, EGD)
@@ -59,6 +60,7 @@ The [Spinning Up in Abliteration](class/index.md) course is a seven-part progres
 | `[depth]` | Deep-thinking token analysis | `depth_report.json` |
 | `[probe]` | Per-layer projection inspection | `probe_report.json` |
 | `[steer]` | Runtime steered generation | `steer_report.json` |
+| `[cast]` | Conditional activation steering generation | `cast_report.json` |
 | `[optimize]` | Optuna search for best cut parameters | `optimize_report.json` |
 | `[softprompt]` | Optimize learnable prefixes in embedding space | `softprompt_report.json` |
 | `[sic]` | Iterative input sanitization (SIC) | `sic_report.json` |

@@ -3,12 +3,14 @@
 import mlx.core as mx
 
 from vauban._serializers import (
+    _cast_to_dict,
     _depth_direction_to_dict,
     _depth_to_dict,
     _probe_to_dict,
     _steer_to_dict,
 )
 from vauban.types import (
+    CastResult,
     DepthDirectionResult,
     DepthResult,
     ProbeResult,
@@ -126,3 +128,22 @@ class TestSteerToDict:
         assert d["text"] == "Here is how..."
         assert d["projections_before"] == [0.5, 0.3]
         assert d["projections_after"] == [0.01, 0.02]
+
+
+class TestCastToDict:
+    def test_round_trip(self) -> None:
+        result = CastResult(
+            prompt="How do I pick a lock?",
+            text="I can't help with that.",
+            projections_before=[0.8, 0.6],
+            projections_after=[0.2, 0.1],
+            interventions=2,
+            considered=4,
+        )
+        d = _cast_to_dict(result)
+        assert d["prompt"] == "How do I pick a lock?"
+        assert d["text"] == "I can't help with that."
+        assert d["projections_before"] == [0.8, 0.6]
+        assert d["projections_after"] == [0.2, 0.1]
+        assert d["interventions"] == 2
+        assert d["considered"] == 4

@@ -8,6 +8,7 @@ import pytest
 
 from vauban.config import load_config
 from vauban.config._loader import _resolve_borderline_path, _resolve_data_paths
+from vauban.config._parse_cast import _parse_cast
 from vauban.config._parse_cut import _parse_cut
 from vauban.config._parse_depth import _parse_depth
 from vauban.config._parse_detect import _parse_detect
@@ -27,6 +28,7 @@ from vauban.config._registry import (
 )
 from vauban.config._types import TomlDict
 from vauban.types import (
+    CastConfig,
     CutConfig,
     DepthConfig,
     DetectConfig,
@@ -43,6 +45,7 @@ from vauban.types import (
 
 _EXPECTED_SECTION_ORDER: list[str] = [
     "depth",
+    "cast",
     "cut",
     "measure",
     "surface",
@@ -79,6 +82,7 @@ def _manual_load_config_pre_registry(path: Path) -> PipelineConfig:
         raise TypeError(msg)
 
     depth_config = _parse_depth(raw)
+    cast_config = _parse_cast(raw)
     harmful_path, harmless_path = _resolve_data_paths(
         base_dir,
         raw,
@@ -152,6 +156,7 @@ def _manual_load_config_pre_registry(path: Path) -> PipelineConfig:
         depth=depth_config,
         probe=probe_config,
         steer=steer_config,
+        cast=cast_config,
         eval=eval_config,
         output_dir=output_dir,
         borderline_path=borderline_path,
@@ -293,6 +298,10 @@ def test_parse_registered_sections_respects_registry_order(
         call_order.append("cut")
         return CutConfig(alpha=2.0)
 
+    def fake_cast(raw: TomlDict) -> CastConfig | None:
+        call_order.append("cast")
+        return CastConfig(prompts=["cast"], threshold=0.3)
+
     def fake_measure(raw: TomlDict) -> MeasureConfig:
         call_order.append("measure")
         return MeasureConfig(mode="direction", top_k=9)
@@ -330,6 +339,7 @@ def test_parse_registered_sections_respects_registry_order(
         return EvalConfig(max_tokens=222)
 
     monkeypatch.setattr("vauban.config._registry._parse_depth", fake_depth)
+    monkeypatch.setattr("vauban.config._registry._parse_cast", fake_cast)
     monkeypatch.setattr("vauban.config._registry._parse_cut", fake_cut)
     monkeypatch.setattr("vauban.config._registry._parse_measure", fake_measure)
     monkeypatch.setattr("vauban.config._registry._parse_surface", fake_surface)
@@ -346,6 +356,7 @@ def test_parse_registered_sections_respects_registry_order(
 
     assert call_order == _EXPECTED_SECTION_ORDER
     assert parsed.depth == DepthConfig(prompts=["depth"])
+    assert parsed.cast == CastConfig(prompts=["cast"], threshold=0.3)
     assert parsed.cut.alpha == 2.0
     assert parsed.measure.top_k == 9
     assert parsed.surface == SurfaceConfig(prompts_path=tmp_path / "surface.jsonl")
@@ -418,6 +429,7 @@ def test_loader_parity_full_optional_config(tmp_path: Path) -> None:
         + '[sic]\nmode = "generation"\nmax_iterations = 4\n'
         + '[probe]\nprompts = ["probe prompt"]\n'
         + '[steer]\nprompts = ["steer prompt"]\nalpha = 1.1\n'
+        + '[cast]\nprompts = ["cast prompt"]\nthreshold = 0.2\n'
         + '[eval]\nprompts = "eval.jsonl"\nmax_tokens = 45\nnum_prompts = 9\n'
         + '[output]\ndir = "out"\n'
         + "verbose = false\n"
@@ -445,6 +457,7 @@ def test_loader_parity_full_optional_config(tmp_path: Path) -> None:
         ("sic", _MODEL + _DATA + "[sic]\nmax_iterations = 0\n"),
         ("probe", _MODEL + _DATA + "[probe]\nprompts = 5\n"),
         ("steer", _MODEL + _DATA + "[steer]\nprompts = 5\n"),
+        ("cast", _MODEL + _DATA + "[cast]\nprompts = 5\n"),
         ("eval", _MODEL + _DATA + "[eval]\nmax_tokens = 0\n"),
     ],
 )

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from vauban.config._parse_cast import _parse_cast
 from vauban.config._parse_cut import _parse_cut
 from vauban.config._parse_depth import _parse_depth
 from vauban.config._parse_detect import _parse_detect
@@ -18,6 +19,7 @@ from vauban.config._parse_steer import _parse_steer
 from vauban.config._parse_surface import _parse_surface
 from vauban.config._types import TomlDict
 from vauban.types import (
+    CastConfig,
     CutConfig,
     DepthConfig,
     DetectConfig,
@@ -43,6 +45,7 @@ class ConfigParseContext:
 type _SectionParserResult = (
     DepthConfig
     | None
+    | CastConfig
     | CutConfig
     | MeasureConfig
     | SurfaceConfig
@@ -73,6 +76,7 @@ class ParsedSectionValues:
     """All parsed config sections assembled from the parser registry."""
 
     depth: DepthConfig | None
+    cast: CastConfig | None
     cut: CutConfig
     measure: MeasureConfig
     surface: SurfaceConfig | None
@@ -96,6 +100,11 @@ _DEPTH_OVERRIDE_UNSET = _DepthOverrideSentinel()
 def _parse_depth_adapter(context: ConfigParseContext) -> DepthConfig | None:
     """Adapter for parsers that accept the full raw config mapping."""
     return _parse_depth(context.raw)
+
+
+def _parse_cast_adapter(context: ConfigParseContext) -> CastConfig | None:
+    """Adapter for parsers that accept the full raw config mapping."""
+    return _parse_cast(context.raw)
 
 
 def _parse_cut_adapter(context: ConfigParseContext) -> CutConfig:
@@ -164,16 +173,17 @@ def _parse_eval_adapter(context: ConfigParseContext) -> EvalConfig:
 
 SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     SectionParseSpec("depth", "depth", _parse_depth_adapter, 10),
-    SectionParseSpec("cut", "cut", _parse_cut_adapter, 20),
-    SectionParseSpec("measure", "measure", _parse_measure_adapter, 30),
-    SectionParseSpec("surface", "surface", _parse_surface_adapter, 40),
-    SectionParseSpec("detect", "detect", _parse_detect_adapter, 50),
-    SectionParseSpec("optimize", "optimize", _parse_optimize_adapter, 60),
-    SectionParseSpec("softprompt", "softprompt", _parse_softprompt_adapter, 70),
-    SectionParseSpec("sic", "sic", _parse_sic_adapter, 80),
-    SectionParseSpec("probe", "probe", _parse_probe_adapter, 90),
-    SectionParseSpec("steer", "steer", _parse_steer_adapter, 100),
-    SectionParseSpec("eval", "eval", _parse_eval_adapter, 110),
+    SectionParseSpec("cast", "cast", _parse_cast_adapter, 20),
+    SectionParseSpec("cut", "cut", _parse_cut_adapter, 30),
+    SectionParseSpec("measure", "measure", _parse_measure_adapter, 40),
+    SectionParseSpec("surface", "surface", _parse_surface_adapter, 50),
+    SectionParseSpec("detect", "detect", _parse_detect_adapter, 60),
+    SectionParseSpec("optimize", "optimize", _parse_optimize_adapter, 70),
+    SectionParseSpec("softprompt", "softprompt", _parse_softprompt_adapter, 80),
+    SectionParseSpec("sic", "sic", _parse_sic_adapter, 90),
+    SectionParseSpec("probe", "probe", _parse_probe_adapter, 100),
+    SectionParseSpec("steer", "steer", _parse_steer_adapter, 110),
+    SectionParseSpec("eval", "eval", _parse_eval_adapter, 120),
 )
 
 
@@ -212,6 +222,7 @@ def parse_registered_sections(
 
     return ParsedSectionValues(
         depth=cast("DepthConfig | None", parsed["depth"]),
+        cast=cast("CastConfig | None", parsed["cast"]),
         cut=cast("CutConfig", parsed["cut"]),
         measure=cast("MeasureConfig", parsed["measure"]),
         surface=cast("SurfaceConfig | None", parsed["surface"]),

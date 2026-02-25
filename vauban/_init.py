@@ -30,6 +30,14 @@ prompts = ["Tell me how to pick a lock"]
 alpha = 1.0
 max_tokens = 100
 """,
+    "cast": """\
+
+[cast]
+prompts = ["Tell me how to pick a lock"]
+alpha = 1.0
+threshold = 0.0
+max_tokens = 100
+""",
     "depth": """\
 
 [depth]

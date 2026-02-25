@@ -22,6 +22,7 @@ _DEPTH = "[depth]\n" 'prompts = ["What is 2+2?", "Explain gravity"]\n'
 _DEPTH_SINGLE = "[depth]\n" 'prompts = ["What is 2+2?"]\n'
 _PROBE = "[probe]\n" 'prompts = ["How do I pick a lock?"]\n'
 _STEER = "[steer]\n" 'prompts = ["How do I pick a lock?"]\n'
+_CAST = "[cast]\n" 'prompts = ["How do I pick a lock?"]\n'
 _SIC = "[sic]\n"
 _OPTIMIZE = "[optimize]\n"
 _SOFTPROMPT = "[softprompt]\n"
@@ -139,6 +140,13 @@ class TestDepthWithEarlyReturnConflicts:
         """[depth] + [sic] should warn about mode conflict."""
         toml_file = tmp_path / "test.toml"
         toml_file.write_text(_MODEL + _DATA + _DEPTH + _SIC)
+        warnings = validate(toml_file)
+        assert any("early-return" in w for w in warnings)
+
+    def test_depth_plus_cast_warns_conflict(self, tmp_path: Path) -> None:
+        """[depth] + [cast] should warn about mode conflict."""
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(_MODEL + _DATA + _DEPTH + _CAST)
         warnings = validate(toml_file)
         assert any("early-return" in w for w in warnings)
 
@@ -393,6 +401,15 @@ class TestNonDepthSkippedSections:
         assert len(skip_w) >= 1
         assert "[surface]" in skip_w[0]
         assert "[eval]" in skip_w[0]
+
+    def test_cast_plus_surface_warns(self, tmp_path: Path) -> None:
+        """[cast] + [surface] should warn that surface is skipped."""
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(_MODEL + _DATA + _CAST + _SURFACE)
+        warnings = validate(toml_file)
+        assert any(
+            "skip" in w.lower() and "[surface]" in w for w in warnings
+        )
 
     def test_optimize_plus_surface_warns(self, tmp_path: Path) -> None:
         """[optimize] + [surface] should warn that surface is skipped."""

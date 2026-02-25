@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from vauban.types import CausalLM, Tokenizer
 
 from vauban._serializers import (
+    _cast_to_dict,
     _depth_direction_to_dict,
     _depth_to_dict,
     _detect_to_dict,
@@ -21,6 +22,7 @@ from vauban._serializers import (
     _steer_to_dict,
     _surface_comparison_to_dict,
 )
+from vauban.cast import cast_generate
 from vauban.config import load_config
 from vauban.config._mode_registry import (
     EarlyModePhase,
@@ -85,6 +87,8 @@ from vauban.surface import (
     scan,
 )
 from vauban.types import (
+    CastConfig,
+    CastResult,
     CutConfig,
     DatasetRef,
     DBDIResult,
@@ -126,6 +130,8 @@ from vauban.types import (
 __version__ = "0.2.5"
 
 __all__ = [
+    "CastConfig",
+    "CastResult",
     "CutConfig",
     "DBDIResult",
     "DatasetRef",
@@ -167,6 +173,7 @@ __all__ = [
     "aggregate",
     "analyze_directions",
     "calibrate_threshold",
+    "cast_generate",
     "compare_surfaces",
     "cut",
     "cut_biprojected",
@@ -562,6 +569,56 @@ def _run_steer_mode(context: _EarlyModeContext) -> None:
     )
 
 
+def _run_cast_mode(context: _EarlyModeContext) -> None:
+    """Run [cast] early-return mode and write its report."""
+    import time
+
+    config = context.config
+    assert config.cast is not None
+    assert context.direction_result is not None
+    v = config.verbose
+    model = cast("CausalLM", context.model)
+    tokenizer = cast("Tokenizer", context.tokenizer)
+
+    _log(
+        "Running CAST conditional steering",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+    cast_layers = config.cast.layers or list(range(len(model.model.layers)))
+    cast_results = [
+        cast_generate(
+            model,
+            tokenizer,
+            prompt,
+            context.direction_result.direction,
+            cast_layers,
+            config.cast.alpha,
+            config.cast.threshold,
+            config.cast.max_tokens,
+        )
+        for prompt in config.cast.prompts
+    ]
+    report_path = config.output_dir / "cast_report.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(
+        json.dumps([_cast_to_dict(r) for r in cast_results], indent=2),
+    )
+    _log(
+        f"Done — CAST report written to {report_path}",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+    _write_experiment_log(
+        context.config_path,
+        config,
+        "cast",
+        ["cast_report.json"],
+        {},
+        time.monotonic() - context.t0,
+    )
+
+
 def _run_sic_mode(context: _EarlyModeContext) -> None:
     """Run [sic] early-return mode and write its report."""
     import time
@@ -798,6 +855,7 @@ _EARLY_MODE_RUNNERS: dict[str, _EarlyModeRunner] = {
     "depth": _run_depth_mode,
     "probe": _run_probe_mode,
     "steer": _run_steer_mode,
+    "cast": _run_cast_mode,
     "sic": _run_sic_mode,
     "optimize": _run_optimize_mode,
     "softprompt": _run_softprompt_mode,

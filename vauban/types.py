@@ -291,6 +291,43 @@ class SteerResult:
 
 
 @dataclass(frozen=True, slots=True)
+class CastResult:
+    """Output of CAST runtime steering for a single prompt."""
+
+    prompt: str
+    text: str
+    projections_before: list[float]
+    projections_after: list[float]
+    interventions: int
+    considered: int
+
+    def summary(self) -> str:
+        """Return a human-readable summary of the CAST result."""
+        truncated = self.prompt[:50] + ("..." if len(self.prompt) > 50 else "")
+        rate = (
+            self.interventions / self.considered
+            if self.considered > 0
+            else 0.0
+        )
+        return (
+            f"CastResult: prompt={truncated!r},"
+            f" interventions={self.interventions}/{self.considered}"
+            f" ({rate:.2%})"
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to dict."""
+        return {
+            "prompt": self.prompt,
+            "text": self.text,
+            "projections_before": self.projections_before,
+            "projections_after": self.projections_after,
+            "interventions": self.interventions,
+            "considered": self.considered,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class SurfacePrompt:
     """A prompt with metadata for refusal surface mapping."""
 
@@ -598,6 +635,17 @@ class SteerConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class CastConfig:
+    """Configuration for conditional activation steering (CAST)."""
+
+    prompts: list[str]
+    layers: list[int] | None = None  # None → all layers
+    alpha: float = 1.0
+    threshold: float = 0.0  # steer only when projection > threshold
+    max_tokens: int = 100
+
+
+@dataclass(frozen=True, slots=True)
 class DetectConfig:
     """Configuration for the defense detection step."""
 
@@ -724,6 +772,7 @@ class PipelineConfig:
     depth: DepthConfig | None = None
     probe: ProbeConfig | None = None
     steer: SteerConfig | None = None
+    cast: CastConfig | None = None
     eval: EvalConfig = field(default_factory=EvalConfig)
     output_dir: Path = field(default_factory=lambda: Path("output"))
     borderline_path: Path | DatasetRef | None = None

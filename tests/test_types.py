@@ -8,6 +8,8 @@ import pytest
 
 from tests.conftest import MockCausalLM, MockTokenizer
 from vauban.types import (
+    CastConfig,
+    CastResult,
     CutConfig,
     DetectResult,
     DirectionResult,
@@ -137,6 +139,21 @@ class TestSteerResultSummary:
         assert isinstance(s, str)
         assert "max_proj_before=2.0000" in s
         assert "max_proj_after=0.2000" in s
+
+
+class TestCastResultSummary:
+    def test_summary_returns_str(self) -> None:
+        result = CastResult(
+            prompt="test prompt",
+            text="generated text",
+            projections_before=[1.0, 0.5],
+            projections_after=[0.2, 0.1],
+            interventions=2,
+            considered=4,
+        )
+        s = result.summary()
+        assert isinstance(s, str)
+        assert "interventions=2/4" in s
 
 
 class TestCutConfig:
@@ -311,3 +328,13 @@ class TestPipelineConfig:
         assert config.output_dir == Path("output")
         assert config.eval.prompts_path is None
         assert config.measure.mode == "direction"
+
+
+class TestCastConfig:
+    def test_defaults(self) -> None:
+        config = CastConfig(prompts=["test"])
+        assert config.prompts == ["test"]
+        assert config.layers is None
+        assert config.alpha == 1.0
+        assert config.threshold == 0.0
+        assert config.max_tokens == 100

@@ -19,6 +19,7 @@ _KNOWN_SECTIONS: frozenset[str] = frozenset({
     "depth",
     "probe",
     "steer",
+    "cast",
     "output",
     "verbose",
 })
@@ -75,6 +76,7 @@ _KNOWN_KEYS: dict[str, frozenset[str]] = {
     }),
     "probe": frozenset({"prompts"}),
     "steer": frozenset({"prompts", "layers", "alpha", "max_tokens"}),
+    "cast": frozenset({"prompts", "layers", "alpha", "threshold", "max_tokens"}),
     "output": frozenset({"dir"}),
 }
 
