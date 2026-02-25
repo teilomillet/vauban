@@ -361,6 +361,12 @@ def _load_refusal_phrases(path: Path) -> list[str]:
     return phrases
 
 
+def _is_default_data(config: PipelineConfig) -> bool:
+    """Check whether data paths are just bundled defaults (not user-provided)."""
+    h_default, hl_default = default_prompt_paths()
+    return config.harmful_path == h_default and config.harmless_path == hl_default
+
+
 def _log(msg: str, *, verbose: bool = True, elapsed: float | None = None) -> None:
     """Print a one-line status message to stderr."""
     if not verbose:
@@ -421,18 +427,39 @@ def run(config_path: str | Path) -> None:
                 "Extracting depth direction",
                 verbose=v, elapsed=time.monotonic() - t0,
             )
-            # Need prompts loaded for measure()
-            dir_prompts = config.depth.direction_prompts or config.depth.prompts
-            dir_depth_results: list[DepthResult] = []
-            for p in dir_prompts:
-                if config.depth.max_tokens > 0:
-                    ddr = depth_generate(model, tokenizer, p, config.depth)  # type: ignore[arg-type]
-                else:
-                    ddr = depth_profile(model, tokenizer, p, config.depth)  # type: ignore[arg-type]
-                dir_depth_results.append(ddr)
+            # Use direction_prompts if provided, else reuse depth_results
+            dir_prompts = config.depth.direction_prompts
+            if dir_prompts is not None:
+                dir_depth_results: list[DepthResult] = []
+                for p in dir_prompts:
+                    if config.depth.max_tokens > 0:
+                        ddr = depth_generate(model, tokenizer, p, config.depth)  # type: ignore[arg-type]
+                    else:
+                        ddr = depth_profile(model, tokenizer, p, config.depth)  # type: ignore[arg-type]
+                    dir_depth_results.append(ddr)
+            else:
+                dir_depth_results = depth_results
+
+            # Optionally compute refusal direction for cosine comparison
+            refusal_dir: DirectionResult | None = None
+            has_real_data = not _is_default_data(config)
+            if has_real_data:
+                _log(
+                    "Computing refusal direction for cosine comparison",
+                    verbose=v, elapsed=time.monotonic() - t0,
+                )
+                harmful = resolve_prompts(config.harmful_path)
+                harmless = resolve_prompts(config.harmless_path)
+                refusal_dir = measure(
+                    model, tokenizer,  # type: ignore[arg-type]
+                    harmful, harmless,
+                    config.depth.clip_quantile,
+                )
 
             depth_dir_result = depth_direction(
                 model, tokenizer, dir_depth_results,  # type: ignore[arg-type]
+                refusal_direction=refusal_dir,
+                clip_quantile=config.depth.clip_quantile,
             )
 
             # Save direction as .npy

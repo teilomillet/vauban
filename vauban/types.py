@@ -416,6 +416,7 @@ class DepthConfig:
     max_tokens: int = 0               # 0 = prompt-only (static), >0 = generate
     extract_direction: bool = False   # if True, also extract depth direction
     direction_prompts: list[str] | None = None  # prompts for direction extraction
+    clip_quantile: float = 0.0        # winsorization quantile for direction extraction
 
 
 @dataclass(frozen=True, slots=True)

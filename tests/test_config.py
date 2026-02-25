@@ -1512,6 +1512,7 @@ class TestLoadConfig:
             "max_tokens = 10\n"
             "extract_direction = true\n"
             'direction_prompts = ["d1", "d2"]\n'
+            "clip_quantile = 0.05\n"
         )
         config = load_config(toml_file)
         assert config.depth is not None
@@ -1522,6 +1523,7 @@ class TestLoadConfig:
         assert config.depth.max_tokens == 10
         assert config.depth.extract_direction is True
         assert config.depth.direction_prompts == ["d1", "d2"]
+        assert config.depth.clip_quantile == 0.05
 
     def test_depth_absent_is_none(self, tmp_path: Path) -> None:
         toml_file = tmp_path / "test.toml"
@@ -1602,6 +1604,46 @@ class TestLoadConfig:
             "max_tokens = -1\n"
         )
         with pytest.raises(ValueError, match="max_tokens"):
+            load_config(toml_file)
+
+    def test_depth_clip_quantile_default(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[depth]\n"
+            'prompts = ["test"]\n'
+        )
+        config = load_config(toml_file)
+        assert config.depth is not None
+        assert config.depth.clip_quantile == 0.0
+
+    def test_depth_clip_quantile_out_of_range_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[depth]\n"
+            'prompts = ["test"]\n'
+            "clip_quantile = 0.5\n"
+        )
+        with pytest.raises(ValueError, match="clip_quantile"):
+            load_config(toml_file)
+
+    def test_depth_clip_quantile_negative_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[depth]\n"
+            'prompts = ["test"]\n'
+            "clip_quantile = -0.1\n"
+        )
+        with pytest.raises(ValueError, match="clip_quantile"):
             load_config(toml_file)
 
     def test_depth_mode_conflict(self, tmp_path: Path) -> None:

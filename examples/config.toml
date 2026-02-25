@@ -295,6 +295,10 @@ harmless = "default"
 #   If true, also extract a depth direction via median DTR split.
 # extract_direction = false
 
+# clip_quantile: float in [0.0, 0.5)     (default: 0.0)
+#   Winsorization quantile for direction extraction (0.0 = disabled).
+# clip_quantile = 0.0
+
 # direction_prompts: list of strings | omit     (default: null → use prompts)
 #   Separate prompts for direction extraction.
 # direction_prompts = ["prompt1", "prompt2"]

@@ -1,7 +1,20 @@
 """Tests for vauban._serializers: JSON serialization helpers."""
 
-from vauban._serializers import _depth_to_dict, _probe_to_dict, _steer_to_dict
-from vauban.types import DepthResult, ProbeResult, SteerResult, TokenDepth
+import mlx.core as mx
+
+from vauban._serializers import (
+    _depth_direction_to_dict,
+    _depth_to_dict,
+    _probe_to_dict,
+    _steer_to_dict,
+)
+from vauban.types import (
+    DepthDirectionResult,
+    DepthResult,
+    ProbeResult,
+    SteerResult,
+    TokenDepth,
+)
 
 
 class TestDepthToDict:
@@ -47,6 +60,46 @@ class TestDepthToDict:
         assert first["settling_depth"] == 0
         assert first["is_deep_thinking"] is False
         assert first["jsd_profile"] == [0.3, 0.1]
+
+
+class TestDepthDirectionToDict:
+    def test_round_trip(self) -> None:
+        direction = mx.ones((16,))
+        mx.eval(direction)
+        result = DepthDirectionResult(
+            direction=direction,
+            layer_index=1,
+            cosine_scores=[0.3, 0.7],
+            d_model=16,
+            refusal_cosine=0.42,
+            deep_prompts=["deep1", "deep2"],
+            shallow_prompts=["shallow1"],
+            median_dtr=0.55,
+        )
+        d = _depth_direction_to_dict(result)
+        assert d["layer_index"] == 1
+        assert d["cosine_scores"] == [0.3, 0.7]
+        assert d["d_model"] == 16
+        assert d["refusal_cosine"] == 0.42
+        assert d["deep_prompts"] == ["deep1", "deep2"]
+        assert d["shallow_prompts"] == ["shallow1"]
+        assert d["median_dtr"] == 0.55
+
+    def test_refusal_cosine_none(self) -> None:
+        direction = mx.zeros((8,))
+        mx.eval(direction)
+        result = DepthDirectionResult(
+            direction=direction,
+            layer_index=0,
+            cosine_scores=[0.1],
+            d_model=8,
+            refusal_cosine=None,
+            deep_prompts=["d"],
+            shallow_prompts=["s"],
+            median_dtr=0.5,
+        )
+        d = _depth_direction_to_dict(result)
+        assert d["refusal_cosine"] is None
 
 
 class TestProbeToDict:

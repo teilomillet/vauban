@@ -3,14 +3,15 @@
 import mlx.core as mx
 import pytest
 
-from tests.conftest import NUM_LAYERS, MockCausalLM, MockTokenizer
+from tests.conftest import D_MODEL, NUM_LAYERS, MockCausalLM, MockTokenizer
 from vauban.depth import (
     _jsd,
     _settling_depth,
+    depth_direction,
     depth_generate,
     depth_profile,
 )
-from vauban.types import DepthConfig
+from vauban.types import DepthConfig, DepthResult, DirectionResult, TokenDepth
 
 
 @pytest.fixture
@@ -221,3 +222,190 @@ class TestDepthGenerate:
         )
         for token in result.tokens:
             assert len(token.jsd_profile) == result.layer_count
+
+
+def _make_depth_result(
+    prompt: str, dtr: float, layer_count: int = NUM_LAYERS,
+) -> DepthResult:
+    """Build a minimal DepthResult with a given DTR for testing."""
+    tokens = [
+        TokenDepth(
+            token_id=0, token_str="x",
+            settling_depth=0, is_deep_thinking=False,
+            jsd_profile=[0.1] * layer_count,
+        ),
+    ]
+    return DepthResult(
+        tokens=tokens,
+        deep_thinking_ratio=dtr,
+        deep_thinking_count=0,
+        mean_settling_depth=0.0,
+        layer_count=layer_count,
+        settling_threshold=0.5,
+        deep_fraction=0.85,
+        prompt=prompt,
+    )
+
+
+class TestDepthDirection:
+    """Tests for depth_direction(): median split + direction extraction."""
+
+    def test_median_split_correct(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """Prompts should be split by median DTR into deep/shallow."""
+        results = [
+            _make_depth_result("shallow1", 0.1),
+            _make_depth_result("shallow2", 0.2),
+            _make_depth_result("deep1", 0.8),
+            _make_depth_result("deep2", 0.9),
+        ]
+        dir_result = depth_direction(mock_model, mock_tokenizer, results)
+        assert set(dir_result.shallow_prompts) == {"shallow1", "shallow2"}
+        assert set(dir_result.deep_prompts) == {"deep1", "deep2"}
+
+    def test_median_dtr_value(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """median_dtr should be the DTR of the median-indexed prompt."""
+        results = [
+            _make_depth_result("a", 0.1),
+            _make_depth_result("b", 0.5),
+            _make_depth_result("c", 0.9),
+        ]
+        dir_result = depth_direction(mock_model, mock_tokenizer, results)
+        # Sorted: [0.1, 0.5, 0.9], median_idx=1, median_dtr=0.5
+        assert dir_result.median_dtr == pytest.approx(0.5)
+
+    def test_returns_valid_direction(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """Result should contain a direction vector with correct d_model."""
+        results = [
+            _make_depth_result("a", 0.1),
+            _make_depth_result("b", 0.9),
+        ]
+        dir_result = depth_direction(mock_model, mock_tokenizer, results)
+        assert dir_result.direction.shape == (D_MODEL,)
+        assert dir_result.d_model == D_MODEL
+
+    def test_cosine_scores_per_layer(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """cosine_scores should have one entry per layer."""
+        results = [
+            _make_depth_result("a", 0.1),
+            _make_depth_result("b", 0.9),
+        ]
+        dir_result = depth_direction(mock_model, mock_tokenizer, results)
+        assert len(dir_result.cosine_scores) == NUM_LAYERS
+
+    def test_refusal_cosine_none_when_no_refusal_dir(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """refusal_cosine should be None when no refusal direction is given."""
+        results = [
+            _make_depth_result("a", 0.1),
+            _make_depth_result("b", 0.9),
+        ]
+        dir_result = depth_direction(mock_model, mock_tokenizer, results)
+        assert dir_result.refusal_cosine is None
+
+    def test_refusal_cosine_computed(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """refusal_cosine should be a float when refusal direction is given."""
+        results = [
+            _make_depth_result("a", 0.1),
+            _make_depth_result("b", 0.9),
+        ]
+        refusal_dir = DirectionResult(
+            direction=mx.ones((D_MODEL,)) / (D_MODEL ** 0.5),
+            layer_index=0,
+            cosine_scores=[0.5] * NUM_LAYERS,
+            d_model=D_MODEL,
+            model_path="test",
+        )
+        dir_result = depth_direction(
+            mock_model, mock_tokenizer, results,
+            refusal_direction=refusal_dir,
+        )
+        assert dir_result.refusal_cosine is not None
+        assert -1.0 <= dir_result.refusal_cosine <= 1.0
+
+    def test_clip_quantile_passed_through(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """depth_direction should accept clip_quantile without error."""
+        results = [
+            _make_depth_result("a", 0.1),
+            _make_depth_result("b", 0.9),
+        ]
+        dir_result = depth_direction(
+            mock_model, mock_tokenizer, results, clip_quantile=0.05,
+        )
+        assert dir_result.direction.shape == (D_MODEL,)
+
+    def test_fewer_than_2_prompts_raises(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """Should raise ValueError with fewer than 2 depth results."""
+        results = [_make_depth_result("only_one", 0.5)]
+        with pytest.raises(ValueError, match="at least 2"):
+            depth_direction(mock_model, mock_tokenizer, results)
+
+    def test_zero_prompts_raises(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """Should raise ValueError with empty list."""
+        with pytest.raises(ValueError, match="at least 2"):
+            depth_direction(mock_model, mock_tokenizer, [])
+
+    def test_identical_dtr_still_splits(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """All prompts with same DTR should still split (median_idx > 0)."""
+        results = [
+            _make_depth_result("a", 0.5),
+            _make_depth_result("b", 0.5),
+            _make_depth_result("c", 0.5),
+            _make_depth_result("d", 0.5),
+        ]
+        # median_idx = 2, so shallow=[0:2], deep=[2:]
+        dir_result = depth_direction(mock_model, mock_tokenizer, results)
+        assert len(dir_result.shallow_prompts) == 2
+        assert len(dir_result.deep_prompts) == 2
+
+    def test_two_prompts_one_each_group(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """Exactly 2 prompts: one shallow, one deep."""
+        results = [
+            _make_depth_result("lo", 0.1),
+            _make_depth_result("hi", 0.9),
+        ]
+        dir_result = depth_direction(mock_model, mock_tokenizer, results)
+        assert len(dir_result.shallow_prompts) == 1
+        assert len(dir_result.deep_prompts) == 1

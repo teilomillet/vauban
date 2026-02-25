@@ -123,6 +123,24 @@ def _parse_depth(raw: TomlDict) -> DepthConfig | None:
             raise TypeError(msg)
         extract_direction = ed_raw
 
+    # -- clip_quantile --
+    clip_quantile = 0.0
+    cq_raw = sec.get("clip_quantile")  # type: ignore[arg-type]
+    if cq_raw is not None:
+        if not isinstance(cq_raw, int | float):
+            msg = (
+                f"[depth].clip_quantile must be a number,"
+                f" got {type(cq_raw).__name__}"
+            )
+            raise TypeError(msg)
+        clip_quantile = float(cq_raw)
+        if clip_quantile < 0.0 or clip_quantile >= 0.5:
+            msg = (
+                "[depth].clip_quantile must be in [0.0, 0.5),"
+                f" got {clip_quantile}"
+            )
+            raise ValueError(msg)
+
     # -- direction_prompts --
     direction_prompts: list[str] | None = None
     dp_raw = sec.get("direction_prompts")  # type: ignore[arg-type]
@@ -150,4 +168,5 @@ def _parse_depth(raw: TomlDict) -> DepthConfig | None:
         max_tokens=max_tokens,
         extract_direction=extract_direction,
         direction_prompts=direction_prompts,
+        clip_quantile=clip_quantile,
     )
