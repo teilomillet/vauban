@@ -66,9 +66,25 @@ def _parse_eval(base_dir: Path, raw: TomlDict) -> EvalConfig:
             raise TypeError(msg)
         refusal_phrases_path = base_dir / refusal_raw
 
+    # refusal_mode (string, default "phrases")
+    refusal_mode_raw = sec.get("refusal_mode", "phrases")  # type: ignore[arg-type]
+    if not isinstance(refusal_mode_raw, str):
+        msg = (
+            f"[eval].refusal_mode must be a string,"
+            f" got {type(refusal_mode_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if refusal_mode_raw not in ("phrases", "judge"):
+        msg = (
+            f"[eval].refusal_mode must be 'phrases' or 'judge',"
+            f" got {refusal_mode_raw!r}"
+        )
+        raise ValueError(msg)
+
     return EvalConfig(
         prompts_path=prompts_path,
         max_tokens=max_tokens_raw,
         num_prompts=num_prompts_raw,
         refusal_phrases_path=refusal_phrases_path,
+        refusal_mode=refusal_mode_raw,
     )

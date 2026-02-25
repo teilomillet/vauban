@@ -26,7 +26,7 @@ _KNOWN_SECTIONS: frozenset[str] = frozenset({
 _KNOWN_KEYS: dict[str, frozenset[str]] = {
     "model": frozenset({"path"}),
     "data": frozenset({"harmful", "harmless", "borderline"}),
-    "measure": frozenset({"mode", "top_k", "clip_quantile"}),
+    "measure": frozenset({"mode", "top_k", "clip_quantile", "transfer_models"}),
     "cut": frozenset({
         "alpha", "layers", "norm_preserve", "biprojected",
         "layer_strategy", "layer_top_k", "layer_weights", "sparsity",
@@ -34,6 +34,7 @@ _KNOWN_KEYS: dict[str, frozenset[str]] = {
     }),
     "eval": frozenset({
         "prompts", "max_tokens", "num_prompts", "refusal_phrases",
+        "refusal_mode",
     }),
     "surface": frozenset({"prompts", "generate", "max_tokens", "progress"}),
     "detect": frozenset({
@@ -146,6 +147,7 @@ _KNOWN_VALUES: dict[tuple[str, str], frozenset[str]] = {
     ("softprompt", "lr_schedule"): frozenset({"constant", "cosine"}),
     ("softprompt", "token_constraint"): frozenset({"ascii", "alpha", "alphanumeric"}),
     ("softprompt", "eos_loss_mode"): frozenset({"none", "force", "suppress"}),
+    ("eval", "refusal_mode"): frozenset({"phrases", "judge"}),
     ("sic", "mode"): frozenset({"direction", "generation"}),
     ("sic", "calibrate_prompts"): frozenset({"harmless", "harmful"}),
     ("detect", "mode"): frozenset({"fast", "probe", "full"}),

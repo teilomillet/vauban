@@ -7,7 +7,7 @@ from pathlib import Path
 
 import mlx.core as mx
 
-from vauban.evaluate import DEFAULT_REFUSAL_PHRASES, _generate
+from vauban.evaluate import DEFAULT_REFUSAL_PHRASES, _generate, _judge_single
 from vauban.probe import probe
 from vauban.types import (
     CausalLM,
@@ -20,29 +20,100 @@ from vauban.types import (
     Tokenizer,
 )
 
+DEFAULT_SURFACE_STYLE = "unspecified"
+DEFAULT_SURFACE_LANGUAGE = "unspecified"
+DEFAULT_SURFACE_FRAMING = "unspecified"
+DEFAULT_SURFACE_TURN_DEPTH = 1
+
 
 def default_surface_path() -> Path:
     """Return path to the bundled categorized surface prompt file."""
     return Path(__file__).parent / "data" / "surface.jsonl"
 
 
+def default_multilingual_surface_path() -> Path:
+    """Return path to the bundled multilingual surface prompt file."""
+    return Path(__file__).parent / "data" / "surface_multilingual.jsonl"
+
+
 def load_surface_prompts(path: str | Path) -> list[SurfacePrompt]:
     """Load surface prompts from a JSONL file.
 
     Each line must have ``prompt``, ``label``, and ``category`` keys.
+    Optional keys ``style``, ``language``, ``turn_depth``, and ``framing``
+    are validated when present and defaulted when missing.
     """
+    path_obj = Path(path)
     prompts: list[SurfacePrompt] = []
-    with Path(path).open() as f:
-        for line in f:
-            line = line.strip()
-            if not line:
+    with path_obj.open() as f:
+        for line_no, line in enumerate(f, start=1):
+            stripped = line.strip()
+            if not stripped:
                 continue
-            obj = json.loads(line)
+            obj_raw = json.loads(stripped)
+            if not isinstance(obj_raw, dict):
+                msg = (
+                    f"surface prompts line {line_no} must be a JSON object"
+                    f" in {path_obj}"
+                )
+                raise ValueError(msg)
+            obj: dict[str, object] = {}
+            for raw_key, raw_value in obj_raw.items():
+                if not isinstance(raw_key, str):
+                    msg = (
+                        "surface prompt keys must be strings on line"
+                        f" {line_no} in {path_obj}"
+                    )
+                    raise ValueError(msg)
+                obj[raw_key] = raw_value
+
+            prompt = _require_non_empty_text(
+                obj, "prompt", line_no, path_obj,
+            )
+            label = _require_non_empty_text(
+                obj, "label", line_no, path_obj,
+            )
+            category = _require_non_empty_text(
+                obj, "category", line_no, path_obj,
+            )
+            style = _optional_non_empty_text(
+                obj,
+                "style",
+                DEFAULT_SURFACE_STYLE,
+                line_no,
+                path_obj,
+            )
+            language = _optional_non_empty_text(
+                obj,
+                "language",
+                DEFAULT_SURFACE_LANGUAGE,
+                line_no,
+                path_obj,
+            )
+            framing = _optional_non_empty_text(
+                obj,
+                "framing",
+                DEFAULT_SURFACE_FRAMING,
+                line_no,
+                path_obj,
+            )
+            turn_depth = _optional_turn_depth(
+                obj,
+                "turn_depth",
+                DEFAULT_SURFACE_TURN_DEPTH,
+                line_no,
+                path_obj,
+            )
+
             prompts.append(
                 SurfacePrompt(
-                    prompt=obj["prompt"],
-                    label=obj["label"],
-                    category=obj["category"],
+                    prompt=prompt,
+                    label=label,
+                    category=category,
+                    style=style,
+                    language=language,
+                    turn_depth=turn_depth,
+                    framing=framing,
                 ),
             )
     return prompts
@@ -59,6 +130,7 @@ def scan(
     max_tokens: int = 60,
     refusal_phrases: list[str] | None = None,
     progress: bool = True,
+    refusal_mode: str = "phrases",
 ) -> list[SurfacePoint]:
     """Scan prompts: probe projections and optionally generate + detect refusal.
 
@@ -72,6 +144,7 @@ def scan(
         max_tokens: Maximum tokens to generate per prompt.
         refusal_phrases: Phrases indicating refusal. Defaults to standard set.
         progress: If True, print progress to stderr.
+        refusal_mode: "phrases" for substring matching, "judge" for model-based.
 
     Returns:
         A list of SurfacePoint results, one per prompt.
@@ -98,10 +171,13 @@ def scan(
         response: str | None = None
         if generate:
             response = _generate(model, tokenizer, sp.prompt, max_tokens)  # type: ignore[arg-type]
-            lower = response.lower()
-            refused = any(
-                phrase.lower() in lower for phrase in refusal_phrases
-            )
+            if refusal_mode == "judge":
+                refused = _judge_single(model, tokenizer, sp.prompt, response)  # type: ignore[arg-type]
+            else:
+                lower = response.lower()
+                refused = any(
+                    phrase.lower() in lower for phrase in refusal_phrases
+                )
 
         points.append(
             SurfacePoint(
@@ -112,6 +188,10 @@ def scan(
                 direction_projection=direction_proj,
                 refused=refused,
                 response=response,
+                style=sp.style,
+                language=sp.language,
+                turn_depth=sp.turn_depth,
+                framing=sp.framing,
             ),
         )
 
@@ -165,6 +245,7 @@ def map_surface(
     max_tokens: int = 60,
     refusal_phrases: list[str] | None = None,
     progress: bool = True,
+    refusal_mode: str = "phrases",
 ) -> SurfaceResult:
     """Convenience: scan + aggregate + find_threshold in one call.
 
@@ -178,6 +259,7 @@ def map_surface(
         max_tokens: Maximum tokens to generate per prompt.
         refusal_phrases: Phrases indicating refusal.
         progress: If True, print progress to stderr.
+        refusal_mode: "phrases" for substring matching, "judge" for model-based.
 
     Returns:
         A complete SurfaceResult with points, groups, and threshold.
@@ -192,9 +274,19 @@ def map_surface(
         max_tokens=max_tokens,
         refusal_phrases=refusal_phrases,
         progress=progress,
+        refusal_mode=refusal_mode,
     )
 
     groups_by_label, groups_by_category = aggregate(points)
+    groups_by_style = _group_points(points, key=lambda p: p.style)
+    groups_by_language = _group_points(points, key=lambda p: p.language)
+    groups_by_turn_depth = _group_points(
+        points,
+        key=lambda p: str(p.turn_depth),
+    )
+    groups_by_framing = _group_points(points, key=lambda p: p.framing)
+    groups_by_surface_cell = _group_points(points, key=_surface_cell_name)
+    coverage_score = _coverage_score(points)
     threshold = find_threshold(points) if generate else 0.0
 
     total_refused = sum(1 for p in points if p.refused is True)
@@ -206,6 +298,12 @@ def map_surface(
         threshold=threshold,
         total_scanned=len(points),
         total_refused=total_refused,
+        groups_by_style=groups_by_style,
+        groups_by_language=groups_by_language,
+        groups_by_turn_depth=groups_by_turn_depth,
+        groups_by_framing=groups_by_framing,
+        groups_by_surface_cell=groups_by_surface_cell,
+        coverage_score=coverage_score,
     )
 
 
@@ -251,6 +349,24 @@ def compare_surfaces(
         label_deltas=_compute_group_deltas(
             before.groups_by_label, after.groups_by_label,
         ),
+        style_deltas=_compute_group_deltas(
+            before.groups_by_style, after.groups_by_style,
+        ),
+        language_deltas=_compute_group_deltas(
+            before.groups_by_language, after.groups_by_language,
+        ),
+        turn_depth_deltas=_compute_group_deltas(
+            before.groups_by_turn_depth, after.groups_by_turn_depth,
+        ),
+        framing_deltas=_compute_group_deltas(
+            before.groups_by_framing, after.groups_by_framing,
+        ),
+        cell_deltas=_compute_group_deltas(
+            before.groups_by_surface_cell, after.groups_by_surface_cell,
+        ),
+        coverage_score_before=before.coverage_score,
+        coverage_score_after=after.coverage_score,
+        coverage_score_delta=after.coverage_score - before.coverage_score,
     )
 
 
@@ -314,3 +430,97 @@ def _group_points(
         )
 
     return result
+
+
+def _require_non_empty_text(
+    obj: dict[str, object],
+    key: str,
+    line_no: int,
+    path: Path,
+) -> str:
+    """Read a required non-empty string key from a parsed JSON object."""
+    value = obj.get(key)
+    if not isinstance(value, str) or not value.strip():
+        msg = (
+            f"surface prompts line {line_no} must include non-empty"
+            f" string key {key!r} in {path}"
+        )
+        raise ValueError(msg)
+    return value
+
+
+def _optional_non_empty_text(
+    obj: dict[str, object],
+    key: str,
+    default: str,
+    line_no: int,
+    path: Path,
+) -> str:
+    """Read an optional non-empty string key, defaulting when absent."""
+    value = obj.get(key)
+    if value is None:
+        return default
+    if not isinstance(value, str) or not value.strip():
+        msg = (
+            f"surface prompts line {line_no} has invalid optional key"
+            f" {key!r} in {path}; expected a non-empty string"
+        )
+        raise ValueError(msg)
+    return value
+
+
+def _optional_turn_depth(
+    obj: dict[str, object],
+    key: str,
+    default: int,
+    line_no: int,
+    path: Path,
+) -> int:
+    """Read optional integer turn depth (>= 1), defaulting when absent."""
+    value = obj.get(key)
+    if value is None:
+        return default
+    if not isinstance(value, int) or value < 1:
+        msg = (
+            f"surface prompts line {line_no} has invalid optional key"
+            f" {key!r} in {path}; expected an integer >= 1"
+        )
+        raise ValueError(msg)
+    return value
+
+
+def _surface_cell_name(point: SurfacePoint) -> str:
+    """Return a canonical name for one surface-matrix cell."""
+    return (
+        f"category={point.category}|style={point.style}|"
+        f"language={point.language}|turn_depth={point.turn_depth}|"
+        f"framing={point.framing}"
+    )
+
+
+def _coverage_score(points: list[SurfacePoint]) -> float:
+    """Compute matrix occupancy for (category, style, language, depth, framing)."""
+    if not points:
+        return 0.0
+
+    categories = {p.category for p in points}
+    styles = {p.style for p in points}
+    languages = {p.language for p in points}
+    turn_depths = {p.turn_depth for p in points}
+    framings = {p.framing for p in points}
+
+    max_cells = (
+        len(categories)
+        * len(styles)
+        * len(languages)
+        * len(turn_depths)
+        * len(framings)
+    )
+    if max_cells == 0:
+        return 0.0
+
+    observed_cells = {
+        (p.category, p.style, p.language, p.turn_depth, p.framing)
+        for p in points
+    }
+    return len(observed_cells) / max_cells

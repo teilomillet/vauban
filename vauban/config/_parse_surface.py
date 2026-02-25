@@ -25,9 +25,11 @@ def _parse_surface(base_dir: Path, raw: TomlDict) -> SurfaceConfig | None:
             f" got {type(prompts_raw).__name__}"
         )
         raise TypeError(msg)
-    prompts_path: Path | str = (
-        "default" if prompts_raw == "default" else base_dir / prompts_raw
-    )
+    prompts_path: Path | str
+    if prompts_raw in ("default", "default_multilingual"):
+        prompts_path = prompts_raw
+    else:
+        prompts_path = base_dir / prompts_raw
 
     generate_raw = sec.get("generate", True)  # type: ignore[arg-type]
     if not isinstance(generate_raw, bool):

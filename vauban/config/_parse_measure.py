@@ -40,6 +40,26 @@ def _parse_measure(raw: TomlDict) -> MeasureConfig:
         )
         raise ValueError(msg)
 
+    transfer_models_raw = raw.get("transfer_models", [])
+    if not isinstance(transfer_models_raw, list):
+        msg = (
+            f"[measure].transfer_models must be a list,"
+            f" got {type(transfer_models_raw).__name__}"
+        )
+        raise TypeError(msg)
+    transfer_models: list[str] = []
+    for i, item in enumerate(transfer_models_raw):
+        if not isinstance(item, str):
+            msg = (
+                f"[measure].transfer_models[{i}] must be a string,"
+                f" got {type(item).__name__}"
+            )
+            raise TypeError(msg)
+        transfer_models.append(item)
+
     return MeasureConfig(
-        mode=mode_raw, top_k=int(top_k_raw), clip_quantile=clip_quantile,
+        mode=mode_raw,
+        top_k=int(top_k_raw),
+        clip_quantile=clip_quantile,
+        transfer_models=transfer_models,
     )

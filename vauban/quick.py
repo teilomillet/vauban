@@ -10,6 +10,7 @@ from pathlib import Path
 import mlx.core as mx
 
 from vauban.dequantize import dequantize_model, is_quantized
+from vauban.geometry import DirectionGeometryResult
 from vauban.types import (
     CausalLM,
     DirectionResult,
@@ -253,3 +254,31 @@ def evaluate(
         prompts = load_prompts(h_path)[:20]
 
     return _evaluate(original, modified, tokenizer, prompts, max_tokens=max_tokens)  # type: ignore[arg-type]
+
+
+def analyze_geometry(
+    directions: dict[str, DirectionResult | mx.array],
+    independence_threshold: float = 0.1,
+) -> DirectionGeometryResult:
+    """Analyze geometric relationships between multiple directions.
+
+    Convenience wrapper that accepts DirectionResult or raw mx.array values.
+
+    Args:
+        directions: Mapping from direction name to DirectionResult or mx.array.
+        independence_threshold: Shared variance below this marks a pair as
+            independent.
+
+    Returns:
+        DirectionGeometryResult with pairwise analysis.
+    """
+    from vauban.geometry import analyze_directions
+
+    raw: dict[str, mx.array] = {}
+    for name, d in directions.items():
+        if isinstance(d, DirectionResult):
+            raw[name] = d.direction
+        else:
+            raw[name] = d
+
+    return analyze_directions(raw, independence_threshold)

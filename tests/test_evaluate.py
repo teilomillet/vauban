@@ -4,6 +4,7 @@
 from tests.conftest import MockCausalLM, MockTokenizer
 from vauban.evaluate import (
     DEFAULT_REFUSAL_PHRASES,
+    _judge_refusal_rate,
     _kl_divergence,
     _perplexity,
     _refusal_rate,
@@ -62,6 +63,24 @@ class TestKLDivergence:
         assert kl == 0.0
 
 
+class TestJudgeRefusalRate:
+    def test_returns_valid_float(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+    ) -> None:
+        rate = _judge_refusal_rate(
+            mock_model, mock_tokenizer, ["test prompt"], max_tokens=10,
+        )
+        assert 0.0 <= rate <= 1.0
+
+    def test_empty_prompts_returns_zero(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+    ) -> None:
+        rate = _judge_refusal_rate(
+            mock_model, mock_tokenizer, [], max_tokens=10,
+        )
+        assert rate == 0.0
+
+
 class TestEvaluate:
     def test_returns_eval_result(
         self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
@@ -74,3 +93,13 @@ class TestEvaluate:
         assert 0.0 <= result.refusal_rate_original <= 1.0
         assert result.perplexity_original > 0
         assert abs(result.kl_divergence) < 1e-4  # same model
+
+    def test_judge_mode(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+    ) -> None:
+        result = evaluate(
+            mock_model, mock_model, mock_tokenizer,
+            ["test prompt"], max_tokens=5, refusal_mode="judge",
+        )
+        assert result.num_prompts == 1
+        assert 0.0 <= result.refusal_rate_original <= 1.0

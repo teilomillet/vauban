@@ -165,6 +165,7 @@ class MeasureConfig:
     mode: str = "direction"  # "direction", "subspace", or "dbdi"
     top_k: int = 5
     clip_quantile: float = 0.0  # winsorization quantile (0.0 = disabled)
+    transfer_models: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,6 +176,7 @@ class EvalConfig:
     max_tokens: int = 100
     num_prompts: int = 20  # fallback count when prompts_path is absent
     refusal_phrases_path: Path | None = None  # custom refusal phrases file
+    refusal_mode: str = "phrases"  # "phrases" or "judge"
 
 
 @dataclass(frozen=True, slots=True)
@@ -292,6 +294,10 @@ class SurfacePrompt:
     prompt: str
     label: str
     category: str
+    style: str = "unspecified"
+    language: str = "unspecified"
+    turn_depth: int = 1
+    framing: str = "unspecified"
 
 
 @dataclass(frozen=True, slots=True)
@@ -305,6 +311,10 @@ class SurfacePoint:
     direction_projection: float
     refused: bool | None
     response: str | None
+    style: str = "unspecified"
+    language: str = "unspecified"
+    turn_depth: int = 1
+    framing: str = "unspecified"
 
 
 @dataclass(frozen=True, slots=True)
@@ -329,6 +339,12 @@ class SurfaceResult:
     threshold: float
     total_scanned: int
     total_refused: int
+    groups_by_style: list[SurfaceGroup] = field(default_factory=list)
+    groups_by_language: list[SurfaceGroup] = field(default_factory=list)
+    groups_by_turn_depth: list[SurfaceGroup] = field(default_factory=list)
+    groups_by_framing: list[SurfaceGroup] = field(default_factory=list)
+    groups_by_surface_cell: list[SurfaceGroup] = field(default_factory=list)
+    coverage_score: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -359,6 +375,14 @@ class SurfaceComparison:
     threshold_delta: float
     category_deltas: list[SurfaceGroupDelta]
     label_deltas: list[SurfaceGroupDelta]
+    style_deltas: list[SurfaceGroupDelta] = field(default_factory=list)
+    language_deltas: list[SurfaceGroupDelta] = field(default_factory=list)
+    turn_depth_deltas: list[SurfaceGroupDelta] = field(default_factory=list)
+    framing_deltas: list[SurfaceGroupDelta] = field(default_factory=list)
+    cell_deltas: list[SurfaceGroupDelta] = field(default_factory=list)
+    coverage_score_before: float = 0.0
+    coverage_score_after: float = 0.0
+    coverage_score_delta: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -651,6 +675,27 @@ class DetectResult:
             "residual_refusal_rate": self.residual_refusal_rate,
             "mean_refusal_position": self.mean_refusal_position,
             "evidence": self.evidence,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class DirectionTransferResult:
+    """Result of testing a direction from model A on model B."""
+
+    model_id: str
+    cosine_separation: float  # transferred direction's separation on target
+    best_native_separation: float  # target model's own best separation
+    transfer_efficiency: float  # ratio: cosine_separation / best_native
+    per_layer_cosines: list[float]  # per-layer cosine scores on target
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to a JSON-compatible dict."""
+        return {
+            "model_id": self.model_id,
+            "cosine_separation": self.cosine_separation,
+            "best_native_separation": self.best_native_separation,
+            "transfer_efficiency": self.transfer_efficiency,
+            "per_layer_cosines": self.per_layer_cosines,
         }
 
 

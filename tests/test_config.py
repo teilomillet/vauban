@@ -2060,3 +2060,52 @@ class TestLoadConfig:
 
         warnings = validate(toml_file)
         assert any("early-return" in w for w in warnings)
+
+    def test_refusal_mode_default(self, fixtures_dir: Path) -> None:
+        config = load_config(fixtures_dir / "config.toml")
+        assert config.eval.refusal_mode == "phrases"
+
+    def test_refusal_mode_judge(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[eval]\nrefusal_mode = "judge"\n'
+        )
+        config = load_config(toml_file)
+        assert config.eval.refusal_mode == "judge"
+
+    def test_refusal_mode_invalid_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[eval]\nrefusal_mode = "invalid"\n'
+        )
+        with pytest.raises(ValueError, match="refusal_mode"):
+            load_config(toml_file)
+
+    def test_transfer_models_default(self, fixtures_dir: Path) -> None:
+        config = load_config(fixtures_dir / "config.toml")
+        assert config.measure.transfer_models == []
+
+    def test_transfer_models_list(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[measure]\ntransfer_models = ["model-a", "model-b"]\n'
+        )
+        config = load_config(toml_file)
+        assert config.measure.transfer_models == ["model-a", "model-b"]
+
+    def test_surface_default_multilingual(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[surface]\nprompts = "default_multilingual"\n'
+        )
+        config = load_config(toml_file)
+        assert config.surface is not None
+        assert config.surface.prompts_path == "default_multilingual"

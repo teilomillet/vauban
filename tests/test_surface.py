@@ -1,5 +1,7 @@
 """Tests for vauban.surface: refusal surface mapping."""
 
+from pathlib import Path
+
 import mlx.core as mx
 import pytest
 
@@ -7,6 +9,7 @@ from tests.conftest import FIXTURES_DIR, MockCausalLM, MockTokenizer
 from vauban.surface import (
     aggregate,
     compare_surfaces,
+    default_multilingual_surface_path,
     default_surface_path,
     find_threshold,
     load_surface_prompts,
@@ -31,6 +34,36 @@ class TestLoadSurfacePrompts:
         assert prompts[2].label == "harmless"
         assert prompts[2].category == "trivia"
 
+    def test_optional_axes_defaults_and_overrides(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        path = tmp_path / "surface_axes.jsonl"
+        path.write_text(
+            "\n".join(
+                [
+                    (
+                        '{"prompt":"p1","label":"harmful","category":"weapons",'
+                        '"style":"roleplay","language":"es","turn_depth":2,'
+                        '"framing":"reframed"}'
+                    ),
+                    '{"prompt":"p2","label":"harmless","category":"trivia"}',
+                ],
+            )
+            + "\n",
+        )
+
+        prompts = load_surface_prompts(path)
+        assert len(prompts) == 2
+        assert prompts[0].style == "roleplay"
+        assert prompts[0].language == "es"
+        assert prompts[0].turn_depth == 2
+        assert prompts[0].framing == "reframed"
+        assert prompts[1].style == "unspecified"
+        assert prompts[1].language == "unspecified"
+        assert prompts[1].turn_depth == 1
+        assert prompts[1].framing == "unspecified"
+
 
 class TestDefaultSurfacePath:
     def test_path_exists(self) -> None:
@@ -44,6 +77,31 @@ class TestDefaultSurfacePath:
         labels = {p.label for p in prompts}
         assert "harmful" in labels
         assert "harmless" in labels
+
+
+class TestDefaultMultilingualSurfacePath:
+    def test_path_exists(self) -> None:
+        path = default_multilingual_surface_path()
+        assert path.exists()
+        assert path.name == "surface_multilingual.jsonl"
+
+    def test_bundled_multilingual_is_loadable(self) -> None:
+        prompts = load_surface_prompts(default_multilingual_surface_path())
+        assert len(prompts) > 0
+        labels = {p.label for p in prompts}
+        assert "harmful" in labels
+        assert "harmless" in labels
+
+    def test_multilingual_has_multiple_languages(self) -> None:
+        prompts = load_surface_prompts(default_multilingual_surface_path())
+        languages = {p.language for p in prompts}
+        assert len(languages) >= 6
+        assert "en" in languages
+        assert "fr" in languages
+        assert "de" in languages
+        assert "es" in languages
+        assert "zh" in languages
+        assert "ar" in languages
 
 
 class TestScan:
@@ -113,6 +171,38 @@ class TestScan:
         assert points[0].category == "weapons"
         assert points[2].label == "harmless"
         assert points[2].category == "trivia"
+
+    def test_preserves_surface_axes(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+        direction: mx.array,
+    ) -> None:
+        prompts = [
+            SurfacePrompt(
+                prompt="p1",
+                label="harmful",
+                category="weapons",
+                style="roleplay",
+                language="en",
+                turn_depth=2,
+                framing="reframed",
+            ),
+        ]
+        points = scan(
+            mock_model,
+            mock_tokenizer,
+            prompts,
+            direction,
+            direction_layer=0,
+            generate=False,
+            progress=False,
+        )
+        assert len(points) == 1
+        assert points[0].style == "roleplay"
+        assert points[0].language == "en"
+        assert points[0].turn_depth == 2
+        assert points[0].framing == "reframed"
 
 
 class TestAggregate:
@@ -233,6 +323,59 @@ class TestMapSurface:
         assert result.total_refused == 0
         for p in result.points:
             assert p.refused is None
+
+    def test_computes_surface_coverage_matrix(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+        direction: mx.array,
+    ) -> None:
+        prompts = [
+            SurfacePrompt(
+                prompt="p1",
+                label="harmful",
+                category="weapons",
+                style="direct",
+                language="en",
+                turn_depth=1,
+                framing="explicit",
+            ),
+            SurfacePrompt(
+                prompt="p2",
+                label="harmful",
+                category="weapons",
+                style="reframed",
+                language="en",
+                turn_depth=1,
+                framing="academic",
+            ),
+            SurfacePrompt(
+                prompt="p3",
+                label="harmful",
+                category="hacking",
+                style="direct",
+                language="en",
+                turn_depth=2,
+                framing="explicit",
+            ),
+        ]
+
+        result = map_surface(
+            mock_model,
+            mock_tokenizer,
+            prompts,
+            direction,
+            direction_layer=0,
+            generate=False,
+            progress=False,
+        )
+
+        assert len(result.groups_by_style) == 2
+        assert len(result.groups_by_language) == 1
+        assert len(result.groups_by_turn_depth) == 2
+        assert len(result.groups_by_framing) == 2
+        assert len(result.groups_by_surface_cell) == 3
+        assert result.coverage_score == pytest.approx(3.0 / 16.0)
 
 
 def _make_surface_result(
@@ -359,3 +502,83 @@ class TestCompareSurfaces:
 
         assert result.before is before
         assert result.after is after
+
+    def test_coverage_and_axis_deltas(self) -> None:
+        before = SurfaceResult(
+            points=[],
+            groups_by_label=[],
+            groups_by_category=[],
+            threshold=0.0,
+            total_scanned=10,
+            total_refused=5,
+            groups_by_style=[
+                SurfaceGroup(
+                    name="direct",
+                    count=10,
+                    refusal_rate=0.6,
+                    mean_projection=-2.0,
+                    min_projection=-3.0,
+                    max_projection=-1.0,
+                ),
+            ],
+            groups_by_language=[],
+            groups_by_turn_depth=[],
+            groups_by_framing=[],
+            groups_by_surface_cell=[
+                SurfaceGroup(
+                    name=(
+                        "category=weapons|style=direct|language=en|"
+                        "turn_depth=1|framing=explicit"
+                    ),
+                    count=10,
+                    refusal_rate=0.6,
+                    mean_projection=-2.0,
+                    min_projection=-3.0,
+                    max_projection=-1.0,
+                ),
+            ],
+            coverage_score=0.2,
+        )
+        after = SurfaceResult(
+            points=[],
+            groups_by_label=[],
+            groups_by_category=[],
+            threshold=0.0,
+            total_scanned=10,
+            total_refused=2,
+            groups_by_style=[
+                SurfaceGroup(
+                    name="direct",
+                    count=10,
+                    refusal_rate=0.2,
+                    mean_projection=-1.0,
+                    min_projection=-2.0,
+                    max_projection=0.0,
+                ),
+            ],
+            groups_by_language=[],
+            groups_by_turn_depth=[],
+            groups_by_framing=[],
+            groups_by_surface_cell=[
+                SurfaceGroup(
+                    name=(
+                        "category=weapons|style=direct|language=en|"
+                        "turn_depth=1|framing=explicit"
+                    ),
+                    count=10,
+                    refusal_rate=0.2,
+                    mean_projection=-1.0,
+                    min_projection=-2.0,
+                    max_projection=0.0,
+                ),
+            ],
+            coverage_score=0.5,
+        )
+
+        result = compare_surfaces(before, after)
+        assert result.coverage_score_before == 0.2
+        assert result.coverage_score_after == 0.5
+        assert result.coverage_score_delta == pytest.approx(0.3)
+        assert len(result.style_deltas) == 1
+        assert result.style_deltas[0].name == "direct"
+        assert len(result.cell_deltas) == 1

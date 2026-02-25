@@ -8,6 +8,7 @@ from vauban._serializers import (
     _depth_direction_to_dict,
     _depth_to_dict,
     _detect_to_dict,
+    _direction_transfer_to_dict,
     _optimize_to_dict,
     _probe_to_dict,
     _sic_to_dict,
@@ -32,6 +33,11 @@ from vauban.dequantize import dequantize_model, is_quantized
 from vauban.detect import detect
 from vauban.evaluate import evaluate
 from vauban.export import export_model
+from vauban.geometry import (
+    DirectionGeometryResult,
+    DirectionPair,
+    analyze_directions,
+)
 from vauban.measure import (
     default_eval_path,
     default_prompt_paths,
@@ -62,6 +68,7 @@ from vauban.subspace import (
 from vauban.surface import (
     aggregate,
     compare_surfaces,
+    default_multilingual_surface_path,
     default_surface_path,
     find_threshold,
     load_surface_prompts,
@@ -78,6 +85,7 @@ from vauban.types import (
     DetectConfig,
     DetectResult,
     DirectionResult,
+    DirectionTransferResult,
     EvalConfig,
     EvalResult,
     MeasureConfig,
@@ -117,7 +125,10 @@ __all__ = [
     "DepthResult",
     "DetectConfig",
     "DetectResult",
+    "DirectionGeometryResult",
+    "DirectionPair",
     "DirectionResult",
+    "DirectionTransferResult",
     "EvalConfig",
     "EvalResult",
     "MeasureConfig",
@@ -145,6 +156,7 @@ __all__ = [
     "TransferEvalResult",
     "TrialResult",
     "aggregate",
+    "analyze_directions",
     "calibrate_threshold",
     "compare_surfaces",
     "cut",
@@ -152,6 +164,7 @@ __all__ = [
     "cut_false_refusal_ortho",
     "cut_subspace",
     "default_eval_path",
+    "default_multilingual_surface_path",
     "default_prompt_paths",
     "default_surface_path",
     "depth_direction",
@@ -361,6 +374,8 @@ def validate(config_path: str | Path) -> list[str]:
         sp_raw = config.surface.prompts_path
         if sp_raw == "default":
             sp = default_surface_path()
+        elif sp_raw == "default_multilingual":
+            sp = default_multilingual_surface_path()
         elif isinstance(sp_raw, Path):
             sp = sp_raw
         else:
@@ -683,7 +698,14 @@ def _validate_surface_jsonl_file(
     *,
     missing_fix: str,
 ) -> int | None:
-    """Validate JSONL surface schema for prompt/label/category records."""
+    """Validate JSONL surface schema for prompt/label/category records.
+
+    Optional keys, when present:
+    - ``style``: non-empty string
+    - ``language``: non-empty string
+    - ``turn_depth``: integer >= 1
+    - ``framing``: non-empty string
+    """
     if not path.exists():
         _add_warning(
             warnings,
@@ -713,7 +735,9 @@ def _validate_surface_jsonl_file(
                     ),
                     fix=(
                         'use JSONL lines like {"prompt": "...",'
-                        ' "label": "harmful", "category": "weapons"}'
+                        ' "label": "harmful", "category": "weapons",'
+                        ' "style": "direct", "language": "en",'
+                        ' "turn_depth": 1, "framing": "explicit"}'
                     ),
                 )
                 return None
@@ -724,7 +748,9 @@ def _validate_surface_jsonl_file(
                     f"{key} line {line_no} must be a JSON object in {path}",
                     fix=(
                         'use JSONL lines like {"prompt": "...",'
-                        ' "label": "harmful", "category": "weapons"}'
+                        ' "label": "harmful", "category": "weapons",'
+                        ' "style": "direct", "language": "en",'
+                        ' "turn_depth": 1, "framing": "explicit"}'
                     ),
                 )
                 return None
@@ -746,6 +772,80 @@ def _validate_surface_jsonl_file(
                     fix=(
                         'use JSONL lines like {"prompt": "...",'
                         ' "label": "harmful", "category": "weapons"}'
+                    ),
+                )
+                return None
+            style_raw = obj_raw.get("style")
+            language_raw = obj_raw.get("language")
+            framing_raw = obj_raw.get("framing")
+            turn_depth_raw = obj_raw.get("turn_depth")
+
+            if style_raw is not None and (
+                not isinstance(style_raw, str) or not style_raw.strip()
+            ):
+                _add_warning(
+                    warnings,
+                    "HIGH",
+                    (
+                        f"{key} line {line_no} has invalid optional key"
+                        " 'style': expected non-empty string"
+                    ),
+                    fix=(
+                        'set "style" to a non-empty string'
+                        ' (example: "direct")'
+                    ),
+                )
+                return None
+
+            if language_raw is not None and (
+                not isinstance(language_raw, str) or not language_raw.strip()
+            ):
+                _add_warning(
+                    warnings,
+                    "HIGH",
+                    (
+                        f"{key} line {line_no} has invalid optional key"
+                        " 'language': expected non-empty string"
+                    ),
+                    fix=(
+                        'set "language" to a non-empty string'
+                        ' (example: "en")'
+                    ),
+                )
+                return None
+
+            if framing_raw is not None and (
+                not isinstance(framing_raw, str) or not framing_raw.strip()
+            ):
+                _add_warning(
+                    warnings,
+                    "HIGH",
+                    (
+                        f"{key} line {line_no} has invalid optional key"
+                        " 'framing': expected non-empty string"
+                    ),
+                    fix=(
+                        'set "framing" to a non-empty string'
+                        ' (example: "explicit")'
+                    ),
+                )
+                return None
+
+            if turn_depth_raw is not None and (
+                isinstance(turn_depth_raw, bool)
+                or not isinstance(turn_depth_raw, int)
+                or turn_depth_raw < 1
+            ):
+                _add_warning(
+                    warnings,
+                    "HIGH",
+                    (
+                        f"{key} line {line_no} has invalid optional key"
+                        " 'turn_depth': expected integer >= 1"
+                    ),
+                    fix=(
+                        'set "turn_depth" to an integer >= 1'
+                        " (example: 1)"
                     ),
                 )
                 return None
@@ -1007,6 +1107,47 @@ def run(config_path: str | Path) -> None:
             model, tokenizer, harmful, harmless, clip_q,  # type: ignore[arg-type]
         )
         cosine_scores = direction_result.cosine_scores
+
+    # Direction transfer testing
+    if (
+        config.measure.transfer_models
+        and direction_result is not None
+    ):
+        from vauban.transfer import check_direction_transfer
+
+        transfer_results_list: list[DirectionTransferResult] = []
+        for transfer_model_id in config.measure.transfer_models:
+            _log(
+                f"Testing direction transfer on {transfer_model_id}",
+                verbose=v, elapsed=time.monotonic() - t0,
+            )
+            t_model, _ = mlx_lm.load(transfer_model_id)  # type: ignore[assignment]
+            if is_quantized(t_model):
+                dequantize_model(t_model)
+            transfer_result = check_direction_transfer(
+                t_model,
+                tokenizer,  # type: ignore[arg-type]
+                direction_result.direction,
+                harmful,
+                harmless,
+                transfer_model_id,
+                clip_q,
+            )
+            transfer_results_list.append(transfer_result)
+
+        # Write transfer report
+        transfer_report_path = config.output_dir / "transfer_report.json"
+        transfer_report_path.parent.mkdir(parents=True, exist_ok=True)
+        transfer_report_path.write_text(
+            json.dumps(
+                [_direction_transfer_to_dict(r) for r in transfer_results_list],
+                indent=2,
+            ),
+        )
+        _log(
+            f"Transfer report written to {transfer_report_path}",
+            verbose=v, elapsed=time.monotonic() - t0,
+        )
 
     # Probe inspection: measure per-layer projections, write report, return
     if config.probe is not None and direction_result is not None:
@@ -1330,11 +1471,13 @@ def run(config_path: str | Path) -> None:
             "Mapping refusal surface (before cut)",
             verbose=v, elapsed=time.monotonic() - t0,
         )
-        surface_prompts = load_surface_prompts(
-            default_surface_path()
-            if config.surface.prompts_path == "default"
-            else config.surface.prompts_path,
-        )
+        if config.surface.prompts_path == "default":
+            surface_prompts_path = default_surface_path()
+        elif config.surface.prompts_path == "default_multilingual":
+            surface_prompts_path = default_multilingual_surface_path()
+        else:
+            surface_prompts_path = config.surface.prompts_path
+        surface_prompts = load_surface_prompts(surface_prompts_path)
         surface_before = map_surface(
             model,
             tokenizer,  # type: ignore[arg-type]
@@ -1345,6 +1488,7 @@ def run(config_path: str | Path) -> None:
             max_tokens=config.surface.max_tokens,
             refusal_phrases=refusal_phrases,
             progress=config.surface.progress,
+            refusal_mode=config.eval.refusal_mode,
         )
 
     # Apply the appropriate cut
@@ -1443,6 +1587,7 @@ def run(config_path: str | Path) -> None:
             max_tokens=config.surface.max_tokens,
             refusal_phrases=refusal_phrases,
             progress=config.surface.progress,
+            refusal_mode=config.eval.refusal_mode,
         )
         comparison = compare_surfaces(surface_before, surface_after)
         report_path = config.output_dir / "surface_report.json"
@@ -1462,6 +1607,7 @@ def run(config_path: str | Path) -> None:
             model, modified_model, tokenizer, eval_prompts,  # type: ignore[arg-type]
             refusal_phrases=refusal_phrases,
             max_tokens=config.eval.max_tokens,
+            refusal_mode=config.eval.refusal_mode,
         )
 
         report_path = config.output_dir / "eval_report.json"

@@ -4,6 +4,7 @@ from vauban.types import (
     DepthDirectionResult,
     DepthResult,
     DetectResult,
+    DirectionTransferResult,
     OptimizeResult,
     ProbeResult,
     SICResult,
@@ -78,6 +79,9 @@ def _surface_comparison_to_dict(
             "threshold_before": comparison.threshold_before,
             "threshold_after": comparison.threshold_after,
             "threshold_delta": comparison.threshold_delta,
+            "coverage_score_before": comparison.coverage_score_before,
+            "coverage_score_after": comparison.coverage_score_after,
+            "coverage_score_delta": comparison.coverage_score_delta,
             "total_scanned": comparison.before.total_scanned,
         },
         "category_deltas": [
@@ -85,6 +89,21 @@ def _surface_comparison_to_dict(
         ],
         "label_deltas": [
             _group_delta_to_dict(d) for d in comparison.label_deltas
+        ],
+        "style_deltas": [
+            _group_delta_to_dict(d) for d in comparison.style_deltas
+        ],
+        "language_deltas": [
+            _group_delta_to_dict(d) for d in comparison.language_deltas
+        ],
+        "turn_depth_deltas": [
+            _group_delta_to_dict(d) for d in comparison.turn_depth_deltas
+        ],
+        "framing_deltas": [
+            _group_delta_to_dict(d) for d in comparison.framing_deltas
+        ],
+        "cell_deltas": [
+            _group_delta_to_dict(d) for d in comparison.cell_deltas
         ],
     }
 
@@ -185,6 +204,19 @@ def _softprompt_to_dict(result: SoftPromptResult) -> dict[str, object]:
         "transfer_results": [
             _transfer_eval_to_dict(t) for t in result.transfer_results
         ],
+    }
+
+
+def _direction_transfer_to_dict(
+    result: DirectionTransferResult,
+) -> dict[str, object]:
+    """Serialize a DirectionTransferResult to a JSON-compatible dict."""
+    return {
+        "model_id": result.model_id,
+        "cosine_separation": result.cosine_separation,
+        "best_native_separation": result.best_native_separation,
+        "transfer_efficiency": result.transfer_efficiency,
+        "per_layer_cosines": result.per_layer_cosines,
     }
 
 

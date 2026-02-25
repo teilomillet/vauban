@@ -41,6 +41,7 @@ _EXTRACTORS: dict[str, list[tuple[list[str], str, bool]]] = {
     "surface_report.json": [
         (["summary", "refusal_rate_delta"], "refusal_rate_delta", True),
         (["summary", "threshold_delta"], "threshold_delta", False),
+        (["summary", "coverage_score_delta"], "coverage_score_delta", False),
     ],
     "depth_report.json": [
         # Computed from dtr_results: mean DTR across prompts
@@ -52,6 +53,8 @@ _EXTRACTORS: dict[str, list[tuple[list[str], str, bool]]] = {
     "detect_report.json": [
         (["hardened"], "hardened", False),
         (["confidence"], "confidence", False),
+    ],
+    "transfer_report.json": [
     ],
     "optimize_report.json": [
         # best_refusal.refusal_rate
