@@ -48,7 +48,10 @@ def load_config(path: str | Path) -> PipelineConfig:
         raise TypeError(msg)
     model_path: str = model_path_raw
 
-    harmful_path, harmless_path = _resolve_data_paths(base_dir, raw)
+    depth_config = _parse_depth(raw)
+    harmful_path, harmless_path = _resolve_data_paths(
+        base_dir, raw, depth_only=depth_config is not None,
+    )
 
     cut_raw = raw.get("cut")
     cut_config = _parse_cut(cut_raw if isinstance(cut_raw, dict) else {})
@@ -63,7 +66,6 @@ def load_config(path: str | Path) -> PipelineConfig:
     optimize_config = _parse_optimize(raw)
     softprompt_config = _parse_softprompt(raw)
     sic_config = _parse_sic(raw)
-    depth_config = _parse_depth(raw)
     probe_config = _parse_probe(raw)
     steer_config = _parse_steer(raw)
 
@@ -123,13 +125,20 @@ def load_config(path: str | Path) -> PipelineConfig:
 def _resolve_data_paths(
     base_dir: Path,
     raw: TomlDict,
+    *,
+    depth_only: bool = False,
 ) -> tuple[Path | DatasetRef, Path | DatasetRef]:
     """Resolve harmful/harmless paths.
 
     Supports 'default', local files, and HF datasets.
+    When *depth_only* is True and [data] is absent, falls back to bundled
+    defaults since depth mode never uses the data paths.
     """
     sec = raw.get("data")
     if not isinstance(sec, dict):
+        if depth_only:
+            harmful, harmless = default_prompt_paths()
+            return harmful, harmless
         msg = (
             "Config must have [data] section"
             " with 'harmful' and 'harmless' keys"

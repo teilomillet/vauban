@@ -282,6 +282,21 @@ def validate(config_path: str | Path) -> list[str]:
     if config.surface is not None and not early_modes:
         pass  # surface runs in normal pipeline
 
+    # Sections silently skipped by depth early-return
+    if config.depth is not None:
+        skipped = []
+        if config.detect is not None:
+            skipped.append("[detect]")
+        if config.surface is not None:
+            skipped.append("[surface]")
+        if config.eval.prompts_path is not None:
+            skipped.append("[eval]")
+        if skipped:
+            warnings.append(
+                f"[depth] early-return will skip: {', '.join(skipped)}"
+                " — these sections have no effect in depth mode"
+            )
+
     # Print summary
     mode = "measure → cut → export"
     if config.depth is not None:
@@ -296,13 +311,15 @@ def validate(config_path: str | Path) -> list[str]:
         mode = "Optuna optimization"
     elif config.softprompt is not None:
         mode = "soft prompt attack"
+    # Extras only apply when they actually run (not in depth mode)
     extras = []
-    if config.detect is not None:
-        extras.append("detect")
-    if config.surface is not None and not early_modes:
-        extras.append("surface")
-    if config.eval.prompts_path is not None and not early_modes:
-        extras.append("eval")
+    if config.depth is None:
+        if config.detect is not None:
+            extras.append("detect")
+        if config.surface is not None and not early_modes:
+            extras.append("surface")
+        if config.eval.prompts_path is not None and not early_modes:
+            extras.append("eval")
     mode_str = mode
     if extras:
         mode_str += f" + {', '.join(extras)}"
