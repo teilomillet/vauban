@@ -2,7 +2,13 @@
 
 import json
 import tomllib
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, Literal, cast
+
+if TYPE_CHECKING:
+    from vauban.types import CausalLM, Tokenizer
 
 from vauban._serializers import (
     _depth_direction_to_dict,
@@ -212,13 +218,68 @@ __all__ = [
     "validate",
 ]
 
-_EARLY_RETURN_PRECEDENCE: tuple[str, ...] = (
-    "[depth]",
-    "[probe]",
-    "[steer]",
-    "[sic]",
-    "[optimize]",
-    "[softprompt]",
+type _EarlyModePhase = Literal["before_prompts", "after_measure"]
+type _EarlyModePredicate = Callable[[PipelineConfig], bool]
+
+
+@dataclass(frozen=True, slots=True)
+class _EarlyModeSpec:
+    """Typed registration for an early-return pipeline mode."""
+
+    section: str
+    mode: str
+    phase: _EarlyModePhase
+    requires_direction: bool
+    enabled: _EarlyModePredicate
+
+
+def _has_depth(config: PipelineConfig) -> bool:
+    """Return whether [depth] mode is active."""
+    return config.depth is not None
+
+
+def _has_probe(config: PipelineConfig) -> bool:
+    """Return whether [probe] mode is active."""
+    return config.probe is not None
+
+
+def _has_steer(config: PipelineConfig) -> bool:
+    """Return whether [steer] mode is active."""
+    return config.steer is not None
+
+
+def _has_sic(config: PipelineConfig) -> bool:
+    """Return whether [sic] mode is active."""
+    return config.sic is not None
+
+
+def _has_optimize(config: PipelineConfig) -> bool:
+    """Return whether [optimize] mode is active."""
+    return config.optimize is not None
+
+
+def _has_softprompt(config: PipelineConfig) -> bool:
+    """Return whether [softprompt] mode is active."""
+    return config.softprompt is not None
+
+
+_EARLY_MODE_SPECS: tuple[_EarlyModeSpec, ...] = (
+    _EarlyModeSpec("[depth]", "depth", "before_prompts", False, _has_depth),
+    _EarlyModeSpec("[probe]", "probe", "after_measure", True, _has_probe),
+    _EarlyModeSpec("[steer]", "steer", "after_measure", True, _has_steer),
+    _EarlyModeSpec("[sic]", "sic", "after_measure", False, _has_sic),
+    _EarlyModeSpec("[optimize]", "optimize", "after_measure", True, _has_optimize),
+    _EarlyModeSpec(
+        "[softprompt]",
+        "softprompt",
+        "after_measure",
+        False,
+        _has_softprompt,
+    ),
+)
+
+_EARLY_RETURN_PRECEDENCE: tuple[str, ...] = tuple(
+    spec.section for spec in _EARLY_MODE_SPECS
 )
 
 
@@ -574,15 +635,7 @@ def _load_raw_toml(path: Path) -> TomlDict:
 
 def _active_early_modes(config: PipelineConfig) -> list[str]:
     """Return active early-return modes in runtime precedence order."""
-    active: dict[str, bool] = {
-        "[depth]": config.depth is not None,
-        "[probe]": config.probe is not None,
-        "[steer]": config.steer is not None,
-        "[sic]": config.sic is not None,
-        "[optimize]": config.optimize is not None,
-        "[softprompt]": config.softprompt is not None,
-    }
-    return [name for name in _EARLY_RETURN_PRECEDENCE if active[name]]
+    return [spec.section for spec in _EARLY_MODE_SPECS if spec.enabled(config)]
 
 
 def _add_warning(
@@ -1086,12 +1139,502 @@ def _write_experiment_log(
         pass
 
 
+@dataclass(slots=True)
+class _EarlyModeContext:
+    """Shared runtime context passed to early-mode handlers."""
+
+    config_path: str | Path
+    config: PipelineConfig
+    model: object
+    tokenizer: object
+    t0: float
+    harmful: list[str] | None = None
+    harmless: list[str] | None = None
+    direction_result: DirectionResult | None = None
+
+
+def _active_early_mode_for_phase(
+    config: PipelineConfig,
+    phase: _EarlyModePhase,
+) -> _EarlyModeSpec | None:
+    """Return the first active early mode for a given phase."""
+    for spec in _EARLY_MODE_SPECS:
+        if spec.phase == phase and spec.enabled(config):
+            return spec
+    return None
+
+
+def _run_depth_mode(context: _EarlyModeContext) -> None:
+    """Run [depth] early-return mode and write its report."""
+    import time
+
+    config = context.config
+    assert config.depth is not None
+    v = config.verbose
+    model = cast("CausalLM", context.model)
+    tokenizer = cast("Tokenizer", context.tokenizer)
+
+    _log(
+        "Running depth analysis",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+    depth_results: list[DepthResult] = []
+    for prompt in config.depth.prompts:
+        if config.depth.max_tokens > 0:
+            dtr = depth_generate(
+                model,
+                tokenizer,
+                prompt,
+                config.depth,
+            )
+        else:
+            dtr = depth_profile(
+                model,
+                tokenizer,
+                prompt,
+                config.depth,
+            )
+        depth_results.append(dtr)
+
+    report: dict[str, object] = {
+        "dtr_results": [_depth_to_dict(r) for r in depth_results],
+    }
+
+    if config.depth.extract_direction and len(depth_results) >= 2:
+        _log(
+            "Extracting depth direction",
+            verbose=v,
+            elapsed=time.monotonic() - context.t0,
+        )
+        dir_prompts = config.depth.direction_prompts
+        if dir_prompts is not None:
+            dir_depth_results: list[DepthResult] = []
+            for prompt in dir_prompts:
+                if config.depth.max_tokens > 0:
+                    dtr = depth_generate(
+                        model,
+                        tokenizer,
+                        prompt,
+                        config.depth,
+                    )
+                else:
+                    dtr = depth_profile(
+                        model,
+                        tokenizer,
+                        prompt,
+                        config.depth,
+                    )
+                dir_depth_results.append(dtr)
+        else:
+            dir_depth_results = depth_results
+
+        refusal_dir: DirectionResult | None = None
+        if not _is_default_data(config):
+            _log(
+                "Computing refusal direction for cosine comparison",
+                verbose=v,
+                elapsed=time.monotonic() - context.t0,
+            )
+            harmful = resolve_prompts(config.harmful_path)
+            harmless = resolve_prompts(config.harmless_path)
+            refusal_dir = measure(
+                model,
+                tokenizer,
+                harmful,
+                harmless,
+                config.depth.clip_quantile,
+            )
+
+        depth_dir_result = depth_direction(
+            model,
+            tokenizer,
+            dir_depth_results,
+            refusal_direction=refusal_dir,
+            clip_quantile=config.depth.clip_quantile,
+        )
+
+        import numpy as np
+
+        dir_path = config.output_dir / "depth_direction.npy"
+        dir_path.parent.mkdir(parents=True, exist_ok=True)
+        np.save(str(dir_path), np.array(depth_dir_result.direction))
+        report["direction"] = _depth_direction_to_dict(depth_dir_result)
+
+    report_path = config.output_dir / "depth_report.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=2))
+    _log(
+        f"Done — depth report written to {report_path}",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+    _write_experiment_log(
+        context.config_path,
+        config,
+        "depth",
+        ["depth_report.json"],
+        {},
+        time.monotonic() - context.t0,
+    )
+
+
+def _run_probe_mode(context: _EarlyModeContext) -> None:
+    """Run [probe] early-return mode and write its report."""
+    import time
+
+    config = context.config
+    assert config.probe is not None
+    assert context.direction_result is not None
+    v = config.verbose
+    model = cast("CausalLM", context.model)
+    tokenizer = cast("Tokenizer", context.tokenizer)
+
+    _log(
+        "Running probe inspection",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+    probe_results = [
+        probe(
+            model,
+            tokenizer,
+            prompt,
+            context.direction_result.direction,
+        )
+        for prompt in config.probe.prompts
+    ]
+    report_path = config.output_dir / "probe_report.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(
+        json.dumps([_probe_to_dict(r) for r in probe_results], indent=2),
+    )
+    _log(
+        f"Done — probe report written to {report_path}",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+    _write_experiment_log(
+        context.config_path,
+        config,
+        "probe",
+        ["probe_report.json"],
+        {},
+        time.monotonic() - context.t0,
+    )
+
+
+def _run_steer_mode(context: _EarlyModeContext) -> None:
+    """Run [steer] early-return mode and write its report."""
+    import time
+
+    config = context.config
+    assert config.steer is not None
+    assert context.direction_result is not None
+    v = config.verbose
+    model = cast("CausalLM", context.model)
+    tokenizer = cast("Tokenizer", context.tokenizer)
+
+    _log(
+        "Running steer generation",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+    steer_layers = config.steer.layers or list(range(len(model.model.layers)))
+    steer_results = [
+        steer(
+            model,
+            tokenizer,
+            prompt,
+            context.direction_result.direction,
+            steer_layers,
+            config.steer.alpha,
+            config.steer.max_tokens,
+        )
+        for prompt in config.steer.prompts
+    ]
+    report_path = config.output_dir / "steer_report.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(
+        json.dumps([_steer_to_dict(r) for r in steer_results], indent=2),
+    )
+    _log(
+        f"Done — steer report written to {report_path}",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+    _write_experiment_log(
+        context.config_path,
+        config,
+        "steer",
+        ["steer_report.json"],
+        {},
+        time.monotonic() - context.t0,
+    )
+
+
+def _run_sic_mode(context: _EarlyModeContext) -> None:
+    """Run [sic] early-return mode and write its report."""
+    import time
+
+    config = context.config
+    assert config.sic is not None
+    assert context.harmful is not None
+    assert context.harmless is not None
+    v = config.verbose
+    model = cast("CausalLM", context.model)
+    tokenizer = cast("Tokenizer", context.tokenizer)
+
+    _log(
+        f"Running SIC sanitization (mode={config.sic.mode})",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+    direction_vec = (
+        context.direction_result.direction
+        if context.direction_result is not None
+        else None
+    )
+    layer_idx = (
+        context.direction_result.layer_index
+        if context.direction_result is not None
+        else 0
+    )
+    if config.eval.prompts_path is not None:
+        sic_prompts: list[str] = load_prompts(config.eval.prompts_path)
+    else:
+        sic_prompts = context.harmful[:config.eval.num_prompts]
+
+    cal_prompts: list[str] | None = None
+    if config.sic.calibrate:
+        cal_prompts = (
+            context.harmless
+            if config.sic.calibrate_prompts == "harmless"
+            else context.harmful
+        )
+
+    sic_result = sic_sanitize(
+        model,
+        tokenizer,
+        sic_prompts,
+        config.sic,
+        direction_vec,
+        layer_idx,
+        cal_prompts,
+    )
+    report_path = config.output_dir / "sic_report.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(_sic_to_dict(sic_result), indent=2))
+    _log(
+        f"Done — SIC report written to {report_path}",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+    _write_experiment_log(
+        context.config_path,
+        config,
+        "sic",
+        ["sic_report.json"],
+        {},
+        time.monotonic() - context.t0,
+    )
+
+
+def _run_optimize_mode(context: _EarlyModeContext) -> None:
+    """Run [optimize] early-return mode and write its report."""
+    import time
+
+    config = context.config
+    assert config.optimize is not None
+    assert context.direction_result is not None
+    assert context.harmful is not None
+    v = config.verbose
+    model = cast("CausalLM", context.model)
+    tokenizer = cast("Tokenizer", context.tokenizer)
+
+    _log(
+        f"Running optimization ({config.optimize.n_trials} trials)",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+    if config.eval.prompts_path is not None:
+        eval_prompts_opt = load_prompts(config.eval.prompts_path)
+    else:
+        eval_prompts_opt = context.harmful[:config.eval.num_prompts]
+
+    opt_result = optimize(
+        model,
+        tokenizer,
+        context.direction_result,
+        eval_prompts_opt,
+        config.optimize,
+    )
+
+    report_path = config.output_dir / "optimize_report.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(_optimize_to_dict(opt_result), indent=2))
+    _log(
+        f"Done — optimize report written to {report_path}",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+    _write_experiment_log(
+        context.config_path,
+        config,
+        "optimize",
+        ["optimize_report.json"],
+        {"n_trials": float(config.optimize.n_trials)},
+        time.monotonic() - context.t0,
+    )
+
+
+def _run_softprompt_mode(context: _EarlyModeContext) -> None:
+    """Run [softprompt] early-return mode and write its report."""
+    import time
+
+    import mlx.core as mx
+    import mlx_lm
+
+    config = context.config
+    assert config.softprompt is not None
+    assert context.harmful is not None
+    v = config.verbose
+    model = cast("CausalLM", context.model)
+    tokenizer = cast("Tokenizer", context.tokenizer)
+
+    _log(
+        f"Running soft prompt attack (mode={config.softprompt.mode})",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+    direction_vec = (
+        context.direction_result.direction
+        if context.direction_result is not None
+        else None
+    )
+    if config.eval.prompts_path is not None:
+        sp_prompts: list[str] = load_prompts(config.eval.prompts_path)
+    else:
+        sp_prompts = context.harmful[:config.eval.num_prompts]
+
+    ref_model: object | None = None
+    if config.softprompt.ref_model is not None:
+        ref_model, _ = mlx_lm.load(config.softprompt.ref_model)  # type: ignore[assignment]
+        if is_quantized(ref_model):
+            dequantize_model(ref_model)
+
+    sp_result = softprompt_attack(
+        model,
+        tokenizer,
+        sp_prompts,
+        config.softprompt,
+        direction_vec,
+        ref_model,
+    )
+
+    if config.softprompt.transfer_models:
+        from vauban.softprompt import _evaluate_attack
+
+        if sp_result.token_ids is not None:
+            transfer_token_ids = sp_result.token_ids
+        elif sp_result.embeddings is not None:
+            transfer_token_ids = _project_to_tokens(
+                sp_result.embeddings,
+                model.model.embed_tokens.weight,
+            )
+        else:
+            transfer_token_ids = []
+
+        transfer_results: list[TransferEvalResult] = []
+        for transfer_model_id in config.softprompt.transfer_models:
+            t_model, _ = mlx_lm.load(transfer_model_id)  # type: ignore[assignment]
+            if is_quantized(t_model):
+                dequantize_model(t_model)
+            t_token_array = mx.array(transfer_token_ids)[None, :]
+            t_embeds = t_model.model.embed_tokens(t_token_array)
+            mx.eval(t_embeds)
+            t_success, t_responses = _evaluate_attack(
+                t_model,
+                tokenizer,
+                sp_prompts,
+                t_embeds,
+                config.softprompt,
+            )
+            transfer_results.append(
+                TransferEvalResult(
+                    model_id=transfer_model_id,
+                    success_rate=t_success,
+                    eval_responses=t_responses,
+                ),
+            )
+
+        sp_result = SoftPromptResult(
+            mode=sp_result.mode,
+            success_rate=sp_result.success_rate,
+            final_loss=sp_result.final_loss,
+            loss_history=sp_result.loss_history,
+            n_steps=sp_result.n_steps,
+            n_tokens=sp_result.n_tokens,
+            embeddings=sp_result.embeddings,
+            token_ids=sp_result.token_ids,
+            token_text=sp_result.token_text,
+            eval_responses=sp_result.eval_responses,
+            accessibility_score=sp_result.accessibility_score,
+            per_prompt_losses=sp_result.per_prompt_losses,
+            early_stopped=sp_result.early_stopped,
+            transfer_results=transfer_results,
+        )
+
+    report_path = config.output_dir / "softprompt_report.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(_softprompt_to_dict(sp_result), indent=2))
+    _log(
+        f"Done — softprompt report written to {report_path}",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+    _write_experiment_log(
+        context.config_path,
+        config,
+        "softprompt",
+        ["softprompt_report.json"],
+        {"success_rate": sp_result.success_rate},
+        time.monotonic() - context.t0,
+    )
+
+
+type _EarlyModeRunner = Callable[[_EarlyModeContext], None]
+
+_EARLY_MODE_RUNNERS: dict[str, _EarlyModeRunner] = {
+    "depth": _run_depth_mode,
+    "probe": _run_probe_mode,
+    "steer": _run_steer_mode,
+    "sic": _run_sic_mode,
+    "optimize": _run_optimize_mode,
+    "softprompt": _run_softprompt_mode,
+}
+
+
+def _dispatch_early_mode(
+    phase: _EarlyModePhase,
+    context: _EarlyModeContext,
+) -> bool:
+    """Run the active early-return mode for *phase* if one is enabled."""
+    spec = _active_early_mode_for_phase(context.config, phase)
+    if spec is None:
+        return False
+    if spec.requires_direction and context.direction_result is None:
+        return False
+    runner = _EARLY_MODE_RUNNERS[spec.mode]
+    runner(context)
+    return True
+
+
 def run(config_path: str | Path) -> None:
     """Run the full measure -> cut -> evaluate pipeline from a TOML config."""
     import json
     import time
 
-    import mlx.core as mx
     import mlx_lm
     from mlx.utils import tree_flatten
 
@@ -1113,86 +1656,14 @@ def run(config_path: str | Path) -> None:
         )
         dequantize_model(model)
 
-    # Depth analysis: earliest possible early-return (no direction needed)
-    if config.depth is not None:
-        _log(
-            "Running depth analysis",
-            verbose=v, elapsed=time.monotonic() - t0,
-        )
-        depth_results: list[DepthResult] = []
-        for p in config.depth.prompts:
-            if config.depth.max_tokens > 0:
-                dr = depth_generate(model, tokenizer, p, config.depth)  # type: ignore[arg-type]
-            else:
-                dr = depth_profile(model, tokenizer, p, config.depth)  # type: ignore[arg-type]
-            depth_results.append(dr)
-
-        report: dict[str, object] = {
-            "dtr_results": [_depth_to_dict(r) for r in depth_results],
-        }
-
-        # Optional depth direction extraction
-        if config.depth.extract_direction and len(depth_results) >= 2:
-            _log(
-                "Extracting depth direction",
-                verbose=v, elapsed=time.monotonic() - t0,
-            )
-            # Use direction_prompts if provided, else reuse depth_results
-            dir_prompts = config.depth.direction_prompts
-            if dir_prompts is not None:
-                dir_depth_results: list[DepthResult] = []
-                for p in dir_prompts:
-                    if config.depth.max_tokens > 0:
-                        ddr = depth_generate(model, tokenizer, p, config.depth)  # type: ignore[arg-type]
-                    else:
-                        ddr = depth_profile(model, tokenizer, p, config.depth)  # type: ignore[arg-type]
-                    dir_depth_results.append(ddr)
-            else:
-                dir_depth_results = depth_results
-
-            # Optionally compute refusal direction for cosine comparison
-            refusal_dir: DirectionResult | None = None
-            has_real_data = not _is_default_data(config)
-            if has_real_data:
-                _log(
-                    "Computing refusal direction for cosine comparison",
-                    verbose=v, elapsed=time.monotonic() - t0,
-                )
-                harmful = resolve_prompts(config.harmful_path)
-                harmless = resolve_prompts(config.harmless_path)
-                refusal_dir = measure(
-                    model, tokenizer,  # type: ignore[arg-type]
-                    harmful, harmless,
-                    config.depth.clip_quantile,
-                )
-
-            depth_dir_result = depth_direction(
-                model, tokenizer, dir_depth_results,  # type: ignore[arg-type]
-                refusal_direction=refusal_dir,
-                clip_quantile=config.depth.clip_quantile,
-            )
-
-            # Save direction as .npy
-            import numpy as np
-
-            dir_path = config.output_dir / "depth_direction.npy"
-            dir_path.parent.mkdir(parents=True, exist_ok=True)
-            np.save(str(dir_path), np.array(depth_dir_result.direction))
-
-            report["direction"] = _depth_direction_to_dict(depth_dir_result)
-
-        report_path = config.output_dir / "depth_report.json"
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(json.dumps(report, indent=2))
-        _log(
-            f"Done — depth report written to {report_path}",
-            verbose=v, elapsed=time.monotonic() - t0,
-        )
-        _write_experiment_log(
-            config_path, config, "depth",
-            ["depth_report.json"], {},
-            time.monotonic() - t0,
-        )
+    early_mode_context = _EarlyModeContext(
+        config_path=config_path,
+        config=config,
+        model=model,
+        tokenizer=tokenizer,
+        t0=t0,
+    )
+    if _dispatch_early_mode("before_prompts", early_mode_context):
         return
 
     _log(
@@ -1201,6 +1672,8 @@ def run(config_path: str | Path) -> None:
     )
     harmful = resolve_prompts(config.harmful_path)
     harmless = resolve_prompts(config.harmless_path)
+    early_mode_context.harmful = harmful
+    early_mode_context.harmless = harmless
 
     # Load custom refusal phrases if configured
     refusal_phrases: list[str] | None = None
@@ -1306,239 +1779,8 @@ def run(config_path: str | Path) -> None:
             verbose=v, elapsed=time.monotonic() - t0,
         )
 
-    # Probe inspection: measure per-layer projections, write report, return
-    if config.probe is not None and direction_result is not None:
-        _log(
-            "Running probe inspection",
-            verbose=v, elapsed=time.monotonic() - t0,
-        )
-        probe_results = [
-            probe(model, tokenizer, p, direction_result.direction)  # type: ignore[arg-type]
-            for p in config.probe.prompts
-        ]
-        report_path = config.output_dir / "probe_report.json"
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(
-            json.dumps([_probe_to_dict(r) for r in probe_results], indent=2),
-        )
-        _log(
-            f"Done — probe report written to {report_path}",
-            verbose=v, elapsed=time.monotonic() - t0,
-        )
-        _write_experiment_log(
-            config_path, config, "probe",
-            ["probe_report.json"], {},
-            time.monotonic() - t0,
-        )
-        return
-
-    # Steer generation: generate with direction removal, write report, return
-    if config.steer is not None and direction_result is not None:
-        _log(
-            "Running steer generation",
-            verbose=v, elapsed=time.monotonic() - t0,
-        )
-        steer_layers = config.steer.layers or list(
-            range(len(model.model.layers)),
-        )
-        steer_results = [
-            steer(
-                model, tokenizer, p, direction_result.direction,  # type: ignore[arg-type]
-                steer_layers,
-                config.steer.alpha,
-                config.steer.max_tokens,
-            )
-            for p in config.steer.prompts
-        ]
-        report_path = config.output_dir / "steer_report.json"
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(
-            json.dumps([_steer_to_dict(r) for r in steer_results], indent=2),
-        )
-        _log(
-            f"Done — steer report written to {report_path}",
-            verbose=v, elapsed=time.monotonic() - t0,
-        )
-        _write_experiment_log(
-            config_path, config, "steer",
-            ["steer_report.json"], {},
-            time.monotonic() - t0,
-        )
-        return
-
-    # SIC sanitization: standalone early-return mode
-    if config.sic is not None:
-        _log(
-            f"Running SIC sanitization (mode={config.sic.mode})",
-            verbose=v, elapsed=time.monotonic() - t0,
-        )
-        direction_vec = (
-            direction_result.direction if direction_result is not None
-            else None
-        )
-        layer_idx = (
-            direction_result.layer_index if direction_result is not None
-            else 0
-        )
-        if config.eval.prompts_path is not None:
-            sic_prompts: list[str] = load_prompts(config.eval.prompts_path)
-        else:
-            sic_prompts = harmful[:config.eval.num_prompts]
-
-        cal_prompts: list[str] | None = None
-        if config.sic.calibrate:
-            cal_prompts = (
-                harmless if config.sic.calibrate_prompts == "harmless"
-                else harmful
-            )
-
-        sic_result = sic_sanitize(
-            model, tokenizer, sic_prompts, config.sic,  # type: ignore[arg-type]
-            direction_vec, layer_idx, cal_prompts,
-        )
-        report_path = config.output_dir / "sic_report.json"
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(
-            json.dumps(_sic_to_dict(sic_result), indent=2),
-        )
-        _log(
-            f"Done — SIC report written to {report_path}",
-            verbose=v, elapsed=time.monotonic() - t0,
-        )
-        _write_experiment_log(
-            config_path, config, "sic",
-            ["sic_report.json"], {},
-            time.monotonic() - t0,
-        )
-        return
-
-    # Optimization mode: search over cut parameters, write report, return early
-    if config.optimize is not None and direction_result is not None:
-        _log(
-            f"Running optimization ({config.optimize.n_trials} trials)",
-            verbose=v, elapsed=time.monotonic() - t0,
-        )
-        eval_prompts_opt: list[str] = []
-        if config.eval.prompts_path is not None:
-            eval_prompts_opt = load_prompts(config.eval.prompts_path)
-        else:
-            eval_prompts_opt = harmful[:config.eval.num_prompts]
-
-        opt_result = optimize(
-            model, tokenizer, direction_result,  # type: ignore[arg-type]
-            eval_prompts_opt, config.optimize,
-        )
-
-        report_path = config.output_dir / "optimize_report.json"
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(
-            json.dumps(_optimize_to_dict(opt_result), indent=2),
-        )
-        _log(
-            f"Done — optimize report written to {report_path}",
-            verbose=v, elapsed=time.monotonic() - t0,
-        )
-        _write_experiment_log(
-            config_path, config, "optimize",
-            ["optimize_report.json"],
-            {"n_trials": float(config.optimize.n_trials)},
-            time.monotonic() - t0,
-        )
-        return
-
-    # Soft prompt attack: optimize a learnable prefix, write report, return
-    if config.softprompt is not None:
-        _log(
-            f"Running soft prompt attack (mode={config.softprompt.mode})",
-            verbose=v, elapsed=time.monotonic() - t0,
-        )
-        direction_vec = (
-            direction_result.direction if direction_result is not None else None
-        )
-        if config.eval.prompts_path is not None:
-            sp_prompts: list[str] = load_prompts(config.eval.prompts_path)
-        else:
-            sp_prompts = harmful[:config.eval.num_prompts]
-
-        # Load reference model for KL collision loss if configured
-        ref_model = None
-        if config.softprompt.ref_model is not None:
-            ref_model, _ = mlx_lm.load(config.softprompt.ref_model)  # type: ignore[assignment]
-            if is_quantized(ref_model):
-                dequantize_model(ref_model)
-
-        sp_result = softprompt_attack(
-            model, tokenizer, sp_prompts, config.softprompt, direction_vec,  # type: ignore[arg-type]
-            ref_model,
-        )
-
-        # Transfer evaluation: test optimized prefix on other models
-        if config.softprompt.transfer_models:
-            from vauban.softprompt import _evaluate_attack
-
-            # Get discrete token IDs (project if continuous mode)
-            if sp_result.token_ids is not None:
-                transfer_token_ids = sp_result.token_ids
-            elif sp_result.embeddings is not None:
-                transfer_token_ids = _project_to_tokens(
-                    sp_result.embeddings,
-                    model.model.embed_tokens.weight,
-                )
-            else:
-                transfer_token_ids = []
-
-            transfer_results: list[TransferEvalResult] = []
-            for transfer_model_id in config.softprompt.transfer_models:
-                t_model, _ = mlx_lm.load(transfer_model_id)  # type: ignore[assignment]
-                if is_quantized(t_model):
-                    dequantize_model(t_model)
-                # Re-embed the tokens in the transfer model's space
-                t_token_array = mx.array(transfer_token_ids)[None, :]
-                t_embeds = t_model.model.embed_tokens(t_token_array)
-                mx.eval(t_embeds)
-                t_success, t_responses = _evaluate_attack(
-                    t_model, tokenizer, sp_prompts,  # type: ignore[arg-type]
-                    t_embeds, config.softprompt,
-                )
-                transfer_results.append(TransferEvalResult(
-                    model_id=transfer_model_id,
-                    success_rate=t_success,
-                    eval_responses=t_responses,
-                ))
-
-            # Reconstruct result with transfer results
-            sp_result = SoftPromptResult(
-                mode=sp_result.mode,
-                success_rate=sp_result.success_rate,
-                final_loss=sp_result.final_loss,
-                loss_history=sp_result.loss_history,
-                n_steps=sp_result.n_steps,
-                n_tokens=sp_result.n_tokens,
-                embeddings=sp_result.embeddings,
-                token_ids=sp_result.token_ids,
-                token_text=sp_result.token_text,
-                eval_responses=sp_result.eval_responses,
-                accessibility_score=sp_result.accessibility_score,
-                per_prompt_losses=sp_result.per_prompt_losses,
-                early_stopped=sp_result.early_stopped,
-                transfer_results=transfer_results,
-            )
-
-        report_path = config.output_dir / "softprompt_report.json"
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(
-            json.dumps(_softprompt_to_dict(sp_result), indent=2),
-        )
-        _log(
-            f"Done — softprompt report written to {report_path}",
-            verbose=v, elapsed=time.monotonic() - t0,
-        )
-        _write_experiment_log(
-            config_path, config, "softprompt",
-            ["softprompt_report.json"],
-            {"success_rate": sp_result.success_rate},
-            time.monotonic() - t0,
-        )
+    early_mode_context.direction_result = direction_result
+    if _dispatch_early_mode("after_measure", early_mode_context):
         return
 
     # Resolve layer types from whichever result is available
