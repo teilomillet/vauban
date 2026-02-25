@@ -4,6 +4,7 @@ import tomllib
 from pathlib import Path
 
 from vauban.config._parse_cut import _parse_cut
+from vauban.config._parse_depth import _parse_depth
 from vauban.config._parse_detect import _parse_detect
 from vauban.config._parse_eval import _parse_eval
 from vauban.config._parse_measure import _parse_measure
@@ -62,6 +63,7 @@ def load_config(path: str | Path) -> PipelineConfig:
     optimize_config = _parse_optimize(raw)
     softprompt_config = _parse_softprompt(raw)
     sic_config = _parse_sic(raw)
+    depth_config = _parse_depth(raw)
     probe_config = _parse_probe(raw)
     steer_config = _parse_steer(raw)
 
@@ -108,6 +110,7 @@ def load_config(path: str | Path) -> PipelineConfig:
         optimize=optimize_config,
         softprompt=softprompt_config,
         sic=sic_config,
+        depth=depth_config,
         probe=probe_config,
         steer=steer_config,
         eval=eval_config,

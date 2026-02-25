@@ -381,6 +381,58 @@ class SICResult:
 
 
 @dataclass(frozen=True, slots=True)
+class TokenDepth:
+    """Per-token depth analysis result."""
+
+    token_id: int
+    token_str: str
+    settling_depth: int        # first layer where JSD drops below threshold
+    is_deep_thinking: bool     # settles in the last (1-deep_fraction) layers
+    jsd_profile: list[float]   # JSD(final_layer, layer_l) for each layer
+
+
+@dataclass(frozen=True, slots=True)
+class DepthResult:
+    """Output of the depth analysis step."""
+
+    tokens: list[TokenDepth]
+    deep_thinking_ratio: float
+    deep_thinking_count: int
+    mean_settling_depth: float
+    layer_count: int
+    settling_threshold: float
+    deep_fraction: float
+    prompt: str
+
+
+@dataclass(frozen=True, slots=True)
+class DepthConfig:
+    """Configuration for deep-thinking token analysis."""
+
+    prompts: list[str]
+    settling_threshold: float = 0.5   # g — JSD below this = "settled"
+    deep_fraction: float = 0.85       # deep if it settles in last (1-frac) layers
+    top_k_logits: int = 1000          # approximate JSD with top-k logits (perf)
+    max_tokens: int = 0               # 0 = prompt-only (static), >0 = generate
+    extract_direction: bool = False   # if True, also extract depth direction
+    direction_prompts: list[str] | None = None  # prompts for direction extraction
+
+
+@dataclass(frozen=True, slots=True)
+class DepthDirectionResult:
+    """Output of depth direction extraction."""
+
+    direction: mx.array           # the depth direction (d_model,)
+    layer_index: int              # best layer
+    cosine_scores: list[float]    # per-layer separation
+    d_model: int
+    refusal_cosine: float | None  # cosine(depth_dir, refusal_dir) if refusal available
+    deep_prompts: list[str]       # which prompts were classified as deep
+    shallow_prompts: list[str]    # which prompts were classified as shallow
+    median_dtr: float             # the split point
+
+
+@dataclass(frozen=True, slots=True)
 class ProbeConfig:
     """Configuration for the probe inspection step."""
 
@@ -486,6 +538,7 @@ class PipelineConfig:
     optimize: OptimizeConfig | None = None
     softprompt: SoftPromptConfig | None = None
     sic: SICConfig | None = None
+    depth: DepthConfig | None = None
     probe: ProbeConfig | None = None
     steer: SteerConfig | None = None
     eval: EvalConfig = field(default_factory=EvalConfig)

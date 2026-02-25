@@ -3,6 +3,8 @@
 from pathlib import Path
 
 from vauban._serializers import (
+    _depth_direction_to_dict,
+    _depth_to_dict,
     _detect_to_dict,
     _optimize_to_dict,
     _probe_to_dict,
@@ -22,6 +24,7 @@ from vauban.cut import (
     target_weight_keys,
 )
 from vauban.dataset import load_hf_prompts, resolve_prompts
+from vauban.depth import depth_direction, depth_generate, depth_profile
 from vauban.dequantize import dequantize_model, is_quantized
 from vauban.detect import detect
 from vauban.evaluate import evaluate
@@ -66,6 +69,9 @@ from vauban.types import (
     CutConfig,
     DatasetRef,
     DBDIResult,
+    DepthConfig,
+    DepthDirectionResult,
+    DepthResult,
     DetectConfig,
     DetectResult,
     DirectionResult,
@@ -92,6 +98,7 @@ from vauban.types import (
     SurfacePoint,
     SurfacePrompt,
     SurfaceResult,
+    TokenDepth,
     TransferEvalResult,
     TrialResult,
 )
@@ -102,6 +109,9 @@ __all__ = [
     "CutConfig",
     "DBDIResult",
     "DatasetRef",
+    "DepthConfig",
+    "DepthDirectionResult",
+    "DepthResult",
     "DetectConfig",
     "DetectResult",
     "DirectionResult",
@@ -128,6 +138,7 @@ __all__ = [
     "SurfacePoint",
     "SurfacePrompt",
     "SurfaceResult",
+    "TokenDepth",
     "TransferEvalResult",
     "TrialResult",
     "aggregate",
@@ -140,6 +151,9 @@ __all__ = [
     "default_eval_path",
     "default_prompt_paths",
     "default_surface_path",
+    "depth_direction",
+    "depth_generate",
+    "depth_profile",
     "dequantize_model",
     "detect",
     "detect_layer_types",
@@ -245,6 +259,8 @@ def validate(config_path: str | Path) -> list[str]:
 
     # Early-return mode conflicts
     early_modes = []
+    if config.depth is not None:
+        early_modes.append("[depth]")
     if config.probe is not None:
         early_modes.append("[probe]")
     if config.steer is not None:
@@ -258,7 +274,7 @@ def validate(config_path: str | Path) -> list[str]:
     if len(early_modes) > 1:
         warnings.append(
             f"Multiple early-return modes active: {', '.join(early_modes)}"
-            " — only the first will run (precedence: probe > steer"
+            " — only the first will run (precedence: depth > probe > steer"
             " > sic > optimize > softprompt)"
         )
 
@@ -268,7 +284,9 @@ def validate(config_path: str | Path) -> list[str]:
 
     # Print summary
     mode = "measure → cut → export"
-    if config.probe is not None:
+    if config.depth is not None:
+        mode = "depth analysis"
+    elif config.probe is not None:
         mode = "probe inspection"
     elif config.steer is not None:
         mode = "steer generation"
@@ -352,6 +370,62 @@ def run(config_path: str | Path) -> None:
             verbose=v, elapsed=time.monotonic() - t0,
         )
         dequantize_model(model)
+
+    # Depth analysis: earliest possible early-return (no direction needed)
+    if config.depth is not None:
+        _log(
+            "Running depth analysis",
+            verbose=v, elapsed=time.monotonic() - t0,
+        )
+        depth_results: list[DepthResult] = []
+        for p in config.depth.prompts:
+            if config.depth.max_tokens > 0:
+                dr = depth_generate(model, tokenizer, p, config.depth)  # type: ignore[arg-type]
+            else:
+                dr = depth_profile(model, tokenizer, p, config.depth)  # type: ignore[arg-type]
+            depth_results.append(dr)
+
+        report: dict[str, object] = {
+            "dtr_results": [_depth_to_dict(r) for r in depth_results],
+        }
+
+        # Optional depth direction extraction
+        if config.depth.extract_direction and len(depth_results) >= 2:
+            _log(
+                "Extracting depth direction",
+                verbose=v, elapsed=time.monotonic() - t0,
+            )
+            # Need prompts loaded for measure()
+            dir_prompts = config.depth.direction_prompts or config.depth.prompts
+            dir_depth_results: list[DepthResult] = []
+            for p in dir_prompts:
+                if config.depth.max_tokens > 0:
+                    ddr = depth_generate(model, tokenizer, p, config.depth)  # type: ignore[arg-type]
+                else:
+                    ddr = depth_profile(model, tokenizer, p, config.depth)  # type: ignore[arg-type]
+                dir_depth_results.append(ddr)
+
+            depth_dir_result = depth_direction(
+                model, tokenizer, dir_depth_results,  # type: ignore[arg-type]
+            )
+
+            # Save direction as .npy
+            import numpy as np
+
+            dir_path = config.output_dir / "depth_direction.npy"
+            dir_path.parent.mkdir(parents=True, exist_ok=True)
+            np.save(str(dir_path), np.array(depth_dir_result.direction))
+
+            report["direction"] = _depth_direction_to_dict(depth_dir_result)
+
+        report_path = config.output_dir / "depth_report.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(report, indent=2))
+        _log(
+            f"Done — depth report written to {report_path}",
+            verbose=v, elapsed=time.monotonic() - t0,
+        )
+        return
 
     _log(
         "Loading prompts",

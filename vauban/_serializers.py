@@ -1,6 +1,8 @@
 """JSON serialization helpers for pipeline result types."""
 
 from vauban.types import (
+    DepthDirectionResult,
+    DepthResult,
     DetectResult,
     OptimizeResult,
     ProbeResult,
@@ -12,6 +14,44 @@ from vauban.types import (
     TransferEvalResult,
     TrialResult,
 )
+
+
+def _depth_to_dict(result: DepthResult) -> dict[str, object]:
+    """Serialize a DepthResult to a JSON-compatible dict."""
+    return {
+        "prompt": result.prompt,
+        "deep_thinking_ratio": result.deep_thinking_ratio,
+        "deep_thinking_count": result.deep_thinking_count,
+        "mean_settling_depth": result.mean_settling_depth,
+        "layer_count": result.layer_count,
+        "settling_threshold": result.settling_threshold,
+        "deep_fraction": result.deep_fraction,
+        "tokens": [
+            {
+                "token_id": t.token_id,
+                "token_str": t.token_str,
+                "settling_depth": t.settling_depth,
+                "is_deep_thinking": t.is_deep_thinking,
+                "jsd_profile": t.jsd_profile,
+            }
+            for t in result.tokens
+        ],
+    }
+
+
+def _depth_direction_to_dict(
+    result: DepthDirectionResult,
+) -> dict[str, object]:
+    """Serialize a DepthDirectionResult to a JSON-compatible dict."""
+    return {
+        "layer_index": result.layer_index,
+        "cosine_scores": result.cosine_scores,
+        "d_model": result.d_model,
+        "refusal_cosine": result.refusal_cosine,
+        "deep_prompts": result.deep_prompts,
+        "shallow_prompts": result.shallow_prompts,
+        "median_dtr": result.median_dtr,
+    }
 
 
 def _surface_comparison_to_dict(

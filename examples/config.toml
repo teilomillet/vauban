@@ -14,6 +14,7 @@
 #   [surface]        →  … + before/after refusal surface maps
 #   [eval]           →  … + refusal rate / perplexity / KL evaluation
 #   [detect]         →  defense detection (runs before measure/cut)
+#   [depth]          →  deep-thinking token analysis / DTR (early return)
 #   [optimize]       →  Optuna hyperparameter search (early return)
 #   [softprompt]     →  soft prompt attack (early return)
 #   [probe]          →  per-layer projection inspection (early return)
@@ -263,6 +264,40 @@ harmless = "default"
 # block_on_failure: bool     (default: true)
 # calibrate: bool     (default: false)     — auto-threshold from clean prompts
 # calibrate_prompts: "harmless" | "harmful"     (default: "harmless")
+
+
+# --------------------------------------------------------------------------
+# [depth] — Deep-thinking token analysis (early return)
+# --------------------------------------------------------------------------
+# [depth]
+# prompts: list of strings (REQUIRED)
+#   Inline prompts for depth analysis.  Each prompt is analyzed to compute
+#   per-token settling depth and deep-thinking ratio (DTR).
+# prompts = ["What is 2+2?", "Prove Fermat's Last Theorem"]
+
+# settling_threshold: float in (0.0, 1.0]     (default: 0.5)
+#   JSD below this value means the token has "settled" (g parameter).
+# settling_threshold = 0.5
+
+# deep_fraction: float in (0.0, 1.0]     (default: 0.85)
+#   Token is "deep-thinking" if it settles in the last (1-ρ) layers.
+# deep_fraction = 0.85
+
+# top_k_logits: int >= 1     (default: 1000)
+#   Approximate JSD with top-k logits for performance.
+# top_k_logits = 1000
+
+# max_tokens: int >= 0     (default: 0)
+#   0 = prompt-only static analysis, >0 = generate and analyze tokens.
+# max_tokens = 0
+
+# extract_direction: bool     (default: false)
+#   If true, also extract a depth direction via median DTR split.
+# extract_direction = false
+
+# direction_prompts: list of strings | omit     (default: null → use prompts)
+#   Separate prompts for direction extraction.
+# direction_prompts = ["prompt1", "prompt2"]
 
 
 # --------------------------------------------------------------------------

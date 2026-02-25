@@ -1478,6 +1478,148 @@ class TestLoadConfig:
             load_config(toml_file)
 
     # =========================================================================
+    # Depth config tests
+    # =========================================================================
+
+    def test_depth_defaults(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[depth]\n"
+            'prompts = ["What is 2+2?"]\n'
+        )
+        config = load_config(toml_file)
+        assert config.depth is not None
+        assert config.depth.prompts == ["What is 2+2?"]
+        assert config.depth.settling_threshold == 0.5
+        assert config.depth.deep_fraction == 0.85
+        assert config.depth.top_k_logits == 1000
+        assert config.depth.max_tokens == 0
+        assert config.depth.extract_direction is False
+        assert config.depth.direction_prompts is None
+
+    def test_depth_full_parse(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[depth]\n"
+            'prompts = ["p1", "p2"]\n'
+            "settling_threshold = 0.3\n"
+            "deep_fraction = 0.9\n"
+            "top_k_logits = 500\n"
+            "max_tokens = 10\n"
+            "extract_direction = true\n"
+            'direction_prompts = ["d1", "d2"]\n'
+        )
+        config = load_config(toml_file)
+        assert config.depth is not None
+        assert config.depth.prompts == ["p1", "p2"]
+        assert config.depth.settling_threshold == 0.3
+        assert config.depth.deep_fraction == 0.9
+        assert config.depth.top_k_logits == 500
+        assert config.depth.max_tokens == 10
+        assert config.depth.extract_direction is True
+        assert config.depth.direction_prompts == ["d1", "d2"]
+
+    def test_depth_absent_is_none(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+        )
+        config = load_config(toml_file)
+        assert config.depth is None
+
+    def test_depth_missing_prompts_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[depth]\n"
+        )
+        with pytest.raises(ValueError, match="prompts"):
+            load_config(toml_file)
+
+    def test_depth_empty_prompts_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[depth]\nprompts = []\n"
+        )
+        with pytest.raises(ValueError, match="prompts"):
+            load_config(toml_file)
+
+    def test_depth_settling_threshold_out_of_range_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[depth]\n"
+            'prompts = ["test"]\n'
+            "settling_threshold = 1.5\n"
+        )
+        with pytest.raises(ValueError, match="settling_threshold"):
+            load_config(toml_file)
+
+    def test_depth_settling_threshold_zero_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[depth]\n"
+            'prompts = ["test"]\n'
+            "settling_threshold = 0.0\n"
+        )
+        with pytest.raises(ValueError, match="settling_threshold"):
+            load_config(toml_file)
+
+    def test_depth_top_k_logits_zero_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[depth]\n"
+            'prompts = ["test"]\n'
+            "top_k_logits = 0\n"
+        )
+        with pytest.raises(ValueError, match="top_k_logits"):
+            load_config(toml_file)
+
+    def test_depth_max_tokens_negative_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[depth]\n"
+            'prompts = ["test"]\n'
+            "max_tokens = -1\n"
+        )
+        with pytest.raises(ValueError, match="max_tokens"):
+            load_config(toml_file)
+
+    def test_depth_mode_conflict(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[depth]\n"
+            'prompts = ["test"]\n'
+            "[probe]\n"
+            'prompts = ["test"]\n'
+        )
+        from vauban import validate
+
+        warnings = validate(toml_file)
+        assert any("early-return" in w for w in warnings)
+
+    # =========================================================================
     # Eval config tests
     # =========================================================================
 
