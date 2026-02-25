@@ -1615,3 +1615,36 @@ class TestLoadConfig:
         )
         with pytest.raises(TypeError, match="progress"):
             load_config(toml_file)
+
+    # =========================================================================
+    # Verbose config tests
+    # =========================================================================
+
+    def test_verbose_default_true(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+        )
+        config = load_config(toml_file)
+        assert config.verbose is True
+
+    def test_verbose_false(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            "verbose = false\n"
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+        )
+        config = load_config(toml_file)
+        assert config.verbose is False
+
+    def test_verbose_type_error(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            'verbose = "yes"\n'
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+        )
+        with pytest.raises(TypeError, match="verbose"):
+            load_config(toml_file)
