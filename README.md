@@ -28,14 +28,42 @@ Everything runs natively on Apple Silicon via [MLX](https://github.com/ml-explor
 
 ## Install
 
+### Use from PyPI (recommended)
+
+```bash
+uv tool install vauban
+uv tool update-shell
+```
+
+Then open a new shell and run:
+
+```bash
+vauban --help
+```
+
+### Install from source (development)
+
 ```bash
 git clone https://github.com/teilomillet/vauban.git
-cd vauban && uv sync
+cd vauban
+uv tool install --editable .
 ```
 
 ## Quick start
 
-**1. Write a config file** — create `run.toml`:
+**1. Open the built-in manual (start here):**
+
+```bash
+vauban man quickstart
+```
+
+**2. Generate a starter config (`run.toml`):**
+
+```bash
+vauban init --mode default --output run.toml
+```
+
+This writes:
 
 ```toml
 [model]
@@ -48,31 +76,20 @@ harmless = "default"
 
 `path` is a HuggingFace model ID — it downloads automatically on first run. `"default"` uses the bundled prompt sets (128 harmful + 128 harmless).
 
-**2. Validate** (optional but recommended):
+**3. Validate** (recommended):
 
 ```bash
-uv run vauban --validate run.toml
+vauban --validate run.toml
 ```
 
 Checks types, ranges, file paths, and mode conflicts — without loading any model.
 It also validates JSONL schemas (`prompt`/`label`/`category`) and prints
 actionable `fix:` hints for ambiguous or broken configs.
 
-**Need help first?** Use the built-in manual:
+**4. Run:**
 
 ```bash
-uv run vauban man
-uv run vauban man quickstart
-uv run vauban man softprompt
-```
-
-The manual is generated from typed config dataclasses plus parser constraints,
-so defaults and field types stay in sync with code.
-
-**3. Run:**
-
-```bash
-uv run vauban run.toml
+vauban run.toml
 ```
 
 Output lands in `output/` — a complete model directory you can load directly:
@@ -81,6 +98,58 @@ Output lands in `output/` — a complete model directory you can load directly:
 import mlx_lm
 model, tok = mlx_lm.load("output")
 ```
+
+## Minimal TOML example
+
+Copy this into `run.toml`:
+
+```toml
+[model]
+path = "mlx-community/Llama-3.2-3B-Instruct-4bit"
+
+[data]
+harmful = "default"
+harmless = "default"
+```
+
+Then run:
+
+```bash
+vauban --validate run.toml
+vauban run.toml
+```
+
+## Most useful commands
+
+Use these before touching Python code:
+
+```bash
+vauban man
+vauban man quickstart
+vauban man commands
+vauban man playbook
+vauban man print
+```
+
+The manual is generated from typed config dataclasses plus parser constraints,
+so defaults and field types stay in sync with code.
+
+Config scaffolding:
+
+```bash
+vauban init --help
+vauban init --mode probe --output probe.toml
+```
+
+Report comparison:
+
+```bash
+vauban diff run_a/output run_b/output
+vauban diff --format markdown run_a/output run_b/output
+vauban diff --threshold 0.05 run_a/output run_b/output
+```
+
+`--threshold` is a CI gate: it exits with code `1` if any metric delta exceeds the threshold.
 
 ## How the default pipeline works
 

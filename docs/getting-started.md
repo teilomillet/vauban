@@ -12,6 +12,15 @@ Everything is driven by TOML configs. Write a config, run `vauban config.toml`, 
 
 ## Install
 
+For direct CLI usage (`vauban ...`) from anywhere:
+
+```bash
+uv tool install vauban
+uv tool update-shell
+```
+
+For local development from source:
+
 ```bash
 git clone https://github.com/teilomillet/vauban.git
 cd vauban
@@ -36,10 +45,8 @@ harmless = "default"
 Run it:
 
 ```bash
-uv run vauban run.toml
+vauban run.toml
 ```
-
-> **Tip:** Once published, install globally with `uv tool install vauban`, then just run `vauban run.toml` from anywhere.
 
 This executes the full pipeline:
 
@@ -71,7 +78,7 @@ model, tok = mlx_lm.load("output")
 Before committing to a long run, check your config:
 
 ```bash
-uv run vauban --validate run.toml
+vauban --validate run.toml
 ```
 
 This parses the TOML, verifies field types and ranges, validates prompt/surface
@@ -92,9 +99,9 @@ No issues found.
 For onboarding or quick lookup, use the built-in manual:
 
 ```bash
-uv run vauban man
-uv run vauban man quickstart
-uv run vauban man cut
+vauban man
+vauban man quickstart
+vauban man cut
 ```
 
 It is generated at runtime from typed config dataclasses and parser constraints,
