@@ -10,8 +10,11 @@ import math
 
 import mlx.core as mx
 
+from vauban._array import Array
+from vauban._forward import force_eval, qr_stable, svd_stable
 
-def principal_angles(u: mx.array, v: mx.array) -> mx.array:
+
+def principal_angles(u: Array, v: Array) -> Array:
     """Compute principal angles between two subspaces.
 
     Args:
@@ -23,16 +26,16 @@ def principal_angles(u: mx.array, v: mx.array) -> mx.array:
     """
     # Cross-product matrix M = U @ V^T
     m = u @ v.T
-    _, s, _ = mx.linalg.svd(m, stream=mx.cpu)  # type: ignore[arg-type]
-    mx.eval(s)
+    _, s, _ = svd_stable(m)
+    force_eval(s)
     # Clamp to [0, 1] for numerical stability before arccos
     s = mx.clip(s, 0.0, 1.0)
     angles = mx.arccos(s)
-    mx.eval(angles)
+    force_eval(angles)
     return angles
 
 
-def grassmann_distance(u: mx.array, v: mx.array) -> float:
+def grassmann_distance(u: Array, v: Array) -> float:
     """Grassmann distance between two subspaces.
 
     Equal to the L2 norm of the vector of principal angles.
@@ -46,11 +49,11 @@ def grassmann_distance(u: mx.array, v: mx.array) -> float:
     """
     angles = principal_angles(u, v)
     dist = mx.sqrt(mx.sum(angles * angles))
-    mx.eval(dist)
+    force_eval(dist)
     return float(dist.item())
 
 
-def subspace_overlap(u: mx.array, v: mx.array) -> float:
+def subspace_overlap(u: Array, v: Array) -> float:
     """Mean squared cosine of principal angles (subspace overlap).
 
     Args:
@@ -63,11 +66,11 @@ def subspace_overlap(u: mx.array, v: mx.array) -> float:
     angles = principal_angles(u, v)
     cos_sq = mx.cos(angles) ** 2
     overlap = mx.mean(cos_sq)
-    mx.eval(overlap)
+    force_eval(overlap)
     return float(overlap.item())
 
 
-def project_subspace(x: mx.array, basis: mx.array) -> mx.array:
+def project_subspace(x: Array, basis: Array) -> Array:
     """Project a vector onto a subspace spanned by an orthonormal basis.
 
     Args:
@@ -82,7 +85,7 @@ def project_subspace(x: mx.array, basis: mx.array) -> mx.array:
     return coeffs @ basis  # (d,)
 
 
-def remove_subspace(x: mx.array, basis: mx.array) -> mx.array:
+def remove_subspace(x: Array, basis: Array) -> Array:
     """Remove the subspace component from a vector.
 
     Args:
@@ -95,7 +98,7 @@ def remove_subspace(x: mx.array, basis: mx.array) -> mx.array:
     return x - project_subspace(x, basis)
 
 
-def orthonormalize(vectors: mx.array) -> mx.array:
+def orthonormalize(vectors: Array) -> Array:
     """Orthonormalize a set of vectors via QR decomposition.
 
     Args:
@@ -106,8 +109,8 @@ def orthonormalize(vectors: mx.array) -> mx.array:
     """
     # QR on the transpose: vectors^T = Q @ R
     # Then Q^T gives us the orthonormal rows
-    q, _ = mx.linalg.qr(vectors.T, stream=mx.cpu)  # type: ignore[arg-type]
-    mx.eval(q)
+    q, _ = qr_stable(vectors.T)
+    force_eval(q)
     k = vectors.shape[0]
     return q[:, :k].T
 

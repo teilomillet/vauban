@@ -4,8 +4,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-import mlx.core as mx
 import mlx.nn as nn
+
+from vauban._array import Array
 
 # ---------------------------------------------------------------------------
 # Protocols — structural typing decoupled from mlx-lm internals
@@ -47,8 +48,8 @@ class LayerCache(Protocol):
     offset: int
 
     def update_and_fetch(
-        self, keys: mx.array, values: mx.array,
-    ) -> tuple[mx.array, mx.array]: ...
+        self, keys: Array, values: Array,
+    ) -> tuple[Array, Array]: ...
 
 
 # ---------------------------------------------------------------------------
@@ -60,7 +61,7 @@ class LayerCache(Protocol):
 class DirectionResult:
     """Output of the measure step: a refusal direction vector."""
 
-    direction: mx.array
+    direction: Array
     layer_index: int
     cosine_scores: list[float]
     d_model: int
@@ -106,14 +107,14 @@ class AlphaTier:
 class DiffResult:
     """Output of weight-diff measurement between base and aligned models."""
 
-    basis: mx.array  # shape (k, d_model)
+    basis: Array  # shape (k, d_model)
     singular_values: list[float]
     explained_variance: list[float]
     best_layer: int
     d_model: int
     source_model: str
     target_model: str
-    per_layer_bases: list[mx.array]
+    per_layer_bases: list[Array]
     per_layer_singular_values: list[list[float]]
 
     def best_direction(self) -> "DirectionResult":
@@ -131,13 +132,13 @@ class DiffResult:
 class SubspaceResult:
     """Output of the subspace measure step: top-k orthonormal directions."""
 
-    basis: mx.array  # shape (k, d_model)
+    basis: Array  # shape (k, d_model)
     singular_values: list[float]
     explained_variance: list[float]
     layer_index: int
     d_model: int
     model_path: str
-    per_layer_bases: list[mx.array]  # basis for every layer
+    per_layer_bases: list[Array]  # basis for every layer
     layer_types: list[str] | None = None
 
     def best_direction(self) -> DirectionResult:
@@ -156,8 +157,8 @@ class SubspaceResult:
 class DBDIResult:
     """Output of DBDI decomposition: harm detection + refusal execution directions."""
 
-    hdd: mx.array  # harm detection direction (d_model,)
-    red: mx.array  # refusal execution direction (d_model,)
+    hdd: Array  # harm detection direction (d_model,)
+    red: Array  # refusal execution direction (d_model,)
     hdd_layer_index: int
     red_layer_index: int
     hdd_cosine_scores: list[float]
@@ -521,7 +522,7 @@ class SoftPromptResult:
     loss_history: list[float]
     n_steps: int
     n_tokens: int
-    embeddings: mx.array | None  # continuous mode: optimized (1, n_tokens, d_model)
+    embeddings: Array | None  # continuous mode: optimized (1, n_tokens, d_model)
     token_ids: list[int] | None  # GCG mode: optimized token IDs
     token_text: str | None  # GCG mode: decoded token string
     eval_responses: list[str]  # generated responses for each eval prompt
@@ -645,7 +646,7 @@ class DepthConfig:
 class DepthDirectionResult:
     """Output of depth direction extraction."""
 
-    direction: mx.array           # the depth direction (d_model,)
+    direction: Array           # the depth direction (d_model,)
     layer_index: int              # best layer
     cosine_scores: list[float]    # per-layer separation
     d_model: int

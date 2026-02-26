@@ -8,9 +8,9 @@ logit distributions. Classifies tokens as "deep-thinking" vs "shallow".
 import math
 
 import mlx.core as mx
-import mlx.nn as nn
 
-from vauban.probe import _make_cache
+from vauban._array import Array
+from vauban._forward import embed_and_mask, force_eval, lm_head_forward, make_cache
 from vauban.types import (
     CausalLM,
     DepthConfig,
@@ -43,16 +43,14 @@ def depth_profile(
     token_ids = mx.array(token_ids_list)[None, :]
 
     transformer = model.model
-    h = transformer.embed_tokens(token_ids)
-    mask = nn.MultiHeadAttention.create_additive_causal_mask(h.shape[1])
-    mask = mask.astype(h.dtype)
+    h, mask = embed_and_mask(transformer, token_ids)
 
     # Collect hidden states at each layer
-    hidden_states: list[mx.array] = []
+    hidden_states: list[Array] = []
     for layer in transformer.layers:
         h = layer(h, mask)
         hidden_states.append(h)
-        mx.eval(h)
+        force_eval(h)
 
     num_layers = len(hidden_states)
     seq_len = hidden_states[0].shape[1]
@@ -60,8 +58,8 @@ def depth_profile(
     # Get final-layer logits top-k indices for efficiency
     final_h = hidden_states[-1]
     final_normed = transformer.norm(final_h)
-    final_logits_full = _lm_head_forward(model, final_normed)
-    mx.eval(final_logits_full)
+    final_logits_full = lm_head_forward(model, final_normed)
+    force_eval(final_logits_full)
 
     # Build per-token results
     tokens: list[TokenDepth] = []
@@ -76,19 +74,19 @@ def depth_profile(
             )[final_logits_t.shape[0] - config.top_k_logits :]
         else:
             top_k_indices = mx.arange(final_logits_t.shape[0])
-        mx.eval(top_k_indices)
+        force_eval(top_k_indices)
 
         final_probs = mx.softmax(final_logits_t[top_k_indices])
-        mx.eval(final_probs)
+        force_eval(final_probs)
 
         jsd_profile: list[float] = []
         for layer_idx in range(num_layers):
             layer_h = hidden_states[layer_idx][0, t, :]
             layer_normed = transformer.norm(layer_h[None, None, :])
-            layer_logits = _lm_head_forward(model, layer_normed)
+            layer_logits = lm_head_forward(model, layer_normed)
             layer_logits_t = layer_logits[0, 0, :]
             layer_probs = mx.softmax(layer_logits_t[top_k_indices])
-            mx.eval(layer_probs)
+            force_eval(layer_probs)
 
             jsd_val = _jsd(final_probs, layer_probs)
             jsd_profile.append(jsd_val)
@@ -129,7 +127,7 @@ def depth_generate(
 
     transformer = model.model
     num_layers = len(transformer.layers)
-    cache = _make_cache(model)
+    cache = make_cache(model)
     deep_threshold_layer = math.ceil((1 - config.deep_fraction) * num_layers)
 
     # Prefill: run through prompt to populate cache
@@ -141,10 +139,10 @@ def depth_generate(
     logits = _cached_forward_all_hidden(model, input_ids, cache=None)
     next_token_logits = logits[:, -1:, :]
     next_token = mx.argmax(next_token_logits[0, 0, :])
-    mx.eval(next_token)
+    force_eval(next_token)
 
     # Re-create cache for generation with hidden state capture
-    cache = _make_cache(model)
+    cache = make_cache(model)
     _prefill_cache(model, input_ids, cache)
 
     current_token = next_token[None, None]
@@ -158,8 +156,8 @@ def depth_generate(
         # Final layer logits
         final_h = hidden_states[-1]
         final_normed = transformer.norm(final_h)
-        final_logits = _lm_head_forward(model, final_normed)
-        mx.eval(final_logits)
+        final_logits = lm_head_forward(model, final_normed)
+        force_eval(final_logits)
 
         final_logits_t = final_logits[0, 0, :]
         if config.top_k_logits < final_logits_t.shape[0]:
@@ -169,18 +167,18 @@ def depth_generate(
             )[final_logits_t.shape[0] - config.top_k_logits :]
         else:
             top_k_indices = mx.arange(final_logits_t.shape[0])
-        mx.eval(top_k_indices)
+        force_eval(top_k_indices)
 
         final_probs = mx.softmax(final_logits_t[top_k_indices])
-        mx.eval(final_probs)
+        force_eval(final_probs)
 
         jsd_profile: list[float] = []
         for layer_idx in range(num_layers):
             layer_h = hidden_states[layer_idx]
             layer_normed = transformer.norm(layer_h)
-            layer_logits = _lm_head_forward(model, layer_normed)
+            layer_logits = lm_head_forward(model, layer_normed)
             layer_probs = mx.softmax(layer_logits[0, 0, :][top_k_indices])
-            mx.eval(layer_probs)
+            force_eval(layer_probs)
             jsd_profile.append(_jsd(final_probs, layer_probs))
 
         settling = _settling_depth(jsd_profile, config.settling_threshold)
@@ -197,7 +195,7 @@ def depth_generate(
 
         # Next token
         next_token = mx.argmax(final_logits[0, 0, :])
-        mx.eval(next_token)
+        force_eval(next_token)
         current_token = next_token[None, None]
 
     return _build_depth_result(tokens, num_layers, config, prompt)
@@ -253,7 +251,7 @@ def depth_direction(
         denom = norm_d * norm_r
         if float(denom.item()) > 0:
             cos_val = cos / denom
-            mx.eval(cos_val)
+            force_eval(cos_val)
             refusal_cosine = float(cos_val.item())
         else:
             refusal_cosine = 0.0
@@ -275,7 +273,7 @@ def depth_direction(
 # ---------------------------------------------------------------------------
 
 
-def _jsd(p: mx.array, q: mx.array) -> float:
+def _jsd(p: Array, q: Array) -> float:
     """Jensen-Shannon divergence between two probability distributions.
 
     Both p and q must be valid probability distributions (non-negative, sum to 1).
@@ -288,7 +286,7 @@ def _jsd(p: mx.array, q: mx.array) -> float:
     # KL(q || m)
     kl_qm = mx.sum(q * mx.log(q / (m + eps) + eps))
     jsd = 0.5 * (kl_pm + kl_qm)
-    mx.eval(jsd)
+    force_eval(jsd)
     return max(0.0, float(jsd.item()))
 
 
@@ -304,61 +302,47 @@ def _settling_depth(jsd_profile: list[float], threshold: float) -> int:
     return len(jsd_profile) - 1
 
 
-def _lm_head_forward(model: CausalLM, h: mx.array) -> mx.array:
-    """Apply the language model head to get logits."""
-    if hasattr(model, "lm_head"):
-        lm_head: nn.Module = model.lm_head  # type: ignore[attr-defined]
-        return lm_head(h)
-    return model.model.embed_tokens.as_linear(h)
-
-
 def _prefill_cache(
     model: CausalLM,
-    token_ids: mx.array,
+    token_ids: Array,
     cache: list[LayerCache],
-) -> mx.array:
+) -> Array:
     """Run input tokens through the model to populate the KV cache."""
     transformer = model.model
-    h = transformer.embed_tokens(token_ids)
-    mask = nn.MultiHeadAttention.create_additive_causal_mask(h.shape[1])
-    mask = mask.astype(h.dtype)
+    h, mask = embed_and_mask(transformer, token_ids)
 
     for i, layer in enumerate(transformer.layers):
         h = layer(h, mask, cache=cache[i])
-    mx.eval(h)
+    force_eval(h)
     return h
 
 
 def _forward_collect_hidden(
     model: CausalLM,
-    token_ids: mx.array,
+    token_ids: Array,
     cache: list[LayerCache],
-) -> list[mx.array]:
+) -> list[Array]:
     """Forward pass collecting hidden states at each layer."""
     transformer = model.model
-    h = transformer.embed_tokens(token_ids)
-    mask = nn.MultiHeadAttention.create_additive_causal_mask(h.shape[1])
-    mask = mask.astype(h.dtype)
+    h, mask = embed_and_mask(transformer, token_ids)
 
-    hidden_states: list[mx.array] = []
+    hidden_states: list[Array] = []
     for i, layer in enumerate(transformer.layers):
         h = layer(h, mask, cache=cache[i])
         hidden_states.append(h)
-        mx.eval(h)
+        force_eval(h)
 
     return hidden_states
 
 
 def _cached_forward_all_hidden(
     model: CausalLM,
-    token_ids: mx.array,
+    token_ids: Array,
     cache: list[LayerCache] | None = None,
-) -> mx.array:
+) -> Array:
     """Full forward pass returning logits (for initial token selection)."""
     transformer = model.model
-    h = transformer.embed_tokens(token_ids)
-    mask = nn.MultiHeadAttention.create_additive_causal_mask(h.shape[1])
-    mask = mask.astype(h.dtype)
+    h, mask = embed_and_mask(transformer, token_ids)
 
     if cache is not None:
         for i, layer in enumerate(transformer.layers):
@@ -368,8 +352,8 @@ def _cached_forward_all_hidden(
             h = layer(h, mask)
 
     h = transformer.norm(h)
-    logits = _lm_head_forward(model, h)
-    mx.eval(logits)
+    logits = lm_head_forward(model, h)
+    force_eval(logits)
     return logits
 
 

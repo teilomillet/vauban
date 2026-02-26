@@ -1,8 +1,9 @@
 """Conditional Activation Steering (CAST) runtime generation."""
 
 import mlx.core as mx
-import mlx.nn as nn
 
+from vauban._array import Array
+from vauban._forward import embed_and_mask, force_eval, lm_head_forward, make_cache
 from vauban.types import AlphaTier, CastResult, CausalLM, LayerCache, Tokenizer
 
 
@@ -33,12 +34,12 @@ def cast_generate(
     model: CausalLM,
     tokenizer: Tokenizer,
     prompt: str,
-    direction: mx.array,
+    direction: Array,
     layers: list[int],
     alpha: float = 1.0,
     threshold: float = 0.0,
     max_tokens: int = 100,
-    condition_direction: mx.array | None = None,
+    condition_direction: Array | None = None,
     alpha_tiers: list[AlphaTier] | None = None,
 ) -> CastResult:
     """Generate text with conditional activation steering.
@@ -63,7 +64,7 @@ def cast_generate(
 
     token_ids = mx.array(tokenizer.encode(text))[None, :]
     generated: list[int] = []
-    cache = _make_cache(model)
+    cache = make_cache(model)
     projections_before_all: list[float] = []
     projections_after_all: list[float] = []
     interventions = 0
@@ -113,27 +114,18 @@ def cast_generate(
     )
 
 
-def _make_cache(model: CausalLM) -> list[LayerCache]:
-    """Create a KV cache for the model."""
-    if hasattr(model, "make_cache"):
-        return model.make_cache()  # type: ignore[no-any-return]
-    from mlx_lm.models.cache import make_prompt_cache
-
-    return make_prompt_cache(model)  # type: ignore[no-any-return]
-
-
 def _cast_forward(
     model: CausalLM,
-    token_ids: mx.array,
-    direction: mx.array,
+    token_ids: Array,
+    direction: Array,
     cast_layers: list[int],
     alpha: float,
     threshold: float,
     cache: list[LayerCache],
     *,
-    condition_direction: mx.array | None = None,
+    condition_direction: Array | None = None,
     alpha_tiers: list[AlphaTier] | None = None,
-) -> tuple[mx.array, list[float], list[float], int, int]:
+) -> tuple[Array, list[float], list[float], int, int]:
     """Run one forward step with conditional steering.
 
     Returns:
@@ -141,9 +133,7 @@ def _cast_forward(
         where ``considered`` is the number of cast layers visited in this step.
     """
     transformer = model.model
-    h = transformer.embed_tokens(token_ids)
-    mask = nn.MultiHeadAttention.create_additive_causal_mask(h.shape[1])
-    mask = mask.astype(h.dtype)
+    h, mask = embed_and_mask(transformer, token_ids)
 
     # Use condition_direction for gating if provided, else primary direction
     detect_dir = condition_direction if condition_direction is not None else direction
@@ -164,12 +154,12 @@ def _cast_forward(
 
         # Detect: project onto condition direction for gating
         detect_projection = mx.sum(last_token * detect_dir)
-        mx.eval(detect_projection)
+        force_eval(detect_projection)
         detect_value = float(detect_projection.item())
 
         # Report the steer-direction projection as "before"
         steer_projection = mx.sum(last_token * direction)
-        mx.eval(steer_projection)
+        force_eval(steer_projection)
         projection_value = float(steer_projection.item())
         projections_before.append(projection_value)
         considered += 1
@@ -186,15 +176,10 @@ def _cast_forward(
 
         last_after = h[0, -1, :]
         projection_after = mx.sum(last_after * direction)
-        mx.eval(projection_after)
+        force_eval(projection_after)
         projections_after.append(float(projection_after.item()))
 
     h = transformer.norm(h)
-    if hasattr(model, "lm_head"):
-        lm_head: nn.Module = model.lm_head  # type: ignore[attr-defined]
-        logits: mx.array = lm_head(h)
-    else:
-        logits = transformer.embed_tokens.as_linear(h)
-
-    mx.eval(logits)
+    logits = lm_head_forward(model, h)
+    force_eval(logits)
     return logits, projections_before, projections_after, interventions, considered

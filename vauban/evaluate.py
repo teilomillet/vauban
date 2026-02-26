@@ -5,7 +5,7 @@ import math
 import mlx.core as mx
 import mlx.nn as nn
 
-from vauban.probe import _make_cache
+from vauban._forward import extract_logits, force_eval, make_cache
 from vauban.types import EvalResult, Tokenizer
 
 DEFAULT_REFUSAL_PHRASES: list[str] = [
@@ -66,13 +66,6 @@ def evaluate(
     )
 
 
-def _extract_logits(result: mx.array | tuple[mx.array, ...]) -> mx.array:
-    """Extract logits from model output (handles tuple or bare array)."""
-    if isinstance(result, tuple):
-        return result[0]
-    return result
-
-
 def _refusal_rate(
     model: nn.Module,
     tokenizer: Tokenizer,
@@ -126,12 +119,12 @@ def _generate(
     if eos_token_id is None:
         eos_token_id = getattr(tokenizer, "eos_token_id", None)
 
-    cache = _make_cache(model)
+    cache = make_cache(model)
     token_ids = mx.array([tokens])  # prefill: full prompt
 
     for _ in range(max_tokens):
         result = model(token_ids, cache=cache)
-        logits = _extract_logits(result)
+        logits = extract_logits(result)
         next_token = int(mx.argmax(logits[:, -1, :], axis=-1).item())
         generated.append(next_token)
         if eos_token_id is not None and next_token == eos_token_id:
@@ -156,7 +149,7 @@ def _perplexity(
     for prompt in prompts:
         token_ids = mx.array(tokenizer.encode(prompt))[None, :]
         result = model(token_ids)
-        logits = _extract_logits(result)
+        logits = extract_logits(result)
 
         # Shift: predict token[i+1] from position[i]
         shift_logits = logits[:, :-1, :]
@@ -167,7 +160,7 @@ def _perplexity(
             shift_labels.reshape(-1),
             reduction="sum",
         )
-        mx.eval(log_probs)
+        force_eval(log_probs)
         total_loss += float(log_probs.item())
         total_tokens += int(shift_labels.size)
 
@@ -193,8 +186,8 @@ def _kl_divergence(
     for prompt in prompts:
         token_ids = mx.array(tokenizer.encode(prompt))[None, :]
 
-        logits_orig = _extract_logits(original(token_ids))
-        logits_mod = _extract_logits(modified(token_ids))
+        logits_orig = extract_logits(original(token_ids))
+        logits_mod = extract_logits(modified(token_ids))
 
         p = mx.softmax(logits_orig, axis=-1)
         q = mx.softmax(logits_mod, axis=-1)
@@ -203,7 +196,7 @@ def _kl_divergence(
         kl = p * (mx.log(p + 1e-10) - mx.log(q + 1e-10))
         kl_per_token = mx.sum(kl, axis=-1)  # sum over vocab
         mean_kl = mx.mean(kl_per_token)
-        mx.eval(mean_kl)
+        force_eval(mean_kl)
         total_kl += float(mean_kl.item())
         total_tokens += 1
 

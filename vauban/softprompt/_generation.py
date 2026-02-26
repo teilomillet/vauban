@@ -1,20 +1,24 @@
 """KV-cached generation and attack evaluation."""
 
 import mlx.core as mx
-import mlx.nn as nn
 
+from vauban._array import Array
+from vauban._forward import (
+    embed_and_mask_with_prefix,
+    force_eval,
+    lm_head_forward,
+    make_cache,
+)
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES
-from vauban.probe import _make_cache
-from vauban.softprompt._loss import _lm_head
 from vauban.types import CausalLM, LayerCache, SoftPromptConfig, Tokenizer
 
 
 def _prefill_with_cache(
     model: CausalLM,
-    soft_embeds: mx.array,
-    prompt_token_ids: mx.array,
+    soft_embeds: Array,
+    prompt_token_ids: Array,
     cache: list[LayerCache],
-) -> mx.array:
+) -> Array:
     """Forward pass populating KV cache, returns logits at last position.
 
     Feeds [soft_prefix | prompt] through the model layer by layer,
@@ -25,17 +29,13 @@ def _prefill_with_cache(
         Logits at the last position, shape (1, 1, vocab_size).
     """
     transformer = model.model
-    prompt_embeds = transformer.embed_tokens(prompt_token_ids)
-    h = mx.concatenate([soft_embeds, prompt_embeds], axis=1)
-
-    mask = nn.MultiHeadAttention.create_additive_causal_mask(h.shape[1])
-    mask = mask.astype(h.dtype)
+    h, mask = embed_and_mask_with_prefix(transformer, soft_embeds, prompt_token_ids)
 
     for i, layer in enumerate(transformer.layers):
         h = layer(h, mask, cache=cache[i])
 
     h = transformer.norm(h)
-    logits = _lm_head(model, h)
+    logits = lm_head_forward(model, h)
     return logits[:, -1:, :]
 
 
@@ -43,7 +43,7 @@ def _decode_step(
     model: CausalLM,
     token_id: int,
     cache: list[LayerCache],
-) -> mx.array:
+) -> Array:
     """Single autoregressive decode step with KV cache.
 
     Returns:
@@ -56,14 +56,14 @@ def _decode_step(
         h = layer(h, None, cache=cache[i])
 
     h = transformer.norm(h)
-    return _lm_head(model, h)
+    return lm_head_forward(model, h)
 
 
 def _evaluate_attack(
     model: CausalLM,
     tokenizer: Tokenizer,
     prompts: list[str],
-    soft_embeds: mx.array,
+    soft_embeds: Array,
     config: SoftPromptConfig,
 ) -> tuple[float, list[str]]:
     """Evaluate attack success by generating with the optimized prefix.
@@ -95,9 +95,9 @@ def _evaluate_attack(
         prompt_ids = mx.array(tokenizer.encode(text))[None, :]
 
         # Prefill: forward [soft_prefix | prompt] through model with cache
-        cache = _make_cache(model)
+        cache = make_cache(model)
         next_logits = _prefill_with_cache(model, soft_embeds, prompt_ids, cache)
-        mx.eval(next_logits)
+        force_eval(next_logits)
 
         # Decode autoregressively using the cache
         generated_ids: list[int] = []
@@ -107,7 +107,7 @@ def _evaluate_attack(
                 break
             generated_ids.append(next_token)
             next_logits = _decode_step(model, next_token, cache)
-            mx.eval(next_logits)
+            force_eval(next_logits)
 
         response = tokenizer.decode(generated_ids)
         responses.append(response)

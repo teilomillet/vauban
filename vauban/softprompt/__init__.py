@@ -1,6 +1,6 @@
 """Soft prompt attack: continuous embedding optimization, GCG, and EGD."""
 
-from vauban.probe import _make_cache
+from vauban._forward import make_cache as _make_cache
 from vauban.softprompt._continuous import _continuous_attack
 from vauban.softprompt._dispatcher import softprompt_attack
 from vauban.softprompt._egd import _egd_attack

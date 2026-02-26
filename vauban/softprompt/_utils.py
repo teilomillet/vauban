@@ -3,8 +3,9 @@
 import math
 
 import mlx.core as mx
-import mlx.nn as nn
 
+from vauban._array import Array
+from vauban._forward import embed_and_mask_with_prefix, force_eval, lm_head_forward
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES
 from vauban.softprompt._loss import (
     _compute_defensive_loss,
@@ -40,7 +41,7 @@ def _build_vocab_mask(
     tokenizer: Tokenizer,
     vocab_size: int,
     constraint: str | None,
-) -> mx.array | None:
+) -> Array | None:
     """Build a boolean mask of allowed token IDs for constrained search.
 
     Args:
@@ -68,15 +69,15 @@ def _build_vocab_mask(
             raise ValueError(msg)
         if ok:
             allowed[tid] = True
-    mx.eval(allowed)
+    force_eval(allowed)
     return allowed
 
 
 def _compute_embed_regularization(
-    soft_embeds: mx.array,
-    embed_matrix: mx.array,
+    soft_embeds: Array,
+    embed_matrix: Array,
     weight: float,
-) -> mx.array:
+) -> Array:
     """L2 penalty on embedding norm deviation (Huang et al.).
 
     Penalizes the soft prompt embeddings when their mean norm
@@ -98,7 +99,7 @@ def _compute_embed_regularization(
 def _pre_encode_prompts(
     tokenizer: Tokenizer,
     prompts: list[str],
-) -> list[mx.array]:
+) -> list[Array]:
     """Pre-tokenize all prompts into token ID arrays.
 
     Args:
@@ -108,7 +109,7 @@ def _pre_encode_prompts(
     Returns:
         List of token ID arrays, each shape (1, seq_len).
     """
-    encoded: list[mx.array] = []
+    encoded: list[Array] = []
     for prompt in prompts:
         messages = [{"role": "user", "content": prompt}]
         text = tokenizer.apply_chat_template(messages, tokenize=False)
@@ -121,10 +122,10 @@ def _pre_encode_prompts(
 
 
 def _select_prompt_ids(
-    all_ids: list[mx.array],
+    all_ids: list[Array],
     step: int,
     strategy: str,
-) -> list[mx.array]:
+) -> list[Array]:
     """Select prompt ID arrays for this optimization step.
 
     Args:
@@ -158,11 +159,11 @@ def _compute_accessibility_score(final_loss: float) -> float:
 
 def _compute_per_prompt_losses(
     model: CausalLM,
-    soft_embeds: mx.array,
-    all_ids: list[mx.array],
-    target_ids: mx.array,
+    soft_embeds: Array,
+    all_ids: list[Array],
+    target_ids: Array,
     n_tokens: int,
-    direction: mx.array | None,
+    direction: Array | None,
     direction_weight: float,
     direction_mode: str = "last",
     direction_layers: set[int] | None = None,
@@ -172,7 +173,7 @@ def _compute_per_prompt_losses(
     ref_model: CausalLM | None = None,
     kl_ref_weight: float = 0.0,
     loss_mode: str = "targeted",
-    refusal_ids: mx.array | None = None,
+    refusal_ids: Array | None = None,
 ) -> list[float]:
     """Compute final loss for each prompt individually.
 
@@ -225,19 +226,19 @@ def _compute_per_prompt_losses(
                 eos_token_id, eos_loss_mode, eos_loss_weight,
                 ref_model, kl_ref_weight,
             )
-        mx.eval(loss)
+        force_eval(loss)
         losses.append(float(loss.item()))
     return losses
 
 
 def _select_worst_k_prompt_ids(
     model: CausalLM,
-    soft_embeds: mx.array,
-    all_ids: list[mx.array],
-    target_ids: mx.array,
+    soft_embeds: Array,
+    all_ids: list[Array],
+    target_ids: Array,
     n_tokens: int,
     k: int,
-    direction: mx.array | None,
+    direction: Array | None,
     direction_weight: float,
     direction_mode: str,
     direction_layers: set[int] | None,
@@ -247,8 +248,8 @@ def _select_worst_k_prompt_ids(
     ref_model: CausalLM | None,
     kl_ref_weight: float,
     loss_mode: str,
-    refusal_ids: mx.array | None,
-) -> list[mx.array]:
+    refusal_ids: Array | None,
+) -> list[Array]:
     """Select the top-k hardest prompts by loss (worst-k strategy).
 
     Computes per-prompt losses with stopped gradients, sorts descending,
@@ -292,9 +293,9 @@ def _select_worst_k_prompt_ids(
 
 
 def _split_into_batches(
-    items: list[mx.array],
+    items: list[Array],
     n_batches: int,
-) -> list[list[mx.array]]:
+) -> list[list[Array]]:
     """Split items into approximately equal batches.
 
     Args:
@@ -311,7 +312,7 @@ def _split_into_batches(
     batch_size = len(items) // effective_n
     remainder = len(items) % effective_n
 
-    batches: list[list[mx.array]] = []
+    batches: list[list[Array]] = []
     start = 0
     for i in range(effective_n):
         end = start + batch_size + (1 if i < remainder else 0)
@@ -321,8 +322,8 @@ def _split_into_batches(
 
 
 def _project_to_tokens(
-    soft_embeds: mx.array,
-    embed_matrix: mx.array,
+    soft_embeds: Array,
+    embed_matrix: Array,
 ) -> list[int]:
     """Project continuous embeddings to nearest discrete tokens.
 
@@ -336,14 +337,14 @@ def _project_to_tokens(
     # (n_tokens, d_model) @ (d_model, vocab_size) -> (n_tokens, vocab_size)
     scores = soft_embeds[0] @ embed_matrix.T
     token_ids_array = mx.argmax(scores, axis=-1)
-    mx.eval(token_ids_array)
+    force_eval(token_ids_array)
     raw = token_ids_array.tolist()
     if not isinstance(raw, list):
         return [int(raw)]
     return [int(t) for t in raw]
 
 
-def _encode_refusal_tokens(tokenizer: Tokenizer) -> mx.array:
+def _encode_refusal_tokens(tokenizer: Tokenizer) -> Array:
     """Encode refusal phrases into a deduplicated set of first-token IDs.
 
     Each refusal phrase is tokenized and only the first token is kept,
@@ -367,9 +368,9 @@ def _encode_refusal_tokens(tokenizer: Tokenizer) -> mx.array:
 
 def _forward_with_prefix(
     model: CausalLM,
-    soft_embeds: mx.array,
-    prompt_token_ids: mx.array,
-) -> mx.array:
+    soft_embeds: Array,
+    prompt_token_ids: Array,
+) -> Array:
     """Forward pass with soft prefix prepended to prompt embeddings.
 
     Args:
@@ -381,30 +382,19 @@ def _forward_with_prefix(
         Logits tensor, shape (1, n_tokens + seq_len, vocab_size).
     """
     transformer = model.model
-    prompt_embeds = transformer.embed_tokens(prompt_token_ids)
-    h = mx.concatenate([soft_embeds, prompt_embeds], axis=1)
-
-    mask = nn.MultiHeadAttention.create_additive_causal_mask(h.shape[1])
-    mask = mask.astype(h.dtype)
+    h, mask = embed_and_mask_with_prefix(transformer, soft_embeds, prompt_token_ids)
 
     for layer in transformer.layers:
         h = layer(h, mask)
 
     h = transformer.norm(h)
-
-    if hasattr(model, "lm_head"):
-        lm_head: nn.Module = model.lm_head  # type: ignore[attr-defined]
-        logits: mx.array = lm_head(h)
-    else:
-        logits = transformer.embed_tokens.as_linear(h)
-
-    return logits
+    return lm_head_forward(model, h)
 
 
 def _encode_targets(
     tokenizer: Tokenizer,
     target_prefixes: list[str],
-) -> mx.array:
+) -> Array:
     """Encode target prefix strings into a flat token ID array.
 
     Args:

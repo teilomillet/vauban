@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
+    from vauban._array import Array
     from vauban.types import CausalLM, Tokenizer
 
 from vauban._serializers import (
@@ -596,7 +597,7 @@ def _run_cast_mode(context: _EarlyModeContext) -> None:
     )
 
     # Load condition direction if configured
-    condition_direction: mx.array | None = None
+    condition_direction: Array | None = None
     if config.cast.condition_direction_path is not None:
         cond_path = Path(config.cast.condition_direction_path)
         if not cond_path.is_absolute():
@@ -774,6 +775,8 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
     import mlx.core as mx
     import mlx_lm
 
+    from vauban._forward import force_eval
+
     config = context.config
     assert config.softprompt is not None
     assert context.harmful is not None
@@ -831,7 +834,7 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
                 dequantize_model(t_model)
             t_token_array = mx.array(transfer_token_ids)[None, :]
             t_embeds = t_model.model.embed_tokens(t_token_array)
-            mx.eval(t_embeds)
+            force_eval(t_embeds)
             t_success, t_responses = _evaluate_attack(
                 t_model,
                 tokenizer,

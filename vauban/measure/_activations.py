@@ -1,8 +1,9 @@
 """Activation collection helpers for the measure pipeline."""
 
 import mlx.core as mx
-import mlx.nn as nn
 
+from vauban._array import Array
+from vauban._forward import embed_and_mask, force_eval
 from vauban.types import CausalLM, Tokenizer
 
 
@@ -12,7 +13,7 @@ def _collect_activations(
     prompts: list[str],
     clip_quantile: float = 0.0,
     token_position: int = -1,
-) -> list[mx.array]:
+) -> list[Array]:
     """Collect per-layer mean activations across prompts.
 
     Uses Welford's online algorithm for numerically stable streaming
@@ -30,7 +31,7 @@ def _collect_activations(
 
     Returns a list of length num_layers, each element shape (d_model,).
     """
-    means: list[mx.array] | None = None
+    means: list[Array] | None = None
 
     for count, prompt in enumerate(prompts, start=1):
         messages = [{"role": "user", "content": prompt}]
@@ -56,13 +57,13 @@ def _collect_activations(
 
         # Evaluate periodically to avoid graph buildup
         if count % 16 == 0 and means is not None:
-            mx.eval(*means)
+            force_eval(*means)
 
     if means is None:
         msg = "No prompts provided for activation collection"
         raise ValueError(msg)
 
-    mx.eval(*means)
+    force_eval(*means)
     return means
 
 
@@ -72,7 +73,7 @@ def _collect_per_prompt_activations(
     prompts: list[str],
     clip_quantile: float = 0.0,
     token_position: int = -1,
-) -> list[mx.array]:
+) -> list[Array]:
     """Collect per-prompt activations at each layer (no averaging).
 
     Args:
@@ -85,7 +86,7 @@ def _collect_per_prompt_activations(
 
     Returns a list of length num_layers, each element shape (num_prompts, d_model).
     """
-    all_residuals: list[list[mx.array]] = []
+    all_residuals: list[list[Array]] = []
 
     for prompt in prompts:
         messages = [{"role": "user", "content": prompt}]
@@ -105,10 +106,10 @@ def _collect_per_prompt_activations(
 
     # Stack per-prompt activations for each layer
     num_layers = len(all_residuals[0])
-    per_layer: list[mx.array] = []
+    per_layer: list[Array] = []
     for layer_idx in range(num_layers):
         stacked = mx.stack([r[layer_idx] for r in all_residuals])
-        mx.eval(stacked)
+        force_eval(stacked)
         per_layer.append(stacked)
 
     return per_layer
@@ -116,9 +117,9 @@ def _collect_per_prompt_activations(
 
 def _forward_collect(
     model: CausalLM,
-    token_ids: mx.array,
+    token_ids: Array,
     token_position: int = -1,
-) -> list[mx.array]:
+) -> list[Array]:
     """Manual layer-by-layer forward pass, capturing residual stream.
 
     Returns per-layer activations at the given token position.
@@ -131,14 +132,9 @@ def _forward_collect(
             Defaults to -1 (last token).
     """
     transformer = model.model
-    h = transformer.embed_tokens(token_ids)
+    h, mask = embed_and_mask(transformer, token_ids)
 
-    mask = nn.MultiHeadAttention.create_additive_causal_mask(
-        h.shape[1],
-    )
-    mask = mask.astype(h.dtype)
-
-    residuals: list[mx.array] = []
+    residuals: list[Array] = []
     for layer in transformer.layers:
         h = layer(h, mask)
         # Upcast to float32 for numerical stability (like Heretic)
@@ -148,7 +144,7 @@ def _forward_collect(
     return residuals
 
 
-def _clip_activation(activation: mx.array, quantile: float) -> mx.array:
+def _clip_activation(activation: Array, quantile: float) -> Array:
     """Winsorize an activation vector by clamping extreme values.
 
     Clips each dimension to the ``[quantile, 1-quantile]`` range of
@@ -164,5 +160,5 @@ def _clip_activation(activation: mx.array, quantile: float) -> mx.array:
     n = sorted_vals.shape[0]
     high_idx = min(n - 1, int(n * (1.0 - quantile)))
     threshold = sorted_vals[high_idx]
-    mx.eval(threshold)
+    force_eval(threshold)
     return mx.clip(activation, -threshold, threshold)

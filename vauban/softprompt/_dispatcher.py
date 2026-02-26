@@ -4,6 +4,7 @@ import random
 
 import mlx.core as mx
 
+from vauban._array import Array
 from vauban.softprompt._continuous import _continuous_attack
 from vauban.softprompt._egd import _egd_attack
 from vauban.softprompt._gcg import _gcg_attack
@@ -15,7 +16,7 @@ def softprompt_attack(
     tokenizer: Tokenizer,
     prompts: list[str],
     config: SoftPromptConfig,
-    direction: mx.array | None = None,
+    direction: Array | None = None,
     ref_model: CausalLM | None = None,
 ) -> SoftPromptResult:
     """Run a soft prompt attack against a model.

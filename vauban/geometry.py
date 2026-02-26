@@ -4,6 +4,9 @@ from dataclasses import dataclass
 
 import mlx.core as mx
 
+from vauban._array import Array
+from vauban._forward import force_eval
+
 
 @dataclass(frozen=True, slots=True)
 class DirectionPair:
@@ -65,7 +68,7 @@ class DirectionGeometryResult:
 
 
 def analyze_directions(
-    directions: dict[str, mx.array],
+    directions: dict[str, Array],
     independence_threshold: float = 0.1,
 ) -> DirectionGeometryResult:
     """Analyze geometric relationships between multiple directions.
@@ -97,7 +100,7 @@ def analyze_directions(
                 norm_i = mx.linalg.norm(di)
                 norm_j = mx.linalg.norm(dj)
                 cos = mx.sum(di * dj) / (norm_i * norm_j + 1e-8)
-                mx.eval(cos)
+                force_eval(cos)
                 row.append(float(cos.item()))
         cosine_matrix.append(row)
 

@@ -1,7 +1,10 @@
 """Core measurement functions: measure, measure_dbdi, measure_subspace."""
 
+from typing import TYPE_CHECKING
+
 import mlx.core as mx
 
+from vauban._forward import force_eval, svd_stable
 from vauban.measure._activations import (
     _collect_activations,
     _collect_per_prompt_activations,
@@ -18,6 +21,9 @@ from vauban.types import (
     SubspaceResult,
     Tokenizer,
 )
+
+if TYPE_CHECKING:
+    from vauban._array import Array
 
 
 def measure(
@@ -163,7 +169,7 @@ def measure_subspace(
 
     best_layer = 0
     best_variance = -1.0
-    per_layer_bases: list[mx.array] = []
+    per_layer_bases: list[Array] = []
     per_layer_sv: list[list[float]] = []
     per_layer_ev: list[list[float]] = []
 
@@ -173,8 +179,8 @@ def measure_subspace(
         diff_matrix = harmful_per_prompt[i][:n] - harmless_per_prompt[i][:n]
 
         # SVD on CPU for numerical stability
-        u, s, vt = mx.linalg.svd(diff_matrix, stream=mx.cpu)  # type: ignore[arg-type]
-        mx.eval(u, s, vt)
+        u, s, vt = svd_stable(diff_matrix)
+        force_eval(u, s, vt)
 
         # Top-k basis vectors (rows of Vt)
         actual_k = min(k, vt.shape[0])

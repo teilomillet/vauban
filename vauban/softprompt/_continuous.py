@@ -2,6 +2,8 @@
 
 import mlx.core as mx
 
+from vauban._array import Array
+from vauban._forward import force_eval
 from vauban.softprompt._generation import _evaluate_attack
 from vauban.softprompt._loss import (
     _compute_defensive_loss,
@@ -28,7 +30,7 @@ def _continuous_attack(
     tokenizer: Tokenizer,
     prompts: list[str],
     config: SoftPromptConfig,
-    direction: mx.array | None,
+    direction: Array | None,
     ref_model: CausalLM | None = None,
 ) -> SoftPromptResult:
     """Continuous soft prompt optimization via Adam.
@@ -44,10 +46,10 @@ def _continuous_attack(
     soft_embeds = (
         mx.random.normal((1, config.n_tokens, d_model)) * config.init_scale
     )
-    mx.eval(soft_embeds)
+    force_eval(soft_embeds)
 
     target_ids = _encode_targets(tokenizer, config.target_prefixes)
-    mx.eval(target_ids)
+    force_eval(target_ids)
 
     # Pre-encode all prompts
     effective_prompts = prompts if prompts else ["Hello"]
@@ -58,10 +60,10 @@ def _continuous_attack(
         set(config.direction_layers) if config.direction_layers is not None
         else None
     )
-    refusal_ids: mx.array | None = None
+    refusal_ids: Array | None = None
     if config.loss_mode in ("untargeted", "defensive"):
         refusal_ids = _encode_refusal_tokens(tokenizer)
-        mx.eval(refusal_ids)
+        force_eval(refusal_ids)
 
     # Pre-compute EOS token ID
     eos_token_id: int | None = getattr(tokenizer, "eos_token_id", None)
@@ -106,9 +108,9 @@ def _continuous_attack(
 
         for batch in batches:
             def loss_fn(
-                embeds: mx.array,
-                _sel: list[mx.array] = batch,
-            ) -> mx.array:
+                embeds: Array,
+                _sel: list[Array] = batch,
+            ) -> Array:
                 total = mx.array(0.0)
                 for pid in _sel:
                     if (
@@ -155,7 +157,7 @@ def _continuous_attack(
                 return avg
 
             batch_loss, batch_grad = mx.value_and_grad(loss_fn)(soft_embeds)
-            mx.eval(batch_loss, batch_grad)
+            force_eval(batch_loss, batch_grad)
             total_loss += float(batch_loss.item())
             accum_grad = accum_grad + batch_grad
 
@@ -188,7 +190,7 @@ def _continuous_attack(
         v_hat = v / (1 - beta2 ** (step + 1))
         update = lr * m_hat / (mx.sqrt(v_hat) + eps)
         soft_embeds = soft_embeds - update
-        mx.eval(soft_embeds, m, v)
+        force_eval(soft_embeds, m, v)
 
     # Use best embeddings for evaluation
     soft_embeds = best_embeds

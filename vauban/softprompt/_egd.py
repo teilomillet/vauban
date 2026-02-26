@@ -2,6 +2,8 @@
 
 import mlx.core as mx
 
+from vauban._array import Array
+from vauban._forward import force_eval
 from vauban.softprompt._generation import _evaluate_attack
 from vauban.softprompt._loss import (
     _compute_defensive_loss,
@@ -28,7 +30,7 @@ def _egd_attack(
     tokenizer: Tokenizer,
     prompts: list[str],
     config: SoftPromptConfig,
-    direction: mx.array | None,
+    direction: Array | None,
     ref_model: CausalLM | None = None,
 ) -> SoftPromptResult:
     """EGD (Exponentiated Gradient Descent) on the probability simplex.
@@ -53,7 +55,7 @@ def _egd_attack(
     embed_matrix = transformer.embed_tokens.weight
 
     target_ids = _encode_targets(tokenizer, config.target_prefixes)
-    mx.eval(target_ids)
+    force_eval(target_ids)
 
     # Pre-encode all prompts
     effective_prompts = prompts if prompts else ["Hello"]
@@ -64,10 +66,10 @@ def _egd_attack(
         set(config.direction_layers) if config.direction_layers is not None
         else None
     )
-    refusal_ids: mx.array | None = None
+    refusal_ids: Array | None = None
     if config.loss_mode in ("untargeted", "defensive"):
         refusal_ids = _encode_refusal_tokens(tokenizer)
-        mx.eval(refusal_ids)
+        force_eval(refusal_ids)
 
     # Pre-compute vocab mask and EOS token ID
     vocab_mask = _build_vocab_mask(
@@ -79,11 +81,11 @@ def _egd_attack(
     p = mx.ones((config.n_tokens, vocab_size)) / vocab_size
     # Apply vocab mask to initial distribution
     if vocab_mask is not None:
-        mx.eval(vocab_mask)
+        force_eval(vocab_mask)
         p = p * vocab_mask
         row_sums = mx.sum(p, axis=-1, keepdims=True)
         p = p / (row_sums + 1e-30)
-    mx.eval(p)
+    force_eval(p)
 
     loss_history: list[float] = []
     best_loss = float("inf")
@@ -121,9 +123,9 @@ def _egd_attack(
 
         for batch in batches:
             def loss_fn(
-                probs: mx.array,
-                _sel: list[mx.array] = batch,
-            ) -> mx.array:
+                probs: Array,
+                _sel: list[Array] = batch,
+            ) -> Array:
                 soft_embeds = (probs @ embed_matrix)[None, :]
                 total = mx.array(0.0)
                 for pid in _sel:
@@ -166,7 +168,7 @@ def _egd_attack(
                 return total / len(_sel)
 
             batch_loss, batch_grad = mx.value_and_grad(loss_fn)(p)
-            mx.eval(batch_loss, batch_grad)
+            force_eval(batch_loss, batch_grad)
             total_loss += float(batch_loss.item())
             accum_grad = accum_grad + batch_grad
 
@@ -209,14 +211,14 @@ def _egd_attack(
             log_p = mx.log(p + 1e-30)
             p = mx.softmax(log_p / config.egd_temperature, axis=-1)
 
-        mx.eval(p)
+        force_eval(p)
 
     # Use best p for evaluation
     p = best_p
 
     # Extract token IDs via argmax
     token_ids_array = mx.argmax(p, axis=-1)
-    mx.eval(token_ids_array)
+    force_eval(token_ids_array)
     raw_ids = token_ids_array.tolist()
     token_ids: list[int] = (
         [int(raw_ids)]
@@ -227,7 +229,7 @@ def _egd_attack(
     # Build final embeddings from best tokens
     final_token_array = mx.array(token_ids)[None, :]
     final_embeds = transformer.embed_tokens(final_token_array)
-    mx.eval(final_embeds)
+    force_eval(final_embeds)
 
     # Compute per-prompt losses and accessibility score
     per_prompt_losses = _compute_per_prompt_losses(

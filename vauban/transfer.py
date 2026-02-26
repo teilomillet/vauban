@@ -1,7 +1,7 @@
 """Direction transfer testing — test a direction from model A on model B."""
 
-import mlx.core as mx
-
+from vauban._array import Array
+from vauban._forward import force_eval
 from vauban.measure._activations import _collect_activations
 from vauban.measure._direction import _best_direction, _cosine_separation
 from vauban.types import CausalLM, DirectionTransferResult, Tokenizer
@@ -10,7 +10,7 @@ from vauban.types import CausalLM, DirectionTransferResult, Tokenizer
 def check_direction_transfer(
     transfer_model: CausalLM,
     tokenizer: Tokenizer,
-    direction: mx.array,
+    direction: Array,
     harmful_prompts: list[str],
     harmless_prompts: list[str],
     model_id: str,
@@ -56,7 +56,7 @@ def check_direction_transfer(
     per_layer_cosines: list[float] = []
     for i in range(num_layers):
         cos_sep = _cosine_separation(harmful_acts[i], harmless_acts[i], direction)
-        mx.eval(cos_sep)
+        force_eval(cos_sep)
         per_layer_cosines.append(float(cos_sep.item()))
 
     transferred_separation = max(per_layer_cosines) if per_layer_cosines else 0.0

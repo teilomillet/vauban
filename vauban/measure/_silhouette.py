@@ -2,6 +2,8 @@
 
 import mlx.core as mx
 
+from vauban._array import Array
+from vauban._forward import force_eval
 from vauban.measure._activations import _collect_per_prompt_activations
 from vauban.types import CausalLM, Tokenizer
 
@@ -49,8 +51,8 @@ def silhouette_scores(
 
 
 def _silhouette_score_layer(
-    group_a: mx.array,
-    group_b: mx.array,
+    group_a: Array,
+    group_b: Array,
 ) -> float:
     """Silhouette score for two groups at a single layer.
 
@@ -69,7 +71,7 @@ def _silhouette_score_layer(
 
     # Pairwise L2 distances within and between groups
     # Using ||x - y||^2 = ||x||^2 + ||y||^2 - 2 x·y
-    def _pairwise_dist(x: mx.array, y: mx.array) -> mx.array:
+    def _pairwise_dist(x: Array, y: Array) -> Array:
         x_sq = mx.sum(x * x, axis=1, keepdims=True)  # (n, 1)
         y_sq = mx.sum(y * y, axis=1, keepdims=True)  # (m, 1)
         cross = x @ y.T  # (n, m)
@@ -81,7 +83,7 @@ def _silhouette_score_layer(
     dist_bb = _pairwise_dist(group_b, group_b)  # (n_b, n_b)
     dist_ba = _pairwise_dist(group_b, group_a)  # (n_b, n_a)
 
-    mx.eval(dist_aa, dist_ab, dist_bb, dist_ba)
+    force_eval(dist_aa, dist_ab, dist_bb, dist_ba)
 
     total_s = 0.0
     total_n = n_a + n_b

@@ -6,10 +6,10 @@ from collections.abc import Callable
 from pathlib import Path
 
 import mlx.core as mx
-import mlx.nn as nn
 
+from vauban._array import Array
+from vauban._forward import embed_and_mask, extract_logits, force_eval, make_cache
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES, _judge_single
-from vauban.probe import _make_cache
 from vauban.types import (
     CausalLM,
     SurfaceComparison,
@@ -149,7 +149,7 @@ def scan(
     model: CausalLM,
     tokenizer: Tokenizer,
     prompts: list[SurfacePrompt],
-    direction: mx.array,
+    direction: Array,
     direction_layer: int,
     *,
     generate: bool = True,
@@ -276,7 +276,7 @@ def map_surface(
     model: CausalLM,
     tokenizer: Tokenizer,
     prompts: list[SurfacePrompt],
-    direction: mx.array,
+    direction: Array,
     direction_layer: int,
     *,
     generate: bool = True,
@@ -625,7 +625,7 @@ def _probe_with_messages(
     model: CausalLM,
     tokenizer: Tokenizer,
     messages: list[dict[str, str]],
-    direction: mx.array,
+    direction: Array,
 ) -> list[float]:
     """Compute per-layer projections for a full message list."""
     text = tokenizer.apply_chat_template(messages, tokenize=False)
@@ -635,16 +635,14 @@ def _probe_with_messages(
     token_ids = mx.array(tokenizer.encode(text))[None, :]
 
     transformer = model.model
-    h = transformer.embed_tokens(token_ids)
-    mask = nn.MultiHeadAttention.create_additive_causal_mask(h.shape[1])
-    mask = mask.astype(h.dtype)
+    h, mask = embed_and_mask(transformer, token_ids)
 
     projections: list[float] = []
     for layer in transformer.layers:
         h = layer(h, mask)
         last_token = h[0, -1, :]
         proj = mx.sum(last_token * direction)
-        mx.eval(proj)
+        force_eval(proj)
         projections.append(float(proj.item()))
     return projections
 
@@ -667,11 +665,11 @@ def _generate_with_messages(
     if eos_token_id is None:
         eos_token_id = getattr(tokenizer, "eos_token_id", None)
 
-    cache = _make_cache(model)
+    cache = make_cache(model)
     token_ids = mx.array([tokens])
     for _ in range(max_tokens):
         result = model(token_ids, cache=cache)  # type: ignore[call-non-callable]
-        logits = _extract_logits(result)
+        logits = extract_logits(result)
         next_token = int(mx.argmax(logits[:, -1, :], axis=-1).item())
         generated.append(next_token)
         if eos_token_id is not None and next_token == eos_token_id:
@@ -679,13 +677,6 @@ def _generate_with_messages(
         token_ids = mx.array([[next_token]])
 
     return tokenizer.decode(generated)
-
-
-def _extract_logits(result: mx.array | tuple[mx.array, ...]) -> mx.array:
-    """Extract logits from a model output tuple/bare tensor."""
-    if isinstance(result, tuple):
-        return result[0]
-    return result
 
 
 def _surface_cell_name(point: SurfacePoint) -> str:

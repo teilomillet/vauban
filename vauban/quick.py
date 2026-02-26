@@ -7,8 +7,7 @@ Provides one-liner wrappers around the core pipeline for Jupyter / REPL use.
 
 from pathlib import Path
 
-import mlx.core as mx
-
+from vauban._array import Array
 from vauban.dequantize import dequantize_model, is_quantized
 from vauban.geometry import DirectionGeometryResult
 from vauban.types import (
@@ -76,7 +75,7 @@ def probe_prompt(
     model: CausalLM,
     tokenizer: Tokenizer,
     prompt: str,
-    direction: DirectionResult | mx.array,
+    direction: DirectionResult | Array,
 ) -> ProbeResult:
     """Probe one prompt against a direction.
 
@@ -101,7 +100,7 @@ def steer_prompt(
     model: CausalLM,
     tokenizer: Tokenizer,
     prompt: str,
-    direction: DirectionResult | mx.array,
+    direction: DirectionResult | Array,
     alpha: float = 1.0,
     max_tokens: int = 100,
 ) -> SteerResult:
@@ -157,7 +156,7 @@ def abliterate(
 
     direction_result = measure_direction(model, tokenizer, harmful, harmless)
 
-    flat_weights: dict[str, mx.array] = dict(tree_flatten(model.parameters()))  # type: ignore[attr-defined]
+    flat_weights: dict[str, Array] = dict(tree_flatten(model.parameters()))  # type: ignore[attr-defined]
     target_layers = list(range(len(model.model.layers)))
 
     modified_weights = cut(
@@ -192,7 +191,7 @@ def compare(dir_a: str | Path, dir_b: str | Path) -> str:
 def scan(
     model: CausalLM,
     tokenizer: Tokenizer,
-    direction: DirectionResult | mx.array,
+    direction: DirectionResult | Array,
     direction_layer: int | None = None,
 ) -> SurfaceResult:
     """One-liner surface scan with bundled default prompts.
@@ -257,7 +256,7 @@ def evaluate(
 
 
 def analyze_geometry(
-    directions: dict[str, DirectionResult | mx.array],
+    directions: dict[str, DirectionResult | Array],
     independence_threshold: float = 0.1,
 ) -> DirectionGeometryResult:
     """Analyze geometric relationships between multiple directions.
@@ -274,7 +273,7 @@ def analyze_geometry(
     """
     from vauban.geometry import analyze_directions
 
-    raw: dict[str, mx.array] = {}
+    raw: dict[str, Array] = {}
     for name, d in directions.items():
         if isinstance(d, DirectionResult):
             raw[name] = d.direction

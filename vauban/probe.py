@@ -1,8 +1,9 @@
 """Probe activations and steer generation at runtime."""
 
 import mlx.core as mx
-import mlx.nn as nn
 
+from vauban._array import Array
+from vauban._forward import embed_and_mask, force_eval, lm_head_forward, make_cache
 from vauban.types import CausalLM, LayerCache, ProbeResult, SteerResult, Tokenizer
 
 
@@ -10,7 +11,7 @@ def probe(
     model: CausalLM,
     tokenizer: Tokenizer,
     prompt: str,
-    direction: mx.array,
+    direction: Array,
 ) -> ProbeResult:
     """Measure per-layer projection of activations onto a direction.
 
@@ -25,18 +26,14 @@ def probe(
     token_ids = mx.array(tokenizer.encode(text))[None, :]
 
     transformer = model.model
-    h = transformer.embed_tokens(token_ids)
-    mask = nn.MultiHeadAttention.create_additive_causal_mask(
-        h.shape[1],
-    )
-    mask = mask.astype(h.dtype)
+    h, mask = embed_and_mask(transformer, token_ids)
 
     projections: list[float] = []
     for layer in transformer.layers:
         h = layer(h, mask)
         last_token = h[0, -1, :]
         proj = mx.sum(last_token * direction)
-        mx.eval(proj)
+        force_eval(proj)
         projections.append(float(proj.item()))
 
     return ProbeResult(
@@ -50,7 +47,7 @@ def multi_probe(
     model: CausalLM,
     tokenizer: Tokenizer,
     prompt: str,
-    directions: dict[str, mx.array],
+    directions: dict[str, Array],
 ) -> dict[str, ProbeResult]:
     """Probe activations against multiple named directions."""
     return {
@@ -63,7 +60,7 @@ def steer(
     model: CausalLM,
     tokenizer: Tokenizer,
     prompt: str,
-    direction: mx.array,
+    direction: Array,
     layers: list[int],
     alpha: float = 1.0,
     max_tokens: int = 100,
@@ -80,7 +77,7 @@ def steer(
     token_ids = mx.array(tokenizer.encode(text))[None, :]
 
     generated: list[int] = []
-    cache = _make_cache(model)
+    cache = make_cache(model)
     proj_before_all: list[float] = []
     proj_after_all: list[float] = []
 
@@ -110,39 +107,21 @@ def steer(
     )
 
 
-def _make_cache(model: CausalLM) -> list[LayerCache]:
-    """Create a KV cache for the model.
-
-    Uses model.make_cache() if available (real mlx-lm and mock),
-    otherwise falls back to importing from mlx_lm.
-    """
-    if hasattr(model, "make_cache"):
-        return model.make_cache()  # type: ignore[no-any-return]
-    from mlx_lm.models.cache import make_prompt_cache
-
-    return make_prompt_cache(model)  # type: ignore[no-any-return]
-
-
 def _steered_forward(
     model: CausalLM,
-    token_ids: mx.array,
-    direction: mx.array,
+    token_ids: Array,
+    direction: Array,
     steer_layers: list[int],
     alpha: float,
     cache: list[LayerCache],
-) -> tuple[mx.array, list[float], list[float]]:
+) -> tuple[Array, list[float], list[float]]:
     """Forward pass with mid-layer steering.
 
     Returns (logits, projections_before, projections_after).
     Cache is mutated in-place.
     """
     transformer = model.model
-    h = transformer.embed_tokens(token_ids)
-
-    mask = nn.MultiHeadAttention.create_additive_causal_mask(
-        h.shape[1],
-    )
-    mask = mask.astype(h.dtype)
+    h, mask = embed_and_mask(transformer, token_ids)
 
     proj_before: list[float] = []
     proj_after: list[float] = []
@@ -154,7 +133,7 @@ def _steered_forward(
         if i in steer_set:
             last_token = h[0, -1, :]
             proj = mx.sum(last_token * direction)
-            mx.eval(proj)
+            force_eval(proj)
             proj_before.append(float(proj.item()))
 
             # Steer: remove direction from last token activations
@@ -166,16 +145,10 @@ def _steered_forward(
 
             last_after = h[0, -1, :]
             proj_a = mx.sum(last_after * direction)
-            mx.eval(proj_a)
+            force_eval(proj_a)
             proj_after.append(float(proj_a.item()))
 
     h = transformer.norm(h)
-    # Compute logits via the lm_head or tied embeddings
-    if hasattr(model, "lm_head"):
-        lm_head: nn.Module = model.lm_head  # type: ignore[attr-defined]
-        logits: mx.array = lm_head(h)
-    else:
-        logits = transformer.embed_tokens.as_linear(h)
-
-    mx.eval(logits)
+    logits = lm_head_forward(model, h)
+    force_eval(logits)
     return logits, proj_before, proj_after

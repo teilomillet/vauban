@@ -14,10 +14,11 @@ import mlx.core as mx
 import mlx.nn as nn
 from mlx.utils import tree_flatten
 
+from vauban._array import Array
+from vauban._forward import extract_logits, force_eval
 from vauban.cut import cut, sparsify_direction
 from vauban.evaluate import (
     DEFAULT_REFUSAL_PHRASES,
-    _extract_logits,
     _perplexity,
     _refusal_rate,
 )
@@ -78,7 +79,7 @@ def optimize(
 
     # Precompute baselines (once)
     model_module: nn.Module = model  # type: ignore[assignment]
-    original_weights: dict[str, mx.array] = {
+    original_weights: dict[str, Array] = {
         k: v
         for k, v in tree_flatten(model_module.parameters())
         if isinstance(v, mx.array)
@@ -225,17 +226,17 @@ def _precompute_logits(
     model: nn.Module,
     tokenizer: Tokenizer,
     prompts: list[str],
-) -> list[mx.array]:
+) -> list[Array]:
     """Run each prompt through the model once and store logits.
 
     Used as a KL baseline so we don't re-run the original model
     per trial.
     """
-    results: list[mx.array] = []
+    results: list[Array] = []
     for prompt in prompts:
         token_ids = mx.array(tokenizer.encode(prompt))[None, :]
-        logits = _extract_logits(model(token_ids))
-        mx.eval(logits)
+        logits = extract_logits(model(token_ids))
+        force_eval(logits)
         results.append(logits)
     return results
 
@@ -244,7 +245,7 @@ def _kl_from_precomputed(
     model: nn.Module,
     tokenizer: Tokenizer,
     prompts: list[str],
-    original_logits: list[mx.array],
+    original_logits: list[Array],
 ) -> float:
     """Compute KL divergence using precomputed original logits.
 
@@ -259,7 +260,7 @@ def _kl_from_precomputed(
 
     for prompt, orig_logits in zip(prompts, original_logits, strict=True):
         token_ids = mx.array(tokenizer.encode(prompt))[None, :]
-        mod_logits = _extract_logits(model(token_ids))
+        mod_logits = extract_logits(model(token_ids))
 
         p = mx.softmax(orig_logits, axis=-1)
         q = mx.softmax(mod_logits, axis=-1)
@@ -267,7 +268,7 @@ def _kl_from_precomputed(
         kl = p * (mx.log(p + 1e-10) - mx.log(q + 1e-10))
         kl_per_token = mx.sum(kl, axis=-1)
         mean_kl = mx.mean(kl_per_token)
-        mx.eval(mean_kl)
+        force_eval(mean_kl)
         total_kl += float(mean_kl.item())
         total_tokens += 1
 

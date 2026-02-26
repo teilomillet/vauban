@@ -12,10 +12,12 @@ from pathlib import Path
 
 import mlx.core as mx
 
+from vauban._array import Array
+
 
 def export_model(
     model_path: str,
-    weights: dict[str, mx.array],
+    weights: dict[str, Array],
     output_dir: str | Path,
 ) -> Path:
     """Export modified weights as a complete mlx-lm model directory.

@@ -10,10 +10,10 @@ Reference: arxiv.org/abs/2510.21057
 import math
 
 import mlx.core as mx
-import mlx.nn as nn
 
-from vauban.evaluate import DEFAULT_REFUSAL_PHRASES, _extract_logits
-from vauban.probe import _make_cache
+from vauban._array import Array
+from vauban._forward import embed_and_mask, extract_logits, force_eval, make_cache
+from vauban.evaluate import DEFAULT_REFUSAL_PHRASES
 from vauban.types import (
     CausalLM,
     SICConfig,
@@ -28,7 +28,7 @@ def calibrate_threshold(
     tokenizer: Tokenizer,
     clean_prompts: list[str],
     config: SICConfig,
-    direction: mx.array | None,
+    direction: Array | None,
     target_layer: int,
 ) -> float:
     """Auto-calibrate the detection threshold from known-clean prompts.
@@ -68,7 +68,7 @@ def sic(
     tokenizer: Tokenizer,
     prompts: list[str],
     config: SICConfig,
-    direction: mx.array | None = None,
+    direction: Array | None = None,
     layer_index: int = 0,
     calibration_prompts: list[str] | None = None,
 ) -> SICResult:
@@ -161,7 +161,7 @@ def sic_single(
     tokenizer: Tokenizer,
     prompt: str,
     config: SICConfig,
-    direction: mx.array | None = None,
+    direction: Array | None = None,
     layer_index: int = 0,
 ) -> SICPromptResult:
     """Run SIC sanitization on a single prompt.
@@ -193,7 +193,7 @@ def _sanitize_prompt(
     tokenizer: Tokenizer,
     prompt: str,
     config: SICConfig,
-    direction: mx.array | None,
+    direction: Array | None,
     target_layer: int,
 ) -> SICPromptResult:
     """Iterative sanitization loop for a single prompt.
@@ -251,7 +251,7 @@ def _detect(
     tokenizer: Tokenizer,
     prompt: str,
     config: SICConfig,
-    direction: mx.array | None,
+    direction: Array | None,
     target_layer: int,
 ) -> float:
     """Dispatch to direction or generation detection."""
@@ -269,7 +269,7 @@ def _detect_adversarial_direction(
     model: CausalLM,
     tokenizer: Tokenizer,
     prompt: str,
-    direction: mx.array,
+    direction: Array,
     target_layer: int,
 ) -> float:
     """Detect adversarial content via refusal direction projection.
@@ -289,22 +289,20 @@ def _detect_adversarial_direction(
     token_ids = mx.array(tokenizer.encode(text))[None, :]
 
     transformer = model.model
-    h = transformer.embed_tokens(token_ids)
-    mask = nn.MultiHeadAttention.create_additive_causal_mask(h.shape[1])
-    mask = mask.astype(h.dtype)
+    h, mask = embed_and_mask(transformer, token_ids)
 
     for i, layer in enumerate(transformer.layers):
         h = layer(h, mask)
         if i == target_layer:
             last_token = h[0, -1, :]
             proj = mx.sum(last_token * direction)
-            mx.eval(proj)
+            force_eval(proj)
             return float(proj.item())
 
     # Fallback: if target_layer exceeds layer count, use last layer
     last_token = h[0, -1, :]
     proj = mx.sum(last_token * direction)
-    mx.eval(proj)
+    force_eval(proj)
     return float(proj.item())
 
 
@@ -370,12 +368,12 @@ def _generate_with_messages(
 
     eos_token_id: int | None = getattr(tokenizer, "eos_token_id", None)
 
-    cache = _make_cache(model)
+    cache = make_cache(model)
     token_ids = mx.array([tokens])
 
     for _ in range(max_tokens):
         result = model(token_ids, cache=cache)  # type: ignore[call-non-callable]
-        logits = _extract_logits(result)
+        logits = extract_logits(result)
         next_token = int(mx.argmax(logits[:, -1, :], axis=-1).item())
         generated.append(next_token)
         if eos_token_id is not None and next_token == eos_token_id:

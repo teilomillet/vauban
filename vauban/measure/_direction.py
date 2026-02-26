@@ -2,14 +2,16 @@
 
 import mlx.core as mx
 
+from vauban._array import Array
+from vauban._forward import force_eval
 from vauban.measure._activations import _clip_activation, _forward_collect
 from vauban.types import CausalLM, Tokenizer
 
 
 def _best_direction(
-    harmful_acts: list[mx.array],
-    harmless_acts: list[mx.array],
-) -> tuple[mx.array, int, list[float]]:
+    harmful_acts: list[Array],
+    harmless_acts: list[Array],
+) -> tuple[Array, int, list[float]]:
     """Find the best refusal direction across layers.
 
     Computes difference-in-means at each layer, normalizes, and selects
@@ -42,7 +44,7 @@ def _best_direction(
     # Recompute best direction
     best_diff = harmful_acts[best_layer] - harmless_acts[best_layer]
     best_dir = best_diff / (mx.linalg.norm(best_diff) + 1e-8)
-    mx.eval(best_dir)
+    force_eval(best_dir)
 
     return best_dir, best_layer, cosine_scores
 
@@ -113,7 +115,7 @@ def _collect_activations_at_instruction_end(
     tokenizer: Tokenizer,
     prompts: list[str],
     clip_quantile: float = 0.0,
-) -> list[mx.array]:
+) -> list[Array]:
     """Collect per-layer mean activations at the instruction-final token.
 
     Like ``_collect_activations`` but computes ``find_instruction_boundary``
@@ -128,7 +130,7 @@ def _collect_activations_at_instruction_end(
 
     Returns a list of length num_layers, each element shape (d_model,).
     """
-    means: list[mx.array] | None = None
+    means: list[Array] | None = None
 
     for count, prompt in enumerate(prompts, start=1):
         messages = [{"role": "user", "content": prompt}]
@@ -153,21 +155,21 @@ def _collect_activations_at_instruction_end(
                 means[i] = means[i] + delta / count
 
         if count % 16 == 0 and means is not None:
-            mx.eval(*means)
+            force_eval(*means)
 
     if means is None:
         msg = "No prompts provided for activation collection"
         raise ValueError(msg)
 
-    mx.eval(*means)
+    force_eval(*means)
     return means
 
 
 def _cosine_separation(
-    harmful_mean: mx.array,
-    harmless_mean: mx.array,
-    direction: mx.array,
-) -> mx.array:
+    harmful_mean: Array,
+    harmless_mean: Array,
+    direction: Array,
+) -> Array:
     """Cosine separation: projection difference onto direction."""
     proj_harmful = mx.sum(harmful_mean * direction)
     proj_harmless = mx.sum(harmless_mean * direction)

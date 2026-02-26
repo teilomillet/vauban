@@ -4,15 +4,18 @@ from pathlib import Path
 
 import mlx.core as mx
 
+from vauban._array import Array
+from vauban._forward import force_eval
+
 
 def cut(
-    weights: dict[str, mx.array],
-    direction: mx.array,
+    weights: dict[str, Array],
+    direction: Array,
     target_layers: list[int],
     alpha: float = 1.0,
     norm_preserve: bool = False,
     layer_weights: list[float] | None = None,
-) -> dict[str, mx.array]:
+) -> dict[str, Array]:
     """Remove a direction from model weights via rank-1 projection.
 
     Modifies o_proj.weight and down_proj.weight for the specified layers.
@@ -39,20 +42,20 @@ def cut(
                 result[key] = _orthogonalize_norm_preserve(w, direction, a)
             else:
                 result[key] = _orthogonalize_matrix(w, direction, a)
-            mx.eval(result[key])
+            force_eval(result[key])
 
     return result
 
 
 def cut_biprojected(
-    weights: dict[str, mx.array],
-    refusal_direction: mx.array,
-    harmless_direction: mx.array,
+    weights: dict[str, Array],
+    refusal_direction: Array,
+    harmless_direction: Array,
     target_layers: list[int],
     alpha: float = 1.0,
     norm_preserve: bool = False,
     layer_weights: list[float] | None = None,
-) -> dict[str, mx.array]:
+) -> dict[str, Array]:
     """Remove a biprojected direction from model weights.
 
     First orthogonalizes the refusal direction against the harmless
@@ -65,14 +68,14 @@ def cut_biprojected(
 
 
 def cut_false_refusal_ortho(
-    weights: dict[str, mx.array],
-    refusal_direction: mx.array,
-    false_refusal_direction: mx.array,
+    weights: dict[str, Array],
+    refusal_direction: Array,
+    false_refusal_direction: Array,
     target_layers: list[int],
     alpha: float = 1.0,
     norm_preserve: bool = False,
     layer_weights: list[float] | None = None,
-) -> dict[str, mx.array]:
+) -> dict[str, Array]:
     """Remove a refusal direction orthogonalized against false refusal.
 
     First orthogonalizes the refusal direction against the false refusal
@@ -96,10 +99,10 @@ def cut_false_refusal_ortho(
 
 
 def _orthogonalize_matrix(
-    w: mx.array,
-    direction: mx.array,
+    w: Array,
+    direction: Array,
     alpha: float,
-) -> mx.array:
+) -> Array:
     """Remove a direction from the output space of a weight matrix.
 
     For 2D weights (d_model, in_features):
@@ -123,10 +126,10 @@ def _orthogonalize_matrix(
 
 
 def _orthogonalize_norm_preserve(
-    w: mx.array,
-    direction: mx.array,
+    w: Array,
+    direction: Array,
     alpha: float,
-) -> mx.array:
+) -> Array:
     """Remove a direction and rescale rows to preserve original norms.
 
     Uses last axis for norm computation, works for both 2D and 3D.
@@ -138,9 +141,9 @@ def _orthogonalize_norm_preserve(
 
 
 def _biprojected_direction(
-    refusal_dir: mx.array,
-    harmless_dir: mx.array,
-) -> mx.array:
+    refusal_dir: Array,
+    harmless_dir: Array,
+) -> Array:
     """Gram-Schmidt: orthogonalize refusal direction against harmless direction."""
     proj = mx.sum(refusal_dir * harmless_dir) * harmless_dir
     orthogonal = refusal_dir - proj
@@ -175,13 +178,13 @@ def target_weight_keys(
 
 
 def cut_subspace(
-    weights: dict[str, mx.array],
-    basis: mx.array,
+    weights: dict[str, Array],
+    basis: Array,
     target_layers: list[int],
     alpha: float = 1.0,
     norm_preserve: bool = False,
     layer_weights: list[float] | None = None,
-) -> dict[str, mx.array]:
+) -> dict[str, Array]:
     """Remove a multi-dimensional subspace from model weights.
 
     Iterates over basis vectors and applies rank-1 projection removal
@@ -214,13 +217,13 @@ def cut_subspace(
                 new_norms = mx.linalg.norm(w, axis=-1, keepdims=True)
                 w = w * (original_norms / (new_norms + 1e-8))
 
-            mx.eval(w)
+            force_eval(w)
             result[key] = w
 
     return result
 
 
-def sparsify_direction(direction: mx.array, sparsity: float) -> mx.array:
+def sparsify_direction(direction: Array, sparsity: float) -> Array:
     """Zero out low-magnitude components of a direction vector.
 
     Keeps only the top ``(1 - sparsity)`` fraction of components by
@@ -247,10 +250,10 @@ def sparsify_direction(direction: mx.array, sparsity: float) -> mx.array:
     # Find the k-th largest value as threshold
     sorted_vals = mx.sort(abs_vals)
     threshold = sorted_vals[-k]
-    mx.eval(threshold)
+    force_eval(threshold)
     mask = abs_vals >= threshold
     result = direction * mask
-    mx.eval(result)
+    force_eval(result)
     return result
 
 
@@ -288,7 +291,7 @@ def _keys_for_layer(all_keys: list[str], layer_idx: int) -> list[str]:
 
 
 def save_weights(
-    weights: dict[str, mx.array],
+    weights: dict[str, Array],
     output_path: str | Path,
 ) -> Path:
     """Save weights to a safetensors file."""

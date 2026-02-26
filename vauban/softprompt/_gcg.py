@@ -4,6 +4,8 @@ import random
 
 import mlx.core as mx
 
+from vauban._array import Array
+from vauban._forward import force_eval
 from vauban.softprompt._generation import _evaluate_attack
 from vauban.softprompt._loss import (
     _compute_defensive_loss,
@@ -29,7 +31,7 @@ def _gcg_attack(
     tokenizer: Tokenizer,
     prompts: list[str],
     config: SoftPromptConfig,
-    direction: mx.array | None,
+    direction: Array | None,
     ref_model: CausalLM | None = None,
 ) -> SoftPromptResult:
     """GCG (Greedy Coordinate Gradient) discrete token search.
@@ -43,7 +45,7 @@ def _gcg_attack(
     embed_matrix = transformer.embed_tokens.weight
 
     target_ids = _encode_targets(tokenizer, config.target_prefixes)
-    mx.eval(target_ids)
+    force_eval(target_ids)
 
     # Pre-encode all prompts
     effective_prompts = prompts if prompts else ["Hello"]
@@ -54,10 +56,10 @@ def _gcg_attack(
         set(config.direction_layers) if config.direction_layers is not None
         else None
     )
-    refusal_ids: mx.array | None = None
+    refusal_ids: Array | None = None
     if config.loss_mode in ("untargeted", "defensive"):
         refusal_ids = _encode_refusal_tokens(tokenizer)
-        mx.eval(refusal_ids)
+        force_eval(refusal_ids)
 
     # Pre-compute vocab mask and EOS token ID
     vocab_mask = _build_vocab_mask(
@@ -67,7 +69,7 @@ def _gcg_attack(
 
     # Build list of allowed token indices for constrained random init
     if vocab_mask is not None:
-        mx.eval(vocab_mask)
+        force_eval(vocab_mask)
         allowed_indices: list[int] = [
             i for i in range(vocab_size) if bool(vocab_mask[i].item())
         ]
@@ -95,7 +97,7 @@ def _gcg_attack(
             # Get embeddings for current tokens
             token_array = mx.array(current_ids)[None, :]
             soft_embeds = transformer.embed_tokens(token_array)
-            mx.eval(soft_embeds)
+            force_eval(soft_embeds)
 
             # Select prompts for this step
             if config.prompt_strategy == "worst_k":
@@ -123,9 +125,9 @@ def _gcg_attack(
 
             for batch in batches:
                 def loss_fn(
-                    embeds: mx.array,
-                    _sel: list[mx.array] = batch,
-                ) -> mx.array:
+                    embeds: Array,
+                    _sel: list[Array] = batch,
+                ) -> Array:
                     total = mx.array(0.0)
                     for pid in _sel:
                         if (
@@ -169,7 +171,7 @@ def _gcg_attack(
                 batch_loss, batch_grad = mx.value_and_grad(loss_fn)(
                     soft_embeds,
                 )
-                mx.eval(batch_loss, batch_grad)
+                force_eval(batch_loss, batch_grad)
                 total_loss += float(batch_loss.item())
                 accum_grad = accum_grad + batch_grad
 
@@ -198,13 +200,13 @@ def _gcg_attack(
             # Apply vocab mask to exclude disallowed tokens
             if vocab_mask is not None:
                 scores = mx.where(vocab_mask, scores, mx.array(-1e10))
-            mx.eval(scores)
+            force_eval(scores)
 
             # Top-k per position
             effective_k = min(config.top_k, vocab_size)
             sorted_indices = mx.argsort(-scores, axis=-1)  # descending order
             top_indices = sorted_indices[:, :effective_k]  # (n_tokens, top_k)
-            mx.eval(top_indices)
+            force_eval(top_indices)
 
             # Generate batch_size candidates
             candidates: list[list[int]] = []
@@ -260,7 +262,7 @@ def _gcg_attack(
                             ref_model, config.kl_ref_weight,
                         )
                 cand_avg = cand_total / len(selected_ids)
-                mx.eval(cand_avg)
+                force_eval(cand_avg)
                 candidate_losses.append(float(cand_avg.item()))
 
             best_candidate_idx = candidate_losses.index(min(candidate_losses))
@@ -276,7 +278,7 @@ def _gcg_attack(
     current_ids = overall_best_ids
     final_token_array = mx.array(current_ids)[None, :]
     final_embeds = transformer.embed_tokens(final_token_array)
-    mx.eval(final_embeds)
+    force_eval(final_embeds)
 
     # Compute per-prompt losses and accessibility score
     per_prompt_losses = _compute_per_prompt_losses(

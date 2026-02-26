@@ -5,6 +5,8 @@ abliteration resistance testing. Composes existing measure/cut/evaluate
 building blocks into a single ``detect()`` entry point.
 """
 
+from typing import TYPE_CHECKING
+
 import mlx.core as mx
 import mlx.nn as nn
 from mlx.utils import tree_flatten
@@ -24,6 +26,9 @@ from vauban.types import (
     DetectResult,
     Tokenizer,
 )
+
+if TYPE_CHECKING:
+    from vauban._array import Array
 
 
 def detect(
@@ -188,7 +193,7 @@ def _abliteration_layer(
     # Copy weights and apply test cut
     # Access nn.Module methods via the concrete model object
     model_module: nn.Module = model  # type: ignore[assignment]
-    flat_weights: dict[str, mx.array] = {
+    flat_weights: dict[str, Array] = {
         k: v for k, v in tree_flatten(model_module.parameters())
         if isinstance(v, mx.array)
     }

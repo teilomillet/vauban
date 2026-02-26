@@ -10,6 +10,8 @@ with their float equivalents before any weight modification.
 import mlx.core as mx
 import mlx.nn as nn
 
+from vauban._forward import force_eval
+
 
 def is_quantized(model: nn.Module) -> bool:
     """Check if a model contains any quantized parameters.
@@ -89,7 +91,7 @@ def _dequantize_linear(child: nn.QuantizedLinear) -> nn.Linear:
     linear.weight = w
     if has_bias:
         linear.bias = child.bias
-    mx.eval(linear.parameters())
+    force_eval(linear.parameters())
     return linear
 
 
@@ -115,5 +117,5 @@ def _dequantize_switch(
     switch.weight = w
     if has_bias:
         switch.bias = child.bias
-    mx.eval(switch.parameters())
+    force_eval(switch.parameters())
     return switch

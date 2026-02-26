@@ -6,6 +6,8 @@ Extracts safety directions by SVD of the weight difference
 
 import mlx.core as mx
 
+from vauban._array import Array
+from vauban._forward import force_eval, svd_stable
 from vauban.types import CausalLM, DiffResult
 
 
@@ -37,14 +39,14 @@ def measure_diff(
     aligned_layers = aligned_model.model.layers
     n_layers = len(base_layers)
 
-    per_layer_bases: list[mx.array] = []
+    per_layer_bases: list[Array] = []
     per_layer_singular_values: list[list[float]] = []
     per_layer_explained: list[float] = []
     d_model_detected = 0
 
     for i in range(n_layers):
         # Collect (singular_value, left_singular_vector) pairs across projs
-        sv_vec_pairs: list[tuple[float, mx.array]] = []
+        sv_vec_pairs: list[tuple[float, Array]] = []
         total_sq_sum = 0.0
 
         for proj_name in ("o_proj", "down_proj"):
@@ -53,8 +55,8 @@ def measure_diff(
             base_mlp = getattr(base_layers[i], "mlp", None)
             aligned_mlp = getattr(aligned_layers[i], "mlp", None)
 
-            base_w: mx.array | None = None
-            aligned_w: mx.array | None = None
+            base_w: Array | None = None
+            aligned_w: Array | None = None
 
             if proj_name == "o_proj" and base_attn and aligned_attn:
                 base_w = _get_weight(base_attn, proj_name)
@@ -74,8 +76,8 @@ def measure_diff(
                 diff = diff.reshape(n_experts * out_dim, in_dim)
 
             # SVD on CPU for numerical stability
-            u, s, _vt = mx.linalg.svd(diff, stream=mx.cpu)  # type: ignore[arg-type]
-            mx.eval(u, s)
+            u, s, _vt = svd_stable(diff)
+            force_eval(u, s)
 
             # Track d_model from o_proj (which has shape d_model x d_model)
             if proj_name == "o_proj" and d_model_detected == 0:
@@ -101,7 +103,7 @@ def measure_diff(
         vectors = [vec for _, vec in selected]
 
         # Normalize each vector to unit length
-        normalized: list[mx.array] = []
+        normalized: list[Array] = []
         for vec in vectors:
             norm = float(mx.linalg.norm(vec).item())
             if norm > 1e-8:
@@ -171,7 +173,7 @@ def measure_diff(
 def _get_weight(
     module: object,
     attr_name: str,
-) -> mx.array | None:
+) -> Array | None:
     """Safely retrieve a weight matrix from a module's sub-module."""
     sub = getattr(module, attr_name, None)
     if sub is None:
