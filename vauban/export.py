@@ -9,10 +9,18 @@ that ``mlx_lm.load()`` can open directly.
 
 import shutil
 from pathlib import Path
-
-import mlx.core as mx
+from typing import TYPE_CHECKING
 
 from vauban._array import Array
+
+if TYPE_CHECKING:
+    from vauban._backend import get_backend as _get_backend
+
+    _BACKEND = _get_backend()
+else:
+    from vauban._backend import get_backend
+
+    _BACKEND = get_backend()
 
 
 def export_model(
@@ -46,9 +54,28 @@ def export_model(
             shutil.copy2(src_file, output / src_file.name)
 
     # Write the modified weights
-    mx.save_safetensors(str(output / "model.safetensors"), weights)
+    _save_weights(output / "model.safetensors", weights)
 
     return output
+
+
+if TYPE_CHECKING or _BACKEND == "mlx":
+    def _save_weights(path: Path, weights: dict[str, Array]) -> None:
+        """Save weight dict to safetensors using MLX."""
+        import mlx.core as mx
+
+        mx.save_safetensors(str(path), weights)
+
+elif _BACKEND == "torch":
+    def _save_weights(path: Path, weights: dict[str, Array]) -> None:
+        """Save weight dict to safetensors (PyTorch — not yet implemented)."""
+        raise NotImplementedError(
+            "PyTorch weight saving is not yet implemented."
+        )
+
+else:
+    msg = f"Unknown backend: {_BACKEND!r}"
+    raise ValueError(msg)
 
 
 def _resolve_source_dir(model_path: str) -> Path:

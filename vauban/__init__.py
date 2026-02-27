@@ -773,9 +773,9 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
     import time
 
     import mlx.core as mx
-    import mlx_lm
 
     from vauban._forward import force_eval
+    from vauban._model_io import load_model
 
     config = context.config
     assert config.softprompt is not None
@@ -801,7 +801,7 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
 
     ref_model: object | None = None
     if config.softprompt.ref_model is not None:
-        ref_model, _ = mlx_lm.load(config.softprompt.ref_model)  # type: ignore[assignment]
+        ref_model, _ = load_model(config.softprompt.ref_model)
         if is_quantized(ref_model):
             dequantize_model(ref_model)
 
@@ -829,7 +829,7 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
 
         transfer_results: list[TransferEvalResult] = []
         for transfer_model_id in config.softprompt.transfer_models:
-            t_model, _ = mlx_lm.load(transfer_model_id)  # type: ignore[assignment]
+            t_model, _ = load_model(transfer_model_id)
             if is_quantized(t_model):
                 dequantize_model(t_model)
             t_token_array = mx.array(transfer_token_ids)[None, :]
@@ -918,8 +918,7 @@ def run(config_path: str | Path) -> None:
     import json
     import time
 
-    import mlx_lm
-    from mlx.utils import tree_flatten
+    from vauban._model_io import load_model
 
     config = load_config(config_path)
     v = config.verbose
@@ -929,7 +928,7 @@ def run(config_path: str | Path) -> None:
         f"Loading model {config.model_path}",
         verbose=v, elapsed=time.monotonic() - t0,
     )
-    model, tokenizer = mlx_lm.load(config.model_path)  # type: ignore[invalid-assignment]
+    model, tokenizer = load_model(config.model_path)
 
     # Auto-dequantize if model has quantized weights
     if is_quantized(model):
@@ -969,7 +968,7 @@ def run(config_path: str | Path) -> None:
             "Running defense detection",
             verbose=v, elapsed=time.monotonic() - t0,
         )
-        detect_result = detect(model, tokenizer, harmful, harmless, config.detect)  # type: ignore[arg-type]
+        detect_result = detect(model, tokenizer, harmful, harmless, config.detect)
         report_path = config.output_dir / "detect_report.json"
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(json.dumps(_detect_to_dict(detect_result), indent=2))
@@ -987,7 +986,7 @@ def run(config_path: str | Path) -> None:
     )
     if config.measure.mode == "subspace":
         subspace_result = measure_subspace(
-            model, tokenizer, harmful, harmless,  # type: ignore[arg-type]
+            model, tokenizer, harmful, harmless,
             config.measure.top_k, clip_q,
         )
     elif config.measure.mode == "diff":
@@ -996,7 +995,7 @@ def run(config_path: str | Path) -> None:
             f"Loading base model for diff: {config.measure.diff_model}",
             verbose=v, elapsed=time.monotonic() - t0,
         )
-        base_model, _ = mlx_lm.load(config.measure.diff_model)  # type: ignore[assignment]
+        base_model, _ = load_model(config.measure.diff_model)
         if is_quantized(base_model):
             _log(
                 "Dequantizing base model weights",
@@ -1014,7 +1013,7 @@ def run(config_path: str | Path) -> None:
         cosine_scores = []
     elif config.measure.mode == "dbdi":
         dbdi_result = measure_dbdi(
-            model, tokenizer, harmful, harmless, clip_q,  # type: ignore[arg-type]
+            model, tokenizer, harmful, harmless, clip_q,
         )
         # Map DBDI result to direction_result based on dbdi_target
         if config.cut.dbdi_target in ("red", "both"):
@@ -1039,7 +1038,7 @@ def run(config_path: str | Path) -> None:
             cosine_scores = dbdi_result.hdd_cosine_scores
     else:
         direction_result = measure(
-            model, tokenizer, harmful, harmless, clip_q,  # type: ignore[arg-type]
+            model, tokenizer, harmful, harmless, clip_q,
         )
         cosine_scores = direction_result.cosine_scores
 
@@ -1056,12 +1055,12 @@ def run(config_path: str | Path) -> None:
                 f"Testing direction transfer on {transfer_model_id}",
                 verbose=v, elapsed=time.monotonic() - t0,
             )
-            t_model, _ = mlx_lm.load(transfer_model_id)  # type: ignore[assignment]
+            t_model, _ = load_model(transfer_model_id)
             if is_quantized(t_model):
                 dequantize_model(t_model)
             transfer_result = check_direction_transfer(
                 t_model,
-                tokenizer,  # type: ignore[arg-type]
+                tokenizer,
                 direction_result.direction,
                 harmful,
                 harmless,
@@ -1116,6 +1115,8 @@ def run(config_path: str | Path) -> None:
         target_layers = list(range(len(model.model.layers)))
 
     # Flatten weights for cut
+    from mlx.utils import tree_flatten
+
     flat_weights: dict[str, object] = dict(tree_flatten(model.parameters()))
 
     # Apply optional sparsification to direction
@@ -1142,7 +1143,7 @@ def run(config_path: str | Path) -> None:
 
         borderline = resolve_prompts(config.borderline_path)
         false_refusal_result = measure(
-            model, tokenizer, borderline, harmless, clip_q,  # type: ignore[arg-type]
+            model, tokenizer, borderline, harmless, clip_q,
         )
         ortho_dir = _biprojected_direction(
             direction_result.direction, false_refusal_result.direction,
@@ -1184,7 +1185,7 @@ def run(config_path: str | Path) -> None:
         surface_prompts = load_surface_prompts(surface_prompts_path)
         surface_before = map_surface(
             model,
-            tokenizer,  # type: ignore[arg-type]
+            tokenizer,
             surface_prompts,
             surface_direction,
             surface_layer,
@@ -1213,7 +1214,7 @@ def run(config_path: str | Path) -> None:
         )
     elif config.cut.biprojected:
         assert direction_result is not None
-        harmless_acts = measure(model, tokenizer, harmless, harmful, clip_q)  # type: ignore[arg-type]
+        harmless_acts = measure(model, tokenizer, harmless, harmful, clip_q)
         modified_weights = cut_biprojected(
             flat_weights,  # type: ignore[arg-type]
             direction_result.direction,
@@ -1266,7 +1267,7 @@ def run(config_path: str | Path) -> None:
     )
     modified_model = None
     if needs_modified:
-        modified_model, _ = mlx_lm.load(config.model_path)  # type: ignore[invalid-assignment]
+        modified_model, _ = load_model(config.model_path)
         if is_quantized(modified_model):
             dequantize_model(modified_model)
         modified_model.load_weights(list(modified_weights.items()))
@@ -1283,7 +1284,7 @@ def run(config_path: str | Path) -> None:
         assert config.surface is not None
         surface_after = map_surface(
             modified_model,
-            tokenizer,  # type: ignore[arg-type]
+            tokenizer,
             surface_prompts,
             surface_direction,
             surface_layer,

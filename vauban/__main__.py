@@ -194,6 +194,26 @@ def _run_diff(args: list[str]) -> None:
     raise SystemExit(0)
 
 
+def _set_backend_from_config(path: str) -> None:
+    """Read backend from TOML and set VAUBAN_BACKEND env var.
+
+    Called before ``import vauban`` so the env var is visible at import time.
+    Errors here are intentionally swallowed — they will surface later in
+    ``load_config()``.
+    """
+    import os
+    import tomllib
+
+    try:
+        with open(path, "rb") as f:
+            raw = tomllib.load(f)
+        backend = raw.get("backend", "mlx")
+        if isinstance(backend, str):
+            os.environ["VAUBAN_BACKEND"] = backend
+    except Exception:
+        pass  # Fall through — config errors will surface in load_config()
+
+
 def main() -> None:
     """Parse sys.argv and delegate to vauban.run() or vauban.validate()."""
     args = sys.argv[1:]
@@ -262,6 +282,9 @@ def main() -> None:
         raise SystemExit(1)
 
     config_path = args[0]
+
+    # Peek at backend before importing vauban (sets env var for import-time dispatch)
+    _set_backend_from_config(config_path)
 
     import vauban
 

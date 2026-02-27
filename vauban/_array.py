@@ -1,6 +1,25 @@
 """Array type alias — single point of change for tensor backend."""
 
-import mlx.core as mx
+from typing import TYPE_CHECKING
 
-Array = mx.array
-"""Tensor type used throughout vauban. Currently mx.array (MLX)."""
+if TYPE_CHECKING:
+    import mlx.core as mx
+
+    Array = mx.array
+    """Tensor type used throughout vauban. Currently mx.array (MLX)."""
+else:
+    from vauban._backend import get_backend
+
+    _BACKEND = get_backend()
+
+    if _BACKEND == "mlx":
+        import mlx.core as mx
+
+        Array = mx.array
+    elif _BACKEND == "torch":
+        import torch
+
+        Array = torch.Tensor
+    else:
+        msg = f"Unknown backend: {_BACKEND!r}"
+        raise ValueError(msg)

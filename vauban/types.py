@@ -803,6 +803,7 @@ class PipelineConfig:
     model_path: str
     harmful_path: Path | DatasetRef
     harmless_path: Path | DatasetRef
+    backend: str = "mlx"
     cut: CutConfig = field(default_factory=CutConfig)
     measure: MeasureConfig = field(default_factory=MeasureConfig)
     surface: SurfaceConfig | None = None

@@ -34,12 +34,12 @@ def load(
     Returns:
         (model, tokenizer) tuple ready for measure/probe/steer.
     """
-    import mlx_lm
+    from vauban._model_io import load_model
 
-    model, tokenizer = mlx_lm.load(model_path)  # type: ignore[invalid-assignment]
+    model, tokenizer = load_model(model_path)
     if is_quantized(model):
         dequantize_model(model)
-    return model, tokenizer  # type: ignore[return-value]
+    return model, tokenizer
 
 
 def measure_direction(
