@@ -8,6 +8,7 @@ building blocks into a single ``detect()`` entry point.
 from typing import TYPE_CHECKING
 
 from vauban import _ops as ops
+from vauban._forward import get_transformer
 from vauban.cut import cut
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES, _generate, _refusal_rate
 from vauban.measure import (
@@ -192,7 +193,7 @@ def _abliteration_layer(
         k: v for k, v in ops.tree_flatten(model.parameters())  # type: ignore[unresolved-attribute]
         if isinstance(v, ops.array_type)
     }
-    all_layers = list(range(len(model.model.layers)))
+    all_layers = list(range(len(get_transformer(model).layers)))
     modified_weights = cut(
         flat_weights, direction_result.direction, all_layers, config.alpha,
     )

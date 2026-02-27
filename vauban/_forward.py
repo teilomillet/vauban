@@ -21,8 +21,11 @@ else:
 
 
 def get_transformer(model: CausalLM) -> TransformerModel:
-    """Access the inner transformer (model.model)."""
-    return model.model
+    """Access the inner transformer, auto-detecting architecture."""
+    from vauban._arch import get_inner_model, normalize_transformer
+
+    inner = get_inner_model(model)
+    return normalize_transformer(inner)  # type: ignore[return-value]
 
 
 if TYPE_CHECKING or _BACKEND == "mlx":
@@ -46,7 +49,7 @@ if TYPE_CHECKING or _BACKEND == "mlx":
         if hasattr(model, "lm_head"):
             lm_head: nn.Module = model.lm_head  # type: ignore[attr-defined]
             return lm_head(h)
-        return model.model.embed_tokens.as_linear(h)
+        return get_transformer(model).embed_tokens.as_linear(h)
 
     def extract_logits(result: Array | tuple[Array, ...]) -> Array:
         """Extract logits tensor from model output (handles tuple or bare array)."""
@@ -123,7 +126,7 @@ elif _BACKEND == "torch":
         # Tied embeddings: project through embedding weight matrix
         import torch.nn.functional as _f
 
-        return _f.linear(h, model.model.embed_tokens.weight)
+        return _f.linear(h, get_transformer(model).embed_tokens.weight)  # type: ignore[arg-type]
 
     def extract_logits(result: Array | tuple[Array, ...]) -> Array:
         """Extract logits tensor from model output."""

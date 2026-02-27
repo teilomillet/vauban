@@ -543,7 +543,10 @@ def _run_steer_mode(context: _EarlyModeContext) -> None:
         verbose=v,
         elapsed=time.monotonic() - context.t0,
     )
-    steer_layers = config.steer.layers or list(range(len(model.model.layers)))
+    from vauban._forward import get_transformer as _get_transformer
+
+    n_layers = len(_get_transformer(model).layers)
+    steer_layers = config.steer.layers or list(range(n_layers))
     steer_results = [
         steer(
             model,
@@ -618,7 +621,9 @@ def _run_cast_mode(context: _EarlyModeContext) -> None:
             )
             raise ValueError(msg)
 
-    cast_layers = config.cast.layers or list(range(len(model.model.layers)))
+    from vauban._forward import get_transformer as _get_transformer
+
+    cast_layers = config.cast.layers or list(range(len(_get_transformer(model).layers)))
     cast_results = [
         cast_generate(
             model,
@@ -775,6 +780,7 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
 
     from vauban import _ops as ops
     from vauban._forward import force_eval
+    from vauban._forward import get_transformer as _get_transformer
     from vauban._model_io import load_model
 
     config = context.config
@@ -822,7 +828,7 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
         elif sp_result.embeddings is not None:
             transfer_token_ids = _project_to_tokens(
                 sp_result.embeddings,
-                model.model.embed_tokens.weight,
+                _get_transformer(model).embed_tokens.weight,
             )
         else:
             transfer_token_ids = []
@@ -833,7 +839,7 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
             if is_quantized(t_model):
                 dequantize_model(t_model)
             t_token_array = ops.array(transfer_token_ids)[None, :]
-            t_embeds = t_model.model.embed_tokens(t_token_array)
+            t_embeds = _get_transformer(t_model).embed_tokens(t_token_array)
             force_eval(t_embeds)
             t_success, t_responses = _evaluate_attack(
                 t_model,
@@ -1112,7 +1118,9 @@ def run(config_path: str | Path) -> None:
         )
     else:
         # Default: all layers
-        target_layers = list(range(len(model.model.layers)))
+        from vauban._forward import get_transformer as _get_transformer
+
+        target_layers = list(range(len(_get_transformer(model).layers)))
 
     # Flatten weights for cut
     from vauban._ops import tree_flatten

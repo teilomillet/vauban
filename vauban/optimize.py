@@ -12,7 +12,7 @@ import math
 
 from vauban import _ops as ops
 from vauban._array import Array
-from vauban._forward import extract_logits, force_eval
+from vauban._forward import extract_logits, force_eval, get_transformer
 from vauban.cut import cut, sparsify_direction
 from vauban.evaluate import (
     DEFAULT_REFUSAL_PHRASES,
@@ -71,7 +71,7 @@ def optimize(
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     logging.getLogger("optuna").setLevel(logging.WARNING)
 
-    num_layers = len(model.model.layers)
+    num_layers = len(get_transformer(model).layers)
     cosine_scores = direction_result.cosine_scores
 
     # Precompute baselines (once)

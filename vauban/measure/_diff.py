@@ -6,8 +6,35 @@ Extracts safety directions by SVD of the weight difference
 
 from vauban import _ops as ops
 from vauban._array import Array
-from vauban._forward import force_eval, svd_stable
+from vauban._forward import force_eval, get_transformer, svd_stable
 from vauban.types import CausalLM, DiffResult
+
+# Architecture-agnostic fallback lists for sub-module probing
+_ATTN_ATTRS: tuple[str, ...] = ("self_attn", "attn", "attention")
+_MLP_ATTRS: tuple[str, ...] = ("mlp", "feed_forward", "ffn")
+_ATTN_PROJ_ATTRS: tuple[str, ...] = ("o_proj", "c_proj", "out_proj")
+_MLP_PROJ_ATTRS: tuple[str, ...] = ("down_proj", "fc2", "c_proj")
+
+
+def _find_sub(layer: object, candidates: tuple[str, ...]) -> object | None:
+    """Find the first matching sub-module from a list of candidates."""
+    for attr in candidates:
+        val = getattr(layer, attr, None)
+        if val is not None:
+            return val
+    return None
+
+
+def _get_proj_weight(
+    parent: object,
+    proj_candidates: tuple[str, ...],
+) -> Array | None:
+    """Find a projection weight by probing multiple attribute names."""
+    for proj_name in proj_candidates:
+        w = _get_weight(parent, proj_name)
+        if w is not None:
+            return w
+    return None
 
 
 def measure_diff(
@@ -19,8 +46,8 @@ def measure_diff(
 ) -> DiffResult:
     """Extract safety directions from weight differences via SVD.
 
-    For each layer, computes ``W_aligned - W_base`` for ``o_proj.weight``
-    and ``down_proj.weight``, runs SVD on each diff independently, then
+    For each layer, computes ``W_aligned - W_base`` for attention output
+    and MLP down projections, runs SVD on each diff independently, then
     selects the top-k left singular vectors (ranked by singular value)
     across both projections as safety directions.
 
@@ -34,8 +61,8 @@ def measure_diff(
         source_model_id: Identifier for the base model.
         target_model_id: Identifier for the aligned model.
     """
-    base_layers = base_model.model.layers
-    aligned_layers = aligned_model.model.layers
+    base_layers = get_transformer(base_model).layers
+    aligned_layers = get_transformer(aligned_model).layers
     n_layers = len(base_layers)
 
     per_layer_bases: list[Array] = []
@@ -48,21 +75,23 @@ def measure_diff(
         sv_vec_pairs: list[tuple[float, Array]] = []
         total_sq_sum = 0.0
 
-        for proj_name in ("o_proj", "down_proj"):
-            base_attn = getattr(base_layers[i], "self_attn", None)
-            aligned_attn = getattr(aligned_layers[i], "self_attn", None)
-            base_mlp = getattr(base_layers[i], "mlp", None)
-            aligned_mlp = getattr(aligned_layers[i], "mlp", None)
+        # Probe sub-modules with architecture-agnostic fallbacks
+        base_attn = _find_sub(base_layers[i], _ATTN_ATTRS)
+        aligned_attn = _find_sub(aligned_layers[i], _ATTN_ATTRS)
+        base_mlp = _find_sub(base_layers[i], _MLP_ATTRS)
+        aligned_mlp = _find_sub(aligned_layers[i], _MLP_ATTRS)
 
+        # Attention output projection
+        for base_parent, aligned_parent, proj_candidates, is_attn in (
+            (base_attn, aligned_attn, _ATTN_PROJ_ATTRS, True),
+            (base_mlp, aligned_mlp, _MLP_PROJ_ATTRS, False),
+        ):
             base_w: Array | None = None
             aligned_w: Array | None = None
 
-            if proj_name == "o_proj" and base_attn and aligned_attn:
-                base_w = _get_weight(base_attn, proj_name)
-                aligned_w = _get_weight(aligned_attn, proj_name)
-            elif proj_name == "down_proj" and base_mlp and aligned_mlp:
-                base_w = _get_weight(base_mlp, proj_name)
-                aligned_w = _get_weight(aligned_mlp, proj_name)
+            if base_parent and aligned_parent:
+                base_w = _get_proj_weight(base_parent, proj_candidates)
+                aligned_w = _get_proj_weight(aligned_parent, proj_candidates)
 
             if base_w is None or aligned_w is None:
                 continue
@@ -78,8 +107,8 @@ def measure_diff(
             u, s, _vt = svd_stable(diff)
             force_eval(u, s)
 
-            # Track d_model from o_proj (which has shape d_model x d_model)
-            if proj_name == "o_proj" and d_model_detected == 0:
+            # Track d_model from attn output proj (shape d_model x d_model)
+            if is_attn and d_model_detected == 0:
                 d_model_detected = diff.shape[0]
 
             sq_sum = float(ops.sum(s * s).item())

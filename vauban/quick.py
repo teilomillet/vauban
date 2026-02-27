@@ -8,6 +8,7 @@ Provides one-liner wrappers around the core pipeline for Jupyter / REPL use.
 from pathlib import Path
 
 from vauban._array import Array
+from vauban._forward import get_transformer
 from vauban.dequantize import dequantize_model, is_quantized
 from vauban.geometry import DirectionGeometryResult
 from vauban.types import (
@@ -122,7 +123,7 @@ def steer_prompt(
     if isinstance(direction, DirectionResult):
         direction = direction.direction
 
-    layers = list(range(len(model.model.layers)))
+    layers = list(range(len(get_transformer(model).layers)))
     return steer(model, tokenizer, prompt, direction, layers, alpha, max_tokens)
 
 
@@ -156,7 +157,7 @@ def abliterate(
     direction_result = measure_direction(model, tokenizer, harmful, harmless)
 
     flat_weights: dict[str, Array] = dict(tree_flatten(model.parameters()))  # type: ignore[attr-defined]
-    target_layers = list(range(len(model.model.layers)))
+    target_layers = list(range(len(get_transformer(model).layers)))
 
     modified_weights = cut(
         flat_weights, direction_result.direction, target_layers, alpha,

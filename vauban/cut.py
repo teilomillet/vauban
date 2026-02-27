@@ -153,26 +153,14 @@ def target_weight_keys(
     all_keys: list[str],
     target_layers: list[int],
 ) -> list[str]:
-    """Select o_proj and down_proj weight keys for target layers.
+    """Select output projection weight keys for target layers.
 
-    Matches standard dense layers, MoE shared experts, and MoE
-    per-expert (batched) weight matrices.
+    Uses pattern matching on actual keys to support any architecture
+    (Llama, GPT-2, Phi, Mistral, etc.) without hardcoding key prefixes.
     """
-    suffixes = (
-        # Standard dense
-        "self_attn.o_proj.weight",
-        "mlp.down_proj.weight",
-        # MoE shared expert
-        "mlp.shared_experts.down_proj.weight",
-        # MoE batched experts (3D tensor)
-        "mlp.experts.down_proj.weight",
-    )
     targets: list[str] = []
     for layer_idx in target_layers:
-        for suffix in suffixes:
-            key = f"model.layers.{layer_idx}.{suffix}"
-            if key in all_keys:
-                targets.append(key)
+        targets.extend(_keys_for_layer(all_keys, layer_idx))
     return targets
 
 
@@ -273,20 +261,32 @@ def _resolve_layer_alpha(
     return [alpha * w for w in layer_weights]
 
 
+# Known output projection weight suffixes across architectures
+_OUTPUT_SUFFIXES: tuple[str, ...] = (
+    # Attention output projections
+    "o_proj.weight",
+    "c_proj.weight",
+    "out_proj.weight",
+    # MLP down/output projections
+    "down_proj.weight",
+    "fc2.weight",
+    # MoE variants
+    "shared_experts.down_proj.weight",
+    "experts.down_proj.weight",
+)
+
+
 def _keys_for_layer(all_keys: list[str], layer_idx: int) -> list[str]:
-    """Get target weight keys for a single layer."""
-    suffixes = (
-        "self_attn.o_proj.weight",
-        "mlp.down_proj.weight",
-        "mlp.shared_experts.down_proj.weight",
-        "mlp.experts.down_proj.weight",
-    )
-    keys: list[str] = []
-    for suffix in suffixes:
-        key = f"model.layers.{layer_idx}.{suffix}"
-        if key in all_keys:
-            keys.append(key)
-    return keys
+    """Get target weight keys for a single layer by pattern matching.
+
+    Uses ``.{layer_idx}.`` as a marker to isolate the layer, then
+    filters by known output projection suffixes.
+    """
+    marker = f".{layer_idx}."
+    return [
+        k for k in all_keys
+        if marker in k and any(k.endswith(s) for s in _OUTPUT_SUFFIXES)
+    ]
 
 
 def save_weights(

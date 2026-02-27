@@ -2,7 +2,7 @@
 
 from vauban import _ops as ops
 from vauban._array import Array
-from vauban._forward import force_eval
+from vauban._forward import force_eval, get_transformer
 from vauban.softprompt._generation import _evaluate_attack
 from vauban.softprompt._loss import (
     _compute_defensive_loss,
@@ -39,8 +39,9 @@ def _continuous_attack(
     Supports multi-prompt optimization, cosine LR schedule,
     embedding norm regularization, and early stopping.
     """
-    d_model = model.model.embed_tokens.weight.shape[1]
-    embed_matrix = model.model.embed_tokens.weight
+    transformer = get_transformer(model)
+    d_model = transformer.embed_tokens.weight.shape[1]
+    embed_matrix = transformer.embed_tokens.weight
 
     soft_embeds = (
         ops.random.normal((1, config.n_tokens, d_model)) * config.init_scale

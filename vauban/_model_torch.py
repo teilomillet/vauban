@@ -93,21 +93,27 @@ class TorchTransformerWrapper:
     """Wraps HF inner model to match TransformerModel protocol."""
 
     def __init__(self, hf_inner: object) -> None:
-        self.embed_tokens = hf_inner.embed_tokens  # type: ignore[union-attr]
+        from vauban._arch import _EMBED_ATTRS, _LAYERS_ATTRS, _NORM_ATTRS, _find_attr
+
+        self.embed_tokens = _find_attr(hf_inner, _EMBED_ATTRS)
         rotary_emb = getattr(hf_inner, "rotary_emb", None)
+        raw_layers = _find_attr(hf_inner, _LAYERS_ATTRS)
         self.layers: list[TorchLayerWrapper] = [
             TorchLayerWrapper(layer, i, rotary_emb)
-            for i, layer in enumerate(hf_inner.layers)  # type: ignore[union-attr]
+            for i, layer in enumerate(raw_layers)  # type: ignore[union-attr]
         ]
-        self.norm = hf_inner.norm  # type: ignore[union-attr]
+        self.norm = _find_attr(hf_inner, _NORM_ATTRS)
 
 
 class TorchCausalLMWrapper:
     """Wraps HF CausalLM to match vauban CausalLM protocol."""
 
     def __init__(self, hf_model: object) -> None:
+        from vauban._arch import _INNER_ATTRS, _find_attr
+
         self._hf_model = hf_model
-        self.model = TorchTransformerWrapper(hf_model.model)  # type: ignore[unresolved-attribute]
+        hf_inner = _find_attr(hf_model, _INNER_ATTRS)
+        self.model = TorchTransformerWrapper(hf_inner)
         if hasattr(hf_model, "lm_head"):
             self.lm_head = hf_model.lm_head
 
