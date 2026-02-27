@@ -4,8 +4,7 @@ Extracts safety directions by SVD of the weight difference
 ``W_aligned - W_base`` for ``o_proj`` and ``down_proj`` at each layer.
 """
 
-import mlx.core as mx
-
+from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import force_eval, svd_stable
 from vauban.types import CausalLM, DiffResult
@@ -83,14 +82,14 @@ def measure_diff(
             if proj_name == "o_proj" and d_model_detected == 0:
                 d_model_detected = diff.shape[0]
 
-            sq_sum = float(mx.sum(s * s).item())
+            sq_sum = float(ops.sum(s * s).item())
             total_sq_sum += sq_sum
 
             for j in range(min(top_k, s.shape[0])):
                 sv_vec_pairs.append((float(s[j].item()), u[:, j]))
 
         if not sv_vec_pairs:
-            per_layer_bases.append(mx.zeros((top_k, 1)))
+            per_layer_bases.append(ops.zeros((top_k, 1)))
             per_layer_singular_values.append([0.0] * top_k)
             per_layer_explained.append(0.0)
             continue
@@ -105,7 +104,7 @@ def measure_diff(
         # Normalize each vector to unit length
         normalized: list[Array] = []
         for vec in vectors:
-            norm = float(mx.linalg.norm(vec).item())
+            norm = float(ops.linalg.norm(vec).item())
             if norm > 1e-8:
                 normalized.append(vec / norm)
             else:
@@ -133,10 +132,10 @@ def measure_diff(
             d_model_svs.append(0.0)
         while len(d_model_vecs) < top_k:
             d_model_vecs.append(
-                mx.zeros((d_model_detected if d_model_detected > 0 else 1,)),
+                ops.zeros((d_model_detected if d_model_detected > 0 else 1,)),
             )
 
-        basis = mx.stack(d_model_vecs[:top_k])
+        basis = ops.stack(d_model_vecs[:top_k])
 
         topk_sq = sum(sv * sv for sv in d_model_svs[:top_k])
         explained = topk_sq / total_sq_sum if total_sq_sum > 0 else 0.0
@@ -179,6 +178,6 @@ def _get_weight(
     if sub is None:
         return None
     w = getattr(sub, "weight", None)
-    if w is not None and isinstance(w, mx.array):
+    if w is not None and hasattr(w, "shape"):
         return w
     return None

@@ -149,8 +149,7 @@ def abliterate(
     Returns:
         The DirectionResult used for cutting.
     """
-    from mlx.utils import tree_flatten
-
+    from vauban._ops import tree_flatten
     from vauban.cut import cut
     from vauban.export import export_model
 

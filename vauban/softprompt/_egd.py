@@ -1,7 +1,6 @@
 """EGD (Exponentiated Gradient Descent) on the probability simplex."""
 
-import mlx.core as mx
-
+from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import force_eval
 from vauban.softprompt._generation import _evaluate_attack
@@ -78,12 +77,12 @@ def _egd_attack(
     eos_token_id: int | None = getattr(tokenizer, "eos_token_id", None)
 
     # Initialize p uniformly on the simplex: (n_tokens, vocab_size)
-    p = mx.ones((config.n_tokens, vocab_size)) / vocab_size
+    p = ops.ones((config.n_tokens, vocab_size)) / vocab_size
     # Apply vocab mask to initial distribution
     if vocab_mask is not None:
         force_eval(vocab_mask)
         p = p * vocab_mask
-        row_sums = mx.sum(p, axis=-1, keepdims=True)
+        row_sums = ops.sum(p, axis=-1, keepdims=True)
         p = p / (row_sums + 1e-30)
     force_eval(p)
 
@@ -119,7 +118,7 @@ def _egd_attack(
         # Gradient accumulation over mini-batches
         batches = _split_into_batches(selected_ids, config.grad_accum_steps)
         total_loss = 0.0
-        accum_grad = mx.zeros_like(p)
+        accum_grad = ops.zeros_like(p)
 
         for batch in batches:
             def loss_fn(
@@ -127,7 +126,7 @@ def _egd_attack(
                 _sel: list[Array] = batch,
             ) -> Array:
                 soft_embeds = (probs @ embed_matrix)[None, :]
-                total = mx.array(0.0)
+                total = ops.array(0.0)
                 for pid in _sel:
                     if (
                         config.loss_mode == "defensive"
@@ -167,7 +166,7 @@ def _egd_attack(
                         )
                 return total / len(_sel)
 
-            batch_loss, batch_grad = mx.value_and_grad(loss_fn)(p)
+            batch_loss, batch_grad = ops.value_and_grad(loss_fn)(p)
             force_eval(batch_loss, batch_grad)
             total_loss += float(batch_loss.item())
             accum_grad = accum_grad + batch_grad
@@ -195,21 +194,21 @@ def _egd_attack(
         )
 
         # EGD update: p = p * exp(-lr * grad), then row-normalize
-        p = p * mx.exp(-lr * grad)
+        p = p * ops.exp(-lr * grad)
         # Row-normalize to simplex
-        row_sums = mx.sum(p, axis=-1, keepdims=True)
+        row_sums = ops.sum(p, axis=-1, keepdims=True)
         p = p / (row_sums + 1e-30)
 
         # Apply vocab mask after update
         if vocab_mask is not None:
             p = p * vocab_mask
-            row_sums = mx.sum(p, axis=-1, keepdims=True)
+            row_sums = ops.sum(p, axis=-1, keepdims=True)
             p = p / (row_sums + 1e-30)
 
         # Temperature sharpening: p = softmax(log(p) / temperature)
         if config.egd_temperature != 1.0:
-            log_p = mx.log(p + 1e-30)
-            p = mx.softmax(log_p / config.egd_temperature, axis=-1)
+            log_p = ops.log(p + 1e-30)
+            p = ops.softmax(log_p / config.egd_temperature, axis=-1)
 
         force_eval(p)
 
@@ -217,7 +216,7 @@ def _egd_attack(
     p = best_p
 
     # Extract token IDs via argmax
-    token_ids_array = mx.argmax(p, axis=-1)
+    token_ids_array = ops.argmax(p, axis=-1)
     force_eval(token_ids_array)
     raw_ids = token_ids_array.tolist()
     token_ids: list[int] = (
@@ -227,7 +226,7 @@ def _egd_attack(
     )
 
     # Build final embeddings from best tokens
-    final_token_array = mx.array(token_ids)[None, :]
+    final_token_array = ops.array(token_ids)[None, :]
     final_embeds = transformer.embed_tokens(final_token_array)
     force_eval(final_embeds)
 

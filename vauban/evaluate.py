@@ -2,9 +2,10 @@
 
 import math
 
-import mlx.core as mx
-import mlx.nn as nn
+import mlx.nn as nn  # kept: nn.Module type hints in function signatures
 
+from vauban import _nn
+from vauban import _ops as ops
 from vauban._forward import extract_logits, force_eval, make_cache
 from vauban.types import EvalResult, Tokenizer
 
@@ -120,16 +121,16 @@ def _generate(
         eos_token_id = getattr(tokenizer, "eos_token_id", None)
 
     cache = make_cache(model)
-    token_ids = mx.array([tokens])  # prefill: full prompt
+    token_ids = ops.array([tokens])  # prefill: full prompt
 
     for _ in range(max_tokens):
         result = model(token_ids, cache=cache)
         logits = extract_logits(result)
-        next_token = int(mx.argmax(logits[:, -1, :], axis=-1).item())
+        next_token = int(ops.argmax(logits[:, -1, :], axis=-1).item())
         generated.append(next_token)
         if eos_token_id is not None and next_token == eos_token_id:
             break
-        token_ids = mx.array([[next_token]])  # decode: single token
+        token_ids = ops.array([[next_token]])  # decode: single token
 
     return tokenizer.decode(generated)
 
@@ -147,7 +148,7 @@ def _perplexity(
     total_tokens = 0
 
     for prompt in prompts:
-        token_ids = mx.array(tokenizer.encode(prompt))[None, :]
+        token_ids = ops.array(tokenizer.encode(prompt))[None, :]
         result = model(token_ids)
         logits = extract_logits(result)
 
@@ -155,7 +156,7 @@ def _perplexity(
         shift_logits = logits[:, :-1, :]
         shift_labels = token_ids[:, 1:]
 
-        log_probs = nn.losses.cross_entropy(
+        log_probs = _nn.cross_entropy(
             shift_logits.reshape(-1, shift_logits.shape[-1]),
             shift_labels.reshape(-1),
             reduction="sum",
@@ -184,18 +185,18 @@ def _kl_divergence(
     total_tokens = 0
 
     for prompt in prompts:
-        token_ids = mx.array(tokenizer.encode(prompt))[None, :]
+        token_ids = ops.array(tokenizer.encode(prompt))[None, :]
 
         logits_orig = extract_logits(original(token_ids))
         logits_mod = extract_logits(modified(token_ids))
 
-        p = mx.softmax(logits_orig, axis=-1)
-        q = mx.softmax(logits_mod, axis=-1)
+        p = ops.softmax(logits_orig, axis=-1)
+        q = ops.softmax(logits_mod, axis=-1)
 
         # KL(P || Q) = sum(P * log(P / Q))
-        kl = p * (mx.log(p + 1e-10) - mx.log(q + 1e-10))
-        kl_per_token = mx.sum(kl, axis=-1)  # sum over vocab
-        mean_kl = mx.mean(kl_per_token)
+        kl = p * (ops.log(p + 1e-10) - ops.log(q + 1e-10))
+        kl_per_token = ops.sum(kl, axis=-1)  # sum over vocab
+        mean_kl = ops.mean(kl_per_token)
         force_eval(mean_kl)
         total_kl += float(mean_kl.item())
         total_tokens += 1

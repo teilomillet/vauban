@@ -2,8 +2,7 @@
 
 from pathlib import Path
 
-import mlx.core as mx
-
+from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import force_eval
 
@@ -22,7 +21,7 @@ def cut(
     Returns a new dict with modified weights (unmodified keys are shared).
 
     Args:
-        weights: Flat dict of model weights (key -> mx.array).
+        weights: Flat dict of model weights (key -> Array).
         direction: Unit refusal direction of shape (d_model,).
         target_layers: Layer indices to modify.
         alpha: Base scaling factor for the projection removal.
@@ -83,7 +82,7 @@ def cut_false_refusal_ortho(
     the standard cut. This reduces over-refusal on borderline-safe queries.
 
     Args:
-        weights: Flat dict of model weights (key -> mx.array).
+        weights: Flat dict of model weights (key -> Array).
         refusal_direction: Unit refusal direction of shape (d_model,).
         false_refusal_direction: Unit false-refusal direction from
             borderline-safe prompts.
@@ -114,7 +113,7 @@ def _orthogonalize_matrix(
     if w.ndim == 3:
         # Batched experts: (N, d_model, F)
         # proj[n] = direction @ w[n] -> (N, F)
-        proj = mx.sum(
+        proj = ops.sum(
             w * direction[None, :, None], axis=1,
         )  # (N, F)
         # update[n] = outer(direction, proj[n]) -> (N, d_model, F)
@@ -122,7 +121,7 @@ def _orthogonalize_matrix(
         return w - alpha * update
 
     proj = direction @ w  # (in_features,)
-    return w - alpha * mx.outer(direction, proj)
+    return w - alpha * ops.outer(direction, proj)
 
 
 def _orthogonalize_norm_preserve(
@@ -134,9 +133,9 @@ def _orthogonalize_norm_preserve(
 
     Uses last axis for norm computation, works for both 2D and 3D.
     """
-    original_norms = mx.linalg.norm(w, axis=-1, keepdims=True)
+    original_norms = ops.linalg.norm(w, axis=-1, keepdims=True)
     w_new = _orthogonalize_matrix(w, direction, alpha)
-    new_norms = mx.linalg.norm(w_new, axis=-1, keepdims=True)
+    new_norms = ops.linalg.norm(w_new, axis=-1, keepdims=True)
     return w_new * (original_norms / (new_norms + 1e-8))
 
 
@@ -145,9 +144,9 @@ def _biprojected_direction(
     harmless_dir: Array,
 ) -> Array:
     """Gram-Schmidt: orthogonalize refusal direction against harmless direction."""
-    proj = mx.sum(refusal_dir * harmless_dir) * harmless_dir
+    proj = ops.sum(refusal_dir * harmless_dir) * harmless_dir
     orthogonal = refusal_dir - proj
-    return orthogonal / (mx.linalg.norm(orthogonal) + 1e-8)
+    return orthogonal / (ops.linalg.norm(orthogonal) + 1e-8)
 
 
 def target_weight_keys(
@@ -192,7 +191,7 @@ def cut_subspace(
     after all projections have been removed.
 
     Args:
-        weights: Flat dict of model weights (key -> mx.array).
+        weights: Flat dict of model weights (key -> Array).
         basis: Orthonormal basis of shape (k, d_model).
         target_layers: Layer indices to modify.
         alpha: Base scaling factor for the projection removal.
@@ -207,14 +206,14 @@ def cut_subspace(
         for key in keys:
             w = weights[key]
             if norm_preserve:
-                original_norms = mx.linalg.norm(w, axis=-1, keepdims=True)
+                original_norms = ops.linalg.norm(w, axis=-1, keepdims=True)
 
             for i in range(basis.shape[0]):
                 d = basis[i]
                 w = _orthogonalize_matrix(w, d, a)
 
             if norm_preserve:
-                new_norms = mx.linalg.norm(w, axis=-1, keepdims=True)
+                new_norms = ops.linalg.norm(w, axis=-1, keepdims=True)
                 w = w * (original_norms / (new_norms + 1e-8))
 
             force_eval(w)
@@ -242,13 +241,13 @@ def sparsify_direction(direction: Array, sparsity: float) -> Array:
     if sparsity <= 0.0:
         return direction
     if sparsity >= 1.0:
-        return mx.zeros_like(direction)
+        return ops.zeros_like(direction)
 
-    abs_vals = mx.abs(direction)
+    abs_vals = ops.abs(direction)
     # Number of components to keep
     k = max(1, int(direction.shape[0] * (1.0 - sparsity)))
     # Find the k-th largest value as threshold
-    sorted_vals = mx.sort(abs_vals)
+    sorted_vals = ops.sort(abs_vals)
     threshold = sorted_vals[-k]
     force_eval(threshold)
     mask = abs_vals >= threshold
@@ -297,5 +296,5 @@ def save_weights(
     """Save weights to a safetensors file."""
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    mx.save_safetensors(str(output_path), weights)
+    ops.save_safetensors(str(output_path), weights)
     return output_path

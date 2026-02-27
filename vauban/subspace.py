@@ -1,6 +1,6 @@
 """Subspace geometry tools for analyzing refusal subspaces.
 
-Pure mx.array linear algebra — no model dependency. Implements the
+Pure ops.array linear algebra — no model dependency. Implements the
 analysis toolkit needed for GRP-Oblit Section 3.3.2 style subspace
 comparison: principal angles, Grassmann distance, overlap metrics,
 and projection/removal operations.
@@ -8,8 +8,7 @@ and projection/removal operations.
 
 import math
 
-import mlx.core as mx
-
+from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import force_eval, qr_stable, svd_stable
 
@@ -29,8 +28,8 @@ def principal_angles(u: Array, v: Array) -> Array:
     _, s, _ = svd_stable(m)
     force_eval(s)
     # Clamp to [0, 1] for numerical stability before arccos
-    s = mx.clip(s, 0.0, 1.0)
-    angles = mx.arccos(s)
+    s = ops.clip(s, 0.0, 1.0)
+    angles = ops.arccos(s)
     force_eval(angles)
     return angles
 
@@ -48,7 +47,7 @@ def grassmann_distance(u: Array, v: Array) -> float:
         Non-negative distance. Zero iff subspaces are identical.
     """
     angles = principal_angles(u, v)
-    dist = mx.sqrt(mx.sum(angles * angles))
+    dist = ops.sqrt(ops.sum(angles * angles))
     force_eval(dist)
     return float(dist.item())
 
@@ -64,8 +63,8 @@ def subspace_overlap(u: Array, v: Array) -> float:
         Value in [0, 1]. 1.0 = identical subspaces, 0.0 = orthogonal.
     """
     angles = principal_angles(u, v)
-    cos_sq = mx.cos(angles) ** 2
-    overlap = mx.mean(cos_sq)
+    cos_sq = ops.cos(angles) ** 2
+    overlap = ops.mean(cos_sq)
     force_eval(overlap)
     return float(overlap.item())
 

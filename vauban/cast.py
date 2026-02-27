@@ -1,7 +1,6 @@
 """Conditional Activation Steering (CAST) runtime generation."""
 
-import mlx.core as mx
-
+from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import embed_and_mask, force_eval, lm_head_forward, make_cache
 from vauban.types import AlphaTier, CastResult, CausalLM, LayerCache, Tokenizer
@@ -62,7 +61,7 @@ def cast_generate(
         msg = "apply_chat_template must return str when tokenize=False"
         raise TypeError(msg)
 
-    token_ids = mx.array(tokenizer.encode(text))[None, :]
+    token_ids = ops.array(tokenizer.encode(text))[None, :]
     generated: list[int] = []
     cache = make_cache(model)
     projections_before_all: list[float] = []
@@ -88,7 +87,7 @@ def cast_generate(
             condition_direction=condition_direction,
             alpha_tiers=alpha_tiers,
         )
-        next_token = mx.argmax(logits[:, -1, :], axis=-1)
+        next_token = ops.argmax(logits[:, -1, :], axis=-1)
         token_id = int(next_token.item())
         generated.append(token_id)
         token_ids = next_token[:, None]
@@ -153,12 +152,12 @@ def _cast_forward(
         last_token = h[0, -1, :]
 
         # Detect: project onto condition direction for gating
-        detect_projection = mx.sum(last_token * detect_dir)
+        detect_projection = ops.sum(last_token * detect_dir)
         force_eval(detect_projection)
         detect_value = float(detect_projection.item())
 
         # Report the steer-direction projection as "before"
-        steer_projection = mx.sum(last_token * direction)
+        steer_projection = ops.sum(last_token * direction)
         force_eval(steer_projection)
         projection_value = float(steer_projection.item())
         projections_before.append(projection_value)
@@ -171,11 +170,11 @@ def _cast_forward(
             correction = effective_alpha * steer_projection * direction
             h_list = [h[0, j, :] for j in range(h.shape[1])]
             h_list[-1] = h_list[-1] - correction
-            h = mx.stack(h_list)[None, :, :]
+            h = ops.stack(h_list)[None, :, :]
             interventions += 1
 
         last_after = h[0, -1, :]
-        projection_after = mx.sum(last_after * direction)
+        projection_after = ops.sum(last_after * direction)
         force_eval(projection_after)
         projections_after.append(float(projection_after.item()))
 

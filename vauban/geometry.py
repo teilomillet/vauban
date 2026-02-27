@@ -2,8 +2,7 @@
 
 from dataclasses import dataclass
 
-import mlx.core as mx
-
+from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import force_eval
 
@@ -97,9 +96,9 @@ def analyze_directions(
             else:
                 di = directions[names[i]]
                 dj = directions[names[j]]
-                norm_i = mx.linalg.norm(di)
-                norm_j = mx.linalg.norm(dj)
-                cos = mx.sum(di * dj) / (norm_i * norm_j + 1e-8)
+                norm_i = ops.linalg.norm(di)
+                norm_j = ops.linalg.norm(dj)
+                cos = ops.sum(di * dj) / (norm_i * norm_j + 1e-8)
                 force_eval(cos)
                 row.append(float(cos.item()))
         cosine_matrix.append(row)

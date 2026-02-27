@@ -1,7 +1,6 @@
 """Probe activations and steer generation at runtime."""
 
-import mlx.core as mx
-
+from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import embed_and_mask, force_eval, lm_head_forward, make_cache
 from vauban.types import CausalLM, LayerCache, ProbeResult, SteerResult, Tokenizer
@@ -23,7 +22,7 @@ def probe(
     if not isinstance(text, str):
         msg = "apply_chat_template must return str when tokenize=False"
         raise TypeError(msg)
-    token_ids = mx.array(tokenizer.encode(text))[None, :]
+    token_ids = ops.array(tokenizer.encode(text))[None, :]
 
     transformer = model.model
     h, mask = embed_and_mask(transformer, token_ids)
@@ -32,7 +31,7 @@ def probe(
     for layer in transformer.layers:
         h = layer(h, mask)
         last_token = h[0, -1, :]
-        proj = mx.sum(last_token * direction)
+        proj = ops.sum(last_token * direction)
         force_eval(proj)
         projections.append(float(proj.item()))
 
@@ -74,7 +73,7 @@ def steer(
     if not isinstance(text, str):
         msg = "apply_chat_template must return str when tokenize=False"
         raise TypeError(msg)
-    token_ids = mx.array(tokenizer.encode(text))[None, :]
+    token_ids = ops.array(tokenizer.encode(text))[None, :]
 
     generated: list[int] = []
     cache = make_cache(model)
@@ -85,7 +84,7 @@ def steer(
         logits, p_before, p_after = _steered_forward(
             model, token_ids, direction, layers, alpha, cache,
         )
-        next_token = mx.argmax(logits[:, -1, :], axis=-1)
+        next_token = ops.argmax(logits[:, -1, :], axis=-1)
         token_id = int(next_token.item())
         generated.append(token_id)
         token_ids = next_token[:, None]
@@ -132,7 +131,7 @@ def _steered_forward(
 
         if i in steer_set:
             last_token = h[0, -1, :]
-            proj = mx.sum(last_token * direction)
+            proj = ops.sum(last_token * direction)
             force_eval(proj)
             proj_before.append(float(proj.item()))
 
@@ -141,10 +140,10 @@ def _steered_forward(
                 correction = alpha * proj * direction
                 h_list = [h[0, j, :] for j in range(h.shape[1])]
                 h_list[-1] = h_list[-1] - correction
-                h = mx.stack(h_list)[None, :, :]
+                h = ops.stack(h_list)[None, :, :]
 
             last_after = h[0, -1, :]
-            proj_a = mx.sum(last_after * direction)
+            proj_a = ops.sum(last_after * direction)
             force_eval(proj_a)
             proj_after.append(float(proj_a.item()))
 

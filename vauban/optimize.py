@@ -10,10 +10,9 @@ vauban works without it installed.
 import logging
 import math
 
-import mlx.core as mx
-import mlx.nn as nn
-from mlx.utils import tree_flatten
+import mlx.nn as nn  # kept: nn.Module type hints
 
+from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import extract_logits, force_eval
 from vauban.cut import cut, sparsify_direction
@@ -81,8 +80,8 @@ def optimize(
     model_module: nn.Module = model  # type: ignore[assignment]
     original_weights: dict[str, Array] = {
         k: v
-        for k, v in tree_flatten(model_module.parameters())
-        if isinstance(v, mx.array)
+        for k, v in ops.tree_flatten(model_module.parameters())
+        if isinstance(v, ops.array)
     }
 
     baseline_refusal = _refusal_rate(
@@ -234,7 +233,7 @@ def _precompute_logits(
     """
     results: list[Array] = []
     for prompt in prompts:
-        token_ids = mx.array(tokenizer.encode(prompt))[None, :]
+        token_ids = ops.array(tokenizer.encode(prompt))[None, :]
         logits = extract_logits(model(token_ids))
         force_eval(logits)
         results.append(logits)
@@ -259,15 +258,15 @@ def _kl_from_precomputed(
     total_tokens = 0
 
     for prompt, orig_logits in zip(prompts, original_logits, strict=True):
-        token_ids = mx.array(tokenizer.encode(prompt))[None, :]
+        token_ids = ops.array(tokenizer.encode(prompt))[None, :]
         mod_logits = extract_logits(model(token_ids))
 
-        p = mx.softmax(orig_logits, axis=-1)
-        q = mx.softmax(mod_logits, axis=-1)
+        p = ops.softmax(orig_logits, axis=-1)
+        q = ops.softmax(mod_logits, axis=-1)
 
-        kl = p * (mx.log(p + 1e-10) - mx.log(q + 1e-10))
-        kl_per_token = mx.sum(kl, axis=-1)
-        mean_kl = mx.mean(kl_per_token)
+        kl = p * (ops.log(p + 1e-10) - ops.log(q + 1e-10))
+        kl_per_token = ops.sum(kl, axis=-1)
+        mean_kl = ops.mean(kl_per_token)
         force_eval(mean_kl)
         total_kl += float(mean_kl.item())
         total_tokens += 1

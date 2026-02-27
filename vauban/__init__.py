@@ -580,8 +580,9 @@ def _run_cast_mode(context: _EarlyModeContext) -> None:
     """Run [cast] early-return mode and write its report."""
     import time
 
-    import mlx.core as mx
     import numpy as np
+
+    from vauban import _ops as ops
 
     config = context.config
     assert config.cast is not None
@@ -608,7 +609,7 @@ def _run_cast_mode(context: _EarlyModeContext) -> None:
             elapsed=time.monotonic() - context.t0,
         )
         cond_np = np.load(str(cond_path))
-        condition_direction = mx.array(cond_np)
+        condition_direction = ops.array(cond_np)
         if condition_direction.shape[-1] != context.direction_result.d_model:
             msg = (
                 f"condition_direction d_model mismatch:"
@@ -772,8 +773,7 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
     """Run [softprompt] early-return mode and write its report."""
     import time
 
-    import mlx.core as mx
-
+    from vauban import _ops as ops
     from vauban._forward import force_eval
     from vauban._model_io import load_model
 
@@ -832,7 +832,7 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
             t_model, _ = load_model(transfer_model_id)
             if is_quantized(t_model):
                 dequantize_model(t_model)
-            t_token_array = mx.array(transfer_token_ids)[None, :]
+            t_token_array = ops.array(transfer_token_ids)[None, :]
             t_embeds = t_model.model.embed_tokens(t_token_array)
             force_eval(t_embeds)
             t_success, t_responses = _evaluate_attack(
@@ -1115,9 +1115,9 @@ def run(config_path: str | Path) -> None:
         target_layers = list(range(len(model.model.layers)))
 
     # Flatten weights for cut
-    from mlx.utils import tree_flatten
+    from vauban._ops import tree_flatten
 
-    flat_weights: dict[str, object] = dict(tree_flatten(model.parameters()))
+    flat_weights: dict[str, object] = dict(tree_flatten(model.parameters()))  # type: ignore[attr-defined]  # CausalLM is nn.Module at runtime
 
     # Apply optional sparsification to direction
     if direction_result is not None and config.cut.sparsity > 0.0:
@@ -1270,7 +1270,7 @@ def run(config_path: str | Path) -> None:
         modified_model, _ = load_model(config.model_path)
         if is_quantized(modified_model):
             dequantize_model(modified_model)
-        modified_model.load_weights(list(modified_weights.items()))
+        modified_model.load_weights(list(modified_weights.items()))  # type: ignore[attr-defined]  # CausalLM is nn.Module at runtime
 
     # "After" surface map + comparison
     if surface_before is not None:

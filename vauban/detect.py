@@ -7,10 +7,9 @@ building blocks into a single ``detect()`` entry point.
 
 from typing import TYPE_CHECKING
 
-import mlx.core as mx
-import mlx.nn as nn
-from mlx.utils import tree_flatten
+import mlx.nn as nn  # kept: nn.QuantizedLinear isinstance checks
 
+from vauban import _ops as ops
 from vauban.cut import cut
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES, _generate, _refusal_rate
 from vauban.measure import (
@@ -194,8 +193,8 @@ def _abliteration_layer(
     # Access nn.Module methods via the concrete model object
     model_module: nn.Module = model  # type: ignore[assignment]
     flat_weights: dict[str, Array] = {
-        k: v for k, v in tree_flatten(model_module.parameters())
-        if isinstance(v, mx.array)
+        k: v for k, v in ops.tree_flatten(model_module.parameters())
+        if isinstance(v, ops.array)
     }
     all_layers = list(range(len(model.model.layers)))
     modified_weights = cut(

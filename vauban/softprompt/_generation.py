@@ -1,7 +1,6 @@
 """KV-cached generation and attack evaluation."""
 
-import mlx.core as mx
-
+from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import (
     embed_and_mask_with_prefix,
@@ -50,7 +49,7 @@ def _decode_step(
         Logits for the next token, shape (1, 1, vocab_size).
     """
     transformer = model.model
-    h = transformer.embed_tokens(mx.array([[token_id]]))
+    h = transformer.embed_tokens(ops.array([[token_id]]))
 
     for i, layer in enumerate(transformer.layers):
         h = layer(h, None, cache=cache[i])
@@ -92,7 +91,7 @@ def _evaluate_attack(
         if not isinstance(text, str):
             msg = "apply_chat_template must return str when tokenize=False"
             raise TypeError(msg)
-        prompt_ids = mx.array(tokenizer.encode(text))[None, :]
+        prompt_ids = ops.array(tokenizer.encode(text))[None, :]
 
         # Prefill: forward [soft_prefix | prompt] through model with cache
         cache = make_cache(model)
@@ -102,7 +101,7 @@ def _evaluate_attack(
         # Decode autoregressively using the cache
         generated_ids: list[int] = []
         for _ in range(config.max_gen_tokens):
-            next_token = int(mx.argmax(next_logits[:, -1, :], axis=-1).item())
+            next_token = int(ops.argmax(next_logits[:, -1, :], axis=-1).item())
             if eos_token_id is not None and next_token == eos_token_id:
                 break
             generated_ids.append(next_token)

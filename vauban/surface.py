@@ -5,8 +5,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-import mlx.core as mx
-
+from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import embed_and_mask, extract_logits, force_eval, make_cache
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES, _judge_single
@@ -632,7 +631,7 @@ def _probe_with_messages(
     if not isinstance(text, str):
         msg = "apply_chat_template must return str when tokenize=False"
         raise TypeError(msg)
-    token_ids = mx.array(tokenizer.encode(text))[None, :]
+    token_ids = ops.array(tokenizer.encode(text))[None, :]
 
     transformer = model.model
     h, mask = embed_and_mask(transformer, token_ids)
@@ -641,7 +640,7 @@ def _probe_with_messages(
     for layer in transformer.layers:
         h = layer(h, mask)
         last_token = h[0, -1, :]
-        proj = mx.sum(last_token * direction)
+        proj = ops.sum(last_token * direction)
         force_eval(proj)
         projections.append(float(proj.item()))
     return projections
@@ -666,15 +665,15 @@ def _generate_with_messages(
         eos_token_id = getattr(tokenizer, "eos_token_id", None)
 
     cache = make_cache(model)
-    token_ids = mx.array([tokens])
+    token_ids = ops.array([tokens])
     for _ in range(max_tokens):
         result = model(token_ids, cache=cache)  # type: ignore[call-non-callable]
         logits = extract_logits(result)
-        next_token = int(mx.argmax(logits[:, -1, :], axis=-1).item())
+        next_token = int(ops.argmax(logits[:, -1, :], axis=-1).item())
         generated.append(next_token)
         if eos_token_id is not None and next_token == eos_token_id:
             break
-        token_ids = mx.array([[next_token]])
+        token_ids = ops.array([[next_token]])
 
     return tokenizer.decode(generated)
 

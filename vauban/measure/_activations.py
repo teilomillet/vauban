@@ -1,7 +1,6 @@
 """Activation collection helpers for the measure pipeline."""
 
-import mlx.core as mx
-
+from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import embed_and_mask, force_eval
 from vauban.types import CausalLM, Tokenizer
@@ -41,18 +40,18 @@ def _collect_activations(
         if not isinstance(text, str):
             msg = "apply_chat_template must return str when tokenize=False"
             raise TypeError(msg)
-        token_ids = mx.array(tokenizer.encode(text))[None, :]
+        token_ids = ops.array(tokenizer.encode(text))[None, :]
         residuals = _forward_collect(model, token_ids, token_position)
 
         if clip_quantile > 0.0:
             residuals = [_clip_activation(r, clip_quantile) for r in residuals]
 
         if means is None:
-            means = [r.astype(mx.float32) for r in residuals]
+            means = [r.astype(ops.float32) for r in residuals]
         else:
             # Welford online mean: mean += (x - mean) / n
             for i, r in enumerate(residuals):
-                delta = r.astype(mx.float32) - means[i]
+                delta = r.astype(ops.float32) - means[i]
                 means[i] = means[i] + delta / count
 
         # Evaluate periodically to avoid graph buildup
@@ -96,7 +95,7 @@ def _collect_per_prompt_activations(
         if not isinstance(text, str):
             msg = "apply_chat_template must return str when tokenize=False"
             raise TypeError(msg)
-        token_ids = mx.array(tokenizer.encode(text))[None, :]
+        token_ids = ops.array(tokenizer.encode(text))[None, :]
         residuals = _forward_collect(model, token_ids, token_position)
 
         if clip_quantile > 0.0:
@@ -108,7 +107,7 @@ def _collect_per_prompt_activations(
     num_layers = len(all_residuals[0])
     per_layer: list[Array] = []
     for layer_idx in range(num_layers):
-        stacked = mx.stack([r[layer_idx] for r in all_residuals])
+        stacked = ops.stack([r[layer_idx] for r in all_residuals])
         force_eval(stacked)
         per_layer.append(stacked)
 
@@ -138,7 +137,7 @@ def _forward_collect(
     for layer in transformer.layers:
         h = layer(h, mask)
         # Upcast to float32 for numerical stability (like Heretic)
-        activation = h[0, token_position, :].astype(mx.float32)
+        activation = h[0, token_position, :].astype(ops.float32)
         residuals.append(activation)
 
     return residuals
@@ -155,10 +154,10 @@ def _clip_activation(activation: Array, quantile: float) -> Array:
         activation: Activation vector of shape (d_model,).
         quantile: Fraction of extremes to clip (e.g. 0.01 = clip top/bottom 1%).
     """
-    abs_vals = mx.abs(activation)
-    sorted_vals = mx.sort(abs_vals)
+    abs_vals = ops.abs(activation)
+    sorted_vals = ops.sort(abs_vals)
     n = sorted_vals.shape[0]
     high_idx = min(n - 1, int(n * (1.0 - quantile)))
     threshold = sorted_vals[high_idx]
     force_eval(threshold)
-    return mx.clip(activation, -threshold, threshold)
+    return ops.clip(activation, -threshold, threshold)

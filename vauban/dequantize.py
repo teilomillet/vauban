@@ -7,31 +7,31 @@ garbage silently. This module detects and replaces quantized layers
 with their float equivalents before any weight modification.
 """
 
-import mlx.core as mx
-import mlx.nn as nn
+import mlx.core as _mx  # kept: _mx.dequantize (MLX-specific, no ops equivalent)
+import mlx.nn as nn  # kept: nn.QuantizedLinear isinstance checks
 
+from vauban import _ops as ops
 from vauban._forward import force_eval
+from vauban.types import CausalLM
 
 
-def is_quantized(model: nn.Module) -> bool:
+def is_quantized(model: CausalLM | nn.Module) -> bool:
     """Check if a model contains any quantized parameters.
 
-    Scans all parameters for ``mx.uint32`` dtype, which indicates
+    Scans all parameters for ``ops.uint32`` dtype, which indicates
     quantized weights (4-bit or 8-bit packed into uint32).
 
     Args:
-        model: An mlx neural network module.
+        model: A causal language model or nn.Module.
 
     Returns:
-        True if any parameter has dtype ``mx.uint32``.
+        True if any parameter has dtype ``ops.uint32``.
     """
-    from mlx.utils import tree_flatten
-
-    flat = dict(tree_flatten(model.parameters()))
-    return any(v.dtype == mx.uint32 for v in flat.values())
+    flat = dict(ops.tree_flatten(model.parameters()))  # type: ignore[attr-defined]  # CausalLM is nn.Module at runtime
+    return any(v.dtype == ops.uint32 for v in flat.values())
 
 
-def dequantize_model(model: nn.Module) -> bool:
+def dequantize_model(model: CausalLM | nn.Module) -> bool:
     """Replace all quantized layers with dequantized float equivalents.
 
     Handles both ``nn.QuantizedLinear`` (standard dense layers) and
@@ -39,7 +39,7 @@ def dequantize_model(model: nn.Module) -> bool:
     Operates in-place on the module tree.
 
     Args:
-        model: An mlx neural network module to dequantize.
+        model: A causal language model or nn.Module to dequantize.
 
     Returns:
         True if any layer was replaced, False if model was already float.
@@ -55,8 +55,10 @@ def dequantize_model(model: nn.Module) -> bool:
 
     changed = False
 
-    def _recurse(mod: nn.Module) -> None:
+    def _recurse(mod: object) -> None:
         nonlocal changed
+        if not isinstance(mod, nn.Module):
+            return
         for key in list(mod.keys()):
             child = mod[key]
             if isinstance(child, nn.QuantizedLinear):
@@ -82,7 +84,7 @@ def dequantize_model(model: nn.Module) -> bool:
 
 def _dequantize_linear(child: nn.QuantizedLinear) -> nn.Linear:
     """Convert a single QuantizedLinear to Linear."""
-    w = mx.dequantize(
+    w = _mx.dequantize(
         child.weight, child.scales, child.biases,
         child.group_size, child.bits,
     )
@@ -100,7 +102,7 @@ def _dequantize_switch(
     switch_cls: type[nn.Module],
 ) -> nn.Module:
     """Convert a single QuantizedSwitchLinear to SwitchLinear."""
-    w = mx.dequantize(
+    w = _mx.dequantize(
         child.weight,
         child.scales,
         child.biases,

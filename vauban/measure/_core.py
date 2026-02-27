@@ -2,8 +2,7 @@
 
 from typing import TYPE_CHECKING
 
-import mlx.core as mx
-
+from vauban import _ops as ops
 from vauban._forward import force_eval, svd_stable
 from vauban.measure._activations import (
     _collect_activations,
@@ -187,7 +186,7 @@ def measure_subspace(
         basis = vt[:actual_k]
 
         sv = [float(s[j].item()) for j in range(actual_k)]
-        total_var = float(mx.sum(s * s).item())
+        total_var = float(ops.sum(s * s).item())
         ev = [
             float((s[j] * s[j]).item()) / (total_var + 1e-10)
             for j in range(actual_k)

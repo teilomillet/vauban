@@ -2,8 +2,7 @@
 
 import random
 
-import mlx.core as mx
-
+from vauban import _ops as ops
 from vauban._array import Array
 from vauban.softprompt._continuous import _continuous_attack
 from vauban.softprompt._egd import _egd_attack
@@ -34,7 +33,7 @@ def softprompt_attack(
         ref_model: Optional reference model for KL collision loss.
     """
     if config.seed is not None:
-        mx.random.seed(config.seed)
+        ops.random.seed(config.seed)
         random.seed(config.seed)
 
     if config.mode == "continuous":

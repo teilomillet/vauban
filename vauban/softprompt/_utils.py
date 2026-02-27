@@ -2,8 +2,7 @@
 
 import math
 
-import mlx.core as mx
-
+from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import embed_and_mask_with_prefix, force_eval, lm_head_forward
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES
@@ -55,7 +54,7 @@ def _build_vocab_mask(
     if constraint is None:
         return None
 
-    allowed = mx.zeros((vocab_size,), dtype=mx.bool_)
+    allowed = ops.zeros((vocab_size,), dtype=ops.bool_)
     for tid in range(vocab_size):
         text = tokenizer.decode([tid])
         if constraint == "ascii":
@@ -91,8 +90,8 @@ def _compute_embed_regularization(
     Returns:
         Scalar regularization loss.
     """
-    mean_soft_norm = mx.mean(mx.linalg.norm(soft_embeds[0], axis=-1))
-    mean_real_norm = mx.mean(mx.linalg.norm(embed_matrix, axis=-1))
+    mean_soft_norm = ops.mean(ops.linalg.norm(soft_embeds[0], axis=-1))
+    mean_real_norm = ops.mean(ops.linalg.norm(embed_matrix, axis=-1))
     return weight * (mean_soft_norm - mean_real_norm) ** 2
 
 
@@ -116,7 +115,7 @@ def _pre_encode_prompts(
         if not isinstance(text, str):
             msg = "apply_chat_template must return str when tokenize=False"
             raise TypeError(msg)
-        ids = mx.array(tokenizer.encode(text))[None, :]
+        ids = ops.array(tokenizer.encode(text))[None, :]
         encoded.append(ids)
     return encoded
 
@@ -277,7 +276,7 @@ def _select_worst_k_prompt_ids(
     Returns:
         Top-k prompt ID arrays sorted by descending loss.
     """
-    stopped_embeds = mx.stop_gradient(soft_embeds)
+    stopped_embeds = ops.stop_gradient(soft_embeds)
     losses = _compute_per_prompt_losses(
         model, stopped_embeds, all_ids, target_ids,
         n_tokens, direction, direction_weight,
@@ -336,7 +335,7 @@ def _project_to_tokens(
     """
     # (n_tokens, d_model) @ (d_model, vocab_size) -> (n_tokens, vocab_size)
     scores = soft_embeds[0] @ embed_matrix.T
-    token_ids_array = mx.argmax(scores, axis=-1)
+    token_ids_array = ops.argmax(scores, axis=-1)
     force_eval(token_ids_array)
     raw = token_ids_array.tolist()
     if not isinstance(raw, list):
@@ -363,7 +362,7 @@ def _encode_refusal_tokens(tokenizer: Tokenizer) -> Array:
         if tokens and tokens[0] not in seen:
             seen.add(tokens[0])
             ids.append(tokens[0])
-    return mx.array(ids)
+    return ops.array(ids)
 
 
 def _forward_with_prefix(
@@ -408,4 +407,4 @@ def _encode_targets(
     for prefix in target_prefixes:
         ids = tokenizer.encode(prefix)
         all_ids.extend(ids)
-    return mx.array(all_ids)
+    return ops.array(all_ids)

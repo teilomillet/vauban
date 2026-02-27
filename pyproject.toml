@@ -18,6 +18,9 @@ vauban = "vauban.__main__:main"
 
 [project.optional-dependencies]
 optimize = ["optuna>=4.0"]
+torch = [
+    "torch>=2.10.0",
+]
 
 [dependency-groups]
 dev = [
@@ -26,6 +29,12 @@ dev = [
     "ruff",
     "ty",
 ]
+
+# Torch backend: suppress unresolved-import for envs without torch installed.
+[[tool.ty.overrides]]
+include = ["vauban/_ops_torch.py", "vauban/_nn_torch.py"]
+[tool.ty.overrides.rules]
+unresolved-import = "ignore"
 
 [build-system]
 requires = ["hatchling"]

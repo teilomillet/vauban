@@ -1,8 +1,7 @@
 """Loss computation for soft prompt attacks."""
 
-import mlx.core as mx
-import mlx.nn as nn
-
+from vauban import _nn
+from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import embed_and_mask_with_prefix, lm_head_forward
 from vauban.types import CausalLM
@@ -27,13 +26,13 @@ def _compute_eos_loss(
     """
     eps = 1e-8
     pos_logits = logits[:, position, :]  # (1, vocab_size)
-    probs = mx.softmax(pos_logits, axis=-1)  # (1, vocab_size)
+    probs = ops.softmax(pos_logits, axis=-1)  # (1, vocab_size)
     p_eos = probs[0, eos_token_id]
 
     if mode == "force":
-        return -mx.log(p_eos + eps)
+        return -ops.log(p_eos + eps)
     # "suppress"
-    return -mx.log(1.0 - p_eos + eps)
+    return -ops.log(1.0 - p_eos + eps)
 
 
 def _compute_kl_collision_loss(
@@ -70,23 +69,23 @@ def _compute_kl_collision_loss(
     # Forward through reference model (stop gradient)
     ref_transformer = ref_model.model
     h_ref, mask_ref = embed_and_mask_with_prefix(
-        ref_transformer, mx.stop_gradient(soft_embeds), prompt_token_ids,
+        ref_transformer, ops.stop_gradient(soft_embeds), prompt_token_ids,
     )
     for layer in ref_transformer.layers:
         h_ref = layer(h_ref, mask_ref)
     h_ref = ref_transformer.norm(h_ref)
     ref_logits = lm_head_forward(ref_model, h_ref)
-    ref_logits = mx.stop_gradient(ref_logits)
+    ref_logits = ops.stop_gradient(ref_logits)
 
     # KL(P_ref || Q_attack) at last position
     eps = 1e-8
     last_pos = n_tokens + prompt_token_ids.shape[1] - 1
-    p_ref = mx.softmax(ref_logits[:, last_pos, :], axis=-1)
-    q_attack = mx.softmax(attack_logits[:, last_pos, :], axis=-1)
-    log_p_ref = mx.log(p_ref + eps)
-    log_q_attack = mx.log(q_attack + eps)
+    p_ref = ops.softmax(ref_logits[:, last_pos, :], axis=-1)
+    q_attack = ops.softmax(attack_logits[:, last_pos, :], axis=-1)
+    log_p_ref = ops.log(p_ref + eps)
+    log_q_attack = ops.log(q_attack + eps)
 
-    kl = mx.sum(p_ref * (log_p_ref - log_q_attack))
+    kl = ops.sum(p_ref * (log_p_ref - log_q_attack))
     return kl
 
 
@@ -142,15 +141,15 @@ def _compute_loss(
     target_embeds = transformer.embed_tokens(target_ids[None, :])
 
     # Teacher forcing: model sees prefix + prompt + target tokens
-    h = mx.concatenate([soft_embeds, prompt_embeds, target_embeds], axis=1)
+    h = ops.concatenate([soft_embeds, prompt_embeds, target_embeds], axis=1)
 
-    mask = nn.MultiHeadAttention.create_additive_causal_mask(h.shape[1])
+    mask = _nn.create_additive_causal_mask(h.shape[1])
     mask = mask.astype(h.dtype)
 
     n_prompt = prompt_token_ids.shape[1]
 
     # Per-layer direction penalty accumulation (RAID / all_positions)
-    direction_penalty = mx.array(0.0)
+    direction_penalty = ops.array(0.0)
     n_penalty_layers = 0
 
     for i, layer in enumerate(transformer.layers):
@@ -164,9 +163,9 @@ def _compute_loss(
             if direction_mode == "raid":
                 # Project at last prompt position (before targets)
                 last_pos = n_tokens + n_prompt - 1
-                proj = mx.sum(h[:, last_pos, :] * direction)
+                proj = ops.sum(h[:, last_pos, :] * direction)
             else:  # "all_positions"
-                proj = mx.mean(mx.sum(h * direction, axis=-1))
+                proj = ops.mean(ops.sum(h * direction, axis=-1))
             direction_penalty = direction_penalty + proj
             n_penalty_layers += 1
 
@@ -178,7 +177,7 @@ def _compute_loss(
     start = n_tokens + n_prompt - 1
     target_logits = logits[:, start : start + n_target, :]
 
-    ce_loss = nn.losses.cross_entropy(
+    ce_loss = _nn.cross_entropy(
         target_logits.reshape(-1, target_logits.shape[-1]),
         target_ids,
         reduction="mean",
@@ -189,7 +188,7 @@ def _compute_loss(
             # Original single-position behavior
             last_prompt_pos = n_tokens + n_prompt - 1
             last_hidden = h[:, last_prompt_pos, :]
-            proj = mx.sum(last_hidden * direction)
+            proj = ops.sum(last_hidden * direction)
             ce_loss = ce_loss + direction_weight * proj
         elif n_penalty_layers > 0:
             ce_loss = ce_loss + direction_weight * (
@@ -265,7 +264,7 @@ def _compute_defensive_loss(
     n_prompt = prompt_token_ids.shape[1]
 
     # Per-layer direction penalty accumulation
-    direction_penalty = mx.array(0.0)
+    direction_penalty = ops.array(0.0)
     n_penalty_layers = 0
 
     for i, layer in enumerate(transformer.layers):
@@ -278,9 +277,9 @@ def _compute_defensive_loss(
         ):
             if direction_mode == "raid":
                 last_pos = n_tokens + n_prompt - 1
-                proj = mx.sum(h[:, last_pos, :] * direction)
+                proj = ops.sum(h[:, last_pos, :] * direction)
             else:  # "all_positions"
-                proj = mx.mean(mx.sum(h * direction, axis=-1))
+                proj = ops.mean(ops.sum(h * direction, axis=-1))
             direction_penalty = direction_penalty + proj
             n_penalty_layers += 1
 
@@ -289,15 +288,15 @@ def _compute_defensive_loss(
 
     # Logits at the last position predict the first generated token
     last_logits = logits[:, -1, :]  # (1, vocab_size)
-    probs = mx.softmax(last_logits, axis=-1)  # (1, vocab_size)
+    probs = ops.softmax(last_logits, axis=-1)  # (1, vocab_size)
 
     # Sum probability mass on refusal tokens
     refusal_probs = probs[0, refusal_ids]  # (n_refusal,)
-    refusal_sum = mx.sum(refusal_probs)
+    refusal_sum = ops.sum(refusal_probs)
 
     # Maximize P(refusal): minimize -log(P(refusal) + eps)
     eps = 1e-8
-    loss = -mx.log(refusal_sum + eps)
+    loss = -ops.log(refusal_sum + eps)
 
     # Direction penalty — FLIPPED: push toward refusal direction
     # (subtract projection so higher projection = lower loss)
@@ -305,7 +304,7 @@ def _compute_defensive_loss(
         if direction_mode == "last":
             last_prompt_pos = n_tokens + n_prompt - 1
             last_hidden = h[:, last_prompt_pos, :]
-            proj = mx.sum(last_hidden * direction)
+            proj = ops.sum(last_hidden * direction)
             loss = loss - direction_weight * proj
         elif n_penalty_layers > 0:
             loss = loss - direction_weight * (
@@ -379,7 +378,7 @@ def _compute_untargeted_loss(
     n_prompt = prompt_token_ids.shape[1]
 
     # Per-layer direction penalty accumulation
-    direction_penalty = mx.array(0.0)
+    direction_penalty = ops.array(0.0)
     n_penalty_layers = 0
 
     for i, layer in enumerate(transformer.layers):
@@ -392,9 +391,9 @@ def _compute_untargeted_loss(
         ):
             if direction_mode == "raid":
                 last_pos = n_tokens + n_prompt - 1
-                proj = mx.sum(h[:, last_pos, :] * direction)
+                proj = ops.sum(h[:, last_pos, :] * direction)
             else:  # "all_positions"
-                proj = mx.mean(mx.sum(h * direction, axis=-1))
+                proj = ops.mean(ops.sum(h * direction, axis=-1))
             direction_penalty = direction_penalty + proj
             n_penalty_layers += 1
 
@@ -403,22 +402,22 @@ def _compute_untargeted_loss(
 
     # Logits at the last position predict the first generated token
     last_logits = logits[:, -1, :]  # (1, vocab_size)
-    probs = mx.softmax(last_logits, axis=-1)  # (1, vocab_size)
+    probs = ops.softmax(last_logits, axis=-1)  # (1, vocab_size)
 
     # Sum probability mass on refusal tokens
     refusal_probs = probs[0, refusal_ids]  # (n_refusal,)
-    refusal_sum = mx.sum(refusal_probs)
+    refusal_sum = ops.sum(refusal_probs)
 
     # Minimize: -log(1 - P(refusal) + eps)
     eps = 1e-8
-    loss = -mx.log(1.0 - refusal_sum + eps)
+    loss = -ops.log(1.0 - refusal_sum + eps)
 
     # Direction penalty
     if direction is not None and direction_weight > 0.0:
         if direction_mode == "last":
             last_prompt_pos = n_tokens + n_prompt - 1
             last_hidden = h[:, last_prompt_pos, :]
-            proj = mx.sum(last_hidden * direction)
+            proj = ops.sum(last_hidden * direction)
             loss = loss + direction_weight * proj
         elif n_penalty_layers > 0:
             loss = loss + direction_weight * (

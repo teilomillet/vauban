@@ -7,8 +7,7 @@ logit distributions. Classifies tokens as "deep-thinking" vs "shallow".
 
 import math
 
-import mlx.core as mx
-
+from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import embed_and_mask, force_eval, lm_head_forward, make_cache
 from vauban.types import (
@@ -40,7 +39,7 @@ def depth_profile(
         msg = "apply_chat_template must return str when tokenize=False"
         raise TypeError(msg)
     token_ids_list = tokenizer.encode(text)
-    token_ids = mx.array(token_ids_list)[None, :]
+    token_ids = ops.array(token_ids_list)[None, :]
 
     transformer = model.model
     h, mask = embed_and_mask(transformer, token_ids)
@@ -69,14 +68,14 @@ def depth_profile(
         # Final layer distribution (top-k)
         final_logits_t = final_logits_full[0, t, :]
         if config.top_k_logits < final_logits_t.shape[0]:
-            top_k_indices = mx.argpartition(
+            top_k_indices = ops.argpartition(
                 final_logits_t, kth=final_logits_t.shape[0] - config.top_k_logits,
             )[final_logits_t.shape[0] - config.top_k_logits :]
         else:
-            top_k_indices = mx.arange(final_logits_t.shape[0])
+            top_k_indices = ops.arange(final_logits_t.shape[0])
         force_eval(top_k_indices)
 
-        final_probs = mx.softmax(final_logits_t[top_k_indices])
+        final_probs = ops.softmax(final_logits_t[top_k_indices])
         force_eval(final_probs)
 
         jsd_profile: list[float] = []
@@ -85,7 +84,7 @@ def depth_profile(
             layer_normed = transformer.norm(layer_h[None, None, :])
             layer_logits = lm_head_forward(model, layer_normed)
             layer_logits_t = layer_logits[0, 0, :]
-            layer_probs = mx.softmax(layer_logits_t[top_k_indices])
+            layer_probs = ops.softmax(layer_logits_t[top_k_indices])
             force_eval(layer_probs)
 
             jsd_val = _jsd(final_probs, layer_probs)
@@ -123,7 +122,7 @@ def depth_generate(
     if not isinstance(text, str):
         msg = "apply_chat_template must return str when tokenize=False"
         raise TypeError(msg)
-    input_ids = mx.array(tokenizer.encode(text))[None, :]
+    input_ids = ops.array(tokenizer.encode(text))[None, :]
 
     transformer = model.model
     num_layers = len(transformer.layers)
@@ -138,7 +137,7 @@ def depth_generate(
     # Get first token by running the full prompt
     logits = _cached_forward_all_hidden(model, input_ids, cache=None)
     next_token_logits = logits[:, -1:, :]
-    next_token = mx.argmax(next_token_logits[0, 0, :])
+    next_token = ops.argmax(next_token_logits[0, 0, :])
     force_eval(next_token)
 
     # Re-create cache for generation with hidden state capture
@@ -161,15 +160,15 @@ def depth_generate(
 
         final_logits_t = final_logits[0, 0, :]
         if config.top_k_logits < final_logits_t.shape[0]:
-            top_k_indices = mx.argpartition(
+            top_k_indices = ops.argpartition(
                 final_logits_t,
                 kth=final_logits_t.shape[0] - config.top_k_logits,
             )[final_logits_t.shape[0] - config.top_k_logits :]
         else:
-            top_k_indices = mx.arange(final_logits_t.shape[0])
+            top_k_indices = ops.arange(final_logits_t.shape[0])
         force_eval(top_k_indices)
 
-        final_probs = mx.softmax(final_logits_t[top_k_indices])
+        final_probs = ops.softmax(final_logits_t[top_k_indices])
         force_eval(final_probs)
 
         jsd_profile: list[float] = []
@@ -177,7 +176,7 @@ def depth_generate(
             layer_h = hidden_states[layer_idx]
             layer_normed = transformer.norm(layer_h)
             layer_logits = lm_head_forward(model, layer_normed)
-            layer_probs = mx.softmax(layer_logits[0, 0, :][top_k_indices])
+            layer_probs = ops.softmax(layer_logits[0, 0, :][top_k_indices])
             force_eval(layer_probs)
             jsd_profile.append(_jsd(final_probs, layer_probs))
 
@@ -194,7 +193,7 @@ def depth_generate(
         ))
 
         # Next token
-        next_token = mx.argmax(final_logits[0, 0, :])
+        next_token = ops.argmax(final_logits[0, 0, :])
         force_eval(next_token)
         current_token = next_token[None, None]
 
@@ -245,9 +244,9 @@ def depth_direction(
     # Compute cosine with refusal direction if available
     refusal_cosine: float | None = None
     if refusal_direction is not None:
-        cos = mx.sum(direction_result.direction * refusal_direction.direction)
-        norm_d = mx.linalg.norm(direction_result.direction)
-        norm_r = mx.linalg.norm(refusal_direction.direction)
+        cos = ops.sum(direction_result.direction * refusal_direction.direction)
+        norm_d = ops.linalg.norm(direction_result.direction)
+        norm_r = ops.linalg.norm(refusal_direction.direction)
         denom = norm_d * norm_r
         if float(denom.item()) > 0:
             cos_val = cos / denom
@@ -282,9 +281,9 @@ def _jsd(p: Array, q: Array) -> float:
     eps = 1e-10
     m = 0.5 * (p + q)
     # KL(p || m)
-    kl_pm = mx.sum(p * mx.log(p / (m + eps) + eps))
+    kl_pm = ops.sum(p * ops.log(p / (m + eps) + eps))
     # KL(q || m)
-    kl_qm = mx.sum(q * mx.log(q / (m + eps) + eps))
+    kl_qm = ops.sum(q * ops.log(q / (m + eps) + eps))
     jsd = 0.5 * (kl_pm + kl_qm)
     force_eval(jsd)
     return max(0.0, float(jsd.item()))

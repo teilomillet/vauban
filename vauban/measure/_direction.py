@@ -1,7 +1,6 @@
 """Direction computation and instruction boundary detection."""
 
-import mlx.core as mx
-
+from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import force_eval
 from vauban.measure._activations import _clip_activation, _forward_collect
@@ -32,7 +31,7 @@ def _best_direction(
 
     for i in range(num_layers):
         diff = harmful_acts[i] - harmless_acts[i]
-        direction = diff / (mx.linalg.norm(diff) + 1e-8)
+        direction = diff / (ops.linalg.norm(diff) + 1e-8)
         score = _cosine_separation(
             harmful_acts[i], harmless_acts[i], direction,
         )
@@ -43,7 +42,7 @@ def _best_direction(
 
     # Recompute best direction
     best_diff = harmful_acts[best_layer] - harmless_acts[best_layer]
-    best_dir = best_diff / (mx.linalg.norm(best_diff) + 1e-8)
+    best_dir = best_diff / (ops.linalg.norm(best_diff) + 1e-8)
     force_eval(best_dir)
 
     return best_dir, best_layer, cosine_scores
@@ -140,7 +139,7 @@ def _collect_activations_at_instruction_end(
         if not isinstance(text, str):
             msg = "apply_chat_template must return str when tokenize=False"
             raise TypeError(msg)
-        token_ids = mx.array(tokenizer.encode(text))[None, :]
+        token_ids = ops.array(tokenizer.encode(text))[None, :]
         boundary = find_instruction_boundary(tokenizer, prompt)
         residuals = _forward_collect(model, token_ids, boundary)
 
@@ -148,10 +147,10 @@ def _collect_activations_at_instruction_end(
             residuals = [_clip_activation(r, clip_quantile) for r in residuals]
 
         if means is None:
-            means = [r.astype(mx.float32) for r in residuals]
+            means = [r.astype(ops.float32) for r in residuals]
         else:
             for i, r in enumerate(residuals):
-                delta = r.astype(mx.float32) - means[i]
+                delta = r.astype(ops.float32) - means[i]
                 means[i] = means[i] + delta / count
 
         if count % 16 == 0 and means is not None:
@@ -171,6 +170,6 @@ def _cosine_separation(
     direction: Array,
 ) -> Array:
     """Cosine separation: projection difference onto direction."""
-    proj_harmful = mx.sum(harmful_mean * direction)
-    proj_harmless = mx.sum(harmless_mean * direction)
+    proj_harmful = ops.sum(harmful_mean * direction)
+    proj_harmless = ops.sum(harmless_mean * direction)
     return proj_harmful - proj_harmless

@@ -2,8 +2,7 @@
 
 import random
 
-import mlx.core as mx
-
+from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import force_eval
 from vauban.softprompt._generation import _evaluate_attack
@@ -95,7 +94,7 @@ def _gcg_attack(
             total_steps += 1
 
             # Get embeddings for current tokens
-            token_array = mx.array(current_ids)[None, :]
+            token_array = ops.array(current_ids)[None, :]
             soft_embeds = transformer.embed_tokens(token_array)
             force_eval(soft_embeds)
 
@@ -121,14 +120,14 @@ def _gcg_attack(
                 selected_ids, config.grad_accum_steps,
             )
             total_loss = 0.0
-            accum_grad = mx.zeros_like(soft_embeds)
+            accum_grad = ops.zeros_like(soft_embeds)
 
             for batch in batches:
                 def loss_fn(
                     embeds: Array,
                     _sel: list[Array] = batch,
                 ) -> Array:
-                    total = mx.array(0.0)
+                    total = ops.array(0.0)
                     for pid in _sel:
                         if (
                             config.loss_mode == "defensive"
@@ -168,7 +167,7 @@ def _gcg_attack(
                             )
                     return total / len(_sel)
 
-                batch_loss, batch_grad = mx.value_and_grad(loss_fn)(
+                batch_loss, batch_grad = ops.value_and_grad(loss_fn)(
                     soft_embeds,
                 )
                 force_eval(batch_loss, batch_grad)
@@ -196,15 +195,15 @@ def _gcg_attack(
 
             # Score token candidates: -grad @ embed_matrix.T
             # grad shape: (1, n_tokens, d_model)
-            scores = -mx.matmul(grad[0], embed_matrix.T)  # (n_tokens, vocab_size)
+            scores = -ops.matmul(grad[0], embed_matrix.T)  # (n_tokens, vocab_size)
             # Apply vocab mask to exclude disallowed tokens
             if vocab_mask is not None:
-                scores = mx.where(vocab_mask, scores, mx.array(-1e10))
+                scores = ops.where(vocab_mask, scores, ops.array(-1e10))
             force_eval(scores)
 
             # Top-k per position
             effective_k = min(config.top_k, vocab_size)
-            sorted_indices = mx.argsort(-scores, axis=-1)  # descending order
+            sorted_indices = ops.argsort(-scores, axis=-1)  # descending order
             top_indices = sorted_indices[:, :effective_k]  # (n_tokens, top_k)
             force_eval(top_indices)
 
@@ -221,9 +220,9 @@ def _gcg_attack(
             # Evaluate all candidates (averaged across selected prompts)
             candidate_losses: list[float] = []
             for candidate in candidates:
-                cand_array = mx.array(candidate)[None, :]
+                cand_array = ops.array(candidate)[None, :]
                 cand_embeds = transformer.embed_tokens(cand_array)
-                cand_total = mx.array(0.0)
+                cand_total = ops.array(0.0)
                 for pid in selected_ids:
                     if (
                         config.loss_mode == "defensive"
@@ -276,7 +275,7 @@ def _gcg_attack(
 
     # Evaluate with best tokens
     current_ids = overall_best_ids
-    final_token_array = mx.array(current_ids)[None, :]
+    final_token_array = ops.array(current_ids)[None, :]
     final_embeds = transformer.embed_tokens(final_token_array)
     force_eval(final_embeds)
 

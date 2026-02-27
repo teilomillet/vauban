@@ -31,7 +31,7 @@ if TYPE_CHECKING or _BACKEND == "mlx":
         """
         import mlx_lm
 
-        model, tokenizer = mlx_lm.load(model_path)
+        model, tokenizer, *_ = mlx_lm.load(model_path)
         return model, tokenizer  # type: ignore[return-value]
 
 elif _BACKEND == "torch":

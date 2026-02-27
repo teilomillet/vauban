@@ -1,7 +1,6 @@
 """Silhouette scoring for harmful/harmless activation separation."""
 
-import mlx.core as mx
-
+from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import force_eval
 from vauban.measure._activations import _collect_per_prompt_activations
@@ -72,11 +71,11 @@ def _silhouette_score_layer(
     # Pairwise L2 distances within and between groups
     # Using ||x - y||^2 = ||x||^2 + ||y||^2 - 2 x·y
     def _pairwise_dist(x: Array, y: Array) -> Array:
-        x_sq = mx.sum(x * x, axis=1, keepdims=True)  # (n, 1)
-        y_sq = mx.sum(y * y, axis=1, keepdims=True)  # (m, 1)
+        x_sq = ops.sum(x * x, axis=1, keepdims=True)  # (n, 1)
+        y_sq = ops.sum(y * y, axis=1, keepdims=True)  # (m, 1)
         cross = x @ y.T  # (n, m)
         dist = x_sq + y_sq.T - 2.0 * cross
-        return mx.maximum(dist, mx.array(0.0))  # clamp negatives from float error
+        return ops.maximum(dist, ops.array(0.0))  # clamp negatives from float error
 
     dist_aa = _pairwise_dist(group_a, group_a)  # (n_a, n_a)
     dist_ab = _pairwise_dist(group_a, group_b)  # (n_a, n_b)
@@ -91,16 +90,16 @@ def _silhouette_score_layer(
     # Silhouette for group_a samples
     for j in range(n_a):
         # Mean distance to other points in same cluster
-        a_val = float(mx.sum(dist_aa[j]).item()) / (n_a - 1)
+        a_val = float(ops.sum(dist_aa[j]).item()) / (n_a - 1)
         # Mean distance to points in other cluster
-        b_val = float(mx.sum(dist_ab[j]).item()) / n_b
+        b_val = float(ops.sum(dist_ab[j]).item()) / n_b
         denom = max(a_val, b_val)
         total_s += (b_val - a_val) / denom if denom > 0 else 0.0
 
     # Silhouette for group_b samples
     for j in range(n_b):
-        a_val = float(mx.sum(dist_bb[j]).item()) / (n_b - 1)
-        b_val = float(mx.sum(dist_ba[j]).item()) / n_a
+        a_val = float(ops.sum(dist_bb[j]).item()) / (n_b - 1)
+        b_val = float(ops.sum(dist_ba[j]).item()) / n_a
         denom = max(a_val, b_val)
         total_s += (b_val - a_val) / denom if denom > 0 else 0.0
 

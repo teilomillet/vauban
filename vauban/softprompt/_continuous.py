@@ -1,7 +1,6 @@
 """Continuous soft prompt optimization via Adam."""
 
-import mlx.core as mx
-
+from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import force_eval
 from vauban.softprompt._generation import _evaluate_attack
@@ -44,7 +43,7 @@ def _continuous_attack(
     embed_matrix = model.model.embed_tokens.weight
 
     soft_embeds = (
-        mx.random.normal((1, config.n_tokens, d_model)) * config.init_scale
+        ops.random.normal((1, config.n_tokens, d_model)) * config.init_scale
     )
     force_eval(soft_embeds)
 
@@ -69,8 +68,8 @@ def _continuous_attack(
     eos_token_id: int | None = getattr(tokenizer, "eos_token_id", None)
 
     # Adam state: manual tracking since we're optimizing a bare array
-    m = mx.zeros_like(soft_embeds)
-    v = mx.zeros_like(soft_embeds)
+    m = ops.zeros_like(soft_embeds)
+    v = ops.zeros_like(soft_embeds)
     beta1 = 0.9
     beta2 = 0.999
     eps = 1e-8
@@ -104,14 +103,14 @@ def _continuous_attack(
         # Gradient accumulation over mini-batches
         batches = _split_into_batches(selected_ids, config.grad_accum_steps)
         total_loss = 0.0
-        accum_grad = mx.zeros_like(soft_embeds)
+        accum_grad = ops.zeros_like(soft_embeds)
 
         for batch in batches:
             def loss_fn(
                 embeds: Array,
                 _sel: list[Array] = batch,
             ) -> Array:
-                total = mx.array(0.0)
+                total = ops.array(0.0)
                 for pid in _sel:
                     if (
                         config.loss_mode == "defensive"
@@ -156,7 +155,7 @@ def _continuous_attack(
                     )
                 return avg
 
-            batch_loss, batch_grad = mx.value_and_grad(loss_fn)(soft_embeds)
+            batch_loss, batch_grad = ops.value_and_grad(loss_fn)(soft_embeds)
             force_eval(batch_loss, batch_grad)
             total_loss += float(batch_loss.item())
             accum_grad = accum_grad + batch_grad
@@ -188,7 +187,7 @@ def _continuous_attack(
         v = beta2 * v + (1 - beta2) * (grad * grad)
         m_hat = m / (1 - beta1 ** (step + 1))
         v_hat = v / (1 - beta2 ** (step + 1))
-        update = lr * m_hat / (mx.sqrt(v_hat) + eps)
+        update = lr * m_hat / (ops.sqrt(v_hat) + eps)
         soft_embeds = soft_embeds - update
         force_eval(soft_embeds, m, v)
 
