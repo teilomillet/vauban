@@ -62,6 +62,7 @@ stack = _wrap("stack")
 # ====================================================================
 
 array = _torch.tensor
+array_type: type = _torch.Tensor  # for isinstance checks (array is a constructor)
 zeros = _torch.zeros
 zeros_like = _torch.zeros_like
 ones = _torch.ones

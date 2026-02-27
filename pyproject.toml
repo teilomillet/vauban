@@ -19,7 +19,11 @@ vauban = "vauban.__main__:main"
 [project.optional-dependencies]
 optimize = ["optuna>=4.0"]
 torch = [
-    "torch>=2.10.0",
+    "torch>=2.0",
+    "transformers>=4.36",
+    "accelerate>=0.26",
+    "huggingface_hub>=0.20",
+    "safetensors>=0.4",
 ]
 
 [dependency-groups]
@@ -32,7 +36,7 @@ dev = [
 
 # Torch backend: suppress unresolved-import for envs without torch installed.
 [[tool.ty.overrides]]
-include = ["vauban/_ops_torch.py", "vauban/_nn_torch.py"]
+include = ["vauban/_ops_torch.py", "vauban/_nn_torch.py", "vauban/_model_torch.py"]
 [tool.ty.overrides.rules]
 unresolved-import = "ignore"
 

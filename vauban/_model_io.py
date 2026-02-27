@@ -36,11 +36,25 @@ if TYPE_CHECKING or _BACKEND == "mlx":
 
 elif _BACKEND == "torch":
     def load_model(model_path: str) -> tuple[CausalLM, Tokenizer]:
-        """Load model + tokenizer using PyTorch (not yet implemented)."""
-        raise NotImplementedError(
-            "PyTorch backend model loading is not yet implemented. "
-            "Set backend = 'mlx' in your TOML config."
+        """Load model + tokenizer using HuggingFace Transformers.
+
+        Args:
+            model_path: HuggingFace model ID or local path.
+
+        Returns:
+            (model, tokenizer) tuple.
+        """
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+
+        from vauban._model_torch import TorchCausalLMWrapper
+
+        hf_model = AutoModelForCausalLM.from_pretrained(
+            model_path, torch_dtype=torch.float16, device_map="auto",
         )
+        hf_model.eval()
+        tokenizer = AutoTokenizer.from_pretrained(model_path)
+        return TorchCausalLMWrapper(hf_model), tokenizer
 
 else:
     msg = f"Unknown backend: {_BACKEND!r}"

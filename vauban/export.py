@@ -68,10 +68,10 @@ if TYPE_CHECKING or _BACKEND == "mlx":
 
 elif _BACKEND == "torch":
     def _save_weights(path: Path, weights: dict[str, Array]) -> None:
-        """Save weight dict to safetensors (PyTorch — not yet implemented)."""
-        raise NotImplementedError(
-            "PyTorch weight saving is not yet implemented."
-        )
+        """Save weight dict to safetensors using PyTorch."""
+        from safetensors.torch import save_file
+
+        save_file(weights, str(path))
 
 else:
     msg = f"Unknown backend: {_BACKEND!r}"
@@ -81,9 +81,17 @@ else:
 def _resolve_source_dir(model_path: str) -> Path:
     """Resolve a model path or HuggingFace ID to a local directory.
 
-    Uses ``mlx_lm.utils._download()`` which handles both local paths
-    and HuggingFace Hub downloads.
+    Uses ``mlx_lm.utils._download()`` on MLX or ``huggingface_hub``
+    on PyTorch. Both handle local paths and HuggingFace Hub downloads.
     """
-    from mlx_lm.utils import _download
+    local = Path(model_path)
+    if local.is_dir():
+        return local
+    if _BACKEND == "mlx":
+        from mlx_lm.utils import _download
 
-    return _download(model_path)
+        return _download(model_path)
+
+    from huggingface_hub import snapshot_download
+
+    return Path(snapshot_download(model_path))

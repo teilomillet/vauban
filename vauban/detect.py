@@ -7,8 +7,6 @@ building blocks into a single ``detect()`` entry point.
 
 from typing import TYPE_CHECKING
 
-import mlx.nn as nn  # kept: nn.QuantizedLinear isinstance checks
-
 from vauban import _ops as ops
 from vauban.cut import cut
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES, _generate, _refusal_rate
@@ -190,11 +188,9 @@ def _abliteration_layer(
     )
 
     # Copy weights and apply test cut
-    # Access nn.Module methods via the concrete model object
-    model_module: nn.Module = model  # type: ignore[assignment]
     flat_weights: dict[str, Array] = {
-        k: v for k, v in ops.tree_flatten(model_module.parameters())
-        if isinstance(v, ops.array)
+        k: v for k, v in ops.tree_flatten(model.parameters())  # type: ignore[unresolved-attribute]
+        if isinstance(v, ops.array_type)
     }
     all_layers = list(range(len(model.model.layers)))
     modified_weights = cut(
@@ -203,29 +199,29 @@ def _abliteration_layer(
 
     # Load modified weights into model, then restore after measurement
     original_weights = {k: flat_weights[k] for k in modified_weights}
-    model_module.load_weights(list(modified_weights.items()))
+    model.load_weights(list(modified_weights.items()))  # type: ignore[unresolved-attribute]
 
     # Measure residual refusal rate on modified model
     residual_rr = _refusal_rate(
-        model, tokenizer, harmful_prompts,  # type: ignore[arg-type]
+        model, tokenizer, harmful_prompts,
         DEFAULT_REFUSAL_PHRASES, config.max_tokens,
     )
     evidence.append(f"residual_refusal_rate={residual_rr:.2f}")
 
     # Measure refusal verbosity
     mean_pos = _refusal_verbosity(
-        model, tokenizer, harmful_prompts, config.max_tokens,  # type: ignore[arg-type]
+        model, tokenizer, harmful_prompts, config.max_tokens,
     )
     evidence.append(f"mean_refusal_position={mean_pos:.1f}")
 
     # Restore original weights
-    model_module.load_weights(list(original_weights.items()))
+    model.load_weights(list(original_weights.items()))  # type: ignore[unresolved-attribute]
 
     return residual_rr, mean_pos, evidence
 
 
 def _refusal_verbosity(
-    model: nn.Module,
+    model: CausalLM,
     tokenizer: Tokenizer,
     harmful_prompts: list[str],
     max_tokens: int,

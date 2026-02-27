@@ -10,8 +10,6 @@ vauban works without it installed.
 import logging
 import math
 
-import mlx.nn as nn  # kept: nn.Module type hints
-
 from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import extract_logits, force_eval
@@ -77,22 +75,21 @@ def optimize(
     cosine_scores = direction_result.cosine_scores
 
     # Precompute baselines (once)
-    model_module: nn.Module = model  # type: ignore[assignment]
     original_weights: dict[str, Array] = {
         k: v
-        for k, v in ops.tree_flatten(model_module.parameters())
-        if isinstance(v, ops.array)
+        for k, v in ops.tree_flatten(model.parameters())  # type: ignore[unresolved-attribute]
+        if isinstance(v, ops.array_type)
     }
 
     baseline_refusal = _refusal_rate(
-        model, tokenizer, eval_prompts,  # type: ignore[arg-type]
+        model, tokenizer, eval_prompts,
         DEFAULT_REFUSAL_PHRASES, config.max_tokens,
     )
     baseline_perplexity = _perplexity(
-        model, tokenizer, eval_prompts,  # type: ignore[arg-type]
+        model, tokenizer, eval_prompts,
     )
     original_logits = _precompute_logits(
-        model, tokenizer, eval_prompts,  # type: ignore[arg-type]
+        model, tokenizer, eval_prompts,
     )
 
     # Resolve layer_top_k_max
@@ -149,25 +146,25 @@ def optimize(
         )
 
         # Load modified weights
-        model_module.load_weights(list(modified_weights.items()))
+        model.load_weights(list(modified_weights.items()))  # type: ignore[unresolved-attribute]
 
         # Measure objectives
         refusal = _refusal_rate(
-            model, tokenizer, eval_prompts,  # type: ignore[arg-type]
+            model, tokenizer, eval_prompts,
             DEFAULT_REFUSAL_PHRASES, config.max_tokens,
         )
         perplexity = _perplexity(
-            model, tokenizer, eval_prompts,  # type: ignore[arg-type]
+            model, tokenizer, eval_prompts,
         )
         kl = _kl_from_precomputed(
-            model, tokenizer, eval_prompts, original_logits,  # type: ignore[arg-type]
+            model, tokenizer, eval_prompts, original_logits,
         )
 
         # Restore original weights
         restore_items = [
             (k, original_weights[k]) for k in modified_weights
         ]
-        model_module.load_weights(restore_items)
+        model.load_weights(restore_items)  # type: ignore[unresolved-attribute]
 
         perplexity_delta = perplexity - baseline_perplexity
 
@@ -222,7 +219,7 @@ def optimize(
 
 
 def _precompute_logits(
-    model: nn.Module,
+    model: CausalLM,
     tokenizer: Tokenizer,
     prompts: list[str],
 ) -> list[Array]:
@@ -234,14 +231,14 @@ def _precompute_logits(
     results: list[Array] = []
     for prompt in prompts:
         token_ids = ops.array(tokenizer.encode(prompt))[None, :]
-        logits = extract_logits(model(token_ids))
+        logits = extract_logits(model(token_ids))  # type: ignore[call-non-callable, arg-type]
         force_eval(logits)
         results.append(logits)
     return results
 
 
 def _kl_from_precomputed(
-    model: nn.Module,
+    model: CausalLM,
     tokenizer: Tokenizer,
     prompts: list[str],
     original_logits: list[Array],
@@ -259,7 +256,7 @@ def _kl_from_precomputed(
 
     for prompt, orig_logits in zip(prompts, original_logits, strict=True):
         token_ids = ops.array(tokenizer.encode(prompt))[None, :]
-        mod_logits = extract_logits(model(token_ids))
+        mod_logits = extract_logits(model(token_ids))  # type: ignore[call-non-callable, arg-type]
 
         p = ops.softmax(orig_logits, axis=-1)
         q = ops.softmax(mod_logits, axis=-1)

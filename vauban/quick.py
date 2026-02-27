@@ -251,7 +251,7 @@ def evaluate(
         h_path, _ = default_prompt_paths()
         prompts = load_prompts(h_path)[:20]
 
-    return _evaluate(original, modified, tokenizer, prompts, max_tokens=max_tokens)  # type: ignore[arg-type]
+    return _evaluate(original, modified, tokenizer, prompts, max_tokens=max_tokens)
 
 
 def analyze_geometry(

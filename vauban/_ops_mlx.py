@@ -9,6 +9,7 @@ from mlx.utils import tree_flatten as tree_flatten  # explicit re-export
 
 # Array creation
 array = _mx.array
+array_type: type[_mx.array] = _mx.array  # for isinstance checks (same as array on MLX)
 zeros = _mx.zeros
 zeros_like = _mx.zeros_like
 ones = _mx.ones

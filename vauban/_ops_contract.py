@@ -37,6 +37,7 @@ class RandomNamespace(Protocol):
 OPS_CONTRACT: list[str] = [
     # Array creation
     "array",
+    "array_type",
     "zeros",
     "zeros_like",
     "ones",

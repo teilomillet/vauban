@@ -2,11 +2,12 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol, runtime_checkable
-
-import mlx.nn as nn
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from vauban._array import Array
+
+if TYPE_CHECKING:
+    import mlx.nn as nn
 
 # ---------------------------------------------------------------------------
 # Protocols — structural typing decoupled from mlx-lm internals
@@ -15,16 +16,32 @@ from vauban._array import Array
 
 @runtime_checkable
 class TransformerModel(Protocol):
-    """Inner transformer model (e.g. model.model in mlx-lm)."""
+    """Inner transformer model (e.g. model.model in mlx-lm).
 
-    embed_tokens: nn.Embedding
-    layers: list[nn.Module]
-    norm: nn.Module
+    At type-check time (MLX installed) the members are typed as MLX
+    concrete types.  At runtime, structural typing handles both MLX
+    and PyTorch wrappers transparently.
+    """
+
+    if TYPE_CHECKING:
+        embed_tokens: nn.Embedding
+        layers: list[nn.Module]
+        norm: nn.Module
+    else:
+        embed_tokens: object
+        layers: list[object]
+        norm: object
 
 
 @runtime_checkable
 class CausalLM(Protocol):
-    """Top-level causal language model (e.g. what mlx_lm.load returns)."""
+    """Top-level causal language model (e.g. what mlx_lm.load returns).
+
+    Both MLX nn.Module and TorchCausalLMWrapper satisfy this protocol.
+    The protocol is kept minimal — only ``model`` is required.
+    Operational methods (__call__, parameters, load_weights) are
+    accessed via duck typing with type: ignore where needed.
+    """
 
     model: TransformerModel
 

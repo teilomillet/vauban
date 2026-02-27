@@ -208,7 +208,7 @@ def scan(
                 max_tokens,
             )
             if refusal_mode == "judge":
-                refused = _judge_single(model, tokenizer, sp.prompt, response)  # type: ignore[arg-type]
+                refused = _judge_single(model, tokenizer, sp.prompt, response)
             else:
                 lower = response.lower()
                 refused = any(

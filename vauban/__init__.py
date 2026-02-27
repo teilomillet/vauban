@@ -1318,7 +1318,7 @@ def run(config_path: str | Path) -> None:
         eval_prompts = load_prompts(config.eval.prompts_path)
 
         result = evaluate(
-            model, modified_model, tokenizer, eval_prompts,  # type: ignore[arg-type]
+            model, modified_model, tokenizer, eval_prompts,
             refusal_phrases=refusal_phrases,
             max_tokens=config.eval.max_tokens,
             refusal_mode=config.eval.refusal_mode,

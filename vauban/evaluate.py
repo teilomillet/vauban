@@ -2,12 +2,10 @@
 
 import math
 
-import mlx.nn as nn  # kept: nn.Module type hints in function signatures
-
 from vauban import _nn
 from vauban import _ops as ops
 from vauban._forward import extract_logits, force_eval, make_cache
-from vauban.types import EvalResult, Tokenizer
+from vauban.types import CausalLM, EvalResult, Tokenizer
 
 DEFAULT_REFUSAL_PHRASES: list[str] = [
     "I cannot",
@@ -31,8 +29,8 @@ DEFAULT_REFUSAL_PHRASES: list[str] = [
 
 
 def evaluate(
-    original: nn.Module,
-    modified: nn.Module,
+    original: CausalLM,
+    modified: CausalLM,
     tokenizer: Tokenizer,
     prompts: list[str],
     refusal_phrases: list[str] | None = None,
@@ -68,7 +66,7 @@ def evaluate(
 
 
 def _refusal_rate(
-    model: nn.Module,
+    model: CausalLM,
     tokenizer: Tokenizer,
     prompts: list[str],
     refusal_phrases: list[str],
@@ -89,7 +87,7 @@ def _refusal_rate(
 
 
 def _generate(
-    model: nn.Module,
+    model: CausalLM,
     tokenizer: Tokenizer,
     prompt: str,
     max_tokens: int,
@@ -124,7 +122,7 @@ def _generate(
     token_ids = ops.array([tokens])  # prefill: full prompt
 
     for _ in range(max_tokens):
-        result = model(token_ids, cache=cache)
+        result = model(token_ids, cache=cache)  # type: ignore[call-non-callable]
         logits = extract_logits(result)
         next_token = int(ops.argmax(logits[:, -1, :], axis=-1).item())
         generated.append(next_token)
@@ -136,7 +134,7 @@ def _generate(
 
 
 def _perplexity(
-    model: nn.Module,
+    model: CausalLM,
     tokenizer: Tokenizer,
     prompts: list[str],
 ) -> float:
@@ -149,7 +147,7 @@ def _perplexity(
 
     for prompt in prompts:
         token_ids = ops.array(tokenizer.encode(prompt))[None, :]
-        result = model(token_ids)
+        result = model(token_ids)  # type: ignore[call-non-callable]
         logits = extract_logits(result)
 
         # Shift: predict token[i+1] from position[i]
@@ -172,8 +170,8 @@ def _perplexity(
 
 
 def _kl_divergence(
-    original: nn.Module,
-    modified: nn.Module,
+    original: CausalLM,
+    modified: CausalLM,
     tokenizer: Tokenizer,
     prompts: list[str],
 ) -> float:
@@ -187,8 +185,8 @@ def _kl_divergence(
     for prompt in prompts:
         token_ids = ops.array(tokenizer.encode(prompt))[None, :]
 
-        logits_orig = extract_logits(original(token_ids))
-        logits_mod = extract_logits(modified(token_ids))
+        logits_orig = extract_logits(original(token_ids))  # type: ignore[call-non-callable, arg-type]
+        logits_mod = extract_logits(modified(token_ids))  # type: ignore[call-non-callable, arg-type]
 
         p = ops.softmax(logits_orig, axis=-1)
         q = ops.softmax(logits_mod, axis=-1)
@@ -214,7 +212,7 @@ _JUDGE_PROMPT_TEMPLATE: str = (
 
 
 def _judge_single(
-    model: nn.Module,
+    model: CausalLM,
     tokenizer: Tokenizer,
     prompt: str,
     response: str,
@@ -234,7 +232,7 @@ def _judge_single(
 
 
 def _judge_refusal_rate(
-    model: nn.Module,
+    model: CausalLM,
     tokenizer: Tokenizer,
     prompts: list[str],
     max_tokens: int,

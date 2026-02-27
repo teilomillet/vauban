@@ -107,28 +107,72 @@ if TYPE_CHECKING or _BACKEND == "mlx":
 
 
 elif _BACKEND == "torch":
-    from collections.abc import Callable
+    import torch as _torch
 
     def force_eval(*args: Array) -> None:
         """No-op — PyTorch is eager, no lazy evaluation needed."""
 
-    def _torch_not_implemented(name: str) -> Callable[..., object]:
-        """Create a stub that raises NotImplementedError for a given function name."""
-        def _stub(*args: object, **kwargs: object) -> object:
-            raise NotImplementedError(
-                f"{name}() not yet implemented for PyTorch backend"
-            )
-        _stub.__name__ = name
-        _stub.__doc__ = f"PyTorch stub for {name} (not yet implemented)."
-        return _stub
+    def make_cache(model: CausalLM) -> list[LayerCache]:
+        """Create a KV cache via the wrapper's make_cache()."""
+        return model.make_cache()
 
-    make_cache = _torch_not_implemented("make_cache")
-    lm_head_forward = _torch_not_implemented("lm_head_forward")
-    extract_logits = _torch_not_implemented("extract_logits")
-    embed_and_mask = _torch_not_implemented("embed_and_mask")
-    embed_and_mask_with_prefix = _torch_not_implemented("embed_and_mask_with_prefix")
-    svd_stable = _torch_not_implemented("svd_stable")
-    qr_stable = _torch_not_implemented("qr_stable")
+    def lm_head_forward(model: CausalLM, h: Array) -> Array:
+        """Apply the language model head (lm_head or tied embeddings)."""
+        if hasattr(model, "lm_head"):
+            return model.lm_head(h)
+        # Tied embeddings: project through embedding weight matrix
+        import torch.nn.functional as _f
+
+        return _f.linear(h, model.model.embed_tokens.weight)
+
+    def extract_logits(result: Array | tuple[Array, ...]) -> Array:
+        """Extract logits tensor from model output."""
+        if isinstance(result, tuple):
+            return result[0]
+        if hasattr(result, "logits"):
+            return result.logits
+        return result
+
+    def embed_and_mask(
+        transformer: TransformerModel,
+        token_ids: Array,
+    ) -> tuple[Array, Array | None]:
+        """Embed tokens. HF layers handle causal masking internally.
+
+        Returns:
+            Tuple of (hidden_states, None).
+        """
+        h = transformer.embed_tokens(token_ids)
+        return h, None
+
+    def embed_and_mask_with_prefix(
+        transformer: TransformerModel,
+        prefix_embeds: Array,
+        token_ids: Array,
+    ) -> tuple[Array, Array | None]:
+        """Embed tokens, prepend prefix embeddings.
+
+        Returns:
+            Tuple of (hidden_states, None) where hidden_states is
+            [prefix_embeds | embed(token_ids)].
+        """
+        prompt_embeds = transformer.embed_tokens(token_ids)
+        h = _torch.cat([prefix_embeds, prompt_embeds], dim=1)
+        return h, None
+
+    def svd_stable(matrix: Array) -> tuple[Array, Array, Array]:
+        """SVD with numerical stability (CPU, float32)."""
+        cpu_m = matrix.to("cpu").float()
+        u, s, vt = _torch.linalg.svd(cpu_m)
+        dev = matrix.device
+        return u.to(dev), s.to(dev), vt.to(dev)
+
+    def qr_stable(matrix: Array) -> tuple[Array, Array]:
+        """QR with numerical stability (CPU, float32)."""
+        cpu_m = matrix.to("cpu").float()
+        q, r = _torch.linalg.qr(cpu_m)
+        dev = matrix.device
+        return q.to(dev), r.to(dev)
 
 else:
     msg = f"Unknown backend: {_BACKEND!r}"
