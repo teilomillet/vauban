@@ -46,9 +46,12 @@ class TorchLayerCache:
 class TorchLayerWrapper:
     """Wraps HF decoder layer to match MLX ``layer(h, mask, cache=...)`` convention."""
 
-    def __init__(self, hf_layer: object, layer_idx: int) -> None:
+    def __init__(
+        self, hf_layer: object, layer_idx: int, rotary_emb: object | None = None,
+    ) -> None:
         self._hf_layer = hf_layer
         self._layer_idx = layer_idx
+        self._rotary_emb = rotary_emb
 
     def __call__(
         self,
@@ -71,9 +74,15 @@ class TorchLayerWrapper:
         if cache is not None:
             kwargs["past_key_value"] = cache._shared_cache
             kwargs["use_cache"] = True
+        # Newer HF transformers computes rotary embeddings at model level
+        if self._rotary_emb is not None:
+            kwargs["position_embeddings"] = self._rotary_emb(h, position_ids)  # type: ignore[call-non-callable]
         # Let HF handle causal masking internally (attention_mask=None)
         outputs = self._hf_layer(h, attention_mask=None, **kwargs)  # type: ignore[call-non-callable]
-        return outputs[0]
+        # Some HF layers return a tuple (hidden_states, ...), others a bare tensor
+        if isinstance(outputs, tuple):
+            return outputs[0]
+        return outputs
 
     def __getattr__(self, name: str) -> object:
         """Proxy attribute access for weight inspection (self_attn, mlp, etc.)."""
@@ -85,8 +94,9 @@ class TorchTransformerWrapper:
 
     def __init__(self, hf_inner: object) -> None:
         self.embed_tokens = hf_inner.embed_tokens  # type: ignore[union-attr]
+        rotary_emb = getattr(hf_inner, "rotary_emb", None)
         self.layers: list[TorchLayerWrapper] = [
-            TorchLayerWrapper(layer, i)
+            TorchLayerWrapper(layer, i, rotary_emb)
             for i, layer in enumerate(hf_inner.layers)  # type: ignore[union-attr]
         ]
         self.norm = hf_inner.norm  # type: ignore[union-attr]
@@ -101,12 +111,18 @@ class TorchCausalLMWrapper:
         if hasattr(hf_model, "lm_head"):
             self.lm_head = hf_model.lm_head
 
+    @property
+    def device(self) -> object:
+        """Return the device the underlying HF model lives on."""
+        return next(self._hf_model.parameters()).device  # type: ignore[union-attr]
+
     def __call__(
         self,
         token_ids: Array,
         cache: list[TorchLayerCache] | None = None,
     ) -> Array:
         """Forward pass delegating to the wrapped HF model."""
+        token_ids = token_ids.to(self.device)  # type: ignore[union-attr]
         kwargs: dict[str, object] = {"input_ids": token_ids}
         if cache is not None:
             # cache is list[TorchLayerCache] — extract shared DynamicCache

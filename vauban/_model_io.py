@@ -50,7 +50,7 @@ elif _BACKEND == "torch":
         from vauban._model_torch import TorchCausalLMWrapper
 
         hf_model = AutoModelForCausalLM.from_pretrained(
-            model_path, torch_dtype=torch.float16, device_map="auto",
+            model_path, dtype=torch.float16, device_map="auto",
         )
         hf_model.eval()
         tokenizer = AutoTokenizer.from_pretrained(model_path)

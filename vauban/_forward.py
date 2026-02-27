@@ -142,6 +142,9 @@ elif _BACKEND == "torch":
         Returns:
             Tuple of (hidden_states, None).
         """
+        # Move token_ids to the same device as the embedding weights
+        dev = transformer.embed_tokens.weight.device
+        token_ids = token_ids.to(dev)
         h = transformer.embed_tokens(token_ids)
         return h, None
 
@@ -156,6 +159,8 @@ elif _BACKEND == "torch":
             Tuple of (hidden_states, None) where hidden_states is
             [prefix_embeds | embed(token_ids)].
         """
+        dev = transformer.embed_tokens.weight.device
+        token_ids = token_ids.to(dev)
         prompt_embeds = transformer.embed_tokens(token_ids)
         h = _torch.cat([prefix_embeds, prompt_embeds], dim=1)
         return h, None
