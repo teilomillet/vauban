@@ -18,7 +18,9 @@ from vauban.softprompt._utils import (
     _encode_refusal_tokens,
     _encode_targets,
     _pre_encode_prompts,
+    _prepare_transfer_data,
     _sample_prompt_ids,
+    _score_transfer_loss,
     _select_prompt_ids,
     _select_worst_k_prompt_ids,
     _split_into_batches,
@@ -34,6 +36,7 @@ def _gcg_attack(
     direction: Array | None,
     ref_model: CausalLM | None = None,
     all_prompt_ids_override: list[Array] | None = None,
+    transfer_models: list[tuple[str, CausalLM, Tokenizer]] | None = None,
 ) -> SoftPromptResult:
     """GCG (Greedy Coordinate Gradient) discrete token search.
 
@@ -58,6 +61,11 @@ def _gcg_attack(
         all_prompt_ids = _pre_encode_prompts(
             tokenizer, effective_prompts, config.system_prompt,
         )
+
+    # Pre-encode transfer model data for multi-model re-ranking
+    transfer_data = _prepare_transfer_data(
+        transfer_models, config, prompts,
+    )
 
     # Pre-compute direction config
     direction_layers_set: set[int] | None = (
@@ -152,6 +160,31 @@ def _gcg_attack(
         cand_avg = cand_total / len(sel)
         force_eval(cand_avg)
         return float(cand_avg.item())
+
+    # --- Transfer re-ranking helpers ---
+    # NOTE: Transfer scoring always evaluates against *all* pre-encoded
+    # prompts (t_prompts), not the per-step selected_ids subset.  This is
+    # intentional — transferability should be measured over the full
+    # prompt set, not the primary model's worst-k or cycle selection.
+    def _apply_transfer_reranking(
+        candidates: list[list[int]],
+        candidate_losses: list[float],
+    ) -> None:
+        """Re-rank top candidates using transfer model scores (in-place)."""
+        if not transfer_data:
+            return
+        n_rerank = min(config.transfer_rerank_count, len(candidates))
+        ranked = sorted(
+            range(len(candidate_losses)),
+            key=lambda i: candidate_losses[i],
+        )[:n_rerank]
+        for idx in ranked:
+            t_loss = _score_transfer_loss(
+                tokenizer.decode(candidates[idx]), transfer_data,
+            )
+            candidate_losses[idx] += (
+                config.transfer_loss_weight * t_loss
+            )
 
     for _restart in range(config.n_restarts):
         # Initialize: warm-start from init_tokens or random
@@ -331,6 +364,8 @@ def _gcg_attack(
                     for c in candidates
                 ]
 
+                _apply_transfer_reranking(candidates, candidate_losses)
+
                 best_candidate_idx = candidate_losses.index(
                     min(candidate_losses),
                 )
@@ -356,6 +391,8 @@ def _gcg_attack(
                     _eval_cand(c, selected_ids)
                     for c in candidates
                 ]
+
+                _apply_transfer_reranking(candidates, candidate_losses)
 
                 # Pool candidates + current beam, deduplicate,
                 # keep top beam_width

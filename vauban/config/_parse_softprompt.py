@@ -748,6 +748,42 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
         )
         raise ValueError(msg)
 
+    # -- transfer_loss_weight --
+    transfer_loss_weight_raw = sec.get(  # type: ignore[arg-type]
+        "transfer_loss_weight", 0.0,
+    )
+    if not isinstance(transfer_loss_weight_raw, int | float):
+        msg = (
+            "[softprompt].transfer_loss_weight must be"
+            f" a number, got"
+            f" {type(transfer_loss_weight_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if float(transfer_loss_weight_raw) < 0.0:
+        msg = (
+            "[softprompt].transfer_loss_weight must be"
+            f" >= 0.0, got {transfer_loss_weight_raw}"
+        )
+        raise ValueError(msg)
+
+    # -- transfer_rerank_count --
+    transfer_rerank_count_raw = sec.get(  # type: ignore[arg-type]
+        "transfer_rerank_count", 8,
+    )
+    if not isinstance(transfer_rerank_count_raw, int):
+        msg = (
+            "[softprompt].transfer_rerank_count must be"
+            f" an integer, got"
+            f" {type(transfer_rerank_count_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if transfer_rerank_count_raw < 1:
+        msg = (
+            "[softprompt].transfer_rerank_count must be"
+            f" >= 1, got {transfer_rerank_count_raw}"
+        )
+        raise ValueError(msg)
+
     # -- defense_eval_alpha_tiers --
     alpha_tiers_raw = sec.get(  # type: ignore[arg-type]
         "defense_eval_alpha_tiers",
@@ -864,6 +900,8 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
         prompt_pool_size=prompt_pool_size,
         beam_width=beam_width_raw,
         defense_aware_weight=float(defense_aware_weight_raw),
+        transfer_loss_weight=float(transfer_loss_weight_raw),
+        transfer_rerank_count=transfer_rerank_count_raw,
         defense_eval_alpha_tiers=defense_eval_alpha_tiers,
         init_tokens=init_tokens,
     )

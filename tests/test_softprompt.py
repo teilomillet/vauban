@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import math
+from typing import TYPE_CHECKING
 
 import mlx.core as mx
+
+if TYPE_CHECKING:
+    from pathlib import Path
 import pytest
 from conftest import (
     D_MODEL,
@@ -3132,3 +3136,261 @@ class TestDefenseAwarePenaltyDirections:
         )
         assert float(result.item()) > float(sic_only.item())
         assert float(result.item()) > float(cast_only.item())
+
+
+# ---------------------------------------------------------------------------
+# Multi-model GCG transfer scoring tests
+# ---------------------------------------------------------------------------
+
+
+class TestGcgTransferScoring:
+    def test_transfer_weight_zero_is_noop(self) -> None:
+        """transfer_loss_weight=0 should skip re-ranking entirely."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        mx.eval(model.parameters())
+
+        # Second model as "transfer" target
+        t_model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(t_model.parameters())
+        t_tok = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="gcg", n_tokens=4, n_steps=2,
+            batch_size=4, top_k=8,
+            transfer_loss_weight=0.0,
+        )
+        transfer_models = [("transfer", t_model, t_tok)]
+        result = _gcg_attack(
+            model, tokenizer, ["Hello"], config, None,
+            transfer_models=transfer_models,
+        )
+        assert result.mode == "gcg"
+        assert result.token_ids is not None
+        assert len(result.token_ids) == 4
+
+    def test_transfer_weight_positive_runs(self) -> None:
+        """transfer_loss_weight>0 with transfer models should run."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        mx.eval(model.parameters())
+
+        t_model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(t_model.parameters())
+        t_tok = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="gcg", n_tokens=4, n_steps=2,
+            batch_size=4, top_k=8,
+            transfer_loss_weight=0.5,
+        )
+        transfer_models = [("transfer", t_model, t_tok)]
+        result = _gcg_attack(
+            model, tokenizer, ["Hello"], config, None,
+            transfer_models=transfer_models,
+        )
+        assert result.mode == "gcg"
+        assert result.token_ids is not None
+        assert len(result.token_ids) == 4
+
+    def test_no_transfer_models_unchanged(self) -> None:
+        """No transfer models means no re-ranking, even with weight > 0."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        mx.eval(model.parameters())
+
+        config = SoftPromptConfig(
+            mode="gcg", n_tokens=4, n_steps=2,
+            batch_size=4, top_k=8,
+            transfer_loss_weight=0.5,
+        )
+        result = _gcg_attack(
+            model, tokenizer, ["Hello"], config, None,
+            transfer_models=None,
+        )
+        assert result.mode == "gcg"
+        assert result.token_ids is not None
+
+    def test_transfer_loss_weight_default(self) -> None:
+        """SoftPromptConfig default for transfer_loss_weight is 0.0."""
+        cfg = SoftPromptConfig()
+        assert cfg.transfer_loss_weight == 0.0
+
+    def test_transfer_rerank_count_default(self) -> None:
+        """SoftPromptConfig default for transfer_rerank_count is 8."""
+        cfg = SoftPromptConfig()
+        assert cfg.transfer_rerank_count == 8
+
+    def test_transfer_rerank_count_custom(self) -> None:
+        """transfer_rerank_count can be set to a custom value."""
+        cfg = SoftPromptConfig(transfer_rerank_count=4)
+        assert cfg.transfer_rerank_count == 4
+
+    def test_transfer_rerank_count_used(self) -> None:
+        """Custom rerank count should be respected during GCG."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        mx.eval(model.parameters())
+
+        t_model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(t_model.parameters())
+        t_tok = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="gcg", n_tokens=4, n_steps=2,
+            batch_size=4, top_k=8,
+            transfer_loss_weight=0.5,
+            transfer_rerank_count=2,
+        )
+        result = _gcg_attack(
+            model, tokenizer, ["Hello"], config, None,
+            transfer_models=[("t", t_model, t_tok)],
+        )
+        assert result.mode == "gcg"
+        assert result.token_ids is not None
+
+
+class TestEgdTransferScoring:
+    def test_egd_transfer_weight_zero_noop(self) -> None:
+        """EGD with transfer_loss_weight=0 should not change behavior."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        mx.eval(model.parameters())
+
+        t_model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(t_model.parameters())
+        t_tok = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="egd", n_tokens=4, n_steps=3,
+            learning_rate=0.1,
+            transfer_loss_weight=0.0,
+        )
+        result = _egd_attack(
+            model, tokenizer, ["Hello"], config, None,
+            transfer_models=[("t", t_model, t_tok)],
+        )
+        assert result.mode == "egd"
+        assert result.token_ids is not None
+
+    def test_egd_transfer_weight_positive_runs(self) -> None:
+        """EGD with transfer_loss_weight>0 should include transfer loss."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        mx.eval(model.parameters())
+
+        t_model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(t_model.parameters())
+        t_tok = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="egd", n_tokens=4, n_steps=3,
+            learning_rate=0.1,
+            transfer_loss_weight=0.5,
+        )
+        result = _egd_attack(
+            model, tokenizer, ["Hello"], config, None,
+            transfer_models=[("t", t_model, t_tok)],
+        )
+        assert result.mode == "egd"
+        assert result.token_ids is not None
+
+    def test_egd_no_transfer_models_unchanged(self) -> None:
+        """EGD without transfer models should work normally."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        mx.eval(model.parameters())
+
+        config = SoftPromptConfig(
+            mode="egd", n_tokens=4, n_steps=3,
+            learning_rate=0.1,
+            transfer_loss_weight=0.5,
+        )
+        result = _egd_attack(
+            model, tokenizer, ["Hello"], config, None,
+            transfer_models=None,
+        )
+        assert result.mode == "egd"
+        assert result.token_ids is not None
+
+
+# ---------------------------------------------------------------------------
+# Arena card output tests
+# ---------------------------------------------------------------------------
+
+
+class TestWriteArenaCard:
+    def test_basic_card_written(self, tmp_path: Path) -> None:
+        """Arena card should be written with expected sections."""
+        from vauban import _write_arena_card
+
+        result = SoftPromptResult(
+            mode="gcg", success_rate=0.75, final_loss=1.2,
+            loss_history=[2.0, 1.5, 1.2], n_steps=3, n_tokens=8,
+            embeddings=None, token_ids=[1, 2, 3],
+            token_text="adversarial suffix", eval_responses=["Sure thing"],
+        )
+        card_path = tmp_path / "arena_card.txt"
+        _write_arena_card(card_path, result, ["Test prompt"])
+
+        assert card_path.exists()
+        content = card_path.read_text()
+        assert "ARENA SUBMISSION CARD" in content
+        assert "SUFFIX (copy-paste ready)" in content
+        assert "adversarial suffix" in content
+        assert "PER-PROMPT SUBMISSIONS" in content
+        assert "Test prompt" in content
+        assert "75.00%" in content
+
+    def test_card_with_transfer_results(self, tmp_path: Path) -> None:
+        """Arena card should include transfer results when present."""
+        from vauban import _write_arena_card
+
+        result = SoftPromptResult(
+            mode="gcg", success_rate=0.5, final_loss=2.0,
+            loss_history=[2.0], n_steps=1, n_tokens=4,
+            embeddings=None, token_ids=[1, 2],
+            token_text="suffix", eval_responses=["ok"],
+            transfer_results=[
+                TransferEvalResult(
+                    model_id="test-model", success_rate=0.8,
+                    eval_responses=["resp"],
+                ),
+            ],
+        )
+        card_path = tmp_path / "card.txt"
+        _write_arena_card(card_path, result, ["prompt"])
+
+        content = card_path.read_text()
+        assert "TRANSFER RESULTS" in content
+        assert "test-model" in content
+        assert "80.00%" in content
+
+    def test_card_with_gan_history(self, tmp_path: Path) -> None:
+        """Arena card should include GAN round history."""
+        from vauban import _write_arena_card
+
+        attack = SoftPromptResult(
+            mode="gcg", success_rate=0.6, final_loss=1.5,
+            loss_history=[1.5], n_steps=1, n_tokens=4,
+            embeddings=None, token_ids=[1, 2],
+            token_text="suffix", eval_responses=["ok"],
+        )
+        rnd = GanRoundResult(
+            round_index=0, attack_result=attack,
+            defense_result=None, attacker_won=True,
+            config_snapshot={},
+        )
+        result = SoftPromptResult(
+            mode="gcg", success_rate=0.6, final_loss=1.5,
+            loss_history=[1.5], n_steps=1, n_tokens=4,
+            embeddings=None, token_ids=[1, 2],
+            token_text="suffix", eval_responses=["ok"],
+            gan_history=[rnd],
+        )
+        card_path = tmp_path / "card.txt"
+        _write_arena_card(card_path, result, ["prompt"])
+
+        content = card_path.read_text()
+        assert "GAN ROUND HISTORY" in content
+        assert "Round 0: WON" in content

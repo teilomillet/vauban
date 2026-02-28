@@ -17,7 +17,9 @@ from vauban.softprompt._utils import (
     _encode_refusal_tokens,
     _encode_targets,
     _pre_encode_prompts,
+    _prepare_transfer_data,
     _sample_prompt_ids,
+    _score_transfer_loss,
     _select_prompt_ids,
     _select_worst_k_prompt_ids,
     _split_into_batches,
@@ -33,6 +35,7 @@ def _egd_attack(
     direction: Array | None,
     ref_model: CausalLM | None = None,
     all_prompt_ids_override: list[Array] | None = None,
+    transfer_models: list[tuple[str, CausalLM, Tokenizer]] | None = None,
 ) -> SoftPromptResult:
     """EGD (Exponentiated Gradient Descent) on the probability simplex.
 
@@ -68,6 +71,11 @@ def _egd_attack(
         all_prompt_ids = _pre_encode_prompts(
             tokenizer, effective_prompts, config.system_prompt,
         )
+
+    # Pre-encode transfer model data for post-optimization scoring
+    transfer_data = _prepare_transfer_data(
+        transfer_models, config, prompts,
+    )
 
     # Pre-compute direction config
     direction_layers_set: set[int] | None = (
@@ -289,6 +297,16 @@ def _egd_attack(
         cast_layers=da_cast_layers, cast_threshold=da_cast_threshold,
     )
     final_loss = best_loss
+
+    # Post-hoc transfer scoring: EGD optimises over the continuous simplex,
+    # so transfer loss cannot steer gradient steps (unlike GCG re-ranking).
+    # It is added here to surface transferability in the accessibility score.
+    if transfer_data:
+        transfer_avg = _score_transfer_loss(
+            tokenizer.decode(token_ids), transfer_data,
+        )
+        final_loss += config.transfer_loss_weight * transfer_avg
+
     accessibility_score = _compute_accessibility_score(final_loss)
 
     success_rate, responses = _evaluate_attack(

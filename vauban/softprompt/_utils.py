@@ -13,7 +13,7 @@ from vauban.softprompt._loss import (
     _compute_loss,
     _compute_untargeted_loss,
 )
-from vauban.types import CausalLM, Tokenizer
+from vauban.types import CausalLM, SoftPromptConfig, Tokenizer
 
 
 def _compute_learning_rate(
@@ -576,3 +576,79 @@ def _encode_targets(
     if repeat_count > 0:
         all_ids = all_ids * repeat_count
     return ops.array(all_ids)
+
+
+def _prepare_transfer_data(
+    transfer_models: list[tuple[str, CausalLM, Tokenizer]] | None,
+    config: SoftPromptConfig,
+    prompts: list[str],
+) -> list[tuple[CausalLM, Tokenizer, list[Array], Array]]:
+    """Pre-encode prompts and targets for each transfer model.
+
+    Returns an empty list when transfer scoring is disabled
+    (no models supplied or ``transfer_loss_weight == 0``).
+
+    Args:
+        transfer_models: Named transfer model triples.
+        config: Soft prompt configuration (reads target_prefixes,
+            target_repeat_count, system_prompt, transfer_loss_weight).
+        prompts: Attack prompts to encode.
+
+    Returns:
+        List of ``(model, tokenizer, prompt_ids, target_ids)`` tuples
+        ready for loss evaluation.
+    """
+    if not transfer_models or config.transfer_loss_weight <= 0.0:
+        return []
+
+    effective_prompts = prompts if prompts else ["Hello"]
+    result: list[tuple[CausalLM, Tokenizer, list[Array], Array]] = []
+    for _name, t_model, t_tok in transfer_models:
+        t_prompt_ids = _pre_encode_prompts(
+            t_tok, effective_prompts, config.system_prompt,
+        )
+        t_target_ids = _encode_targets(
+            t_tok, config.target_prefixes,
+            config.target_repeat_count,
+        )
+        force_eval(t_target_ids)
+        result.append((t_model, t_tok, t_prompt_ids, t_target_ids))
+    return result
+
+
+def _score_transfer_loss(
+    token_text: str,
+    transfer_data: list[tuple[CausalLM, Tokenizer, list[Array], Array]],
+) -> float:
+    """Compute mean loss across transfer models for a candidate suffix.
+
+    Re-encodes ``token_text`` with each transfer model's tokenizer,
+    computes the target-prefix loss averaged over all pre-encoded
+    prompts, then returns the mean across models.
+
+    Args:
+        token_text: Decoded candidate suffix text (from the primary
+            tokenizer).
+        transfer_data: Pre-encoded transfer model tuples from
+            :func:`_prepare_transfer_data`.
+
+    Returns:
+        Mean loss averaged over all transfer models and prompts.
+    """
+    total = 0.0
+    for t_model, t_tok, t_prompts, t_targets in transfer_data:
+        t_tokens = t_tok.encode(token_text)
+        t_n = len(t_tokens)
+        t_embeds = t_model.model.embed_tokens(
+            ops.array(t_tokens)[None, :],
+        )
+        t_loss = ops.array(0.0)
+        for t_pid in t_prompts:
+            t_loss = t_loss + _compute_loss(
+                t_model, t_embeds, t_pid, t_targets,
+                t_n, None, 0.0,
+            )
+        t_avg = t_loss / len(t_prompts)
+        force_eval(t_avg)
+        total += float(t_avg.item())
+    return total / len(transfer_data)
