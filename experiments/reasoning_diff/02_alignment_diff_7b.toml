@@ -1,0 +1,31 @@
+# ==========================================================================
+# Experiment 02: Extract alignment directions via weight-diff SVD (control)
+# ==========================================================================
+#
+# Computes SVD(W_Qwen2.5-7B-Instruct - W_Qwen2.5-7B) per layer.
+# This gives us the "alignment/safety" diff for comparison with the
+# reasoning diff from experiment 01.
+#
+# Compare:
+# - Singular value decay (reasoning vs alignment)
+# - Explained variance distribution across layers
+# - Effective rank of each diff
+# ==========================================================================
+
+[model]
+# The "aligned" model — instruction-tuned
+path = "mlx-community/Qwen2.5-7B-Instruct-bf16"
+
+[data]
+harmful  = "default"
+harmless = "default"
+
+[measure]
+mode = "diff"
+# The "base" model — pre-trained
+diff_model = "mlx-community/Qwen2.5-7B-bf16"
+top_k = 20
+measure_only = true
+
+[output]
+dir = "output/02_alignment_diff_7b"

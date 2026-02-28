@@ -68,6 +68,7 @@ class TestCheckUnknownKeys:
         raw: dict[str, object] = {
             "model": {"path": "x"},
             "cut": {"alpha": 1.0, "layers": [1, 2]},
+            "measure": {"mode": "diff", "diff_model": "base", "measure_only": True},
         }
         warnings = check_unknown_keys(raw)
         assert warnings == []

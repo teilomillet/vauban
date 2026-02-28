@@ -27,7 +27,10 @@ _KNOWN_SECTIONS: frozenset[str] = frozenset({
 _KNOWN_KEYS: dict[str, frozenset[str]] = {
     "model": frozenset({"path"}),
     "data": frozenset({"harmful", "harmless", "borderline"}),
-    "measure": frozenset({"mode", "top_k", "clip_quantile", "transfer_models"}),
+    "measure": frozenset({
+        "mode", "top_k", "clip_quantile", "transfer_models", "diff_model",
+        "measure_only",
+    }),
     "cut": frozenset({
         "alpha", "layers", "norm_preserve", "biprojected",
         "layer_strategy", "layer_top_k", "layer_weights", "sparsity",
@@ -146,7 +149,7 @@ def check_unknown_keys(raw: TomlDict) -> list[str]:
 # ---------------------------------------------------------------------------
 
 _KNOWN_VALUES: dict[tuple[str, str], frozenset[str]] = {
-    ("measure", "mode"): frozenset({"direction", "subspace", "dbdi"}),
+    ("measure", "mode"): frozenset({"direction", "subspace", "dbdi", "diff"}),
     ("cut", "layer_strategy"): frozenset({"all", "above_median", "top_k"}),
     ("cut", "dbdi_target"): frozenset({"red", "hdd", "both"}),
     ("cut", "layer_type_filter"): frozenset({"global", "sliding"}),

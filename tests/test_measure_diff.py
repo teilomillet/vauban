@@ -3,6 +3,7 @@
 import mlx.core as mx
 
 from tests.conftest import D_MODEL, NUM_HEADS, NUM_LAYERS, VOCAB_SIZE, MockCausalLM
+from vauban._forward import svd_stable
 from vauban.measure._diff import measure_diff
 from vauban.types import DiffResult, DirectionResult
 
@@ -61,3 +62,13 @@ class TestMeasureDiff:
 
         for sv in result.singular_values:
             assert abs(sv) < 1e-5, f"Expected near-zero, got {sv}"
+
+    def test_svd_stable_restores_vector_dtype(self) -> None:
+        """MLX SVD should not leak float32 vectors back into model math."""
+        matrix = mx.ones((4, 4), dtype=mx.float16)
+        u, s, vt = svd_stable(matrix)
+        mx.eval(u, s, vt)
+
+        assert u.dtype == matrix.dtype
+        assert vt.dtype == matrix.dtype
+        assert s.dtype == mx.float32

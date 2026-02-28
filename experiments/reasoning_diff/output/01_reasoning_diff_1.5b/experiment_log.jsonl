@@ -1,0 +1,1 @@
+{"timestamp": "2026-02-27T22:49:58+00:00", "config_path": "/Users/teilomillet/Code/vauban/experiments/reasoning_diff/01_reasoning_diff_1.5b.toml", "model_path": "mlx-community/DeepSeek-R1-Distill-Qwen-1.5B-bf16", "pipeline_mode": "default", "output_dir": "experiments/reasoning_diff/output/01_reasoning_diff_1.5b", "reports": [], "metrics": {}, "elapsed_seconds": 56.64}

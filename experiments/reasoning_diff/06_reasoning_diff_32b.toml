@@ -1,0 +1,32 @@
+# ==========================================================================
+# Experiment 06: Extract reasoning directions from QwQ-32B vs Qwen2.5-32B
+# ==========================================================================
+#
+# The "real" experiment — QwQ-32B is Qwen2.5-32B fine-tuned via RL for
+# reasoning. Both share identical architecture (64 layers, 5120 hidden,
+# 40 heads, 8 KV heads, 27648 intermediate, 152064 vocab).
+#
+# This is RL-trained (not distilled like the 7B), so the spectral
+# structure may differ. Compare with experiment 01 findings.
+#
+# Memory: ~140 GB peak with bf16.
+# With 4-bit (auto-dequantized): ~40 GB peak — requires 64+ GB Mac.
+# ==========================================================================
+
+[model]
+# QwQ-32B — reasoning model (RL-trained on Qwen2.5-32B)
+path = "mlx-community/QwQ-32B-4bit"
+
+[data]
+harmful  = "default"
+harmless = "default"
+
+[measure]
+mode = "diff"
+# Qwen2.5-32B — base model
+diff_model = "mlx-community/Qwen2.5-32B-4bit"
+top_k = 20
+measure_only = true
+
+[output]
+dir = "output/06_reasoning_diff_32b"

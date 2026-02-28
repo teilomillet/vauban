@@ -236,11 +236,13 @@ class TestMeasureConfig:
         config = MeasureConfig()
         assert config.mode == "direction"
         assert config.top_k == 5
+        assert config.measure_only is False
 
     def test_custom(self) -> None:
-        config = MeasureConfig(mode="subspace", top_k=10)
+        config = MeasureConfig(mode="subspace", top_k=10, measure_only=True)
         assert config.mode == "subspace"
         assert config.top_k == 10
+        assert config.measure_only is True
 
 
 class TestToDict:

@@ -36,6 +36,17 @@ htmlcov/
 # Docs
 site/
 
+# Model artifacts
+*.safetensors
+*.safetensors.index.json
+tokenizer.json
+tokenizer_config.json
+special_tokens_map.json
+added_tokens.json
+vocab.json
+merges.txt
+experiments/**/output/**/config.json
+
 # dev
 CLAUDE.md
 AGENTS.md

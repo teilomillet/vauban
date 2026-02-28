@@ -1,0 +1,50 @@
+# ==========================================================================
+# Experiment 03: Probe reasoning direction on R1-Distill model (1.5B)
+# ==========================================================================
+#
+# Re-extracts the reasoning direction via diff, then probes the model
+# with reasoning-heavy vs factual prompts.
+#
+# Key question: does the reasoning direction activate more strongly on
+# multi-step reasoning prompts than on simple factual recall?
+#
+# Memory: ~6 GB peak (diff needs both models, then probe runs on primary).
+# ==========================================================================
+
+[model]
+path = "mlx-community/DeepSeek-R1-Distill-Qwen-1.5B-bf16"
+
+[data]
+harmful  = "default"
+harmless = "default"
+
+[measure]
+mode = "diff"
+diff_model = "mlx-community/Qwen2.5-1.5B-bf16"
+top_k = 10
+
+[probe]
+prompts = [
+    # --- Reasoning-heavy prompts ---
+    "Solve step by step: a train travels 120 km in 2 hours, then 40 km/h for 3 hours. Total distance?",
+    "A farmer has 17 sheep. All but 9 die. How many are left?",
+    "What is 247 * 83? Show your work.",
+    "A bat and ball cost $1.10 together. The bat costs $1.00 more than the ball. How much does the ball cost?",
+    "If it takes 5 machines 5 minutes to make 5 widgets, how long for 100 machines to make 100 widgets?",
+    "Is the square root of 2 rational or irrational? Explain.",
+    "Three friends split a $147 bill. One tips 20% on their share. How much do they pay?",
+    "If all roses are flowers and some flowers fade quickly, can we conclude some roses fade quickly?",
+
+    # --- Simple factual prompts ---
+    "What is the capital of France?",
+    "Who wrote Romeo and Juliet?",
+    "What color is the sky?",
+    "Name the largest planet in our solar system.",
+    "What year did World War II end?",
+    "What is the chemical symbol for water?",
+    "How many legs does a spider have?",
+    "What language is spoken in Brazil?",
+]
+
+[output]
+dir = "output/03_probe_reasoning_1.5b"

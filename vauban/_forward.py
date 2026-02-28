@@ -101,8 +101,12 @@ if TYPE_CHECKING or _BACKEND == "mlx":
     # -------------------------------------------------------------------
 
     def svd_stable(matrix: Array) -> tuple[Array, Array, Array]:
-        """SVD with numerical stability (CPU stream on MLX)."""
-        return mx.linalg.svd(matrix, stream=mx.cpu)  # type: ignore[arg-type]
+        """SVD with numerical stability on CPU, restoring vector dtypes."""
+        m = matrix.astype(mx.float32) if matrix.dtype != mx.float32 else matrix
+        u, s, vt = mx.linalg.svd(m, stream=mx.cpu)  # type: ignore[arg-type]
+        if matrix.dtype == mx.float32:
+            return u, s, vt
+        return u.astype(matrix.dtype), s, vt.astype(matrix.dtype)
 
     def qr_stable(matrix: Array) -> tuple[Array, Array]:
         """QR with numerical stability (CPU stream on MLX)."""

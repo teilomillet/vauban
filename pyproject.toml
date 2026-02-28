@@ -73,6 +73,9 @@ suppress-none-returning = true
 known-first-party = ["vauban"]
 
 [tool.pytest.ini_options]
+markers = [
+    "integration: requires real model (~1GB), skipped unless VAUBAN_INTEGRATION=1",
+]
 filterwarnings = [
     "ignore:builtin type SwigPyPacked has no __module__ attribute:DeprecationWarning",
     "ignore:builtin type SwigPyObject has no __module__ attribute:DeprecationWarning",

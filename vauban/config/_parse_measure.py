@@ -57,6 +57,14 @@ def _parse_measure(raw: TomlDict) -> MeasureConfig:
             raise TypeError(msg)
         transfer_models.append(item)
 
+    measure_only_raw = raw.get("measure_only", False)
+    if not isinstance(measure_only_raw, bool):
+        msg = (
+            f"[measure].measure_only must be a boolean,"
+            f" got {type(measure_only_raw).__name__}"
+        )
+        raise TypeError(msg)
+
     # -- diff_model (required when mode="diff") --
     diff_model_raw = raw.get("diff_model")
     diff_model: str | None = None
@@ -79,4 +87,5 @@ def _parse_measure(raw: TomlDict) -> MeasureConfig:
         clip_quantile=clip_quantile,
         transfer_models=transfer_models,
         diff_model=diff_model,
+        measure_only=measure_only_raw,
     )

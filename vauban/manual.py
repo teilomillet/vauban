@@ -316,6 +316,15 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                     " W_aligned - W_base for o_proj and down_proj.",
                 ),
             ),
+            FieldSpec(
+                key="measure_only",
+                description="Stop after the measure stage and skip cut/export/eval.",
+                constraints="boolean; false by default.",
+                notes=(
+                    "Useful for spectral-analysis configs that should write"
+                    " reports without modifying model weights.",
+                ),
+            ),
         ),
     ),
     SectionSpec(
