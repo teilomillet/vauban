@@ -1,3 +1,9 @@
+[meta]
+title = "Reasoning diff SVD: R1-Distill-7B vs Qwen2.5-7B"
+status = "baseline"
+tags = ["diff", "reasoning", "svd", "7b"]
+date = 2026-02-26
+
 # ==========================================================================
 # Experiment 01: Extract reasoning directions via weight-diff SVD
 # ==========================================================================

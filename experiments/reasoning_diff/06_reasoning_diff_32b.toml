@@ -1,3 +1,14 @@
+[meta]
+title = "Reasoning diff SVD: QwQ-32B vs Qwen2.5-32B (RL-trained)"
+status = "baseline"
+parents = ["01_reasoning_diff_7b"]
+tags = ["diff", "reasoning", "svd", "32b", "rl"]
+date = 2026-02-27
+notes = """
+The main experiment — QwQ-32B is RL-trained (not distilled).
+Spectral structure may differ from distilled models.
+"""
+
 # ==========================================================================
 # Experiment 06: Extract reasoning directions from QwQ-32B vs Qwen2.5-32B
 # ==========================================================================

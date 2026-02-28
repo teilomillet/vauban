@@ -1,3 +1,14 @@
+[meta]
+title = "GAN loop v1: baseline adversarial attack-defense"
+status = "superseded"
+tags = ["gcg", "gan", "raid"]
+date = 2026-02-25
+notes = """
+First GAN loop experiment. 6 rounds, GCG + RAID direction guidance.
+Attacker escalates steps/tokens/direction_weight each round.
+Superseded by v2 which adds defense-aware loss and symmetric escalation.
+"""
+
 # GAN-style adversarial loop: attack optimizes suffix, defense tries to block it.
 # Each round the attacker escalates (more tokens, more steps, higher direction weight)
 # and warm-starts from previous suffix.

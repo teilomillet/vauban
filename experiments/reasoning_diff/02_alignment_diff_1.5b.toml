@@ -1,3 +1,10 @@
+[meta]
+title = "Alignment diff SVD: Qwen2.5-1.5B-Instruct vs base (control)"
+status = "baseline"
+parents = ["01_reasoning_diff_1.5b"]
+tags = ["diff", "alignment", "svd", "control", "1.5b"]
+date = 2026-02-26
+
 # ==========================================================================
 # Experiment 02: Extract alignment directions via weight-diff SVD (control)
 # ==========================================================================

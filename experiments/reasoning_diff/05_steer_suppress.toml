@@ -1,3 +1,10 @@
+[meta]
+title = "Steer suppress reasoning: R1-Distill-7B"
+status = "baseline"
+parents = ["01_reasoning_diff_7b", "03_probe_reasoning"]
+tags = ["diff", "steer", "reasoning", "suppress", "7b"]
+date = 2026-02-26
+
 # ==========================================================================
 # Experiment 05: Suppress reasoning direction in R1-Distill model
 # ==========================================================================

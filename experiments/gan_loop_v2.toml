@@ -1,0 +1,76 @@
+[meta]
+title = "GAN loop v2: defense-aware loss + symmetric escalation"
+status = "superseded"
+parents = ["gan_loop"]
+tags = ["gcg", "gan", "raid", "defense-aware", "trylock"]
+date = 2026-02-26
+notes = """
+Added defense-aware loss (0.3 weight), TRYLOCK alpha tiers,
+symmetric defender escalation, and multi-layer CAST.
+Superseded by v3 which adds multi-model transfer re-ranking.
+"""
+
+# GAN loop v2: exercises defense-aware loss, adaptive alpha tiers,
+# and symmetric defender escalation.
+#
+# Changes from v1:
+# - defense_aware_weight = 0.3 → attack loss includes SIC/CAST evasion penalty
+# - defense_eval_threshold = 0.5 → non-zero so tiers auto-generate on escalation
+# - defense_eval_alpha_tiers → explicit TRYLOCK-style tiered steering
+# - gan_defense_escalation = true → defender escalates when attacker wins
+# - defense_eval_cast_layers → multi-layer CAST steering
+
+[model]
+path = "mlx-community/Qwen2.5-0.5B-Instruct-bf16"
+
+[data]
+harmful  = "default"
+harmless = "default"
+
+[measure]
+# Extract refusal direction first
+
+[softprompt]
+mode = "gcg"
+n_tokens = 8
+n_steps = 30
+batch_size = 32
+top_k = 64
+max_gen_tokens = 30
+seed = 42
+
+# Direction-guided attack
+direction_weight = 0.3
+direction_mode = "raid"
+
+# NEW: defense-aware loss — attack tries to evade SIC/CAST detection
+defense_aware_weight = 0.3
+
+# GAN loop: 5 rounds of attack → defense → escalate
+gan_rounds = 5
+gan_step_multiplier = 1.3     # 30 → 39 → 50 → 65 → 85 steps
+gan_direction_escalation = 0.15 # 0.3 → 0.45 → 0.60 → 0.75 → 0.90
+gan_token_escalation = 2       # 8 → 10 → 12 → 14 → 16 tokens
+
+# Symmetric: defender also escalates when attacker wins
+gan_defense_escalation = true
+gan_defense_alpha_multiplier = 1.5
+gan_defense_threshold_escalation = 0.05
+gan_defense_sic_iteration_escalation = 1
+
+# Defense evaluation config
+defense_eval = "both"
+defense_eval_layer = 12
+defense_eval_sic_mode = "direction"
+defense_eval_sic_max_iterations = 3
+defense_eval_alpha = 1.5
+defense_eval_threshold = 0.5
+
+# NEW: TRYLOCK-style alpha tiers — graduated steering intensity
+defense_eval_alpha_tiers = [[0.25, 0.75], [0.5, 1.5], [0.75, 2.5]]
+
+# Multi-layer CAST
+defense_eval_cast_layers = [10, 12, 14]
+
+[output]
+dir = "output/gan_loop_v2"

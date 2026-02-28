@@ -1,3 +1,10 @@
+[meta]
+title = "Steer inject reasoning: Qwen2.5-7B-Instruct"
+status = "baseline"
+parents = ["01_reasoning_diff_7b", "03_probe_reasoning"]
+tags = ["diff", "steer", "reasoning", "inject", "7b"]
+date = 2026-02-26
+
 # ==========================================================================
 # Experiment 04: Inject reasoning direction into base instruct model
 # ==========================================================================
