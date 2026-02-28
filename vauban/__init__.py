@@ -830,6 +830,83 @@ def _run_optimize_mode(context: _EarlyModeContext) -> None:
     )
 
 
+def _write_arena_card(
+    path: Path,
+    result: "SoftPromptResult",
+    prompts: list[str],
+) -> None:
+    """Write a human-readable arena submission card.
+
+    Produces a text file with the optimized suffix (copy-paste ready),
+    transfer results, and per-prompt submissions for Gray Swan Arena.
+    """
+    lines: list[str] = []
+    lines.append("=" * 60)
+    lines.append("ARENA SUBMISSION CARD")
+    lines.append("=" * 60)
+    lines.append("")
+
+    # Summary
+    lines.append(f"Mode:       {result.mode}")
+    lines.append(f"Tokens:     {result.n_tokens}")
+    lines.append(f"Steps:      {result.n_steps}")
+    lines.append(f"Primary ASR: {result.success_rate:.2%}")
+    lines.append(f"Final loss:  {result.final_loss:.4f}")
+    lines.append("")
+
+    # Copy-paste suffix
+    lines.append("-" * 60)
+    lines.append("SUFFIX (copy-paste ready)")
+    lines.append("-" * 60)
+    lines.append(result.token_text or "")
+    lines.append("")
+
+    # Transfer results
+    if result.transfer_results:
+        lines.append("-" * 60)
+        lines.append("TRANSFER RESULTS")
+        lines.append("-" * 60)
+        for tr in result.transfer_results:
+            lines.append(f"  {tr.model_id}: {tr.success_rate:.2%}")
+        lines.append("")
+
+    # Per-prompt submissions
+    lines.append("-" * 60)
+    lines.append("PER-PROMPT SUBMISSIONS")
+    lines.append("-" * 60)
+    suffix = result.token_text or ""
+    for i, prompt in enumerate(prompts):
+        lines.append(f"\n--- Prompt {i + 1} ---")
+        lines.append(f"{prompt} {suffix}")
+        if i < len(result.eval_responses):
+            preview = result.eval_responses[i][:200]
+            lines.append(f"  Response: {preview}")
+    lines.append("")
+
+    # GAN round history
+    if result.gan_history:
+        lines.append("-" * 60)
+        lines.append("GAN ROUND HISTORY")
+        lines.append("-" * 60)
+        for rnd in result.gan_history:
+            won = "WON" if rnd.attacker_won else "LOST"
+            asr = rnd.attack_result.success_rate
+            lines.append(
+                f"  Round {rnd.round_index}: {won}"
+                f" (ASR={asr:.2%})",
+            )
+            for tr in rnd.transfer_results:
+                lines.append(
+                    f"    Transfer {tr.model_id}:"
+                    f" {tr.success_rate:.2%}",
+                )
+        lines.append("")
+
+    lines.append("=" * 60)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n")
+
+
 def _run_softprompt_mode(context: _EarlyModeContext) -> None:
     """Run [softprompt] early-return mode and write its report."""
     import time
@@ -894,6 +971,7 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
         direction_vec,
         ref_model,
         transfer_models=transfer_models_loaded,  # type: ignore[arg-type]
+        api_eval_config=config.api_eval,
     )
 
     # Post-hoc transfer eval (skip if GAN loop already did per-round eval)
@@ -954,9 +1032,56 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
             gan_history=sp_result.gan_history,
         )
 
+    # API-based transfer evaluation (hit remote endpoints with the suffix)
+    if config.api_eval and sp_result.token_text:
+        from vauban.api_eval import evaluate_suffix_via_api
+
+        api_results = evaluate_suffix_via_api(
+            sp_result.token_text,
+            sp_prompts,
+            config.api_eval,
+            config.softprompt.system_prompt if config.softprompt else None,
+        )
+        all_transfer = [*sp_result.transfer_results, *api_results]
+        sp_result = SoftPromptResult(
+            mode=sp_result.mode,
+            success_rate=sp_result.success_rate,
+            final_loss=sp_result.final_loss,
+            loss_history=sp_result.loss_history,
+            n_steps=sp_result.n_steps,
+            n_tokens=sp_result.n_tokens,
+            embeddings=sp_result.embeddings,
+            token_ids=sp_result.token_ids,
+            token_text=sp_result.token_text,
+            eval_responses=sp_result.eval_responses,
+            accessibility_score=sp_result.accessibility_score,
+            per_prompt_losses=sp_result.per_prompt_losses,
+            early_stopped=sp_result.early_stopped,
+            transfer_results=all_transfer,
+            defense_eval=sp_result.defense_eval,
+            gan_history=sp_result.gan_history,
+        )
+        for api_r in api_results:
+            _log(
+                f"API eval {api_r.model_id}: {api_r.success_rate:.2%}",
+                verbose=v,
+                elapsed=time.monotonic() - context.t0,
+            )
+
     report_path = config.output_dir / "softprompt_report.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(_softprompt_to_dict(sp_result), indent=2))
+
+    # Write arena card alongside JSON report
+    if sp_result.token_text:
+        arena_path = config.output_dir / "arena_card.txt"
+        _write_arena_card(arena_path, sp_result, sp_prompts)
+        _log(
+            f"Arena card written to {arena_path}",
+            verbose=v,
+            elapsed=time.monotonic() - context.t0,
+        )
+
     _log(
         f"Done — softprompt report written to {report_path}",
         verbose=v,

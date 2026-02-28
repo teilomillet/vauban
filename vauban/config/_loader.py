@@ -67,6 +67,7 @@ def load_config(path: str | Path) -> PipelineConfig:
     probe_config = parsed_sections.probe
     steer_config = parsed_sections.steer
     eval_config = parsed_sections.eval
+    api_eval_config = parsed_sections.api_eval
 
     output_section = raw.get("output")
     output_dir_str = "output"
@@ -135,6 +136,7 @@ def load_config(path: str | Path) -> PipelineConfig:
         steer=steer_config,
         cast=cast_config,
         eval=eval_config,
+        api_eval=api_eval_config,
         output_dir=output_dir,
         borderline_path=borderline_path,
         verbose=verbose,

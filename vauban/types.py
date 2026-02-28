@@ -488,6 +488,27 @@ class SurfaceComparison:
 
 
 @dataclass(frozen=True, slots=True)
+class ApiEvalEndpoint:
+    """Single API endpoint for suffix evaluation."""
+
+    name: str
+    base_url: str
+    model: str
+    api_key_env: str
+    system_prompt: str | None = None  # per-endpoint override
+
+
+@dataclass(frozen=True, slots=True)
+class ApiEvalConfig:
+    """Configuration for API-based suffix evaluation."""
+
+    endpoints: list[ApiEvalEndpoint]
+    max_tokens: int = 100
+    timeout: int = 30
+    system_prompt: str | None = None  # shared default
+
+
+@dataclass(frozen=True, slots=True)
 class SoftPromptConfig:
     """Configuration for soft prompt attack."""
 
@@ -544,6 +565,8 @@ class SoftPromptConfig:
     prompt_pool_size: int | None = None  # override eval.num_prompts for pool size
     beam_width: int = 1  # GCG beam search population (1 = greedy)
     defense_aware_weight: float = 0.0  # defense evasion penalty (0 = off)
+    transfer_loss_weight: float = 0.0  # multi-model re-ranking weight (0 = off)
+    transfer_rerank_count: int = 8  # top-N candidates to re-rank on transfer models
     defense_eval_alpha_tiers: list[tuple[float, float]] | None = None  # TRYLOCK
     init_tokens: list[int] | None = None  # warm-start token IDs (GCG/EGD)
 
@@ -928,6 +951,7 @@ class PipelineConfig:
     steer: SteerConfig | None = None
     cast: CastConfig | None = None
     eval: EvalConfig = field(default_factory=EvalConfig)
+    api_eval: ApiEvalConfig | None = None
     output_dir: Path = field(default_factory=lambda: Path("output"))
     borderline_path: Path | DatasetRef | None = None
     verbose: bool = True

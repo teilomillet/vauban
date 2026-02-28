@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from vauban.config._parse_api_eval import _parse_api_eval
 from vauban.config._parse_cast import _parse_cast
 from vauban.config._parse_cut import _parse_cut
 from vauban.config._parse_depth import _parse_depth
@@ -19,6 +20,7 @@ from vauban.config._parse_steer import _parse_steer
 from vauban.config._parse_surface import _parse_surface
 from vauban.config._types import TomlDict
 from vauban.types import (
+    ApiEvalConfig,
     CastConfig,
     CutConfig,
     DepthConfig,
@@ -45,6 +47,7 @@ class ConfigParseContext:
 type _SectionParserResult = (
     DepthConfig
     | None
+    | ApiEvalConfig
     | CastConfig
     | CutConfig
     | MeasureConfig
@@ -87,6 +90,7 @@ class ParsedSectionValues:
     probe: ProbeConfig | None
     steer: SteerConfig | None
     eval: EvalConfig
+    api_eval: ApiEvalConfig | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,6 +175,13 @@ def _parse_eval_adapter(context: ConfigParseContext) -> EvalConfig:
     return _parse_eval(context.base_dir, context.raw)
 
 
+def _parse_api_eval_adapter(
+    context: ConfigParseContext,
+) -> ApiEvalConfig | None:
+    """Adapter for parsers that accept the full raw config mapping."""
+    return _parse_api_eval(context.raw)
+
+
 SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     SectionParseSpec("depth", "depth", _parse_depth_adapter, 10),
     SectionParseSpec("cast", "cast", _parse_cast_adapter, 20),
@@ -184,6 +195,7 @@ SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     SectionParseSpec("probe", "probe", _parse_probe_adapter, 100),
     SectionParseSpec("steer", "steer", _parse_steer_adapter, 110),
     SectionParseSpec("eval", "eval", _parse_eval_adapter, 120),
+    SectionParseSpec("api_eval", "api_eval", _parse_api_eval_adapter, 130),
 )
 
 
@@ -233,4 +245,5 @@ def parse_registered_sections(
         probe=cast("ProbeConfig | None", parsed["probe"]),
         steer=cast("SteerConfig | None", parsed["steer"]),
         eval=cast("EvalConfig", parsed["eval"]),
+        api_eval=cast("ApiEvalConfig | None", parsed["api_eval"]),
     )

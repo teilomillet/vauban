@@ -2900,3 +2900,234 @@ class TestGanConfigParsing:
         )
         with pytest.raises(TypeError, match="defense_eval_alpha_tiers"):
             load_config(toml_file)
+
+    # -- transfer_loss_weight --
+
+    def test_softprompt_transfer_loss_weight_default(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.transfer_loss_weight == 0.0
+
+    def test_softprompt_transfer_loss_weight_parsed(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ntransfer_loss_weight = 0.5\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.transfer_loss_weight == 0.5
+
+    def test_softprompt_transfer_loss_weight_negative_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ntransfer_loss_weight = -0.1\n"
+        )
+        with pytest.raises(ValueError, match="transfer_loss_weight"):
+            load_config(toml_file)
+
+    def test_softprompt_transfer_loss_weight_type_error(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\ntransfer_loss_weight = "high"\n'
+        )
+        with pytest.raises(TypeError, match="transfer_loss_weight"):
+            load_config(toml_file)
+
+    # -- transfer_rerank_count --
+
+    def test_softprompt_transfer_rerank_count_default(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.transfer_rerank_count == 8
+
+    def test_softprompt_transfer_rerank_count_parsed(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ntransfer_rerank_count = 4\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.transfer_rerank_count == 4
+
+    def test_softprompt_transfer_rerank_count_zero_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ntransfer_rerank_count = 0\n"
+        )
+        with pytest.raises(ValueError, match="transfer_rerank_count"):
+            load_config(toml_file)
+
+    def test_softprompt_transfer_rerank_count_type_error(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\ntransfer_rerank_count = 3.5\n'
+        )
+        with pytest.raises(TypeError, match="transfer_rerank_count"):
+            load_config(toml_file)
+
+    # ---- [api_eval] ----
+
+    def test_api_eval_absent_default_none(self, fixtures_dir: Path) -> None:
+        config = load_config(fixtures_dir / "config.toml")
+        assert config.api_eval is None
+
+    def test_api_eval_parsed(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[api_eval]\n"
+            "max_tokens = 150\n"
+            "timeout = 20\n"
+            'system_prompt = "You are helpful."\n'
+            "[[api_eval.endpoints]]\n"
+            'name = "ep1"\n'
+            'base_url = "https://api.example.com/v1"\n'
+            'model = "model-1"\n'
+            'api_key_env = "MY_KEY"\n'
+        )
+        config = load_config(toml_file)
+        assert config.api_eval is not None
+        assert config.api_eval.max_tokens == 150
+        assert config.api_eval.timeout == 20
+        assert config.api_eval.system_prompt == "You are helpful."
+        assert len(config.api_eval.endpoints) == 1
+        ep = config.api_eval.endpoints[0]
+        assert ep.name == "ep1"
+        assert ep.base_url == "https://api.example.com/v1"
+        assert ep.model == "model-1"
+        assert ep.api_key_env == "MY_KEY"
+
+    def test_api_eval_multiple_endpoints(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[api_eval]\n"
+            "[[api_eval.endpoints]]\n"
+            'name = "ep1"\n'
+            'base_url = "https://a.com/v1"\n'
+            'model = "m1"\n'
+            'api_key_env = "K1"\n'
+            "[[api_eval.endpoints]]\n"
+            'name = "ep2"\n'
+            'base_url = "https://b.com/v1"\n'
+            'model = "m2"\n'
+            'api_key_env = "K2"\n'
+            'system_prompt = "override"\n'
+        )
+        config = load_config(toml_file)
+        assert config.api_eval is not None
+        assert len(config.api_eval.endpoints) == 2
+        assert config.api_eval.endpoints[1].system_prompt == "override"
+
+    def test_api_eval_defaults(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[api_eval]\n"
+            "[[api_eval.endpoints]]\n"
+            'name = "ep1"\n'
+            'base_url = "https://a.com/v1"\n'
+            'model = "m1"\n'
+            'api_key_env = "K1"\n'
+        )
+        config = load_config(toml_file)
+        assert config.api_eval is not None
+        assert config.api_eval.max_tokens == 100
+        assert config.api_eval.timeout == 30
+        assert config.api_eval.system_prompt is None
+
+    def test_api_eval_empty_endpoints_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[api_eval]\n"
+            "endpoints = []\n"
+        )
+        with pytest.raises(ValueError, match="endpoints"):
+            load_config(toml_file)
+
+    def test_api_eval_missing_endpoints_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[api_eval]\n"
+            "max_tokens = 100\n"
+        )
+        with pytest.raises(ValueError, match="endpoints"):
+            load_config(toml_file)
+
+    def test_api_eval_invalid_base_url_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[api_eval]\n"
+            "[[api_eval.endpoints]]\n"
+            'name = "ep1"\n'
+            'base_url = "ftp://bad.com"\n'
+            'model = "m1"\n'
+            'api_key_env = "K1"\n'
+        )
+        with pytest.raises(ValueError, match="base_url"):
+            load_config(toml_file)
+
+    def test_api_eval_max_tokens_zero_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[api_eval]\n"
+            "max_tokens = 0\n"
+            "[[api_eval.endpoints]]\n"
+            'name = "ep1"\n'
+            'base_url = "https://a.com/v1"\n'
+            'model = "m1"\n'
+            'api_key_env = "K1"\n'
+        )
+        with pytest.raises(ValueError, match="max_tokens"):
+            load_config(toml_file)

@@ -10,7 +10,13 @@ from vauban.softprompt._defense_eval import evaluate_against_defenses
 from vauban.softprompt._egd import _egd_attack
 from vauban.softprompt._gan import gan_loop
 from vauban.softprompt._gcg import _gcg_attack
-from vauban.types import CausalLM, SoftPromptConfig, SoftPromptResult, Tokenizer
+from vauban.types import (
+    ApiEvalConfig,
+    CausalLM,
+    SoftPromptConfig,
+    SoftPromptResult,
+    Tokenizer,
+)
 
 
 def _run_single_attack(
@@ -20,6 +26,7 @@ def _run_single_attack(
     config: SoftPromptConfig,
     direction: Array | None,
     ref_model: CausalLM | None = None,
+    transfer_models: list[tuple[str, CausalLM, Tokenizer]] | None = None,
 ) -> SoftPromptResult:
     """Dispatch to the appropriate attack mode.
 
@@ -32,6 +39,8 @@ def _run_single_attack(
         config: Soft prompt configuration.
         direction: Optional refusal direction for direction-guided mode.
         ref_model: Optional reference model for KL collision loss.
+        transfer_models: Optional list of (name, model, tokenizer) for
+            multi-model candidate re-ranking during GCG.
     """
     if config.mode == "continuous":
         return _continuous_attack(
@@ -40,10 +49,12 @@ def _run_single_attack(
     if config.mode == "gcg":
         return _gcg_attack(
             model, tokenizer, prompts, config, direction, ref_model,
+            transfer_models=transfer_models,
         )
     if config.mode == "egd":
         return _egd_attack(
             model, tokenizer, prompts, config, direction, ref_model,
+            transfer_models=transfer_models,
         )
     msg = (
         f"Unknown soft prompt mode: {config.mode!r},"
@@ -60,6 +71,7 @@ def softprompt_attack(
     direction: Array | None = None,
     ref_model: CausalLM | None = None,
     transfer_models: list[tuple[str, CausalLM, Tokenizer]] | None = None,
+    api_eval_config: ApiEvalConfig | None = None,
 ) -> SoftPromptResult:
     """Run a soft prompt attack against a model.
 
@@ -80,6 +92,10 @@ def softprompt_attack(
         config: Soft prompt configuration.
         direction: Optional refusal direction for direction-guided mode.
         ref_model: Optional reference model for KL collision loss.
+        transfer_models: Optional list of (name, model, tokenizer) for
+            multi-model candidate re-ranking during GCG.
+        api_eval_config: Optional API evaluation config for remote
+            endpoint testing (passed to GAN loop).
     """
     if config.seed is not None:
         ops.random.seed(config.seed)
@@ -90,11 +106,13 @@ def softprompt_attack(
         return gan_loop(
             model, tokenizer, prompts, config, direction, ref_model,
             transfer_models=transfer_models,
+            api_eval_config=api_eval_config,
         )
 
     # Single attack
     result = _run_single_attack(
         model, tokenizer, prompts, config, direction, ref_model,
+        transfer_models=transfer_models,
     )
 
     # Post-attack defense evaluation

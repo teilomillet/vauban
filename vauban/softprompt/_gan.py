@@ -30,6 +30,7 @@ from vauban.softprompt._utils import (
     _project_to_tokens,
 )
 from vauban.types import (
+    ApiEvalConfig,
     CausalLM,
     GanRoundResult,
     SoftPromptConfig,
@@ -46,6 +47,7 @@ def _dispatch_attack(
     config: SoftPromptConfig,
     direction: Array | None,
     ref_model: CausalLM | None,
+    transfer_models: list[tuple[str, CausalLM, Tokenizer]] | None = None,
 ) -> SoftPromptResult:
     """Dispatch to the appropriate attack mode (no defense eval)."""
     if config.mode == "continuous":
@@ -55,10 +57,12 @@ def _dispatch_attack(
     if config.mode == "gcg":
         return _gcg_attack(
             model, tokenizer, prompts, config, direction, ref_model,
+            transfer_models=transfer_models,
         )
     if config.mode == "egd":
         return _egd_attack(
             model, tokenizer, prompts, config, direction, ref_model,
+            transfer_models=transfer_models,
         )
     msg = (
         f"Unknown soft prompt mode: {config.mode!r},"
@@ -75,6 +79,7 @@ def _dispatch_attack_multiturn(
     direction: Array | None,
     ref_model: CausalLM | None,
     history: list[dict[str, str]],
+    transfer_models: list[tuple[str, CausalLM, Tokenizer]] | None = None,
 ) -> SoftPromptResult:
     """Dispatch attack with conversation history baked into prompt encoding.
 
@@ -105,11 +110,13 @@ def _dispatch_attack_multiturn(
         return _gcg_attack(
             model, tokenizer, prompts, config, direction, ref_model,
             all_prompt_ids_override=all_prompt_ids,
+            transfer_models=transfer_models,
         )
     if config.mode == "egd":
         return _egd_attack(
             model, tokenizer, prompts, config, direction, ref_model,
             all_prompt_ids_override=all_prompt_ids,
+            transfer_models=transfer_models,
         )
     msg = (
         f"Multi-turn attack requires mode 'gcg' or 'egd',"
@@ -126,6 +133,7 @@ def gan_loop(
     direction: Array | None,
     ref_model: CausalLM | None = None,
     transfer_models: list[tuple[str, CausalLM, Tokenizer]] | None = None,
+    api_eval_config: ApiEvalConfig | None = None,
 ) -> SoftPromptResult:
     """Run an iterative GAN-style attack-defense loop.
 
@@ -150,6 +158,10 @@ def gan_loop(
         config: Soft prompt configuration with gan_rounds > 0.
         direction: Refusal direction vector.
         ref_model: Optional reference model for KL collision loss.
+        transfer_models: Optional list of (name, model, tokenizer) for
+            local transfer evaluation.
+        api_eval_config: Optional API evaluation config for remote
+            endpoint testing per round.
 
     Returns:
         SoftPromptResult with gan_history populated.
@@ -190,11 +202,13 @@ def gan_loop(
             attack_result = _dispatch_attack_multiturn(
                 model, tokenizer, round_prompts, current_config,
                 direction, ref_model, history,
+                transfer_models=transfer_models,
             )
         else:
             attack_result = _dispatch_attack(
                 model, tokenizer, round_prompts, current_config,
                 direction, ref_model,
+                transfer_models=transfer_models,
             )
 
         # --- Defense phase ---
@@ -283,6 +297,23 @@ def gan_loop(
                 sum(r.success_rate for r in round_transfer_results)
                 / len(round_transfer_results)
             )
+
+        # API-based transfer evaluation (remote endpoints)
+        if api_eval_config and attack_result.token_text:
+            from vauban.api_eval import evaluate_suffix_via_api
+
+            api_results = evaluate_suffix_via_api(
+                attack_result.token_text,
+                round_prompts,
+                api_eval_config,
+                config.system_prompt,
+            )
+            round_transfer_results.extend(api_results)
+            if round_transfer_results and not transfer_models:
+                mean_transfer = (
+                    sum(r.success_rate for r in round_transfer_results)
+                    / len(round_transfer_results)
+                )
 
         # Track bypass score: higher = better for attacker
         bypass_score = (

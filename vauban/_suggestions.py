@@ -20,6 +20,7 @@ _KNOWN_SECTIONS: frozenset[str] = frozenset({
     "probe",
     "steer",
     "cast",
+    "api_eval",
     "output",
     "verbose",
 })
@@ -65,7 +66,25 @@ _KNOWN_KEYS: dict[str, frozenset[str]] = {
         "direction_layers", "loss_mode", "egd_temperature",
         "token_constraint", "eos_loss_mode", "eos_loss_weight",
         "kl_ref_weight", "ref_model", "worst_k", "grad_accum_steps",
-        "transfer_models",
+        "transfer_models", "target_repeat_count", "system_prompt",
+        "beam_width", "init_tokens",
+        # Defense evaluation
+        "defense_eval", "defense_eval_layer", "defense_eval_alpha",
+        "defense_eval_threshold", "defense_eval_sic_mode",
+        "defense_eval_sic_max_iterations", "defense_eval_cast_layers",
+        "defense_eval_alpha_tiers",
+        # Defense-aware attack
+        "defense_aware_weight",
+        # Multi-model transfer scoring
+        "transfer_loss_weight", "transfer_rerank_count",
+        # GAN loop
+        "gan_rounds", "gan_step_multiplier", "gan_direction_escalation",
+        "gan_token_escalation", "gan_defense_escalation",
+        "gan_defense_alpha_multiplier", "gan_defense_threshold_escalation",
+        "gan_defense_sic_iteration_escalation",
+        "gan_multiturn", "gan_multiturn_max_turns",
+        # Prompt pool
+        "prompt_pool_size",
     }),
     "sic": frozenset({
         "mode", "threshold", "max_iterations", "max_tokens", "target_layer",
@@ -80,6 +99,9 @@ _KNOWN_KEYS: dict[str, frozenset[str]] = {
     "probe": frozenset({"prompts"}),
     "steer": frozenset({"prompts", "layers", "alpha", "max_tokens"}),
     "cast": frozenset({"prompts", "layers", "alpha", "threshold", "max_tokens"}),
+    "api_eval": frozenset({
+        "endpoints", "max_tokens", "timeout", "system_prompt",
+    }),
     "output": frozenset({"dir"}),
 }
 
@@ -154,12 +176,19 @@ _KNOWN_VALUES: dict[tuple[str, str], frozenset[str]] = {
     ("cut", "dbdi_target"): frozenset({"red", "hdd", "both"}),
     ("cut", "layer_type_filter"): frozenset({"global", "sliding"}),
     ("softprompt", "mode"): frozenset({"continuous", "gcg", "egd"}),
-    ("softprompt", "prompt_strategy"): frozenset({"all", "cycle", "first", "worst_k"}),
+    ("softprompt", "prompt_strategy"): frozenset({
+        "all", "cycle", "first", "worst_k", "sample",
+    }),
     ("softprompt", "direction_mode"): frozenset({"last", "raid", "all_positions"}),
     ("softprompt", "loss_mode"): frozenset({"targeted", "untargeted", "defensive"}),
     ("softprompt", "lr_schedule"): frozenset({"constant", "cosine"}),
-    ("softprompt", "token_constraint"): frozenset({"ascii", "alpha", "alphanumeric"}),
+    ("softprompt", "token_constraint"): frozenset({
+        "ascii", "alpha", "alphanumeric", "non_latin", "chinese",
+        "non_alphabetic", "invisible", "zalgo", "emoji",
+    }),
     ("softprompt", "eos_loss_mode"): frozenset({"none", "force", "suppress"}),
+    ("softprompt", "defense_eval"): frozenset({"sic", "cast", "both"}),
+    ("softprompt", "defense_eval_sic_mode"): frozenset({"direction", "generation"}),
     ("eval", "refusal_mode"): frozenset({"phrases", "judge"}),
     ("sic", "mode"): frozenset({"direction", "generation"}),
     ("sic", "calibrate_prompts"): frozenset({"harmless", "harmful"}),

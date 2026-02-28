@@ -28,6 +28,8 @@ from vauban.config._registry import (
 )
 from vauban.config._types import TomlDict
 from vauban.types import (
+    ApiEvalConfig,
+    ApiEvalEndpoint,
     CastConfig,
     CutConfig,
     DepthConfig,
@@ -56,6 +58,7 @@ _EXPECTED_SECTION_ORDER: list[str] = [
     "probe",
     "steer",
     "eval",
+    "api_eval",
 ]
 
 _MODEL = '[model]\npath = "test-model"\n'
@@ -338,6 +341,19 @@ def test_parse_registered_sections_respects_registry_order(
         call_order.append("eval")
         return EvalConfig(max_tokens=222)
 
+    def fake_api_eval(raw: TomlDict) -> ApiEvalConfig | None:
+        call_order.append("api_eval")
+        return ApiEvalConfig(
+            endpoints=[
+                ApiEvalEndpoint(
+                    name="fake",
+                    base_url="https://api.fake.com/v1",
+                    model="m",
+                    api_key_env="K",
+                ),
+            ],
+        )
+
     monkeypatch.setattr("vauban.config._registry._parse_depth", fake_depth)
     monkeypatch.setattr("vauban.config._registry._parse_cast", fake_cast)
     monkeypatch.setattr("vauban.config._registry._parse_cut", fake_cut)
@@ -350,6 +366,7 @@ def test_parse_registered_sections_respects_registry_order(
     monkeypatch.setattr("vauban.config._registry._parse_probe", fake_probe)
     monkeypatch.setattr("vauban.config._registry._parse_steer", fake_steer)
     monkeypatch.setattr("vauban.config._registry._parse_eval", fake_eval)
+    monkeypatch.setattr("vauban.config._registry._parse_api_eval", fake_api_eval)
 
     context = ConfigParseContext(base_dir=tmp_path, raw={})
     parsed = parse_registered_sections(context)
@@ -367,6 +384,8 @@ def test_parse_registered_sections_respects_registry_order(
     assert parsed.probe == ProbeConfig(prompts=["probe"])
     assert parsed.steer == SteerConfig(prompts=["steer"], alpha=1.5)
     assert parsed.eval.max_tokens == 222
+    assert parsed.api_eval is not None
+    assert parsed.api_eval.endpoints[0].name == "fake"
 
 
 def test_parse_registered_sections_depth_override_bypasses_depth_parser(
