@@ -3,9 +3,10 @@
 ## Architecture Principles
 
 ### TOML-driven configuration
-- **The only CLI is `vauban <config.toml>` — a pass-through to `run()`.** All configuration lives in the TOML file.
+- **The primary CLI is `vauban <config.toml>` — a pass-through to `run()`.** All pipeline configuration lives in the TOML file.
+- Utility commands exist for scaffolding (`init`), comparison (`diff`), validation (`--validate`), and reference (`man`).
 - Every pipeline, attack, or evaluation run is defined declaratively in a `.toml` file.
-- Code reads TOML configs; users never interact through command-line flags or subcommands.
+- Code reads TOML configs; users never interact through custom subcommands for pipeline behavior.
 
 ### Unix Philosophy
 - **Build modular, composable components.** Each module does one thing well.
@@ -116,37 +117,50 @@ MLX gives everything TransformerLens gives PyTorch users, native on Apple Silico
 
 ## Pipeline Modules
 
-The abliteration workflow is thin Python glue over mlx-lm. Four modules, each independently usable:
+~20K lines of Python — thin glue over mlx-lm with no framework magic.
 
-### 1. Measure (extract a behavioral direction)
-- **Input:** model (HuggingFace ID or local path), two prompt sets (`harmful.jsonl`, `harmless.jsonl`)
-- **Output:** direction vector (`.npy`) + metadata
-- Modes: `direction` (mean-diff), `subspace` (SVD top-k), `dbdi` (HDD + RED), `diff` (weight-diff SVD)
-- `diff` mode compares base vs. aligned model weights via SVD of `W_aligned - W_base`
-- Select best layer (highest cosine separation, silhouette score, or explained variance)
-- ~200 lines
+### Core pipeline
+- **Measure** — extract a behavioral direction from activations. 4 modes: `direction` (mean-diff), `subspace` (SVD top-k), `dbdi` (HDD + RED decomposition), `diff` (weight-diff SVD between base and aligned models).
+- **Cut** — remove the direction from weight matrices via rank-1 projection. Options: norm-preserve, biprojected, per-layer alpha, sparsity.
+- **Evaluate** — post-cut quality check: refusal rate, perplexity, KL divergence.
+- **Export** — write modified weights + tokenizer + config as a loadable model directory.
 
-### 2. Cut / Inject (modify weights)
-- **Input:** model weights (safetensors), direction vector (`.npy`), target layers, alpha
-- **Output:** modified weights (safetensors)
-- For each target layer, for `o_proj` and `down_proj`: `W = W - alpha * (W @ d) ⊗ d` (rank-1 projection removal)
-- Options: norm-preserve (rescale rows), biprojected (orthogonalize against harmless direction first)
-- ~100 lines
+### Surface & detection
+- **Surface mapping** — scan a diverse prompt set and record per-prompt projection strength and refusal decisions before and after cut.
+- **Defense detection** — check whether a model has been hardened against abliteration (fast/probe/full modes).
 
-### 3. Evaluate (verify the surgery)
-- **Input:** two models (original + modified), eval prompts
-- **Output:** refusal rate, perplexity, KL divergence
-- Run eval prompts through both models, count refusals, compute perplexity on harmless set, token-level KL divergence
-- ~100 lines
+### Runtime inspection
+- **Probe** — per-layer projection inspection for any prompt.
+- **Steer** — steered generation by modifying activations mid-forward-pass.
+- **CAST** — conditional activation steering with threshold gating, dual-direction (separate detect vs. steer), and adaptive alpha tiers (TRYLOCK).
+- **Depth** — deep-thinking token analysis via JSD profiles across layers.
 
-### 4. Probe / Steer / CAST (runtime inspection and defense)
-- **Input:** model, prompt, direction(s)
-- **Output:** per-layer projection magnitudes, steered generation
-- The "microscope" — watch activations in real time, steer generation at specific layers during inference
-- CAST supports dual-direction (separate detect vs. steer) and adaptive alpha tiers
-- ~250 lines
+### Defense
+- **SIC** — iterative input sanitization: detect adversarial content, rewrite to remove it, repeat until clean or block. Supports calibration and direction/generation modes.
 
-**Total scope:** ~550 lines of Python. The port from PyTorch/CUDA to MLX is straightforward — the community just hasn't done it yet.
+### Adversarial
+- **Softprompt** — continuous/GCG/EGD optimization of learnable prefixes in embedding space.
+- **GAN loop** — iterative attack-defense rounds with escalation (step multiplier, direction weight, token count, defender hardening) and multi-turn conversation threading.
+- **Defense-aware loss** — auxiliary loss term penalizing suffixes that trigger defense detection.
+- **Transfer re-ranking** — re-rank top GCG/EGD candidates on transfer models for cross-model robustness.
+- **Injection context** — wrap optimized suffixes in realistic surrounding context (web page, tool output, code file, or custom template).
+
+### Optimization
+- **Optuna search** — multi-objective hyperparameter search over cut parameters (alpha, sparsity, layer strategy, norm_preserve).
+
+### External eval
+- **API eval** — test optimized suffixes against remote OpenAI-compatible endpoints with multi-turn support.
+
+### Experiment tracking
+- **Meta** — TOML `[meta]` section for experiment metadata (id, title, status, parents, tags, notes).
+- **Tree viewer** — `python -m vauban.tree` renders the experiment lineage graph from `[meta]` sections.
+
+### CLI
+- `vauban <config.toml>` — run the pipeline.
+- `vauban --validate <config.toml>` — check config without loading model.
+- `vauban init --mode <mode>` — scaffold a config file.
+- `vauban diff <dir_a> <dir_b>` — compare reports between two runs.
+- `vauban man [topic]` — built-in manual generated from typed dataclasses.
 
 ## Typing Rules (STRICT)
 

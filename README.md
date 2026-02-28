@@ -18,6 +18,9 @@ Refusal in language models is mediated by a single direction in activation space
 - **Soft-prompt** — optimize learnable prefixes in embedding space (GCG, continuous, EGD)
 - **Sanitize** inputs iteratively before they reach the model (SIC)
 - **Detect** whether a model has been hardened against abliteration
+- **GAN loop** — iterative attack-defense with escalation and multi-turn threading
+- **API eval** — test optimized suffixes against remote endpoints
+- **Track** experiments with metadata and tech tree lineage
 
 Everything runs natively on Apple Silicon via [MLX](https://github.com/ml-explore/mlx) — no CUDA, no Docker, no hooks. All configuration lives in TOML files.
 
@@ -152,6 +155,12 @@ vauban diff --threshold 0.05 run_a/output run_b/output
 
 `--threshold` is a CI gate: it exits with code `1` if any metric delta exceeds the threshold.
 
+Experiment tree viewer:
+
+```bash
+python -m vauban.tree experiments/
+```
+
 ## How the default pipeline works
 
 1. **Measure** — runs both prompt sets through the model, captures per-layer activations at the last token position, computes the difference-in-means, and picks the layer with the highest separation. Output: a refusal direction vector.
@@ -177,6 +186,8 @@ The TOML sections you include determine what vauban does. The default is measure
 | `[optimize]` | Optuna search for best cut parameters | `optimize_report.json` |
 | `[softprompt]` | Optimize learnable prefixes in embedding space (GCG, continuous, EGD) | `softprompt_report.json` |
 | `[sic]` | Iterative input sanitization (SIC) | `sic_report.json` |
+| `[api_eval]` | Remote API suffix evaluation | `api_eval_report.json` |
+| `[meta]` | Experiment metadata (no pipeline effect) | `python -m vauban.tree` |
 
 Early-return precedence is: `[depth]` > `[probe]` > `[steer]` > `[cast]` > `[sic]` > `[optimize]` > `[softprompt]`. Use `--validate` to catch conflicts.
 

@@ -64,6 +64,8 @@ The [Spinning Up in Abliteration](class/index.md) course is a seven-part progres
 | `[optimize]` | Optuna search for best cut parameters | `optimize_report.json` |
 | `[softprompt]` | Optimize learnable prefixes in embedding space | `softprompt_report.json` |
 | `[sic]` | Iterative input sanitization (SIC) | `sic_report.json` |
+| `[api_eval]` | Remote API suffix evaluation | `api_eval_report.json` |
+| `[meta]` | Experiment metadata (no pipeline effect) | `python -m vauban.tree` |
 
 ## License
 
