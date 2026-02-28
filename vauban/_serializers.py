@@ -240,6 +240,12 @@ def _softprompt_to_dict(result: SoftPromptResult) -> dict[str, object]:
         "transfer_results": [
             _transfer_eval_to_dict(t) for t in result.transfer_results
         ],
+        "defense_eval": (
+            result.defense_eval.to_dict()
+            if result.defense_eval is not None
+            else None
+        ),
+        "gan_history": [r.to_dict() for r in result.gan_history],
     }
 
 

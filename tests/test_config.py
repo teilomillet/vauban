@@ -85,6 +85,16 @@ class TestLoadConfig:
         assert config.measure.mode == "subspace"
         assert config.measure.top_k == 10
 
+    def test_measure_only_flag(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[measure]\nmode = "diff"\ndiff_model = "base"\nmeasure_only = true\n'
+        )
+        config = load_config(toml_file)
+        assert config.measure.measure_only is True
+
     def test_measure_invalid_mode_raises(self, tmp_path: Path) -> None:
         toml_file = tmp_path / "test.toml"
         toml_file.write_text(
@@ -1038,7 +1048,7 @@ class TestLoadConfig:
         toml_file.write_text(
             '[model]\npath = "test"\n'
             "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
-            '[softprompt]\ntoken_constraint = "emoji"\n'
+            '[softprompt]\ntoken_constraint = "bogus"\n'
         )
         with pytest.raises(ValueError, match="token_constraint"):
             load_config(toml_file)
@@ -2271,6 +2281,16 @@ class TestLoadConfig:
         assert config.measure.mode == "diff"
         assert config.measure.diff_model == "base-model"
 
+    def test_measure_only_must_be_boolean(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[measure]\nmeasure_only = "yes"\n'
+        )
+        with pytest.raises(TypeError, match="measure_only"):
+            load_config(toml_file)
+
     def test_measure_diff_without_diff_model_raises(
         self, tmp_path: Path,
     ) -> None:
@@ -2339,3 +2359,146 @@ class TestLoadConfig:
         )
         with pytest.raises(ValueError, match="sorted"):
             load_config(toml_file)
+
+
+class TestGanConfigParsing:
+    """Tests for GAN loop TOML config parsing."""
+
+    def test_gan_rounds_default(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.gan_rounds == 0
+
+    def test_gan_rounds_parsed(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ngan_rounds = 5\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.gan_rounds == 5
+
+    def test_gan_step_multiplier_parsed(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ngan_step_multiplier = 2.0\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.gan_step_multiplier == 2.0
+
+    def test_gan_direction_escalation_parsed(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ngan_direction_escalation = 0.5\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.gan_direction_escalation == 0.5
+
+    def test_gan_token_escalation_parsed(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ngan_token_escalation = 8\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.gan_token_escalation == 8
+
+    def test_gan_rounds_negative_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ngan_rounds = -1\n"
+        )
+        with pytest.raises(ValueError, match="gan_rounds"):
+            load_config(toml_file)
+
+    def test_gan_step_multiplier_zero_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ngan_step_multiplier = 0\n"
+        )
+        with pytest.raises(ValueError, match="gan_step_multiplier"):
+            load_config(toml_file)
+
+    def test_defense_eval_sic_mode_parsed(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\ndefense_eval_sic_mode = "generation"\n'
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.defense_eval_sic_mode == "generation"
+
+    def test_defense_eval_sic_mode_invalid_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\ndefense_eval_sic_mode = "bogus"\n'
+        )
+        with pytest.raises(ValueError, match="defense_eval_sic_mode"):
+            load_config(toml_file)
+
+    def test_defense_eval_sic_max_iterations_parsed(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ndefense_eval_sic_max_iterations = 5\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.defense_eval_sic_max_iterations == 5
+
+    def test_defense_eval_cast_layers_parsed(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ndefense_eval_cast_layers = [5, 10, 15]\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.defense_eval_cast_layers == [5, 10, 15]
+
+    def test_init_tokens_parsed(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ninit_tokens = [100, 200, 300]\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.init_tokens == [100, 200, 300]

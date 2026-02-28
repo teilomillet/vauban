@@ -39,6 +39,8 @@ from vauban.softprompt import (
     softprompt_attack,
 )
 from vauban.types import (
+    DefenseEvalResult,
+    GanRoundResult,
     SoftPromptConfig,
     SoftPromptResult,
     TransferEvalResult,
@@ -558,6 +560,7 @@ class TestInvalidMode:
         object.__setattr__(bad_config, "n_tokens", 4)
         object.__setattr__(bad_config, "n_steps", 1)
         object.__setattr__(bad_config, "seed", None)
+        object.__setattr__(bad_config, "gan_rounds", 0)
 
         with pytest.raises(ValueError, match="Unknown soft prompt mode"):
             softprompt_attack(model, tokenizer, ["test"], bad_config, None)
@@ -2006,3 +2009,526 @@ class TestNewConfigDefaults3:
     def test_custom_transfer_models(self) -> None:
         cfg = SoftPromptConfig(transfer_models=["model-a"])
         assert cfg.transfer_models == ["model-a"]
+
+
+# ---------------------------------------------------------------------------
+# Geiping taxonomy: new token constraints, repeat target, system prompt
+# ---------------------------------------------------------------------------
+
+
+class _UnicodeTokenizer:
+    """Tokenizer mapping IDs to specific Unicode chars for constraint tests."""
+
+    VOCAB_SIZE: int = 16
+
+    def __init__(self) -> None:
+        self._char_map: dict[int, str] = {
+            0: "A",          # ASCII alpha
+            1: "Z",          # ASCII alpha
+            2: "1",          # ASCII digit
+            3: " ",          # ASCII space
+            4: "\u4e00",     # CJK Unified (chinese)
+            5: "\u4e01",     # CJK Unified (chinese)
+            6: "\u00e9",     # Latin Extended (non-latin)
+            7: "\u0410",     # Cyrillic A (non-latin)
+            8: "\u200b",     # Zero-width space (invisible)
+            9: "\u200d",     # Zero-width joiner (invisible)
+            10: "\u00ad",    # Soft hyphen (invisible)
+            11: "!",         # Non-alphabetic ASCII symbol
+            12: "#",         # Non-alphabetic ASCII symbol
+            13: "\u2600",    # Sun symbol (emoji, So)
+            14: "\u2764",    # Heart symbol (emoji, So)
+            15: "b",         # ASCII alpha (for zalgo base)
+        }
+
+    def decode(self, token_ids: list[int]) -> str:
+        """Map token IDs to their designated Unicode characters."""
+        return "".join(self._char_map.get(tid, "?") for tid in token_ids)
+
+    def encode(self, text: str) -> list[int]:
+        """Minimal encode for non-constraint tests."""
+        return [0]
+
+    def apply_chat_template(
+        self,
+        messages: list[dict[str, str]],
+        tokenize: bool = True,
+    ) -> str | list[int]:
+        """Minimal template."""
+        text = "".join(m["content"] for m in messages)
+        if tokenize:
+            return self.encode(text)
+        return text
+
+
+class TestNewTokenConstraints:
+    """Tests for the 6 new Geiping token constraint sets."""
+
+    def test_non_latin_excludes_ascii(self) -> None:
+        """non_latin constraint: only tokens with all chars ord > 127."""
+        tok = _UnicodeTokenizer()
+        mask = _build_vocab_mask(tok, tok.VOCAB_SIZE, "non_latin")  # type: ignore[arg-type]
+        assert mask is not None
+        mx.eval(mask)
+        # IDs 4-10 have ord > 127 (CJK, extended Latin, Cyrillic, zero-width)
+        # IDs 0-3, 11-12, 15 are ASCII
+        for tid in [0, 1, 2, 3, 11, 12, 15]:
+            assert not bool(mask[tid].item()), f"ASCII token {tid} should be excluded"
+        for tid in [4, 5, 6, 7]:
+            assert bool(mask[tid].item()), f"Non-Latin token {tid} should be allowed"
+
+    def test_chinese_filters_to_cjk(self) -> None:
+        """chinese constraint: only CJK Unified Ideographs (U+4E00-U+9FFF)."""
+        tok = _UnicodeTokenizer()
+        mask = _build_vocab_mask(tok, tok.VOCAB_SIZE, "chinese")  # type: ignore[arg-type]
+        assert mask is not None
+        mx.eval(mask)
+        # Only IDs 4, 5 are CJK
+        for tid in [4, 5]:
+            assert bool(mask[tid].item()), f"CJK token {tid} should be allowed"
+        for tid in [0, 1, 6, 7, 8, 13]:
+            assert not bool(mask[tid].item()), f"Non-CJK token {tid} should be excluded"
+
+    def test_non_alphabetic_excludes_letters(self) -> None:
+        """non_alphabetic constraint: no alpha chars."""
+        tok = _UnicodeTokenizer()
+        mask = _build_vocab_mask(tok, tok.VOCAB_SIZE, "non_alphabetic")  # type: ignore[arg-type]
+        assert mask is not None
+        mx.eval(mask)
+        # Alpha tokens: 0 (A), 1 (Z), 6 (e-acute), 7 (Cyrillic A), 15 (b)
+        for tid in [0, 1, 6, 7, 15]:
+            assert not bool(mask[tid].item()), f"Alpha token {tid} should be excluded"
+        # Non-alpha: 2 (1), 3 (space), 11 (!), 12 (#)
+        for tid in [2, 11, 12]:
+            assert bool(mask[tid].item()), f"Non-alpha token {tid} should be allowed"
+
+    def test_invisible_matches_format_chars(self) -> None:
+        """invisible constraint: zero-width, format, and non-printable whitespace."""
+        tok = _UnicodeTokenizer()
+        mask = _build_vocab_mask(tok, tok.VOCAB_SIZE, "invisible")  # type: ignore[arg-type]
+        assert mask is not None
+        mx.eval(mask)
+        # IDs 8 (ZWSP, Cf), 9 (ZWJ, Cf), 10 (soft hyphen, Cf) are invisible
+        for tid in [8, 9, 10]:
+            assert bool(mask[tid].item()), f"Invisible token {tid} should be allowed"
+        # Visible tokens should be excluded
+        for tid in [0, 1, 4, 11, 13]:
+            assert not bool(mask[tid].item()), f"Visible token {tid} should be excluded"
+
+    def test_emoji_matches_symbol_chars(self) -> None:
+        """emoji constraint: Unicode So category and emoji ranges."""
+        tok = _UnicodeTokenizer()
+        mask = _build_vocab_mask(tok, tok.VOCAB_SIZE, "emoji")  # type: ignore[arg-type]
+        assert mask is not None
+        mx.eval(mask)
+        # IDs 13 (sun, So), 14 (heart, So) are emoji/symbols
+        for tid in [13, 14]:
+            assert bool(mask[tid].item()), f"Emoji token {tid} should be allowed"
+        for tid in [0, 1, 4, 8, 11]:
+            assert not bool(mask[tid].item()), (
+                f"Non-emoji token {tid} should be excluded"
+            )
+
+    def test_zalgo_allows_combining_marks(self) -> None:
+        """zalgo constraint: requires at least one combining diacritical mark."""
+
+        class _ZalgoTokenizer:
+            """Tokenizer with tokens containing combining marks."""
+
+            VOCAB_SIZE = 4
+
+            def __init__(self) -> None:
+                self._char_map: dict[int, str] = {
+                    0: "a\u0300",  # a + combining grave
+                    1: "\u0301",   # combining acute alone
+                    2: "hello",    # plain alpha
+                    3: "A",        # plain alpha
+                }
+
+            def decode(self, token_ids: list[int]) -> str:
+                return "".join(
+                    self._char_map.get(tid, "?") for tid in token_ids
+                )
+
+        tok = _ZalgoTokenizer()
+        mask = _build_vocab_mask(tok, tok.VOCAB_SIZE, "zalgo")  # type: ignore[arg-type]
+        assert mask is not None
+        mx.eval(mask)
+        # ID 0: "a" + combining grave → has alpha + combining mark → zalgo
+        assert bool(mask[0].item()), "Token with combining mark should be allowed"
+        # ID 2: "hello" has no combining marks → not zalgo
+        assert not bool(mask[2].item()), "Plain alpha without combining mark excluded"
+        # ID 3: "A" has no combining marks → not zalgo
+        assert not bool(mask[3].item()), "Single alpha without combining mark excluded"
+
+    def test_unknown_constraint_raises(self) -> None:
+        """Unknown constraint name raises ValueError."""
+        tok = MockTokenizer(VOCAB_SIZE)
+        with pytest.raises(ValueError, match="Unknown token constraint"):
+            _build_vocab_mask(tok, VOCAB_SIZE, "bogus")
+
+
+class TestEncodeTargetsRepeat:
+    """Tests for target_repeat_count in _encode_targets."""
+
+    def test_repeat_zero_is_noop(self) -> None:
+        """repeat_count=0 returns same as no repeat."""
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        ids_no_repeat = _encode_targets(tokenizer, ["Sure"])
+        ids_zero = _encode_targets(tokenizer, ["Sure"], repeat_count=0)
+        mx.eval(ids_no_repeat, ids_zero)
+        assert ids_no_repeat.shape == ids_zero.shape
+
+    def test_repeat_multiplies_tokens(self) -> None:
+        """repeat_count=3 produces 3x as many tokens."""
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        ids_base = _encode_targets(tokenizer, ["Hi"])
+        ids_repeated = _encode_targets(tokenizer, ["Hi"], repeat_count=3)
+        mx.eval(ids_base, ids_repeated)
+        assert ids_repeated.shape[0] == ids_base.shape[0] * 3
+
+    def test_repeat_preserves_pattern(self) -> None:
+        """Repeated tokens are the base pattern repeated N times."""
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        ids_base = _encode_targets(tokenizer, ["AB"])
+        ids_repeated = _encode_targets(tokenizer, ["AB"], repeat_count=2)
+        mx.eval(ids_base, ids_repeated)
+        base_list = ids_base.tolist()
+        repeated_list = ids_repeated.tolist()
+        assert repeated_list == base_list + base_list
+
+
+class TestPreEncodePromptsSystemPrompt:
+    """Tests for system_prompt parameter in _pre_encode_prompts."""
+
+    def test_no_system_prompt(self) -> None:
+        """Without system_prompt, encoding is unchanged."""
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        encoded_default = _pre_encode_prompts(tokenizer, ["hello"])
+        encoded_none = _pre_encode_prompts(tokenizer, ["hello"], system_prompt=None)
+        mx.eval(encoded_default[0], encoded_none[0])
+        assert encoded_default[0].shape == encoded_none[0].shape
+
+    def test_system_prompt_increases_length(self) -> None:
+        """With system_prompt, encoded sequence is longer."""
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        encoded_no_sys = _pre_encode_prompts(tokenizer, ["hello"])
+        encoded_with_sys = _pre_encode_prompts(
+            tokenizer, ["hello"], system_prompt="You are a helpful assistant.",
+        )
+        mx.eval(encoded_no_sys[0], encoded_with_sys[0])
+        assert encoded_with_sys[0].shape[1] > encoded_no_sys[0].shape[1]
+
+    def test_system_prompt_content_appears(self) -> None:
+        """System prompt text is included in the template output."""
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        sys_text = "SECRET_SYSTEM_PROMPT"
+        # Use apply_chat_template directly to verify
+        messages_with: list[dict[str, str]] = [
+            {"role": "system", "content": sys_text},
+            {"role": "user", "content": "hello"},
+        ]
+        template_with = tokenizer.apply_chat_template(messages_with, tokenize=False)
+        messages_without: list[dict[str, str]] = [
+            {"role": "user", "content": "hello"},
+        ]
+        template_without = tokenizer.apply_chat_template(
+            messages_without, tokenize=False,
+        )
+        assert isinstance(template_with, str)
+        assert isinstance(template_without, str)
+        assert len(template_with) > len(template_without)
+
+
+class TestNewConfigDefaults4:
+    """Tests for target_repeat_count and system_prompt config defaults."""
+
+    def test_target_repeat_count_default(self) -> None:
+        cfg = SoftPromptConfig()
+        assert cfg.target_repeat_count == 0
+
+    def test_system_prompt_default(self) -> None:
+        cfg = SoftPromptConfig()
+        assert cfg.system_prompt is None
+
+    def test_custom_target_repeat_count(self) -> None:
+        cfg = SoftPromptConfig(target_repeat_count=50)
+        assert cfg.target_repeat_count == 50
+
+    def test_custom_system_prompt(self) -> None:
+        cfg = SoftPromptConfig(system_prompt="You are helpful.")
+        assert cfg.system_prompt == "You are helpful."
+
+
+# ---------------------------------------------------------------------------
+# Multi-constraint tests
+# ---------------------------------------------------------------------------
+
+
+class TestMultiConstraint:
+    """Tests for list-based multi-constraint token masks."""
+
+    def test_single_in_list_equals_string(self) -> None:
+        """["ascii"] produces same mask as "ascii"."""
+        tok = MockTokenizer(VOCAB_SIZE)
+        mask_str = _build_vocab_mask(tok, VOCAB_SIZE, "ascii")
+        mask_list = _build_vocab_mask(tok, VOCAB_SIZE, ["ascii"])
+        assert mask_str is not None
+        assert mask_list is not None
+        mx.eval(mask_str, mask_list)
+        for tid in range(VOCAB_SIZE):
+            assert bool(mask_str[tid].item()) == bool(
+                mask_list[tid].item()
+            ), f"Mismatch at token {tid}"
+
+    def test_intersection_is_subset(self) -> None:
+        """chinese is a subset of non_latin, so intersection = chinese."""
+        tok = _UnicodeTokenizer()
+        mask_chinese = _build_vocab_mask(
+            tok, tok.VOCAB_SIZE, "chinese",  # type: ignore[arg-type]
+        )
+        mask_multi = _build_vocab_mask(
+            tok, tok.VOCAB_SIZE, ["non_latin", "chinese"],  # type: ignore[arg-type]
+        )
+        assert mask_chinese is not None
+        assert mask_multi is not None
+        mx.eval(mask_chinese, mask_multi)
+        for tid in range(tok.VOCAB_SIZE):
+            assert bool(mask_chinese[tid].item()) == bool(
+                mask_multi[tid].item()
+            ), f"Mismatch at token {tid}"
+
+    def test_contradictory_produces_empty(self) -> None:
+        """["ascii", "non_latin"] has no overlap — all False."""
+        tok = _UnicodeTokenizer()
+        mask = _build_vocab_mask(
+            tok, tok.VOCAB_SIZE, ["ascii", "non_latin"],  # type: ignore[arg-type]
+        )
+        assert mask is not None
+        mx.eval(mask)
+        n_allowed = int(mx.sum(mask).item())
+        assert n_allowed == 0
+
+
+# ---------------------------------------------------------------------------
+# Defense eval type tests
+# ---------------------------------------------------------------------------
+
+
+class TestDefenseEvalResult:
+    """Tests for DefenseEvalResult dataclass."""
+
+    def test_construction(self) -> None:
+        result = DefenseEvalResult(
+            sic_blocked=1,
+            sic_sanitized=2,
+            sic_clean=3,
+            sic_bypass_rate=0.83,
+            cast_interventions=10,
+            cast_refusal_rate=0.5,
+            cast_responses=["resp1", "resp2"],
+        )
+        assert result.sic_blocked == 1
+        assert result.cast_refusal_rate == 0.5
+        assert len(result.cast_responses) == 2
+
+    def test_to_dict(self) -> None:
+        result = DefenseEvalResult(
+            sic_blocked=0,
+            sic_sanitized=0,
+            sic_clean=1,
+            sic_bypass_rate=1.0,
+            cast_interventions=5,
+            cast_refusal_rate=0.0,
+            cast_responses=["ok"],
+        )
+        d = result.to_dict()
+        assert d["sic_bypass_rate"] == 1.0
+        assert d["cast_interventions"] == 5
+
+    def test_frozen(self) -> None:
+        result = DefenseEvalResult(
+            sic_blocked=0, sic_sanitized=0, sic_clean=0,
+            sic_bypass_rate=0.0, cast_interventions=0,
+            cast_refusal_rate=0.0, cast_responses=[],
+        )
+        with pytest.raises(AttributeError):
+            result.sic_blocked = 1  # type: ignore[misc]
+
+
+class TestNewConfigDefaults5:
+    """Tests for defense_eval config defaults."""
+
+    def test_defense_eval_default(self) -> None:
+        cfg = SoftPromptConfig()
+        assert cfg.defense_eval is None
+
+    def test_defense_eval_layer_default(self) -> None:
+        cfg = SoftPromptConfig()
+        assert cfg.defense_eval_layer is None
+
+    def test_defense_eval_alpha_default(self) -> None:
+        cfg = SoftPromptConfig()
+        assert cfg.defense_eval_alpha == 1.0
+
+    def test_defense_eval_threshold_default(self) -> None:
+        cfg = SoftPromptConfig()
+        assert cfg.defense_eval_threshold == 0.0
+
+    def test_custom_defense_eval(self) -> None:
+        cfg = SoftPromptConfig(defense_eval="both")
+        assert cfg.defense_eval == "both"
+
+    def test_softprompt_result_defense_eval_default(self) -> None:
+        result = SoftPromptResult(
+            mode="gcg", success_rate=0.5, final_loss=1.0,
+            loss_history=[1.0], n_steps=1, n_tokens=4,
+            embeddings=None, token_ids=[1, 2],
+            token_text="ab", eval_responses=["r"],
+        )
+        assert result.defense_eval is None
+
+    def test_softprompt_result_to_dict_defense_eval(self) -> None:
+        de = DefenseEvalResult(
+            sic_blocked=1, sic_sanitized=0, sic_clean=0,
+            sic_bypass_rate=0.0, cast_interventions=5,
+            cast_refusal_rate=1.0, cast_responses=["refused"],
+        )
+        result = SoftPromptResult(
+            mode="gcg", success_rate=0.5, final_loss=1.0,
+            loss_history=[1.0], n_steps=1, n_tokens=4,
+            embeddings=None, token_ids=[1, 2],
+            token_text="ab", eval_responses=["r"],
+            defense_eval=de,
+        )
+        d = result.to_dict()
+        assert d["defense_eval"] is not None
+        assert d["defense_eval"]["sic_blocked"] == 1  # type: ignore[index]
+
+
+class TestGanRoundResult:
+    """Tests for GanRoundResult dataclass."""
+
+    def test_gan_round_result_construction(self) -> None:
+        attack = SoftPromptResult(
+            mode="gcg", success_rate=0.5, final_loss=1.0,
+            loss_history=[1.0], n_steps=10, n_tokens=4,
+            embeddings=None, token_ids=[1, 2],
+            token_text="ab", eval_responses=["r"],
+        )
+        de = DefenseEvalResult(
+            sic_blocked=0, sic_sanitized=1, sic_clean=0,
+            sic_bypass_rate=1.0, cast_interventions=0,
+            cast_refusal_rate=0.0, cast_responses=["ok"],
+        )
+        rr = GanRoundResult(
+            round_index=0,
+            attack_result=attack,
+            defense_result=de,
+            attacker_won=True,
+            config_snapshot={"n_tokens": 4, "n_steps": 10},
+        )
+        assert rr.round_index == 0
+        assert rr.attacker_won is True
+        assert rr.defense_result is not None
+
+    def test_gan_round_result_to_dict(self) -> None:
+        attack = SoftPromptResult(
+            mode="gcg", success_rate=0.5, final_loss=1.0,
+            loss_history=[1.0], n_steps=10, n_tokens=4,
+            embeddings=None, token_ids=[1, 2],
+            token_text="ab", eval_responses=["r"],
+        )
+        rr = GanRoundResult(
+            round_index=1,
+            attack_result=attack,
+            defense_result=None,
+            attacker_won=False,
+            config_snapshot={"n_tokens": 8},
+        )
+        d = rr.to_dict()
+        assert d["round_index"] == 1
+        assert d["attacker_won"] is False
+        assert d["defense_result"] is None
+
+    def test_gan_round_result_frozen(self) -> None:
+        attack = SoftPromptResult(
+            mode="gcg", success_rate=0.5, final_loss=1.0,
+            loss_history=[1.0], n_steps=10, n_tokens=4,
+            embeddings=None, token_ids=[1, 2],
+            token_text="ab", eval_responses=["r"],
+        )
+        rr = GanRoundResult(
+            round_index=0, attack_result=attack,
+            defense_result=None, attacker_won=False,
+            config_snapshot={},
+        )
+        with pytest.raises(AttributeError):
+            rr.round_index = 5  # type: ignore[misc]
+
+
+class TestGanConfigDefaults:
+    """Tests for GAN-related config defaults."""
+
+    def test_gan_rounds_default(self) -> None:
+        c = SoftPromptConfig()
+        assert c.gan_rounds == 0
+
+    def test_gan_step_multiplier_default(self) -> None:
+        c = SoftPromptConfig()
+        assert c.gan_step_multiplier == 1.5
+
+    def test_gan_direction_escalation_default(self) -> None:
+        c = SoftPromptConfig()
+        assert c.gan_direction_escalation == 0.25
+
+    def test_gan_token_escalation_default(self) -> None:
+        c = SoftPromptConfig()
+        assert c.gan_token_escalation == 4
+
+    def test_init_tokens_default(self) -> None:
+        c = SoftPromptConfig()
+        assert c.init_tokens is None
+
+    def test_defense_eval_sic_mode_default(self) -> None:
+        c = SoftPromptConfig()
+        assert c.defense_eval_sic_mode == "direction"
+
+    def test_defense_eval_sic_max_iterations_default(self) -> None:
+        c = SoftPromptConfig()
+        assert c.defense_eval_sic_max_iterations == 3
+
+    def test_defense_eval_cast_layers_default(self) -> None:
+        c = SoftPromptConfig()
+        assert c.defense_eval_cast_layers is None
+
+    def test_gan_history_default(self) -> None:
+        result = SoftPromptResult(
+            mode="gcg", success_rate=0.5, final_loss=1.0,
+            loss_history=[1.0], n_steps=1, n_tokens=4,
+            embeddings=None, token_ids=[1, 2],
+            token_text="ab", eval_responses=["r"],
+        )
+        assert result.gan_history == []
+
+    def test_gan_history_to_dict(self) -> None:
+        attack = SoftPromptResult(
+            mode="gcg", success_rate=0.5, final_loss=1.0,
+            loss_history=[1.0], n_steps=10, n_tokens=4,
+            embeddings=None, token_ids=[1, 2],
+            token_text="ab", eval_responses=["r"],
+        )
+        rr = GanRoundResult(
+            round_index=0, attack_result=attack,
+            defense_result=None, attacker_won=False,
+            config_snapshot={"n_tokens": 4},
+        )
+        result = SoftPromptResult(
+            mode="gcg", success_rate=0.5, final_loss=1.0,
+            loss_history=[1.0], n_steps=10, n_tokens=4,
+            embeddings=None, token_ids=[1, 2],
+            token_text="ab", eval_responses=["r"],
+            gan_history=[rr],
+        )
+        d = result.to_dict()
+        assert len(d["gan_history"]) == 1  # type: ignore[arg-type]

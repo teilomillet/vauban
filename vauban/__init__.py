@@ -4,11 +4,11 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
+from typing import cast as _cast
 
 if TYPE_CHECKING:
     from vauban._array import Array
-    from vauban.types import CausalLM, Tokenizer
 
 from vauban._serializers import (
     _cast_to_dict,
@@ -92,6 +92,7 @@ from vauban.types import (
     AlphaTier,
     CastConfig,
     CastResult,
+    CausalLM,
     CutConfig,
     DatasetRef,
     DBDIResult,
@@ -127,6 +128,7 @@ from vauban.types import (
     SurfacePrompt,
     SurfaceResult,
     TokenDepth,
+    Tokenizer,
     TransferEvalResult,
     TrialResult,
 )
@@ -353,6 +355,60 @@ def _write_experiment_log(
         pass
 
 
+def _write_measure_reports(
+    config: PipelineConfig,
+    direction_result: DirectionResult | None,
+    subspace_result: SubspaceResult | None,
+    dbdi_result: DBDIResult | None,
+    diff_result: DiffResult | None,
+) -> list[str]:
+    """Write the JSON reports produced directly by the measure stage."""
+    reports: list[str] = []
+
+    if diff_result is not None:
+        report_path = config.output_dir / "diff_report.json"
+        report = {
+            "source_model": diff_result.source_model,
+            "target_model": diff_result.target_model,
+            "best_layer": diff_result.best_layer,
+            "d_model": diff_result.d_model,
+            "best_layer_singular_values": diff_result.singular_values,
+            "explained_variance_per_layer": diff_result.explained_variance,
+            "per_layer_singular_values": diff_result.per_layer_singular_values,
+        }
+    elif subspace_result is not None:
+        report_path = config.output_dir / "subspace_report.json"
+        report = {
+            "layer_index": subspace_result.layer_index,
+            "d_model": subspace_result.d_model,
+            "model_path": subspace_result.model_path,
+            "singular_values": subspace_result.singular_values,
+            "explained_variance": subspace_result.explained_variance,
+            "layer_types": subspace_result.layer_types,
+        }
+    elif dbdi_result is not None:
+        report_path = config.output_dir / "dbdi_report.json"
+        report = {
+            "hdd_layer_index": dbdi_result.hdd_layer_index,
+            "red_layer_index": dbdi_result.red_layer_index,
+            "hdd_cosine_scores": dbdi_result.hdd_cosine_scores,
+            "red_cosine_scores": dbdi_result.red_cosine_scores,
+            "d_model": dbdi_result.d_model,
+            "model_path": dbdi_result.model_path,
+            "layer_types": dbdi_result.layer_types,
+        }
+    elif direction_result is not None:
+        report_path = config.output_dir / "direction_report.json"
+        report = direction_result.to_dict()
+    else:
+        return reports
+
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=2))
+    reports.append(report_path.name)
+    return reports
+
+
 @dataclass(slots=True)
 class _EarlyModeContext:
     """Shared runtime context passed to early-mode handlers."""
@@ -374,8 +430,8 @@ def _run_depth_mode(context: _EarlyModeContext) -> None:
     config = context.config
     assert config.depth is not None
     v = config.verbose
-    model = cast("CausalLM", context.model)
-    tokenizer = cast("Tokenizer", context.tokenizer)
+    model = _cast("CausalLM", context.model)
+    tokenizer = _cast("Tokenizer", context.tokenizer)
 
     _log(
         "Running depth analysis",
@@ -490,8 +546,8 @@ def _run_probe_mode(context: _EarlyModeContext) -> None:
     assert config.probe is not None
     assert context.direction_result is not None
     v = config.verbose
-    model = cast("CausalLM", context.model)
-    tokenizer = cast("Tokenizer", context.tokenizer)
+    model = _cast("CausalLM", context.model)
+    tokenizer = _cast("Tokenizer", context.tokenizer)
 
     _log(
         "Running probe inspection",
@@ -535,8 +591,8 @@ def _run_steer_mode(context: _EarlyModeContext) -> None:
     assert config.steer is not None
     assert context.direction_result is not None
     v = config.verbose
-    model = cast("CausalLM", context.model)
-    tokenizer = cast("Tokenizer", context.tokenizer)
+    model = _cast("CausalLM", context.model)
+    tokenizer = _cast("Tokenizer", context.tokenizer)
 
     _log(
         "Running steer generation",
@@ -591,8 +647,8 @@ def _run_cast_mode(context: _EarlyModeContext) -> None:
     assert config.cast is not None
     assert context.direction_result is not None
     v = config.verbose
-    model = cast("CausalLM", context.model)
-    tokenizer = cast("Tokenizer", context.tokenizer)
+    model = _cast("CausalLM", context.model)
+    tokenizer = _cast("Tokenizer", context.tokenizer)
 
     _log(
         "Running CAST conditional steering",
@@ -668,8 +724,8 @@ def _run_sic_mode(context: _EarlyModeContext) -> None:
     assert context.harmful is not None
     assert context.harmless is not None
     v = config.verbose
-    model = cast("CausalLM", context.model)
-    tokenizer = cast("Tokenizer", context.tokenizer)
+    model = _cast("CausalLM", context.model)
+    tokenizer = _cast("Tokenizer", context.tokenizer)
 
     _log(
         f"Running SIC sanitization (mode={config.sic.mode})",
@@ -735,8 +791,8 @@ def _run_optimize_mode(context: _EarlyModeContext) -> None:
     assert context.direction_result is not None
     assert context.harmful is not None
     v = config.verbose
-    model = cast("CausalLM", context.model)
-    tokenizer = cast("Tokenizer", context.tokenizer)
+    model = _cast("CausalLM", context.model)
+    tokenizer = _cast("Tokenizer", context.tokenizer)
 
     _log(
         f"Running optimization ({config.optimize.n_trials} trials)",
@@ -787,8 +843,8 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
     assert config.softprompt is not None
     assert context.harmful is not None
     v = config.verbose
-    model = cast("CausalLM", context.model)
-    tokenizer = cast("Tokenizer", context.tokenizer)
+    model = _cast("CausalLM", context.model)
+    tokenizer = _cast("Tokenizer", context.tokenizer)
 
     _log(
         f"Running soft prompt attack (mode={config.softprompt.mode})",
@@ -871,6 +927,8 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
             per_prompt_losses=sp_result.per_prompt_losses,
             early_stopped=sp_result.early_stopped,
             transfer_results=transfer_results,
+            defense_eval=sp_result.defense_eval,
+            gan_history=sp_result.gan_history,
         )
 
     report_path = config.output_dir / "softprompt_report.json"
@@ -982,7 +1040,10 @@ def run(config_path: str | Path) -> None:
     # Branch on measure mode
     direction_result = None
     subspace_result = None
+    dbdi_result = None
+    diff_result = None
     cosine_scores: list[float] = []
+    measure_reports: list[str] = []
 
     clip_q = config.measure.clip_quantile
 
@@ -1014,6 +1075,17 @@ def run(config_path: str | Path) -> None:
             top_k=config.measure.top_k,
             source_model_id=config.measure.diff_model,
             target_model_id=config.model_path,
+        )
+        measure_reports = _write_measure_reports(
+            config,
+            direction_result=None,
+            subspace_result=None,
+            dbdi_result=None,
+            diff_result=diff_result,
+        )
+        _log(
+            f"Diff report written to {config.output_dir / 'diff_report.json'}",
+            verbose=v, elapsed=time.monotonic() - t0,
         )
         direction_result = diff_result.best_direction()
         cosine_scores = []
@@ -1088,6 +1160,32 @@ def run(config_path: str | Path) -> None:
             f"Transfer report written to {transfer_report_path}",
             verbose=v, elapsed=time.monotonic() - t0,
         )
+        transfer_reports = ["transfer_report.json"]
+    else:
+        transfer_reports = []
+
+    if config.measure.measure_only:
+        if not measure_reports:
+            measure_reports = _write_measure_reports(
+                config,
+                direction_result=direction_result,
+                subspace_result=subspace_result,
+                dbdi_result=dbdi_result,
+                diff_result=diff_result,
+            )
+        _log(
+            f"Measure-only mode complete — output written to {config.output_dir}",
+            verbose=v, elapsed=time.monotonic() - t0,
+        )
+        _write_experiment_log(
+            config_path,
+            config,
+            "measure",
+            measure_reports + transfer_reports,
+            {},
+            time.monotonic() - t0,
+        )
+        return
 
     early_mode_context.direction_result = direction_result
     if _dispatch_early_mode("after_measure", early_mode_context):
@@ -1245,6 +1343,7 @@ def run(config_path: str | Path) -> None:
 
     # For DBDI "both" mode: apply second cut with HDD direction
     if config.measure.mode == "dbdi" and config.cut.dbdi_target == "both":
+        assert dbdi_result is not None
         hdd_direction = DirectionResult(
             direction=dbdi_result.hdd,
             layer_index=dbdi_result.hdd_layer_index,

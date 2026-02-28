@@ -222,6 +222,7 @@ class MeasureConfig:
     clip_quantile: float = 0.0  # winsorization quantile (0.0 = disabled)
     transfer_models: list[str] = field(default_factory=list)
     diff_model: str | None = None  # base model for diff mode
+    measure_only: bool = False  # stop after writing measure-stage reports
 
 
 @dataclass(frozen=True, slots=True)
@@ -510,7 +511,7 @@ class SoftPromptConfig:
     direction_layers: list[int] | None = None  # None = all layers
     loss_mode: str = "targeted"  # "targeted" or "untargeted"
     egd_temperature: float = 1.0  # EGD simplex sharpening
-    token_constraint: str | None = None  # "ascii", "alpha", "alphanumeric", or None
+    token_constraint: str | list[str] | None = None  # constraint(s) or None
     eos_loss_mode: str = "none"  # "none", "force", or "suppress"
     eos_loss_weight: float = 0.0  # weight for EOS auxiliary loss
     kl_ref_weight: float = 0.0  # weight for KL collision loss (0 = off)
@@ -518,6 +519,21 @@ class SoftPromptConfig:
     worst_k: int = 5  # prompts to select for "worst_k" strategy
     grad_accum_steps: int = 1  # gradient accumulation (1 = no accumulation)
     transfer_models: list[str] = field(default_factory=list)
+    target_repeat_count: int = 0  # repeat target tokens N times (0 = disabled)
+    system_prompt: str | None = None  # system prompt prepended to messages
+    defense_eval: str | None = None  # "sic", "cast", or "both"
+    defense_eval_layer: int | None = None  # layer for SIC/CAST (None = auto)
+    defense_eval_alpha: float = 1.0  # CAST steering alpha
+    defense_eval_threshold: float = 0.0  # SIC/CAST threshold
+    defense_eval_sic_mode: str = "direction"  # SIC mode: "direction"/"generation"
+    defense_eval_sic_max_iterations: int = 3  # SIC max sanitize iterations
+    defense_eval_cast_layers: list[int] | None = None  # CAST layers (None = auto)
+    # --- GAN loop ---
+    gan_rounds: int = 0  # 0 = no GAN loop, >0 = iterative attack-defense rounds
+    gan_step_multiplier: float = 1.5  # multiply n_steps each failed round
+    gan_direction_escalation: float = 0.25  # add to direction_weight per round
+    gan_token_escalation: int = 4  # add to n_tokens per failed round
+    init_tokens: list[int] | None = None  # warm-start token IDs (GCG/EGD)
 
 
 @dataclass(frozen=True, slots=True)
@@ -527,6 +543,56 @@ class TransferEvalResult:
     model_id: str
     success_rate: float
     eval_responses: list[str]
+
+
+@dataclass(frozen=True, slots=True)
+class DefenseEvalResult:
+    """Result of evaluating a suffix against defense modules."""
+
+    sic_blocked: int  # prompts blocked by SIC
+    sic_sanitized: int  # prompts rewritten by SIC
+    sic_clean: int  # prompts that passed SIC unmodified
+    sic_bypass_rate: float  # fraction that survived SIC
+    cast_interventions: int  # total CAST steering interventions
+    cast_refusal_rate: float  # fraction of CAST responses that refused
+    cast_responses: list[str]  # CAST-generated responses
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to dict."""
+        return {
+            "sic_blocked": self.sic_blocked,
+            "sic_sanitized": self.sic_sanitized,
+            "sic_clean": self.sic_clean,
+            "sic_bypass_rate": self.sic_bypass_rate,
+            "cast_interventions": self.cast_interventions,
+            "cast_refusal_rate": self.cast_refusal_rate,
+            "cast_responses": self.cast_responses,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class GanRoundResult:
+    """Result of a single GAN attack-defense round."""
+
+    round_index: int
+    attack_result: "SoftPromptResult"
+    defense_result: DefenseEvalResult | None
+    attacker_won: bool  # suffix bypassed both SIC and CAST
+    config_snapshot: dict[str, object]  # key params used this round
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to dict."""
+        return {
+            "round_index": self.round_index,
+            "attack_result": self.attack_result.to_dict(),
+            "defense_result": (
+                self.defense_result.to_dict()
+                if self.defense_result is not None
+                else None
+            ),
+            "attacker_won": self.attacker_won,
+            "config_snapshot": self.config_snapshot,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -547,6 +613,8 @@ class SoftPromptResult:
     per_prompt_losses: list[float] = field(default_factory=list)
     early_stopped: bool = False
     transfer_results: list[TransferEvalResult] = field(default_factory=list)
+    defense_eval: DefenseEvalResult | None = None
+    gan_history: list[GanRoundResult] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
         """Serialize to dict, skipping mx.array embeddings."""
@@ -571,6 +639,12 @@ class SoftPromptResult:
                 }
                 for tr in self.transfer_results
             ],
+            "defense_eval": (
+                self.defense_eval.to_dict()
+                if self.defense_eval is not None
+                else None
+            ),
+            "gan_history": [r.to_dict() for r in self.gan_history],
         }
 
 

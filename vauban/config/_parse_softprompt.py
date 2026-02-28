@@ -265,22 +265,46 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
 
     # -- token_constraint --
     token_constraint_raw = sec.get("token_constraint")  # type: ignore[arg-type]
-    token_constraint: str | None = None
+    token_constraint: str | list[str] | None = None
+    valid_constraints = (
+        "ascii", "alpha", "alphanumeric",
+        "non_latin", "chinese", "non_alphabetic",
+        "invisible", "zalgo", "emoji",
+    )
     if token_constraint_raw is not None:
-        if not isinstance(token_constraint_raw, str):
+        if isinstance(token_constraint_raw, str):
+            if token_constraint_raw not in valid_constraints:
+                msg = (
+                    f"[softprompt].token_constraint must be one of"
+                    f" {valid_constraints!r},"
+                    f" got {token_constraint_raw!r}"
+                )
+                raise ValueError(msg)
+            token_constraint = token_constraint_raw
+        elif isinstance(token_constraint_raw, list):
+            for item in token_constraint_raw:
+                if not isinstance(item, str):
+                    msg = (
+                        "[softprompt].token_constraint list"
+                        " elements must be strings,"
+                        f" got {type(item).__name__}"
+                    )
+                    raise TypeError(msg)
+                if item not in valid_constraints:
+                    msg = (
+                        "[softprompt].token_constraint"
+                        f" element {item!r} is not one of"
+                        f" {valid_constraints!r}"
+                    )
+                    raise ValueError(msg)
+            token_constraint = [str(x) for x in token_constraint_raw]
+        else:
             msg = (
-                f"[softprompt].token_constraint must be a string,"
+                "[softprompt].token_constraint must be a string"
+                " or list of strings,"
                 f" got {type(token_constraint_raw).__name__}"
             )
             raise TypeError(msg)
-        valid_constraints = ("ascii", "alpha", "alphanumeric")
-        if token_constraint_raw not in valid_constraints:
-            msg = (
-                f"[softprompt].token_constraint must be one of"
-                f" {valid_constraints!r}, got {token_constraint_raw!r}"
-            )
-            raise ValueError(msg)
-        token_constraint = token_constraint_raw
 
     # -- eos_loss_mode --
     eos_loss_mode_raw = sec.get("eos_loss_mode", "none")  # type: ignore[arg-type]
@@ -387,6 +411,225 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
         )
         raise ValueError(msg)
 
+    # -- target_repeat_count --
+    target_repeat_count_raw = sec.get(  # type: ignore[arg-type]
+        "target_repeat_count", 0,
+    )
+    if not isinstance(target_repeat_count_raw, int):
+        msg = (
+            f"[softprompt].target_repeat_count must be an integer,"
+            f" got {type(target_repeat_count_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if target_repeat_count_raw < 0:
+        msg = (
+            f"[softprompt].target_repeat_count must be >= 0,"
+            f" got {target_repeat_count_raw}"
+        )
+        raise ValueError(msg)
+
+    # -- system_prompt --
+    system_prompt_raw = sec.get("system_prompt")  # type: ignore[arg-type]
+    system_prompt: str | None = None
+    if system_prompt_raw is not None:
+        if not isinstance(system_prompt_raw, str):
+            msg = (
+                f"[softprompt].system_prompt must be a string,"
+                f" got {type(system_prompt_raw).__name__}"
+            )
+            raise TypeError(msg)
+        system_prompt = system_prompt_raw
+
+    # -- defense_eval --
+    defense_eval_raw = sec.get("defense_eval")  # type: ignore[arg-type]
+    defense_eval: str | None = None
+    if defense_eval_raw is not None:
+        if not isinstance(defense_eval_raw, str):
+            msg = (
+                f"[softprompt].defense_eval must be a string,"
+                f" got {type(defense_eval_raw).__name__}"
+            )
+            raise TypeError(msg)
+        valid_defense_evals = ("sic", "cast", "both")
+        if defense_eval_raw not in valid_defense_evals:
+            msg = (
+                f"[softprompt].defense_eval must be one of"
+                f" {valid_defense_evals!r},"
+                f" got {defense_eval_raw!r}"
+            )
+            raise ValueError(msg)
+        defense_eval = defense_eval_raw
+
+    # -- defense_eval_layer --
+    defense_eval_layer_raw = sec.get(  # type: ignore[arg-type]
+        "defense_eval_layer",
+    )
+    defense_eval_layer: int | None = None
+    if defense_eval_layer_raw is not None:
+        if not isinstance(defense_eval_layer_raw, int):
+            msg = (
+                "[softprompt].defense_eval_layer must be"
+                f" an integer, got"
+                f" {type(defense_eval_layer_raw).__name__}"
+            )
+            raise TypeError(msg)
+        defense_eval_layer = defense_eval_layer_raw
+
+    # -- defense_eval_alpha --
+    defense_eval_alpha_raw = sec.get(  # type: ignore[arg-type]
+        "defense_eval_alpha", 1.0,
+    )
+    if not isinstance(defense_eval_alpha_raw, int | float):
+        msg = (
+            "[softprompt].defense_eval_alpha must be"
+            f" a number, got"
+            f" {type(defense_eval_alpha_raw).__name__}"
+        )
+        raise TypeError(msg)
+
+    # -- defense_eval_threshold --
+    defense_eval_threshold_raw = sec.get(  # type: ignore[arg-type]
+        "defense_eval_threshold", 0.0,
+    )
+    if not isinstance(defense_eval_threshold_raw, int | float):
+        msg = (
+            "[softprompt].defense_eval_threshold must be"
+            f" a number, got"
+            f" {type(defense_eval_threshold_raw).__name__}"
+        )
+        raise TypeError(msg)
+
+    # -- defense_eval_sic_mode --
+    sic_mode_raw = sec.get(  # type: ignore[arg-type]
+        "defense_eval_sic_mode", "direction",
+    )
+    if not isinstance(sic_mode_raw, str):
+        msg = (
+            "[softprompt].defense_eval_sic_mode must be"
+            f" a string, got {type(sic_mode_raw).__name__}"
+        )
+        raise TypeError(msg)
+    valid_sic_modes = ("direction", "generation")
+    if sic_mode_raw not in valid_sic_modes:
+        msg = (
+            "[softprompt].defense_eval_sic_mode must be"
+            f" one of {valid_sic_modes!r},"
+            f" got {sic_mode_raw!r}"
+        )
+        raise ValueError(msg)
+
+    # -- defense_eval_sic_max_iterations --
+    sic_max_iter_raw = sec.get(  # type: ignore[arg-type]
+        "defense_eval_sic_max_iterations", 3,
+    )
+    if not isinstance(sic_max_iter_raw, int):
+        msg = (
+            "[softprompt].defense_eval_sic_max_iterations"
+            " must be an integer,"
+            f" got {type(sic_max_iter_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if sic_max_iter_raw < 1:
+        msg = (
+            "[softprompt].defense_eval_sic_max_iterations"
+            f" must be >= 1, got {sic_max_iter_raw}"
+        )
+        raise ValueError(msg)
+
+    # -- defense_eval_cast_layers --
+    cast_layers_raw = sec.get(  # type: ignore[arg-type]
+        "defense_eval_cast_layers",
+    )
+    defense_eval_cast_layers: list[int] | None = None
+    if cast_layers_raw is not None:
+        if not isinstance(cast_layers_raw, list):
+            msg = (
+                "[softprompt].defense_eval_cast_layers"
+                " must be a list of ints,"
+                f" got {type(cast_layers_raw).__name__}"
+            )
+            raise TypeError(msg)
+        defense_eval_cast_layers = [
+            int(x) for x in cast_layers_raw
+            if isinstance(x, int | float)
+        ]
+
+    # -- gan_rounds --
+    gan_rounds_raw = sec.get("gan_rounds", 0)  # type: ignore[arg-type]
+    if not isinstance(gan_rounds_raw, int):
+        msg = (
+            f"[softprompt].gan_rounds must be an integer,"
+            f" got {type(gan_rounds_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if gan_rounds_raw < 0:
+        msg = (
+            f"[softprompt].gan_rounds must be >= 0,"
+            f" got {gan_rounds_raw}"
+        )
+        raise ValueError(msg)
+
+    # -- gan_step_multiplier --
+    gan_step_mult_raw = sec.get(  # type: ignore[arg-type]
+        "gan_step_multiplier", 1.5,
+    )
+    if not isinstance(gan_step_mult_raw, int | float):
+        msg = (
+            "[softprompt].gan_step_multiplier must be"
+            f" a number, got"
+            f" {type(gan_step_mult_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if float(gan_step_mult_raw) <= 0:
+        msg = (
+            "[softprompt].gan_step_multiplier must be"
+            f" > 0, got {gan_step_mult_raw}"
+        )
+        raise ValueError(msg)
+
+    # -- gan_direction_escalation --
+    gan_dir_esc_raw = sec.get(  # type: ignore[arg-type]
+        "gan_direction_escalation", 0.25,
+    )
+    if not isinstance(gan_dir_esc_raw, int | float):
+        msg = (
+            "[softprompt].gan_direction_escalation must"
+            f" be a number, got"
+            f" {type(gan_dir_esc_raw).__name__}"
+        )
+        raise TypeError(msg)
+
+    # -- gan_token_escalation --
+    gan_tok_esc_raw = sec.get(  # type: ignore[arg-type]
+        "gan_token_escalation", 4,
+    )
+    if not isinstance(gan_tok_esc_raw, int):
+        msg = (
+            "[softprompt].gan_token_escalation must be"
+            f" an integer, got"
+            f" {type(gan_tok_esc_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if gan_tok_esc_raw < 0:
+        msg = (
+            "[softprompt].gan_token_escalation must be"
+            f" >= 0, got {gan_tok_esc_raw}"
+        )
+        raise ValueError(msg)
+
+    # -- init_tokens --
+    init_tokens_raw = sec.get("init_tokens")  # type: ignore[arg-type]
+    init_tokens: list[int] | None = None
+    if init_tokens_raw is not None:
+        if not isinstance(init_tokens_raw, list):
+            msg = (
+                "[softprompt].init_tokens must be a list"
+                f" of ints, got"
+                f" {type(init_tokens_raw).__name__}"
+            )
+            raise TypeError(msg)
+        init_tokens = [int(x) for x in init_tokens_raw]
+
     return SoftPromptConfig(
         mode=mode_raw,
         n_tokens=n_tokens_raw,
@@ -416,4 +659,18 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
         worst_k=worst_k_raw,
         grad_accum_steps=grad_accum_steps_raw,
         transfer_models=transfer_models,
+        target_repeat_count=target_repeat_count_raw,
+        system_prompt=system_prompt,
+        defense_eval=defense_eval,
+        defense_eval_layer=defense_eval_layer,
+        defense_eval_alpha=float(defense_eval_alpha_raw),
+        defense_eval_threshold=float(defense_eval_threshold_raw),
+        defense_eval_sic_mode=sic_mode_raw,
+        defense_eval_sic_max_iterations=sic_max_iter_raw,
+        defense_eval_cast_layers=defense_eval_cast_layers,
+        gan_rounds=gan_rounds_raw,
+        gan_step_multiplier=float(gan_step_mult_raw),
+        gan_direction_escalation=float(gan_dir_esc_raw),
+        gan_token_escalation=gan_tok_esc_raw,
+        init_tokens=init_tokens,
     )

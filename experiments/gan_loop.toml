@@ -1,0 +1,42 @@
+# GAN-style adversarial loop: attack optimizes suffix, defense tries to block it.
+# Each round the attacker escalates (more tokens, more steps, higher direction weight)
+# and warm-starts from previous suffix.
+
+[model]
+path = "mlx-community/Qwen2.5-0.5B-Instruct-bf16"
+
+[data]
+harmful  = "default"
+harmless = "default"
+
+[measure]
+# Extract refusal direction first
+
+[softprompt]
+mode = "gcg"
+n_tokens = 8
+n_steps = 30
+batch_size = 32
+top_k = 64
+max_gen_tokens = 30
+seed = 42
+
+# Direction-guided
+direction_weight = 0.3
+direction_mode = "raid"
+
+# GAN loop: 6 rounds of attack → defense → escalate
+gan_rounds = 6
+gan_step_multiplier = 1.3     # 30 → 39 → 50 → 65 → 85 → 110 steps
+gan_direction_escalation = 0.15 # 0.3 → 0.45 → 0.60 → 0.75 → 0.90 → 1.05
+gan_token_escalation = 2       # 8 → 10 → 12 → 14 → 16 → 18 tokens
+
+# Defense evaluation config
+defense_eval = "both"
+defense_eval_sic_mode = "direction"
+defense_eval_sic_max_iterations = 3
+defense_eval_alpha = 1.0
+defense_eval_threshold = 0.0
+
+[output]
+dir = "output/gan_loop"

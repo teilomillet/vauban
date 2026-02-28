@@ -43,12 +43,16 @@ def _gcg_attack(
     vocab_size = transformer.embed_tokens.weight.shape[0]
     embed_matrix = transformer.embed_tokens.weight
 
-    target_ids = _encode_targets(tokenizer, config.target_prefixes)
+    target_ids = _encode_targets(
+        tokenizer, config.target_prefixes, config.target_repeat_count,
+    )
     force_eval(target_ids)
 
     # Pre-encode all prompts
     effective_prompts = prompts if prompts else ["Hello"]
-    all_prompt_ids = _pre_encode_prompts(tokenizer, effective_prompts)
+    all_prompt_ids = _pre_encode_prompts(
+        tokenizer, effective_prompts, config.system_prompt,
+    )
 
     # Pre-compute direction config
     direction_layers_set: set[int] | None = (
@@ -82,10 +86,21 @@ def _gcg_attack(
     early_stopped = False
 
     for _restart in range(config.n_restarts):
-        # Initialize with random tokens (constrained if mask is set)
-        current_ids = [
-            random.choice(allowed_indices) for _ in range(config.n_tokens)
-        ]
+        # Initialize: warm-start from init_tokens or random
+        if config.init_tokens is not None and _restart == 0:
+            # Pad or truncate to n_tokens
+            init = list(config.init_tokens)
+            if len(init) < config.n_tokens:
+                init.extend(
+                    random.choice(allowed_indices)
+                    for _ in range(config.n_tokens - len(init))
+                )
+            current_ids = init[: config.n_tokens]
+        else:
+            current_ids = [
+                random.choice(allowed_indices)
+                for _ in range(config.n_tokens)
+            ]
         restart_best_ids = list(current_ids)
         restart_best_loss = float("inf")
         steps_without_improvement = 0

@@ -53,12 +53,16 @@ def _egd_attack(
     vocab_size = transformer.embed_tokens.weight.shape[0]
     embed_matrix = transformer.embed_tokens.weight
 
-    target_ids = _encode_targets(tokenizer, config.target_prefixes)
+    target_ids = _encode_targets(
+        tokenizer, config.target_prefixes, config.target_repeat_count,
+    )
     force_eval(target_ids)
 
     # Pre-encode all prompts
     effective_prompts = prompts if prompts else ["Hello"]
-    all_prompt_ids = _pre_encode_prompts(tokenizer, effective_prompts)
+    all_prompt_ids = _pre_encode_prompts(
+        tokenizer, effective_prompts, config.system_prompt,
+    )
 
     # Pre-compute direction config
     direction_layers_set: set[int] | None = (
@@ -76,8 +80,25 @@ def _egd_attack(
     )
     eos_token_id: int | None = getattr(tokenizer, "eos_token_id", None)
 
-    # Initialize p uniformly on the simplex: (n_tokens, vocab_size)
-    p = ops.ones((config.n_tokens, vocab_size)) / vocab_size
+    # Initialize p on the simplex: warm-start or uniform
+    if config.init_tokens is not None:
+        # Warm-start: concentrate mass on init tokens
+        init = list(config.init_tokens)
+        if len(init) < config.n_tokens:
+            init.extend([0] * (config.n_tokens - len(init)))
+        init = init[: config.n_tokens]
+        # 90% on warm-start token, 10% uniform over rest
+        uniform_mass = 0.1 / max(vocab_size - 1, 1)
+        warm_ids = ops.array(init)
+        one_hot = (
+            ops.arange(vocab_size)[None, :] == warm_ids[:, None]
+        )
+        p = (
+            ops.ones((config.n_tokens, vocab_size)) * uniform_mass
+            + (0.9 - uniform_mass) * one_hot.astype(ops.float32)
+        )
+    else:
+        p = ops.ones((config.n_tokens, vocab_size)) / vocab_size
     # Apply vocab mask to initial distribution
     if vocab_mask is not None:
         force_eval(vocab_mask)

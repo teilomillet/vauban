@@ -1,6 +1,7 @@
 """Preprocessing and utility helpers for soft prompt attacks."""
 
 import math
+import unicodedata
 
 from vauban import _ops as ops
 from vauban._array import Array
@@ -36,17 +37,101 @@ def _compute_learning_rate(
     return base_lr
 
 
+def _is_invisible_char(c: str) -> bool:
+    """Check if a character is invisible (zero-width, format, non-printable whitespace).
+
+    Matches Unicode categories Cf (format), Zs/Zl/Zp (whitespace),
+    Cc (control) minus printable ASCII (0x20-0x7E).
+    """
+    cat = unicodedata.category(c)
+    if cat in {"Cf", "Zl", "Zp"}:
+        return True
+    if cat == "Zs" and c != " ":
+        return True
+    return bool(cat == "Cc" and ord(c) > 127)
+
+
+def _is_emoji_char(c: str) -> bool:
+    """Check if a character is an emoji or miscellaneous symbol.
+
+    Matches Unicode category So (Other Symbol) plus common emoji ranges.
+    """
+    cat = unicodedata.category(c)
+    if cat == "So":
+        return True
+    cp = ord(c)
+    # Supplemental emoji ranges
+    if 0x1F600 <= cp <= 0x1F64F:  # Emoticons
+        return True
+    if 0x1F300 <= cp <= 0x1F5FF:  # Misc Symbols and Pictographs
+        return True
+    if 0x1F680 <= cp <= 0x1F6FF:  # Transport and Map
+        return True
+    if 0x1F900 <= cp <= 0x1F9FF:  # Supplemental Symbols
+        return True
+    if 0x2600 <= cp <= 0x26FF:  # Misc Symbols
+        return True
+    return bool(0x2700 <= cp <= 0x27BF)  # Dingbats
+
+
+def _matches_constraint(text: str, constraint: str) -> bool:
+    """Check if decoded token text matches a single constraint.
+
+    Args:
+        text: Decoded token string.
+        constraint: Constraint name.
+
+    Returns:
+        True if the token satisfies the constraint.
+
+    Raises:
+        ValueError: If constraint name is unknown.
+    """
+    if not text:
+        return False
+    if constraint == "ascii":
+        return all(32 <= ord(c) < 127 for c in text)
+    if constraint == "alpha":
+        return text.isalpha()
+    if constraint == "alphanumeric":
+        return all(c.isalnum() or c == " " for c in text)
+    if constraint == "non_latin":
+        return all(ord(c) > 127 for c in text)
+    if constraint == "chinese":
+        return all(0x4E00 <= ord(c) <= 0x9FFF for c in text)
+    if constraint == "non_alphabetic":
+        return all(not c.isalpha() for c in text)
+    if constraint == "invisible":
+        return all(_is_invisible_char(c) for c in text)
+    if constraint == "zalgo":
+        return (
+            all(
+                0x0300 <= ord(c) <= 0x036F or c.isalpha()
+                for c in text
+            )
+            and any(0x0300 <= ord(c) <= 0x036F for c in text)
+        )
+    if constraint == "emoji":
+        return all(_is_emoji_char(c) for c in text)
+    msg = f"Unknown token constraint: {constraint!r}"
+    raise ValueError(msg)
+
+
 def _build_vocab_mask(
     tokenizer: Tokenizer,
     vocab_size: int,
-    constraint: str | None,
+    constraint: str | list[str] | None,
 ) -> Array | None:
     """Build a boolean mask of allowed token IDs for constrained search.
+
+    When multiple constraints are given, a token must satisfy ALL of them
+    (intersection). This enables combined stealth attacks like
+    ``["non_latin", "invisible"]``.
 
     Args:
         tokenizer: Tokenizer with decode support.
         vocab_size: Size of the vocabulary.
-        constraint: "ascii", "alpha", "alphanumeric", or None.
+        constraint: Constraint name, list of names, or None.
 
     Returns:
         Boolean mask of shape (vocab_size,), or None if constraint is None.
@@ -54,19 +139,14 @@ def _build_vocab_mask(
     if constraint is None:
         return None
 
+    constraints = (
+        [constraint] if isinstance(constraint, str) else constraint
+    )
+
     allowed = ops.zeros((vocab_size,), dtype=ops.bool_)
     for tid in range(vocab_size):
         text = tokenizer.decode([tid])
-        if constraint == "ascii":
-            ok = all(32 <= ord(c) < 127 for c in text) and len(text) > 0
-        elif constraint == "alpha":
-            ok = text.isalpha() and len(text) > 0
-        elif constraint == "alphanumeric":
-            ok = all(c.isalnum() or c == " " for c in text) and len(text) > 0
-        else:
-            msg = f"Unknown token constraint: {constraint!r}"
-            raise ValueError(msg)
-        if ok:
+        if all(_matches_constraint(text, c) for c in constraints):
             allowed[tid] = True
     force_eval(allowed)
     return allowed
@@ -98,19 +178,24 @@ def _compute_embed_regularization(
 def _pre_encode_prompts(
     tokenizer: Tokenizer,
     prompts: list[str],
+    system_prompt: str | None = None,
 ) -> list[Array]:
     """Pre-tokenize all prompts into token ID arrays.
 
     Args:
         tokenizer: Tokenizer with encode and chat template support.
         prompts: List of prompt strings.
+        system_prompt: Optional system prompt to prepend to messages.
 
     Returns:
         List of token ID arrays, each shape (1, seq_len).
     """
     encoded: list[Array] = []
     for prompt in prompts:
-        messages = [{"role": "user", "content": prompt}]
+        messages: list[dict[str, str]] = []
+        if system_prompt is not None:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
         text = tokenizer.apply_chat_template(messages, tokenize=False)
         if not isinstance(text, str):
             msg = "apply_chat_template must return str when tokenize=False"
@@ -393,12 +478,14 @@ def _forward_with_prefix(
 def _encode_targets(
     tokenizer: Tokenizer,
     target_prefixes: list[str],
+    repeat_count: int = 0,
 ) -> Array:
     """Encode target prefix strings into a flat token ID array.
 
     Args:
         tokenizer: Tokenizer with encode support.
         target_prefixes: Target strings to encode.
+        repeat_count: If > 0, repeat the base token sequence this many times.
 
     Returns:
         1-D array of token IDs.
@@ -407,4 +494,6 @@ def _encode_targets(
     for prefix in target_prefixes:
         ids = tokenizer.encode(prefix)
         all_ids.extend(ids)
+    if repeat_count > 0:
+        all_ids = all_ids * repeat_count
     return ops.array(all_ids)

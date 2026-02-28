@@ -86,7 +86,10 @@ def _evaluate_attack(
     eos_token_id: int | None = getattr(tokenizer, "eos_token_id", None)
 
     for prompt in prompts:
-        messages = [{"role": "user", "content": prompt}]
+        messages: list[dict[str, str]] = []
+        if config.system_prompt is not None:
+            messages.append({"role": "system", "content": config.system_prompt})
+        messages.append({"role": "user", "content": prompt})
         text = tokenizer.apply_chat_template(messages, tokenize=False)
         if not isinstance(text, str):
             msg = "apply_chat_template must return str when tokenize=False"

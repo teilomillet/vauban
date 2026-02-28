@@ -48,12 +48,16 @@ def _continuous_attack(
     )
     force_eval(soft_embeds)
 
-    target_ids = _encode_targets(tokenizer, config.target_prefixes)
+    target_ids = _encode_targets(
+        tokenizer, config.target_prefixes, config.target_repeat_count,
+    )
     force_eval(target_ids)
 
     # Pre-encode all prompts
     effective_prompts = prompts if prompts else ["Hello"]
-    all_prompt_ids = _pre_encode_prompts(tokenizer, effective_prompts)
+    all_prompt_ids = _pre_encode_prompts(
+        tokenizer, effective_prompts, config.system_prompt,
+    )
 
     # Pre-compute direction config
     direction_layers_set: set[int] | None = (

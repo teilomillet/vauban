@@ -1,13 +1,55 @@
 """Entry point dispatcher for soft prompt attacks."""
 
 import random
+from dataclasses import replace
 
 from vauban import _ops as ops
 from vauban._array import Array
 from vauban.softprompt._continuous import _continuous_attack
+from vauban.softprompt._defense_eval import evaluate_against_defenses
 from vauban.softprompt._egd import _egd_attack
+from vauban.softprompt._gan import gan_loop
 from vauban.softprompt._gcg import _gcg_attack
 from vauban.types import CausalLM, SoftPromptConfig, SoftPromptResult, Tokenizer
+
+
+def _run_single_attack(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    prompts: list[str],
+    config: SoftPromptConfig,
+    direction: Array | None,
+    ref_model: CausalLM | None = None,
+) -> SoftPromptResult:
+    """Dispatch to the appropriate attack mode.
+
+    Does NOT run defense evaluation or GAN loop — just the raw attack.
+
+    Args:
+        model: The causal language model to attack.
+        tokenizer: Tokenizer with encode/decode support.
+        prompts: Attack prompts to optimize against.
+        config: Soft prompt configuration.
+        direction: Optional refusal direction for direction-guided mode.
+        ref_model: Optional reference model for KL collision loss.
+    """
+    if config.mode == "continuous":
+        return _continuous_attack(
+            model, tokenizer, prompts, config, direction, ref_model,
+        )
+    if config.mode == "gcg":
+        return _gcg_attack(
+            model, tokenizer, prompts, config, direction, ref_model,
+        )
+    if config.mode == "egd":
+        return _egd_attack(
+            model, tokenizer, prompts, config, direction, ref_model,
+        )
+    msg = (
+        f"Unknown soft prompt mode: {config.mode!r},"
+        " must be 'continuous', 'gcg', or 'egd'"
+    )
+    raise ValueError(msg)
 
 
 def softprompt_attack(
@@ -24,6 +66,12 @@ def softprompt_attack(
     away from refusal. Supports continuous (gradient-based), GCG
     (discrete token search), and EGD (exponentiated gradient descent) modes.
 
+    When ``config.gan_rounds > 0``, runs an iterative GAN-style loop where
+    each round attacks, evaluates defenses, and escalates attack parameters.
+
+    When ``config.defense_eval`` is set (without GAN), the found suffix is
+    tested against SIC and/or CAST defense modules after optimization.
+
     Args:
         model: The causal language model to attack.
         tokenizer: Tokenizer with encode/decode support.
@@ -36,21 +84,28 @@ def softprompt_attack(
         ops.random.seed(config.seed)
         random.seed(config.seed)
 
-    if config.mode == "continuous":
-        return _continuous_attack(
-            model, tokenizer, prompts, config, direction, ref_model,
-        )
-    if config.mode == "gcg":
-        return _gcg_attack(
-            model, tokenizer, prompts, config, direction, ref_model,
-        )
-    if config.mode == "egd":
-        return _egd_attack(
+    # GAN loop: iterative attack-defense rounds
+    if config.gan_rounds > 0:
+        return gan_loop(
             model, tokenizer, prompts, config, direction, ref_model,
         )
 
-    msg = (
-        f"Unknown soft prompt mode: {config.mode!r},"
-        " must be 'continuous', 'gcg', or 'egd'"
+    # Single attack
+    result = _run_single_attack(
+        model, tokenizer, prompts, config, direction, ref_model,
     )
-    raise ValueError(msg)
+
+    # Post-attack defense evaluation
+    if config.defense_eval is not None and direction is not None:
+        layer_index = (
+            config.defense_eval_layer
+            if config.defense_eval_layer is not None
+            else 0
+        )
+        defense_result = evaluate_against_defenses(
+            model, tokenizer, prompts, config,
+            direction, layer_index, result.token_text,
+        )
+        result = replace(result, defense_eval=defense_result)
+
+    return result

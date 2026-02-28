@@ -2,8 +2,10 @@
 
 from vauban._forward import make_cache as _make_cache
 from vauban.softprompt._continuous import _continuous_attack
+from vauban.softprompt._defense_eval import evaluate_against_defenses
 from vauban.softprompt._dispatcher import softprompt_attack
 from vauban.softprompt._egd import _egd_attack
+from vauban.softprompt._gan import gan_loop
 from vauban.softprompt._gcg import _gcg_attack
 from vauban.softprompt._generation import (
     _decode_step,
@@ -57,5 +59,7 @@ __all__ = [
     "_select_prompt_ids",
     "_select_worst_k_prompt_ids",
     "_split_into_batches",
+    "evaluate_against_defenses",
+    "gan_loop",
     "softprompt_attack",
 ]
