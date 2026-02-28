@@ -2549,3 +2549,127 @@ class TestGanConfigParsing:
         )
         with pytest.raises(TypeError, match="gan_multiturn"):
             load_config(toml_file)
+
+    # -- gan_defense_escalation --
+
+    def test_gan_defense_escalation_default(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.gan_defense_escalation is False
+        assert config.softprompt.gan_defense_alpha_multiplier == 1.5
+        assert config.softprompt.gan_defense_threshold_escalation == 0.5
+        assert config.softprompt.gan_defense_sic_iteration_escalation == 1
+
+    def test_gan_defense_escalation_parsed(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+            "gan_defense_escalation = true\n"
+            "gan_defense_alpha_multiplier = 2.0\n"
+            "gan_defense_threshold_escalation = 0.3\n"
+            "gan_defense_sic_iteration_escalation = 2\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.gan_defense_escalation is True
+        assert config.softprompt.gan_defense_alpha_multiplier == 2.0
+        assert config.softprompt.gan_defense_threshold_escalation == 0.3
+        assert config.softprompt.gan_defense_sic_iteration_escalation == 2
+
+    def test_gan_defense_escalation_type_error(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\ngan_defense_escalation = "yes"\n'
+        )
+        with pytest.raises(TypeError, match="gan_defense_escalation"):
+            load_config(toml_file)
+
+    def test_gan_defense_alpha_multiplier_type_error(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\ngan_defense_alpha_multiplier = "big"\n'
+        )
+        with pytest.raises(TypeError, match="gan_defense_alpha_multiplier"):
+            load_config(toml_file)
+
+    def test_gan_defense_alpha_multiplier_zero_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ngan_defense_alpha_multiplier = 0\n"
+        )
+        with pytest.raises(ValueError, match="gan_defense_alpha_multiplier"):
+            load_config(toml_file)
+
+    def test_gan_defense_threshold_escalation_type_error(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\ngan_defense_threshold_escalation = "low"\n'
+        )
+        with pytest.raises(
+            TypeError, match="gan_defense_threshold_escalation",
+        ):
+            load_config(toml_file)
+
+    def test_gan_defense_threshold_escalation_negative_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ngan_defense_threshold_escalation = -1\n"
+        )
+        with pytest.raises(
+            ValueError, match="gan_defense_threshold_escalation",
+        ):
+            load_config(toml_file)
+
+    def test_gan_defense_sic_iteration_escalation_type_error(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\ngan_defense_sic_iteration_escalation = 1.5\n'
+        )
+        with pytest.raises(
+            TypeError, match="gan_defense_sic_iteration_escalation",
+        ):
+            load_config(toml_file)
+
+    def test_gan_defense_sic_iteration_escalation_negative_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ngan_defense_sic_iteration_escalation = -1\n"
+        )
+        with pytest.raises(
+            ValueError, match="gan_defense_sic_iteration_escalation",
+        ):
+            load_config(toml_file)

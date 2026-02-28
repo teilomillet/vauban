@@ -617,6 +617,72 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
         )
         raise ValueError(msg)
 
+    # -- gan_defense_escalation --
+    gan_def_esc_raw = sec.get(  # type: ignore[arg-type]
+        "gan_defense_escalation", False,
+    )
+    if not isinstance(gan_def_esc_raw, bool):
+        msg = (
+            "[softprompt].gan_defense_escalation must be"
+            f" a boolean, got"
+            f" {type(gan_def_esc_raw).__name__}"
+        )
+        raise TypeError(msg)
+
+    # -- gan_defense_alpha_multiplier --
+    gan_def_alpha_raw = sec.get(  # type: ignore[arg-type]
+        "gan_defense_alpha_multiplier", 1.5,
+    )
+    if not isinstance(gan_def_alpha_raw, int | float):
+        msg = (
+            "[softprompt].gan_defense_alpha_multiplier must be"
+            f" a number, got"
+            f" {type(gan_def_alpha_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if float(gan_def_alpha_raw) <= 0:
+        msg = (
+            "[softprompt].gan_defense_alpha_multiplier must be"
+            f" > 0, got {gan_def_alpha_raw}"
+        )
+        raise ValueError(msg)
+
+    # -- gan_defense_threshold_escalation --
+    gan_def_thresh_raw = sec.get(  # type: ignore[arg-type]
+        "gan_defense_threshold_escalation", 0.5,
+    )
+    if not isinstance(gan_def_thresh_raw, int | float):
+        msg = (
+            "[softprompt].gan_defense_threshold_escalation"
+            f" must be a number, got"
+            f" {type(gan_def_thresh_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if float(gan_def_thresh_raw) < 0:
+        msg = (
+            "[softprompt].gan_defense_threshold_escalation"
+            f" must be >= 0, got {gan_def_thresh_raw}"
+        )
+        raise ValueError(msg)
+
+    # -- gan_defense_sic_iteration_escalation --
+    gan_def_sic_raw = sec.get(  # type: ignore[arg-type]
+        "gan_defense_sic_iteration_escalation", 1,
+    )
+    if not isinstance(gan_def_sic_raw, int):
+        msg = (
+            "[softprompt].gan_defense_sic_iteration_escalation"
+            f" must be an integer, got"
+            f" {type(gan_def_sic_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if gan_def_sic_raw < 0:
+        msg = (
+            "[softprompt].gan_defense_sic_iteration_escalation"
+            f" must be >= 0, got {gan_def_sic_raw}"
+        )
+        raise ValueError(msg)
+
     # -- gan_multiturn --
     gan_multiturn_raw = sec.get("gan_multiturn", False)  # type: ignore[arg-type]
     if not isinstance(gan_multiturn_raw, bool):
@@ -700,6 +766,10 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
         gan_step_multiplier=float(gan_step_mult_raw),
         gan_direction_escalation=float(gan_dir_esc_raw),
         gan_token_escalation=gan_tok_esc_raw,
+        gan_defense_escalation=gan_def_esc_raw,
+        gan_defense_alpha_multiplier=float(gan_def_alpha_raw),
+        gan_defense_threshold_escalation=float(gan_def_thresh_raw),
+        gan_defense_sic_iteration_escalation=gan_def_sic_raw,
         gan_multiturn=gan_multiturn_raw,
         gan_multiturn_max_turns=gan_mt_max_raw,
         init_tokens=init_tokens,

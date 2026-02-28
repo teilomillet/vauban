@@ -250,6 +250,11 @@ def gan_loop(
             "n_tokens": current_config.n_tokens,
             "n_steps": current_config.n_steps,
             "direction_weight": current_config.direction_weight,
+            "defense_eval_alpha": current_config.defense_eval_alpha,
+            "defense_eval_threshold": current_config.defense_eval_threshold,
+            "defense_eval_sic_max_iterations": (
+                current_config.defense_eval_sic_max_iterations
+            ),
             "round": round_idx,
         }
 
@@ -271,15 +276,17 @@ def gan_loop(
                 attack_result, defense_eval=defense_result,
             )
 
-        # --- Early stop: attacker already bypassed defenses ---
-        if attacker_won:
+        # --- Early stop / Escalation ---
+        if attacker_won and not config.gan_defense_escalation:
             break
 
-        # --- Feedback: escalate attack if defender won ---
         if round_idx < config.gan_rounds - 1:
-            current_config = _escalate_config(
-                current_config, attack_result,
-            )
+            if attacker_won:
+                current_config = _escalate_defense(current_config)
+            else:
+                current_config = _escalate_config(
+                    current_config, attack_result,
+                )
 
     # Use best result, or last if none found
     if best_result is not None:
@@ -290,6 +297,38 @@ def gan_loop(
         msg = "gan_loop called with gan_rounds=0"
         raise ValueError(msg)
     return replace(final, gan_history=rounds)
+
+
+def _escalate_defense(
+    config: SoftPromptConfig,
+) -> SoftPromptConfig:
+    """Escalate defense config after the attacker bypassed defenses.
+
+    Increases CAST alpha, lowers detection threshold, and adds SIC
+    iterations — mirrors ``_escalate_config`` for the defender side.
+
+    Args:
+        config: Current config to escalate.
+
+    Returns:
+        New SoftPromptConfig with escalated defense parameters.
+    """
+    new_alpha = config.defense_eval_alpha * config.gan_defense_alpha_multiplier
+    new_threshold = (
+        config.defense_eval_threshold
+        - config.gan_defense_threshold_escalation
+    )
+    new_sic_iters = (
+        config.defense_eval_sic_max_iterations
+        + config.gan_defense_sic_iteration_escalation
+    )
+
+    return replace(
+        config,
+        defense_eval_alpha=new_alpha,
+        defense_eval_threshold=new_threshold,
+        defense_eval_sic_max_iterations=new_sic_iters,
+    )
 
 
 def _escalate_config(

@@ -533,6 +533,11 @@ class SoftPromptConfig:
     gan_step_multiplier: float = 1.5  # multiply n_steps each failed round
     gan_direction_escalation: float = 0.25  # add to direction_weight per round
     gan_token_escalation: int = 4  # add to n_tokens per failed round
+    # --- GAN defender escalation ---
+    gan_defense_escalation: bool = False  # feature gate (off = legacy behavior)
+    gan_defense_alpha_multiplier: float = 1.5  # multiply CAST alpha per attacker win
+    gan_defense_threshold_escalation: float = 0.5  # subtract from threshold per win
+    gan_defense_sic_iteration_escalation: int = 1  # add to SIC iters per win
     # --- Multi-turn GAN ---
     gan_multiturn: bool = False  # enable multi-turn conversation threading
     gan_multiturn_max_turns: int = 10  # max conversation turns to keep in history

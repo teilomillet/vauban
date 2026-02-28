@@ -2579,6 +2579,92 @@ class TestMultiturnConfig:
             gan_loop(model, tok, ["test"], cfg, direction=None)
 
 
+# ---------------------------------------------------------------------------
+# Defender escalation tests
+# ---------------------------------------------------------------------------
+
+
+class TestDefenderEscalationConfig:
+    """Tests for GAN defender escalation config defaults."""
+
+    def test_defaults(self) -> None:
+        cfg = SoftPromptConfig()
+        assert cfg.gan_defense_escalation is False
+        assert cfg.gan_defense_alpha_multiplier == 1.5
+        assert cfg.gan_defense_threshold_escalation == 0.5
+        assert cfg.gan_defense_sic_iteration_escalation == 1
+
+    def test_custom(self) -> None:
+        cfg = SoftPromptConfig(
+            gan_defense_escalation=True,
+            gan_defense_alpha_multiplier=2.0,
+            gan_defense_threshold_escalation=0.3,
+            gan_defense_sic_iteration_escalation=2,
+        )
+        assert cfg.gan_defense_escalation is True
+        assert cfg.gan_defense_alpha_multiplier == 2.0
+        assert cfg.gan_defense_threshold_escalation == 0.3
+        assert cfg.gan_defense_sic_iteration_escalation == 2
+
+    def test_frozen(self) -> None:
+        cfg = SoftPromptConfig(gan_defense_escalation=True)
+        with pytest.raises(AttributeError):
+            cfg.gan_defense_escalation = False  # type: ignore[misc]
+
+
+class TestEscalateDefense:
+    """Tests for _escalate_defense() function."""
+
+    def test_single_escalation(self) -> None:
+        from vauban.softprompt._gan import _escalate_defense
+
+        cfg = SoftPromptConfig(
+            defense_eval_alpha=1.0,
+            defense_eval_threshold=0.0,
+            defense_eval_sic_max_iterations=3,
+            gan_defense_alpha_multiplier=1.5,
+            gan_defense_threshold_escalation=0.5,
+            gan_defense_sic_iteration_escalation=1,
+        )
+        esc = _escalate_defense(cfg)
+        assert esc.defense_eval_alpha == 1.5
+        assert esc.defense_eval_threshold == -0.5
+        assert esc.defense_eval_sic_max_iterations == 4
+
+    def test_cumulative_escalation(self) -> None:
+        from vauban.softprompt._gan import _escalate_defense
+
+        cfg = SoftPromptConfig(
+            defense_eval_alpha=1.0,
+            defense_eval_threshold=0.0,
+            defense_eval_sic_max_iterations=3,
+            gan_defense_alpha_multiplier=1.5,
+            gan_defense_threshold_escalation=0.5,
+            gan_defense_sic_iteration_escalation=1,
+        )
+        esc1 = _escalate_defense(cfg)
+        esc2 = _escalate_defense(esc1)
+        assert esc2.defense_eval_alpha == pytest.approx(2.25)
+        assert esc2.defense_eval_threshold == pytest.approx(-1.0)
+        assert esc2.defense_eval_sic_max_iterations == 5
+
+    def test_preserves_other_fields(self) -> None:
+        from vauban.softprompt._gan import _escalate_defense
+
+        cfg = SoftPromptConfig(
+            mode="gcg",
+            n_tokens=8,
+            n_steps=100,
+            defense_eval_alpha=1.0,
+            defense_eval_threshold=0.0,
+            defense_eval_sic_max_iterations=3,
+        )
+        esc = _escalate_defense(cfg)
+        assert esc.mode == "gcg"
+        assert esc.n_tokens == 8
+        assert esc.n_steps == 100
+
+
 class TestPreEncodeWithHistory:
     """Tests for _pre_encode_prompts_with_history."""
 
