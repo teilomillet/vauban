@@ -21,7 +21,7 @@ Only `[model]` and `[data]` are required. All other sections are optional and ac
 | `[probe]` | per-layer projection inspection (early return) |
 | `[steer]` | steered generation (early return) |
 | `[cast]` | conditional activation steering (early return) |
-| `[sic]` | SIC iterative sanitization (early return) |
+| `[sic]` | iterative input sanitization (early return) |
 | `[optimize]` | Optuna hyperparameter search (early return) |
 | `[softprompt]` | soft prompt attack (early return) |
 | `[api_eval]` | remote API suffix evaluation |
@@ -123,7 +123,7 @@ Data sources can be:
 | `max_tokens` | int ≥ 1 | `100` | Max tokens to generate per prompt. |
 | `num_prompts` | int ≥ 1 | `20` | Fallback prompt count when prompts path is absent. |
 | `refusal_phrases` | path | — | Custom refusal phrases file (one per line). |
-| `refusal_mode` | `"phrases"` \| `"judge"` | `"phrases"` | Detection method. |
+| `refusal_mode` | `"phrases"` \| `"judge"` | `"phrases"` | Detection method. `"phrases"` = substring matching against refusal phrase list. `"judge"` = model-based classification. |
 
 ## `[surface]` — Refusal surface mapping
 
@@ -316,7 +316,7 @@ Wrap the optimized suffix in realistic surrounding context (e.g., a web page, to
 
 **Constraints:** Injection context requires `mode = "gcg"` or `mode = "egd"` (continuous mode produces soft embeddings that cannot represent wrapped context). Cannot be combined with `gan_multiturn`.
 
-## `[sic]` — SIC defense
+## `[sic]` — Iterative input sanitization
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
