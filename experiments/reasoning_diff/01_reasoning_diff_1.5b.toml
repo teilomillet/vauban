@@ -3,6 +3,7 @@ title = "Reasoning diff SVD: R1-Distill-1.5B vs Qwen2.5-1.5B"
 status = "baseline"
 tags = ["diff", "reasoning", "svd", "1.5b"]
 date = 2026-02-26
+notes = "Extracts reasoning directions via SVD of weight diff. Measure-only — produces direction vectors for downstream probe/steer experiments."
 
 # ==========================================================================
 # Experiment 01: Extract reasoning directions via weight-diff SVD (1.5B)

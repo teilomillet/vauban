@@ -4,6 +4,7 @@ status = "baseline"
 parents = ["01_reasoning_diff_1.5b", "03_probe_reasoning_1.5b"]
 tags = ["diff", "steer", "reasoning", "suppress", "1.5b"]
 date = 2026-02-26
+notes = "1.5B variant of reasoning suppression. Tests whether smaller model CoT is equally dependent on the reasoning direction."
 
 # ==========================================================================
 # Experiment 05: Suppress reasoning direction in R1-Distill (1.5B)

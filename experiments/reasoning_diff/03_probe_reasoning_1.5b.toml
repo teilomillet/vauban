@@ -4,6 +4,7 @@ status = "baseline"
 parents = ["01_reasoning_diff_1.5b"]
 tags = ["diff", "probe", "reasoning", "1.5b"]
 date = 2026-02-26
+notes = "Projects reasoning-heavy vs factual prompts onto the extracted direction. Validates that the direction separates reasoning from non-reasoning activations."
 
 # ==========================================================================
 # Experiment 03: Probe reasoning direction on R1-Distill model (1.5B)

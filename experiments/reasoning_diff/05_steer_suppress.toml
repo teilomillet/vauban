@@ -4,6 +4,7 @@ status = "baseline"
 parents = ["01_reasoning_diff_7b", "03_probe_reasoning"]
 tags = ["diff", "steer", "reasoning", "suppress", "7b"]
 date = 2026-02-26
+notes = "Removes reasoning direction from R1-Distill to test whether CoT collapses into direct answers. Complement of experiment 04 (inject)."
 
 # ==========================================================================
 # Experiment 05: Suppress reasoning direction in R1-Distill model

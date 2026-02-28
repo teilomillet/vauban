@@ -2,7 +2,7 @@
 title = "GAN loop v4: deep configurability stress test"
 status = "baseline"
 parents = ["gan_loop_v3"]
-tags = ["gcg", "gan", "transfer", "multiturn", "stress-test"]
+tags = ["gcg", "gan", "transfer", "multiturn", "stress-test", "defense-aware"]
 date = 2026-02-27
 notes = """
 Exercises nearly every TOML knob simultaneously: multi-turn GAN,

@@ -4,6 +4,7 @@ status = "baseline"
 parents = ["01_reasoning_diff_7b"]
 tags = ["diff", "alignment", "svd", "control", "7b"]
 date = 2026-02-26
+notes = "Control experiment: alignment diff spectral structure compared with reasoning diff from experiment 01."
 
 # ==========================================================================
 # Experiment 02: Extract alignment directions via weight-diff SVD (control)
