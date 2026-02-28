@@ -6,9 +6,6 @@ import math
 from typing import TYPE_CHECKING
 
 import mlx.core as mx
-
-if TYPE_CHECKING:
-    from pathlib import Path
 import pytest
 from conftest import (
     D_MODEL,
@@ -53,6 +50,9 @@ from vauban.types import (
     SoftPromptResult,
     TransferEvalResult,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Type tests
