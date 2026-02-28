@@ -10,6 +10,12 @@ _DEFAULT_MODEL = "mlx-community/Llama-3.2-3B-Instruct-4bit"
 _BASE = """\
 # backend = "mlx"  # compute backend: "mlx" (default) or "torch"
 
+# [meta]
+# title = ""
+# status = "wip"  # wip | promising | dead_end | baseline | superseded | archived
+# parents = []
+# tags = []
+
 [model]
 path = "{model}"
 

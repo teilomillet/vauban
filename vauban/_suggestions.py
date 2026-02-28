@@ -21,6 +21,7 @@ _KNOWN_SECTIONS: frozenset[str] = frozenset({
     "steer",
     "cast",
     "api_eval",
+    "meta",
     "output",
     "verbose",
 })
@@ -102,6 +103,9 @@ _KNOWN_KEYS: dict[str, frozenset[str]] = {
     "api_eval": frozenset({
         "endpoints", "max_tokens", "timeout", "system_prompt",
         "multiturn", "multiturn_max_turns", "follow_up_prompts",
+    }),
+    "meta": frozenset({
+        "id", "title", "status", "parents", "tags", "notes", "docs", "date",
     }),
     "output": frozenset({"dir"}),
 }
@@ -194,6 +198,9 @@ _KNOWN_VALUES: dict[tuple[str, str], frozenset[str]] = {
     ("sic", "mode"): frozenset({"direction", "generation"}),
     ("sic", "calibrate_prompts"): frozenset({"harmless", "harmful"}),
     ("detect", "mode"): frozenset({"fast", "probe", "full"}),
+    ("meta", "status"): frozenset({
+        "wip", "promising", "dead_end", "baseline", "superseded", "archived",
+    }),
 }
 
 # (min_inclusive, max_exclusive) — None = unbounded

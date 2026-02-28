@@ -4,6 +4,7 @@ import tomllib
 from pathlib import Path
 from typing import cast
 
+from vauban.config._parse_meta import parse_meta
 from vauban.config._registry import (
     ConfigParseContext,
     parse_registered_section,
@@ -77,6 +78,8 @@ def load_config(path: str | Path) -> PipelineConfig:
             output_dir_str = dir_raw
     output_dir = base_dir / output_dir_str
 
+    meta_config = parse_meta(raw, config_path=path)
+
     borderline_path = _resolve_borderline_path(base_dir, raw)
 
     # Validate: false_refusal_ortho requires borderline_path
@@ -137,6 +140,7 @@ def load_config(path: str | Path) -> PipelineConfig:
         cast=cast_config,
         eval=eval_config,
         api_eval=api_eval_config,
+        meta=meta_config,
         output_dir=output_dir,
         borderline_path=borderline_path,
         verbose=verbose,

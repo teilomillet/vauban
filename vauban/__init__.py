@@ -335,7 +335,7 @@ def _write_experiment_log(
     import json as _json
 
     try:
-        entry = {
+        entry: dict[str, object] = {
             "timestamp": datetime.datetime.now(
                 tz=datetime.UTC,
             ).isoformat(timespec="seconds"),
@@ -347,6 +347,14 @@ def _write_experiment_log(
             "metrics": metrics,
             "elapsed_seconds": round(elapsed, 2),
         }
+        if config.meta is not None:
+            entry["meta"] = {
+                "id": config.meta.id,
+                "title": config.meta.title,
+                "status": config.meta.status,
+                "parents": config.meta.parents,
+                "tags": config.meta.tags,
+            }
         log_path = config.output_dir / "experiment_log.jsonl"
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("a") as f:
