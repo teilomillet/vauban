@@ -4,6 +4,7 @@ from pathlib import Path
 
 from vauban.tree import (
     ExperimentNode,
+    _sanitize_mermaid_id,
     _validate_graph,
     build_mermaid,
     build_tree_text,
@@ -12,7 +13,7 @@ from vauban.tree import (
 
 
 def _make_node(
-    id: str,
+    node_id: str,
     *,
     title: str = "",
     status: str = "wip",
@@ -20,12 +21,12 @@ def _make_node(
     tags: list[str] | None = None,
 ) -> ExperimentNode:
     return ExperimentNode(
-        id=id,
+        id=node_id,
         title=title,
         status=status,
         parents=parents or [],
         tags=tags or [],
-        path=Path(f"/tmp/{id}.toml"),
+        path=Path(f"/tmp/{node_id}.toml"),
     )
 
 
@@ -48,8 +49,9 @@ class TestDiscoverExperiments:
             '[model]\npath = "test"\n'
         )
 
-        nodes = discover_experiments(tmp_path)
+        nodes, warnings = discover_experiments(tmp_path)
         assert len(nodes) == 3
+        assert warnings == []
         ids = {n.id for n in nodes}
         assert ids == {"exp_a", "exp_b", "exp_c"}
 
@@ -69,22 +71,40 @@ class TestDiscoverExperiments:
 
     def test_discover_skips_bad_toml(self, tmp_path: Path) -> None:
         (tmp_path / "bad.toml").write_text("this is not valid toml {{{{")
-        nodes = discover_experiments(tmp_path)
+        nodes, warnings = discover_experiments(tmp_path)
         assert len(nodes) == 0
+        assert warnings == []
 
     def test_discover_empty_directory(self, tmp_path: Path) -> None:
-        nodes = discover_experiments(tmp_path)
+        nodes, warnings = discover_experiments(tmp_path)
         assert nodes == []
+        assert warnings == []
 
     def test_no_meta_graceful(self, tmp_path: Path) -> None:
         """TOMLs without [meta] still appear with defaults from filename."""
         (tmp_path / "plain_experiment.toml").write_text(
             '[model]\npath = "x"\n'
         )
-        nodes = discover_experiments(tmp_path)
+        nodes, warnings = discover_experiments(tmp_path)
         assert len(nodes) == 1
+        assert warnings == []
         assert nodes[0].id == "plain_experiment"
         assert nodes[0].status == "wip"
+
+    def test_discover_invalid_meta_warns(self, tmp_path: Path) -> None:
+        """Invalid [meta] content produces a warning, not a crash."""
+        (tmp_path / "bad_meta.toml").write_text(
+            '[meta]\nstatus = "bogus"\n'
+        )
+        nodes, warnings = discover_experiments(tmp_path)
+        # Still included as stub node
+        assert len(nodes) == 1
+        assert nodes[0].id == "bad_meta"
+        assert nodes[0].status == "wip"
+        # Warning about the invalid status
+        assert len(warnings) == 1
+        assert "invalid [meta]" in warnings[0]
+        assert "bogus" in warnings[0]
 
 
 class TestBuildTreeText:
@@ -164,6 +184,20 @@ class TestBuildMermaid:
         assert 'b["Child Exp"]' in output
         assert "a --> b" in output
 
+    def test_mermaid_sanitizes_ids(self) -> None:
+        """Hyphens and dots in IDs are replaced with underscores."""
+        nodes = [
+            _make_node("gan-loop-v3", title="GAN v3"),
+            _make_node("exp.v2", title="Exp v2", parents=["gan-loop-v3"]),
+        ]
+        output = build_mermaid(nodes)
+        assert "gan_loop_v3" in output
+        assert "exp_v2" in output
+        assert "gan_loop_v3 --> exp_v2" in output
+        # Raw IDs with hyphens/dots should NOT appear as Mermaid node IDs
+        assert "gan-loop-v3[" not in output
+        assert "exp.v2[" not in output
+
     def test_mermaid_style_classes(self) -> None:
         nodes = [
             _make_node("a", status="promising"),
@@ -208,3 +242,32 @@ class TestValidateGraph:
         ]
         warnings = _validate_graph(nodes)
         assert warnings == []
+
+
+class TestSanitizeMermaidId:
+    """Tests for Mermaid ID sanitization."""
+
+    def test_hyphens_replaced(self) -> None:
+        assert _sanitize_mermaid_id("gan-loop-v3") == "gan_loop_v3"
+
+    def test_dots_replaced(self) -> None:
+        assert _sanitize_mermaid_id("exp.v2") == "exp_v2"
+
+    def test_clean_id_unchanged(self) -> None:
+        assert _sanitize_mermaid_id("simple_id") == "simple_id"
+
+    def test_spaces_replaced(self) -> None:
+        assert _sanitize_mermaid_id("my experiment") == "my_experiment"
+
+
+class TestDiscoveryWarningsInTree:
+    """Test that discovery warnings appear in tree text output."""
+
+    def test_discovery_warnings_shown(self) -> None:
+        nodes = [_make_node("a")]
+        text = build_tree_text(
+            nodes,
+            discovery_warnings=["bad_meta.toml: invalid [meta]: bad status"],
+        )
+        assert "Warnings:" in text
+        assert "bad_meta.toml" in text

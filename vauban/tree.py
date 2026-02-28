@@ -14,6 +14,8 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import re
+import sys
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,7 +33,12 @@ _STATUS_BADGES: dict[str, str] = {
 }
 
 
-@dataclass
+def _sanitize_mermaid_id(node_id: str) -> str:
+    """Replace non-alphanumeric characters with underscores for Mermaid."""
+    return re.sub(r"[^a-zA-Z0-9_]", "_", node_id)
+
+
+@dataclass(frozen=True, slots=True)
 class ExperimentNode:
     """A single experiment node in the tech tree."""
 
@@ -55,23 +62,44 @@ class ExperimentNode:
         return f"{self.badge} {label}"
 
 
-def discover_experiments(directory: str | Path) -> list[ExperimentNode]:
+def discover_experiments(
+    directory: str | Path,
+) -> tuple[list[ExperimentNode], list[str]]:
     """Recursively find TOML files and extract experiment nodes.
 
     TOMLs without a ``[meta]`` section get a default node derived
-    from the filename.  Files that fail to parse are silently skipped.
+    from the filename.  Files that fail TOML parsing are silently
+    skipped.  Invalid ``[meta]`` content produces a warning.
+
+    Returns ``(nodes, warnings)`` where warnings lists any
+    meta-validation errors encountered during discovery.
     """
     directory = Path(directory)
     nodes: list[ExperimentNode] = []
+    warnings: list[str] = []
 
     for toml_path in sorted(directory.rglob("*.toml")):
         try:
             with toml_path.open("rb") as f:
                 raw = tomllib.load(f)
-        except Exception:
+        except tomllib.TOMLDecodeError:
             continue
 
-        meta = parse_meta(raw, config_path=toml_path)
+        try:
+            meta = parse_meta(raw, config_path=toml_path)
+        except (ValueError, TypeError) as exc:
+            warnings.append(f"{toml_path}: invalid [meta]: {exc}")
+            # Still include as stub node so it shows up in the tree
+            nodes.append(ExperimentNode(
+                id=toml_path.stem,
+                title="",
+                status="wip",
+                parents=[],
+                tags=[],
+                path=toml_path,
+            ))
+            continue
+
         if meta is not None:
             nodes.append(ExperimentNode(
                 id=meta.id,
@@ -93,7 +121,7 @@ def discover_experiments(directory: str | Path) -> list[ExperimentNode]:
                 path=toml_path,
             ))
 
-    return nodes
+    return nodes, warnings
 
 
 def _validate_graph(
@@ -148,10 +176,15 @@ def _validate_graph(
     return warnings
 
 
-def build_tree_text(nodes: list[ExperimentNode]) -> str:
+def build_tree_text(
+    nodes: list[ExperimentNode],
+    discovery_warnings: list[str] | None = None,
+) -> str:
     """Build an ASCII text tree from experiment nodes.
 
     Groups nodes into roots (no parents), children, and orphans.
+    Multi-parent nodes are rendered under their first-visited parent
+    only (no duplication in the tree view).
     """
     if not nodes:
         return "(no experiments found)"
@@ -210,7 +243,7 @@ def build_tree_text(nodes: list[ExperimentNode]) -> str:
             lines.append(f"  {o.display_label}")
 
     # Warnings
-    warnings = _validate_graph(nodes)
+    warnings = list(discovery_warnings or []) + _validate_graph(nodes)
     if warnings:
         lines.append("")
         lines.append("Warnings:")
@@ -246,21 +279,29 @@ def build_mermaid(nodes: list[ExperimentNode]) -> str:
 
     lines: list[str] = ["flowchart TD"]
 
+    # Build a mapping from raw id → safe Mermaid id
+    safe_ids: dict[str, str] = {
+        n.id: _sanitize_mermaid_id(n.id) for n in nodes
+    }
+
     # Node definitions
     for node in nodes:
         label = node.title if node.title else node.id
         safe_label = label.replace('"', "'")
-        lines.append(f'    {node.id}["{safe_label}"]')
+        lines.append(f'    {safe_ids[node.id]}["{safe_label}"]')
 
     # Edges (parent → child)
     for node in nodes:
         for parent_id in node.parents:
-            lines.append(f"    {parent_id} --> {node.id}")
+            safe_parent = _sanitize_mermaid_id(parent_id)
+            lines.append(f"    {safe_parent} --> {safe_ids[node.id]}")
 
     # Style classes
     lines.append("")
     for status, style in _status_styles.items():
-        class_nodes = [n.id for n in nodes if n.status == status]
+        class_nodes = [
+            safe_ids[n.id] for n in nodes if n.status == status
+        ]
         if class_nodes:
             lines.append(f"    style {','.join(class_nodes)} {style}")
 
@@ -312,13 +353,15 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     args = parser.parse_args(argv)
-    nodes = discover_experiments(args.directory)
+    nodes, disc_warnings = discover_experiments(args.directory)
     nodes = _filter_nodes(nodes, status=args.status, tag=args.tag)
 
     if args.format == "mermaid":
         print(build_mermaid(nodes))
+        for w in disc_warnings:
+            print(f"# WARNING: {w}", file=sys.stderr)
     else:
-        print(build_tree_text(nodes))
+        print(build_tree_text(nodes, discovery_warnings=disc_warnings))
 
 
 if __name__ == "__main__":
