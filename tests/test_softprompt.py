@@ -35,7 +35,10 @@ from vauban.softprompt import (
     _gcg_attack,
     _pre_encode_prompts,
     _pre_encode_prompts_with_history,
+    _pre_encode_prompts_with_injection_context,
+    _pre_encode_prompts_with_injection_template,
     _project_to_tokens,
+    _resolve_injection_ids,
     _sample_prompt_ids,
     _select_prompt_ids,
     _select_worst_k_prompt_ids,
@@ -571,6 +574,8 @@ class TestInvalidMode:
         object.__setattr__(bad_config, "n_steps", 1)
         object.__setattr__(bad_config, "seed", None)
         object.__setattr__(bad_config, "gan_rounds", 0)
+        object.__setattr__(bad_config, "injection_context", None)
+        object.__setattr__(bad_config, "injection_context_template", None)
 
         with pytest.raises(ValueError, match="Unknown soft prompt mode"):
             softprompt_attack(model, tokenizer, ["test"], bad_config, None)
@@ -3394,3 +3399,215 @@ class TestWriteArenaCard:
         content = card_path.read_text()
         assert "GAN ROUND HISTORY" in content
         assert "Round 0: WON" in content
+
+
+# ---------------------------------------------------------------------------
+# Injection context encoding tests
+# ---------------------------------------------------------------------------
+
+
+class TestInjectionContextEncoding:
+    """Tests for _pre_encode_prompts_with_injection_context."""
+
+    def test_web_page_preset_longer_than_plain(self) -> None:
+        """Web page preset adds surrounding context → more tokens."""
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        plain = _pre_encode_prompts(tokenizer, ["inject this"])
+        wrapped = _pre_encode_prompts_with_injection_context(
+            tokenizer, ["inject this"],
+            injection_context="web_page",
+        )
+        assert len(wrapped) == 1
+        assert wrapped[0].shape[0] == 1  # batch dim
+        # Wrapped encoding should be strictly longer
+        assert wrapped[0].shape[1] > plain[0].shape[1]
+
+    def test_tool_output_preset_longer_than_plain(self) -> None:
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        plain = _pre_encode_prompts(tokenizer, ["payload"])
+        wrapped = _pre_encode_prompts_with_injection_context(
+            tokenizer, ["payload"],
+            injection_context="tool_output",
+        )
+        assert wrapped[0].shape[1] > plain[0].shape[1]
+
+    def test_code_file_preset_longer_than_plain(self) -> None:
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        plain = _pre_encode_prompts(tokenizer, ["code"])
+        wrapped = _pre_encode_prompts_with_injection_context(
+            tokenizer, ["code"],
+            injection_context="code_file",
+        )
+        assert wrapped[0].shape[1] > plain[0].shape[1]
+
+    def test_system_prompt_adds_tokens(self) -> None:
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        without_sys = _pre_encode_prompts_with_injection_context(
+            tokenizer, ["test"],
+            injection_context="web_page",
+        )
+        with_sys = _pre_encode_prompts_with_injection_context(
+            tokenizer, ["test"],
+            injection_context="web_page",
+            system_prompt="You are an agent.",
+        )
+        assert with_sys[0].shape[1] > without_sys[0].shape[1]
+
+    def test_multiple_prompts_encoded(self) -> None:
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        result = _pre_encode_prompts_with_injection_context(
+            tokenizer, ["a", "b", "c"],
+            injection_context="web_page",
+        )
+        assert len(result) == 3
+        for ids in result:
+            assert ids.shape[0] == 1  # batch dim
+
+    def test_invalid_preset_raises_keyerror(self) -> None:
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        with pytest.raises(KeyError):
+            _pre_encode_prompts_with_injection_context(
+                tokenizer, ["x"],
+                injection_context="nonexistent",
+            )
+
+
+class TestInjectionTemplateEncoding:
+    """Tests for _pre_encode_prompts_with_injection_template."""
+
+    def test_template_longer_than_plain(self) -> None:
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        plain = _pre_encode_prompts(tokenizer, ["payload"])
+        wrapped = _pre_encode_prompts_with_injection_template(
+            tokenizer, ["payload"],
+            template="Before {payload} after",
+        )
+        assert wrapped[0].shape[1] > plain[0].shape[1]
+
+    def test_template_safe_from_format_injection(self) -> None:
+        """Prompts with {curly} braces must not cause KeyError."""
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        # This would crash with str.format()
+        result = _pre_encode_prompts_with_injection_template(
+            tokenizer, ["test {__class__} {0}"],
+            template="Context: {payload}",
+        )
+        assert len(result) == 1
+        assert result[0].shape[0] == 1
+
+    def test_template_with_system_prompt_adds_tokens(self) -> None:
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        without_sys = _pre_encode_prompts_with_injection_template(
+            tokenizer, ["p"],
+            template="Doc: {payload}",
+        )
+        with_sys = _pre_encode_prompts_with_injection_template(
+            tokenizer, ["p"],
+            template="Doc: {payload}",
+            system_prompt="Be helpful.",
+        )
+        assert with_sys[0].shape[1] > without_sys[0].shape[1]
+
+
+class TestResolveInjectionIds:
+    """Tests for _resolve_injection_ids."""
+
+    def test_returns_none_when_no_injection(self) -> None:
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        config = SoftPromptConfig()
+        result = _resolve_injection_ids(config, tokenizer, ["test"])
+        assert result is None
+
+    def test_returns_ids_for_preset(self) -> None:
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        config = SoftPromptConfig(injection_context="web_page")
+        result = _resolve_injection_ids(config, tokenizer, ["test"])
+        assert result is not None
+        assert len(result) == 1
+
+    def test_template_takes_priority(self) -> None:
+        """When both are set, template wins (shorter than preset)."""
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        config_preset = SoftPromptConfig(
+            injection_context="web_page",
+        )
+        config_both = SoftPromptConfig(
+            injection_context="web_page",
+            injection_context_template="Short {payload}",
+        )
+        preset_result = _resolve_injection_ids(
+            config_preset, tokenizer, ["p"],
+        )
+        both_result = _resolve_injection_ids(
+            config_both, tokenizer, ["p"],
+        )
+        assert preset_result is not None
+        assert both_result is not None
+        # Template "Short {payload}" is much shorter than web_page
+        # preset, proving template took priority
+        assert both_result[0].shape[1] < preset_result[0].shape[1]
+
+
+class TestInjectionContextDispatch:
+    """Tests that injection context wires through to GCG/EGD."""
+
+    def test_gcg_with_injection_context(self) -> None:
+        """GCG attack with injection_context produces valid result."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        config = SoftPromptConfig(
+            mode="gcg",
+            n_tokens=4,
+            n_steps=2,
+            batch_size=4,
+            top_k=8,
+            injection_context="web_page",
+        )
+        result = softprompt_attack(
+            model, tokenizer, ["Hello"], config, None,
+        )
+        assert result.mode == "gcg"
+        assert result.token_ids is not None
+        assert len(result.token_ids) == 4
+
+    def test_egd_with_injection_template(self) -> None:
+        """EGD attack with injection_context_template works."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        config = SoftPromptConfig(
+            mode="egd",
+            n_tokens=4,
+            n_steps=2,
+            batch_size=4,
+            top_k=8,
+            injection_context_template="Doc: {payload}",
+        )
+        result = softprompt_attack(
+            model, tokenizer, ["Hello"], config, None,
+        )
+        assert result.mode == "egd"
+        assert result.token_ids is not None
+
+
+class TestInjectionContextConfigDefaults:
+    """Tests for SoftPromptConfig injection context field defaults."""
+
+    def test_injection_context_default_none(self) -> None:
+        cfg = SoftPromptConfig()
+        assert cfg.injection_context is None
+
+    def test_injection_context_template_default_none(self) -> None:
+        cfg = SoftPromptConfig()
+        assert cfg.injection_context_template is None
+
+    def test_injection_context_custom(self) -> None:
+        cfg = SoftPromptConfig(injection_context="tool_output")
+        assert cfg.injection_context == "tool_output"
+
+    def test_injection_context_template_custom(self) -> None:
+        cfg = SoftPromptConfig(
+            injection_context_template="X {payload} Y",
+        )
+        assert cfg.injection_context_template == "X {payload} Y"

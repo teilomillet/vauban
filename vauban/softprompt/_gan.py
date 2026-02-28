@@ -28,6 +28,7 @@ from vauban.softprompt._generation import _evaluate_attack
 from vauban.softprompt._utils import (
     _pre_encode_prompts_with_history,
     _project_to_tokens,
+    _resolve_injection_ids,
 )
 from vauban.types import (
     ApiEvalConfig,
@@ -49,7 +50,14 @@ def _dispatch_attack(
     ref_model: CausalLM | None,
     transfer_models: list[tuple[str, CausalLM, Tokenizer]] | None = None,
 ) -> SoftPromptResult:
-    """Dispatch to the appropriate attack mode (no defense eval)."""
+    """Dispatch to the appropriate attack mode (no defense eval).
+
+    When ``config.injection_context`` or ``config.injection_context_template``
+    is set, pre-encodes prompts wrapped in realistic surrounding context and
+    passes them as ``all_prompt_ids_override`` to GCG/EGD.
+    """
+    injection_ids = _resolve_injection_ids(config, tokenizer, prompts)
+
     if config.mode == "continuous":
         return _continuous_attack(
             model, tokenizer, prompts, config, direction, ref_model,
@@ -57,11 +65,13 @@ def _dispatch_attack(
     if config.mode == "gcg":
         return _gcg_attack(
             model, tokenizer, prompts, config, direction, ref_model,
+            all_prompt_ids_override=injection_ids,
             transfer_models=transfer_models,
         )
     if config.mode == "egd":
         return _egd_attack(
             model, tokenizer, prompts, config, direction, ref_model,
+            all_prompt_ids_override=injection_ids,
             transfer_models=transfer_models,
         )
     msg = (

@@ -86,6 +86,8 @@ _KNOWN_KEYS: dict[str, frozenset[str]] = {
         "gan_multiturn", "gan_multiturn_max_turns",
         # Prompt pool
         "prompt_pool_size",
+        # Injection context wrapping
+        "injection_context", "injection_context_template",
     }),
     "sic": frozenset({
         "mode", "threshold", "max_iterations", "max_tokens", "target_layer",
@@ -194,6 +196,9 @@ _KNOWN_VALUES: dict[tuple[str, str], frozenset[str]] = {
     ("softprompt", "eos_loss_mode"): frozenset({"none", "force", "suppress"}),
     ("softprompt", "defense_eval"): frozenset({"sic", "cast", "both"}),
     ("softprompt", "defense_eval_sic_mode"): frozenset({"direction", "generation"}),
+    ("softprompt", "injection_context"): frozenset({
+        "web_page", "tool_output", "code_file",
+    }),
     ("eval", "refusal_mode"): frozenset({"phrases", "judge"}),
     ("sic", "mode"): frozenset({"direction", "generation"}),
     ("sic", "calibrate_prompts"): frozenset({"harmless", "harmful"}),

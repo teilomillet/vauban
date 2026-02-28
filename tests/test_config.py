@@ -3258,3 +3258,230 @@ class TestGanConfigParsing:
         )
         with pytest.raises(ValueError, match="auth_header"):
             load_config(toml_file)
+
+
+# ---------------------------------------------------------------------------
+# Injection context config parsing
+# ---------------------------------------------------------------------------
+
+
+class TestInjectionContextConfigParsing:
+    """Tests for injection_context and injection_context_template parsing."""
+
+    def test_injection_context_default_none(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.injection_context is None
+        assert config.softprompt.injection_context_template is None
+
+    def test_injection_context_web_page(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+            'mode = "gcg"\n'
+            'injection_context = "web_page"\n'
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.injection_context == "web_page"
+
+    def test_injection_context_tool_output(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+            'mode = "gcg"\n'
+            'injection_context = "tool_output"\n'
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.injection_context == "tool_output"
+
+    def test_injection_context_code_file(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+            'mode = "gcg"\n'
+            'injection_context = "code_file"\n'
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.injection_context == "code_file"
+
+    def test_injection_context_invalid_value_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\ninjection_context = "email"\n'
+        )
+        with pytest.raises(ValueError, match="injection_context"):
+            load_config(toml_file)
+
+    def test_injection_context_wrong_type_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ninjection_context = 42\n"
+        )
+        with pytest.raises(TypeError, match="injection_context"):
+            load_config(toml_file)
+
+    def test_injection_context_template_parsed(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+            'mode = "gcg"\n'
+            'injection_context_template = "Doc: {payload} end"\n'
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert (
+            config.softprompt.injection_context_template
+            == "Doc: {payload} end"
+        )
+
+    def test_injection_context_template_missing_placeholder_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+            'injection_context_template = "no placeholder"\n'
+        )
+        with pytest.raises(
+            ValueError, match="injection_context_template",
+        ):
+            load_config(toml_file)
+
+    def test_injection_context_template_wrong_type_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ninjection_context_template = 123\n"
+        )
+        with pytest.raises(
+            TypeError, match="injection_context_template",
+        ):
+            load_config(toml_file)
+
+    def test_injection_context_with_continuous_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+            'mode = "continuous"\n'
+            'injection_context = "web_page"\n'
+        )
+        with pytest.raises(ValueError, match="injection_context"):
+            load_config(toml_file)
+
+    def test_injection_template_with_continuous_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+            'mode = "continuous"\n'
+            'injection_context_template = "X {payload} Y"\n'
+        )
+        with pytest.raises(ValueError, match="injection_context"):
+            load_config(toml_file)
+
+    def test_injection_context_with_multiturn_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+            'mode = "gcg"\n'
+            'injection_context = "web_page"\n'
+            "gan_multiturn = true\n"
+        )
+        with pytest.raises(ValueError, match="injection_context"):
+            load_config(toml_file)
+
+    def test_injection_template_with_multiturn_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+            'mode = "gcg"\n'
+            'injection_context_template = "X {payload} Y"\n'
+            "gan_multiturn = true\n"
+        )
+        with pytest.raises(ValueError, match="injection_context"):
+            load_config(toml_file)
+
+    def test_injection_context_with_gcg_ok(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+            'mode = "gcg"\n'
+            'injection_context = "web_page"\n'
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.injection_context == "web_page"
+
+    def test_injection_context_with_egd_ok(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+            'mode = "egd"\n'
+            'injection_context = "tool_output"\n'
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.injection_context == "tool_output"

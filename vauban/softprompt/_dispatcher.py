@@ -10,6 +10,7 @@ from vauban.softprompt._defense_eval import evaluate_against_defenses
 from vauban.softprompt._egd import _egd_attack
 from vauban.softprompt._gan import gan_loop
 from vauban.softprompt._gcg import _gcg_attack
+from vauban.softprompt._utils import _resolve_injection_ids
 from vauban.types import (
     ApiEvalConfig,
     CausalLM,
@@ -42,6 +43,8 @@ def _run_single_attack(
         transfer_models: Optional list of (name, model, tokenizer) for
             multi-model candidate re-ranking during GCG.
     """
+    injection_ids = _resolve_injection_ids(config, tokenizer, prompts)
+
     if config.mode == "continuous":
         return _continuous_attack(
             model, tokenizer, prompts, config, direction, ref_model,
@@ -49,11 +52,13 @@ def _run_single_attack(
     if config.mode == "gcg":
         return _gcg_attack(
             model, tokenizer, prompts, config, direction, ref_model,
+            all_prompt_ids_override=injection_ids,
             transfer_models=transfer_models,
         )
     if config.mode == "egd":
         return _egd_attack(
             model, tokenizer, prompts, config, direction, ref_model,
+            all_prompt_ids_override=injection_ids,
             transfer_models=transfer_models,
         )
     msg = (

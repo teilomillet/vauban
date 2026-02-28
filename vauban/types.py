@@ -573,6 +573,9 @@ class SoftPromptConfig:
     transfer_rerank_count: int = 8  # top-N candidates to re-rank on transfer models
     defense_eval_alpha_tiers: list[tuple[float, float]] | None = None  # TRYLOCK
     init_tokens: list[int] | None = None  # warm-start token IDs (GCG/EGD)
+    # --- Injection context wrapping ---
+    injection_context: str | None = None  # "web_page", "tool_output", "code_file"
+    injection_context_template: str | None = None  # custom template with {payload}
 
 
 @dataclass(frozen=True, slots=True)

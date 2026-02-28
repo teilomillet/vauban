@@ -836,6 +836,71 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
         )
         raise ValueError(msg)
 
+    # -- injection_context --
+    injection_context_raw = sec.get("injection_context")  # type: ignore[arg-type]
+    injection_context: str | None = None
+    if injection_context_raw is not None:
+        if not isinstance(injection_context_raw, str):
+            msg = (
+                f"[softprompt].injection_context must be a string,"
+                f" got {type(injection_context_raw).__name__}"
+            )
+            raise TypeError(msg)
+        valid_injection_contexts = ("web_page", "tool_output", "code_file")
+        if injection_context_raw not in valid_injection_contexts:
+            msg = (
+                f"[softprompt].injection_context must be one of"
+                f" {valid_injection_contexts!r},"
+                f" got {injection_context_raw!r}"
+            )
+            raise ValueError(msg)
+        injection_context = injection_context_raw
+
+    # -- injection_context_template --
+    injection_context_template_raw = sec.get(  # type: ignore[arg-type]
+        "injection_context_template",
+    )
+    injection_context_template: str | None = None
+    if injection_context_template_raw is not None:
+        if not isinstance(injection_context_template_raw, str):
+            msg = (
+                "[softprompt].injection_context_template must be"
+                f" a string, got"
+                f" {type(injection_context_template_raw).__name__}"
+            )
+            raise TypeError(msg)
+        if "{payload}" not in injection_context_template_raw:
+            msg = (
+                "[softprompt].injection_context_template must"
+                " contain '{payload}' placeholder"
+            )
+            raise ValueError(msg)
+        injection_context_template = injection_context_template_raw
+
+    # Cross-field validation: injection context requires discrete modes
+    has_injection = (
+        injection_context is not None
+        or injection_context_template is not None
+    )
+    if has_injection and mode_raw == "continuous":
+        msg = (
+            "[softprompt].injection_context requires mode"
+            " 'gcg' or 'egd' (discrete tokens);"
+            " continuous mode produces soft embeddings"
+            " that cannot represent wrapped context"
+        )
+        raise ValueError(msg)
+
+    # Cross-field validation: multiturn + injection context not supported
+    if has_injection and gan_multiturn_raw:
+        msg = (
+            "[softprompt].injection_context cannot be"
+            " combined with gan_multiturn;"
+            " injection context wrapping and conversation"
+            " history encoding are mutually exclusive"
+        )
+        raise ValueError(msg)
+
     # -- init_tokens --
     init_tokens_raw = sec.get("init_tokens")  # type: ignore[arg-type]
     init_tokens: list[int] | None = None
@@ -904,4 +969,6 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
         transfer_rerank_count=transfer_rerank_count_raw,
         defense_eval_alpha_tiers=defense_eval_alpha_tiers,
         init_tokens=init_tokens,
+        injection_context=injection_context,
+        injection_context_template=injection_context_template,
     )

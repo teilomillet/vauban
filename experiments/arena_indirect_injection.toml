@@ -61,6 +61,9 @@ direction_mode = "raid"
 target_prefixes = ["Sure", "I'll", "Executing", "Here"]
 target_repeat_count = 1
 
+# Injection context — wrap payloads in realistic web page during optimization
+injection_context = "web_page"
+
 # ASCII-only — payloads must be embeddable in HTML, code, tool output
 token_constraint = "ascii"
 
