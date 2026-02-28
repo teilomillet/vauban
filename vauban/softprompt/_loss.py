@@ -89,6 +89,61 @@ def _compute_kl_collision_loss(
     return kl
 
 
+def _compute_defense_aware_penalty(
+    h: Array,
+    layer_idx: int,
+    direction: Array | None,
+    sic_layer: int | None,
+    sic_threshold: float,
+    cast_layers: list[int] | None,
+    cast_threshold: float,
+) -> Array:
+    """Penalty for being detectable by SIC or CAST defenses.
+
+    Models the specific detection signals used by SIC and CAST so the
+    optimizer learns to evade both during training.
+
+    - SIC evasion: projection should stay ABOVE threshold (benign signal).
+      SIC detects adversarial content when projection < threshold
+      (low refusal = suspicious). Penalty: max(0, threshold - proj).
+    - CAST evasion: projection should stay BELOW threshold (avoid steering).
+      CAST intervenes when projection > threshold (high refusal = steer).
+      Penalty: max(0, proj - threshold).
+
+    When both are active on the same layer with the same threshold, the
+    penalties push projection in opposite directions, creating a narrow
+    evasion band. For a viable evasion zone, use a SIC threshold lower
+    than the CAST threshold (e.g., SIC at the defense_eval_threshold,
+    CAST layers at different layers or with a higher threshold).
+
+    Args:
+        h: Hidden state at current layer, shape (1, seq_len, d_model).
+        layer_idx: Index of the current transformer layer.
+        direction: Refusal direction vector.
+        sic_layer: Layer index where SIC measures projection.
+        sic_threshold: SIC detection threshold.
+        cast_layers: Layer indices where CAST intervenes.
+        cast_threshold: CAST intervention threshold.
+
+    Returns:
+        Scalar penalty value.
+    """
+    if direction is None:
+        return ops.array(0.0)
+    penalty = ops.array(0.0)
+    # SIC evasion: SIC detects adversarial when proj < threshold
+    # So we penalize when proj is below threshold
+    if sic_layer is not None and layer_idx == sic_layer:
+        proj = ops.sum(h[:, -1, :] * direction)
+        penalty = penalty + ops.maximum(ops.array(0.0), sic_threshold - proj)
+    # CAST evasion: CAST intervenes when proj > threshold
+    # So we penalize when proj is above threshold
+    if cast_layers is not None and layer_idx in cast_layers:
+        proj = ops.sum(h[:, -1, :] * direction)
+        penalty = penalty + ops.maximum(ops.array(0.0), proj - cast_threshold)
+    return penalty
+
+
 def _compute_loss(
     model: CausalLM,
     soft_embeds: Array,
@@ -104,6 +159,11 @@ def _compute_loss(
     eos_loss_weight: float = 0.0,
     ref_model: CausalLM | None = None,
     kl_ref_weight: float = 0.0,
+    defense_aware_weight: float = 0.0,
+    sic_layer: int | None = None,
+    sic_threshold: float = 0.0,
+    cast_layers: list[int] | None = None,
+    cast_threshold: float = 0.0,
 ) -> Array:
     """Compute cross-entropy loss with teacher forcing.
 
@@ -132,6 +192,12 @@ def _compute_loss(
         eos_loss_weight: Weight for EOS auxiliary loss.
         ref_model: Reference model for KL collision loss.
         kl_ref_weight: Weight for KL collision loss.
+        defense_aware_weight: Weight for defense-aware evasion penalty.
+            0 disables the penalty.
+        sic_layer: Layer index where SIC measures projection.
+        sic_threshold: SIC detection threshold.
+        cast_layers: Layer indices where CAST intervenes.
+        cast_threshold: CAST intervention threshold.
 
     Returns:
         Scalar loss value.
@@ -150,6 +216,7 @@ def _compute_loss(
 
     # Per-layer direction penalty accumulation (RAID / all_positions)
     direction_penalty = ops.array(0.0)
+    defense_penalty = ops.array(0.0)
     n_penalty_layers = 0
 
     for i, layer in enumerate(transformer.layers):
@@ -168,6 +235,11 @@ def _compute_loss(
                 proj = ops.mean(ops.sum(h * direction, axis=-1))
             direction_penalty = direction_penalty + proj
             n_penalty_layers += 1
+        if defense_aware_weight > 0.0:
+            defense_penalty = defense_penalty + _compute_defense_aware_penalty(
+                h, i, direction, sic_layer, sic_threshold,
+                cast_layers, cast_threshold,
+            )
 
     h = transformer.norm(h)
     logits = lm_head_forward(model, h)
@@ -194,6 +266,10 @@ def _compute_loss(
             ce_loss = ce_loss + direction_weight * (
                 direction_penalty / n_penalty_layers
             )
+
+    # Defense-aware evasion penalty
+    if defense_aware_weight > 0.0:
+        ce_loss = ce_loss + defense_aware_weight * defense_penalty
 
     # EOS control loss (Geiping et al.)
     if (
@@ -230,6 +306,11 @@ def _compute_defensive_loss(
     eos_loss_weight: float = 0.0,
     ref_model: CausalLM | None = None,
     kl_ref_weight: float = 0.0,
+    defense_aware_weight: float = 0.0,
+    sic_layer: int | None = None,
+    sic_threshold: float = 0.0,
+    cast_layers: list[int] | None = None,
+    cast_threshold: float = 0.0,
 ) -> Array:
     """Compute defensive loss: maximize refusal probability.
 
@@ -254,6 +335,12 @@ def _compute_defensive_loss(
         eos_loss_weight: Weight for EOS auxiliary loss.
         ref_model: Reference model for KL collision loss.
         kl_ref_weight: Weight for KL collision loss.
+        defense_aware_weight: Weight for defense-aware evasion penalty.
+            0 disables the penalty.
+        sic_layer: Layer index where SIC measures projection.
+        sic_threshold: SIC detection threshold.
+        cast_layers: Layer indices where CAST intervenes.
+        cast_threshold: CAST intervention threshold.
 
     Returns:
         Scalar loss value.
@@ -265,6 +352,7 @@ def _compute_defensive_loss(
 
     # Per-layer direction penalty accumulation
     direction_penalty = ops.array(0.0)
+    defense_penalty = ops.array(0.0)
     n_penalty_layers = 0
 
     for i, layer in enumerate(transformer.layers):
@@ -282,6 +370,11 @@ def _compute_defensive_loss(
                 proj = ops.mean(ops.sum(h * direction, axis=-1))
             direction_penalty = direction_penalty + proj
             n_penalty_layers += 1
+        if defense_aware_weight > 0.0:
+            defense_penalty = defense_penalty + _compute_defense_aware_penalty(
+                h, i, direction, sic_layer, sic_threshold,
+                cast_layers, cast_threshold,
+            )
 
     h = transformer.norm(h)
     logits = lm_head_forward(model, h)
@@ -310,6 +403,12 @@ def _compute_defensive_loss(
             loss = loss - direction_weight * (
                 direction_penalty / n_penalty_layers
             )
+
+    # Defense-aware evasion penalty — note this pushes toward evasion
+    # even in defensive mode, which is intentional: a defensive prompt
+    # that is also undetectable tests defense robustness
+    if defense_aware_weight > 0.0:
+        loss = loss + defense_aware_weight * defense_penalty
 
     # EOS control loss
     if (
@@ -346,6 +445,11 @@ def _compute_untargeted_loss(
     eos_loss_weight: float = 0.0,
     ref_model: CausalLM | None = None,
     kl_ref_weight: float = 0.0,
+    defense_aware_weight: float = 0.0,
+    sic_layer: int | None = None,
+    sic_threshold: float = 0.0,
+    cast_layers: list[int] | None = None,
+    cast_threshold: float = 0.0,
 ) -> Array:
     """Compute untargeted jailbreak loss (UJA, Deng et al. 2024).
 
@@ -368,6 +472,12 @@ def _compute_untargeted_loss(
         eos_loss_weight: Weight for EOS auxiliary loss.
         ref_model: Reference model for KL collision loss.
         kl_ref_weight: Weight for KL collision loss.
+        defense_aware_weight: Weight for defense-aware evasion penalty.
+            0 disables the penalty.
+        sic_layer: Layer index where SIC measures projection.
+        sic_threshold: SIC detection threshold.
+        cast_layers: Layer indices where CAST intervenes.
+        cast_threshold: CAST intervention threshold.
 
     Returns:
         Scalar loss value.
@@ -379,6 +489,7 @@ def _compute_untargeted_loss(
 
     # Per-layer direction penalty accumulation
     direction_penalty = ops.array(0.0)
+    defense_penalty = ops.array(0.0)
     n_penalty_layers = 0
 
     for i, layer in enumerate(transformer.layers):
@@ -396,6 +507,11 @@ def _compute_untargeted_loss(
                 proj = ops.mean(ops.sum(h * direction, axis=-1))
             direction_penalty = direction_penalty + proj
             n_penalty_layers += 1
+        if defense_aware_weight > 0.0:
+            defense_penalty = defense_penalty + _compute_defense_aware_penalty(
+                h, i, direction, sic_layer, sic_threshold,
+                cast_layers, cast_threshold,
+            )
 
     h = transformer.norm(h)
     logits = lm_head_forward(model, h)
@@ -423,6 +539,10 @@ def _compute_untargeted_loss(
             loss = loss + direction_weight * (
                 direction_penalty / n_penalty_layers
             )
+
+    # Defense-aware evasion penalty
+    if defense_aware_weight > 0.0:
+        loss = loss + defense_aware_weight * defense_penalty
 
     # EOS control loss (Geiping et al.)
     if (

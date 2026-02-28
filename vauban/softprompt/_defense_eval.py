@@ -3,6 +3,7 @@
 from vauban._array import Array
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES
 from vauban.types import (
+    AlphaTier,
     CausalLM,
     DefenseEvalResult,
     SICConfig,
@@ -79,6 +80,12 @@ def evaluate_against_defenses(
             if config.defense_eval_cast_layers is not None
             else [layer]
         )
+        alpha_tiers: list[AlphaTier] | None = None
+        if config.defense_eval_alpha_tiers is not None:
+            alpha_tiers = [
+                AlphaTier(threshold=t, alpha=a)
+                for t, a in config.defense_eval_alpha_tiers
+            ]
         cast_interventions, cast_refusal_rate, cast_responses = (
             _eval_cast(
                 model, tokenizer, adv_prompts, direction,
@@ -86,6 +93,7 @@ def evaluate_against_defenses(
                 config.defense_eval_alpha,
                 config.defense_eval_threshold,
                 config.max_gen_tokens,
+                alpha_tiers=alpha_tiers,
             )
         )
 
@@ -170,6 +178,12 @@ def evaluate_against_defenses_multiturn(
             if config.defense_eval_cast_layers is not None
             else [layer]
         )
+        alpha_tiers: list[AlphaTier] | None = None
+        if config.defense_eval_alpha_tiers is not None:
+            alpha_tiers = [
+                AlphaTier(threshold=t, alpha=a)
+                for t, a in config.defense_eval_alpha_tiers
+            ]
         cast_interventions, cast_refusal_rate, cast_responses = (
             _eval_cast_multiturn(
                 model, tokenizer, adv_prompts, direction,
@@ -178,6 +192,7 @@ def evaluate_against_defenses_multiturn(
                 config.defense_eval_threshold,
                 config.max_gen_tokens,
                 history,
+                alpha_tiers=alpha_tiers,
             )
         )
 
@@ -270,6 +285,7 @@ def _eval_cast(
     alpha: float,
     threshold: float,
     max_tokens: int,
+    alpha_tiers: list[AlphaTier] | None = None,
 ) -> tuple[int, float, list[str]]:
     """Run CAST defense on adversarial prompts.
 
@@ -287,6 +303,7 @@ def _eval_cast(
             model, tokenizer, prompt, direction,
             layers=layers, alpha=alpha,
             threshold=threshold, max_tokens=max_tokens,
+            alpha_tiers=alpha_tiers,
         )
         total_interventions += result.interventions
         responses.append(result.text)
@@ -309,6 +326,7 @@ def _eval_cast_multiturn(
     threshold: float,
     max_tokens: int,
     history: list[dict[str, str]],
+    alpha_tiers: list[AlphaTier] | None = None,
 ) -> tuple[int, float, list[str]]:
     """Run CAST defense on adversarial prompts with conversation history.
 
@@ -330,6 +348,7 @@ def _eval_cast_multiturn(
             model, tokenizer, messages, direction,
             layers=layers, alpha=alpha,
             threshold=threshold, max_tokens=max_tokens,
+            alpha_tiers=alpha_tiers,
         )
         total_interventions += result.interventions
         responses.append(result.text)

@@ -195,7 +195,7 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
             f" got {type(prompt_strategy_raw).__name__}"
         )
         raise TypeError(msg)
-    valid_prompt_strategies = ("all", "cycle", "first", "worst_k")
+    valid_prompt_strategies = ("all", "cycle", "first", "worst_k", "sample")
     if prompt_strategy_raw not in valid_prompt_strategies:
         msg = (
             f"[softprompt].prompt_strategy must be one of"
@@ -711,6 +711,95 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
         )
         raise ValueError(msg)
 
+    # -- prompt_pool_size --
+    prompt_pool_size_raw = sec.get("prompt_pool_size")  # type: ignore[arg-type]
+    prompt_pool_size: int | None = None
+    if prompt_pool_size_raw is not None:
+        if not isinstance(prompt_pool_size_raw, int):
+            msg = (
+                "[softprompt].prompt_pool_size must be"
+                f" an integer, got"
+                f" {type(prompt_pool_size_raw).__name__}"
+            )
+            raise TypeError(msg)
+        if prompt_pool_size_raw < 1:
+            msg = (
+                "[softprompt].prompt_pool_size must be"
+                f" >= 1, got {prompt_pool_size_raw}"
+            )
+            raise ValueError(msg)
+        prompt_pool_size = prompt_pool_size_raw
+
+    # -- defense_aware_weight --
+    defense_aware_weight_raw = sec.get(  # type: ignore[arg-type]
+        "defense_aware_weight", 0.0,
+    )
+    if not isinstance(defense_aware_weight_raw, int | float):
+        msg = (
+            "[softprompt].defense_aware_weight must be"
+            f" a number, got"
+            f" {type(defense_aware_weight_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if float(defense_aware_weight_raw) < 0.0:
+        msg = (
+            "[softprompt].defense_aware_weight must be"
+            f" >= 0.0, got {defense_aware_weight_raw}"
+        )
+        raise ValueError(msg)
+
+    # -- defense_eval_alpha_tiers --
+    alpha_tiers_raw = sec.get(  # type: ignore[arg-type]
+        "defense_eval_alpha_tiers",
+    )
+    defense_eval_alpha_tiers: list[tuple[float, float]] | None = None
+    if alpha_tiers_raw is not None:
+        if not isinstance(alpha_tiers_raw, list):
+            msg = (
+                "[softprompt].defense_eval_alpha_tiers"
+                " must be a list of [threshold, alpha] pairs,"
+                f" got {type(alpha_tiers_raw).__name__}"
+            )
+            raise TypeError(msg)
+        defense_eval_alpha_tiers = []
+        for i, pair in enumerate(alpha_tiers_raw):
+            if (
+                not isinstance(pair, list)
+                or len(pair) != 2
+            ):
+                msg = (
+                    "[softprompt].defense_eval_alpha_tiers"
+                    f"[{i}] must be a [threshold, alpha] pair"
+                )
+                raise ValueError(msg)
+            if not isinstance(pair[0], int | float) or not isinstance(
+                pair[1], int | float,
+            ):
+                msg = (
+                    "[softprompt].defense_eval_alpha_tiers"
+                    f"[{i}] values must be numbers"
+                )
+                raise TypeError(msg)
+            defense_eval_alpha_tiers.append(
+                (float(pair[0]), float(pair[1])),
+            )
+
+    # -- beam_width --
+    beam_width_raw = sec.get("beam_width", 1)  # type: ignore[arg-type]
+    if not isinstance(beam_width_raw, int):
+        msg = (
+            "[softprompt].beam_width must be"
+            f" an integer, got"
+            f" {type(beam_width_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if beam_width_raw < 1:
+        msg = (
+            "[softprompt].beam_width must be"
+            f" >= 1, got {beam_width_raw}"
+        )
+        raise ValueError(msg)
+
     # -- init_tokens --
     init_tokens_raw = sec.get("init_tokens")  # type: ignore[arg-type]
     init_tokens: list[int] | None = None
@@ -772,5 +861,9 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
         gan_defense_sic_iteration_escalation=gan_def_sic_raw,
         gan_multiturn=gan_multiturn_raw,
         gan_multiturn_max_turns=gan_mt_max_raw,
+        prompt_pool_size=prompt_pool_size,
+        beam_width=beam_width_raw,
+        defense_aware_weight=float(defense_aware_weight_raw),
+        defense_eval_alpha_tiers=defense_eval_alpha_tiers,
         init_tokens=init_tokens,
     )

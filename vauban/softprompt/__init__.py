@@ -17,6 +17,7 @@ from vauban.softprompt._generation import (
     _prefill_with_cache,
 )
 from vauban.softprompt._loss import (
+    _compute_defense_aware_penalty,
     _compute_defensive_loss,
     _compute_eos_loss,
     _compute_kl_collision_loss,
@@ -34,6 +35,7 @@ from vauban.softprompt._utils import (
     _pre_encode_prompts,
     _pre_encode_prompts_with_history,
     _project_to_tokens,
+    _sample_prompt_ids,
     _select_prompt_ids,
     _select_worst_k_prompt_ids,
     _split_into_batches,
@@ -42,6 +44,7 @@ from vauban.softprompt._utils import (
 __all__ = [
     "_build_vocab_mask",
     "_compute_accessibility_score",
+    "_compute_defense_aware_penalty",
     "_compute_defensive_loss",
     "_compute_embed_regularization",
     "_compute_eos_loss",
@@ -63,6 +66,7 @@ __all__ = [
     "_pre_encode_prompts_with_history",
     "_prefill_with_cache",
     "_project_to_tokens",
+    "_sample_prompt_ids",
     "_select_prompt_ids",
     "_select_worst_k_prompt_ids",
     "_split_into_batches",

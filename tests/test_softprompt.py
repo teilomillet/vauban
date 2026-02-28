@@ -35,6 +35,7 @@ from vauban.softprompt import (
     _pre_encode_prompts,
     _pre_encode_prompts_with_history,
     _project_to_tokens,
+    _sample_prompt_ids,
     _select_prompt_ids,
     _select_worst_k_prompt_ids,
     _split_into_batches,
@@ -2775,3 +2776,359 @@ class TestBuildSicPromptsWithHistory:
         assert "context" in result[1]
         assert "attack1" in result[0]
         assert "attack2" in result[1]
+
+
+# ---------------------------------------------------------------------------
+# _sample_prompt_ids tests
+# ---------------------------------------------------------------------------
+
+
+class TestSamplePromptIds:
+    def test_returns_all_when_k_ge_pool(self) -> None:
+        pool = [mx.array([1, 2]), mx.array([3, 4]), mx.array([5, 6])]
+        result = _sample_prompt_ids(pool, 5)
+        assert result is pool
+
+    def test_returns_all_when_k_eq_pool(self) -> None:
+        pool = [mx.array([1, 2]), mx.array([3, 4])]
+        result = _sample_prompt_ids(pool, 2)
+        assert result is pool
+
+    def test_returns_k_elements(self) -> None:
+        pool = [mx.array([i]) for i in range(10)]
+        result = _sample_prompt_ids(pool, 3)
+        assert len(result) == 3
+        # All returned items come from the pool
+        for item in result:
+            assert any(
+                item.tolist() == p.tolist() for p in pool
+            )
+
+    def test_no_duplicates(self) -> None:
+        pool = [mx.array([i]) for i in range(10)]
+        result = _sample_prompt_ids(pool, 5)
+        ids = [tuple(r.tolist()) for r in result]
+        assert len(set(ids)) == 5
+
+
+# ---------------------------------------------------------------------------
+# Config defaults for new fields
+# ---------------------------------------------------------------------------
+
+
+class TestSoftPromptConfigNewFields:
+    def test_prompt_pool_size_default_none(self) -> None:
+        cfg = SoftPromptConfig()
+        assert cfg.prompt_pool_size is None
+
+    def test_beam_width_default_one(self) -> None:
+        cfg = SoftPromptConfig()
+        assert cfg.beam_width == 1
+
+    def test_prompt_pool_size_custom(self) -> None:
+        cfg = SoftPromptConfig(prompt_pool_size=200)
+        assert cfg.prompt_pool_size == 200
+
+    def test_beam_width_custom(self) -> None:
+        cfg = SoftPromptConfig(beam_width=4)
+        assert cfg.beam_width == 4
+
+
+# ---------------------------------------------------------------------------
+# GCG beam search tests
+# ---------------------------------------------------------------------------
+
+
+class TestGcgBeamSearch:
+    def test_beam_width_1_is_greedy(self) -> None:
+        """beam_width=1 should produce valid results (fast path)."""
+        model = MockCausalLM(VOCAB_SIZE, D_MODEL, NUM_LAYERS, NUM_HEADS)
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        config = SoftPromptConfig(
+            mode="gcg",
+            n_tokens=4,
+            n_steps=2,
+            batch_size=4,
+            top_k=8,
+            beam_width=1,
+        )
+        result = _gcg_attack(model, tokenizer, ["Hello"], config, None)
+        assert result.mode == "gcg"
+        assert result.token_ids is not None
+        assert len(result.token_ids) == 4
+
+    def test_beam_width_gt1_produces_result(self) -> None:
+        """beam_width>1 should produce valid results with beam search."""
+        model = MockCausalLM(VOCAB_SIZE, D_MODEL, NUM_LAYERS, NUM_HEADS)
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        config = SoftPromptConfig(
+            mode="gcg",
+            n_tokens=4,
+            n_steps=2,
+            batch_size=8,
+            top_k=8,
+            beam_width=3,
+        )
+        result = _gcg_attack(model, tokenizer, ["Hello"], config, None)
+        assert result.mode == "gcg"
+        assert result.token_ids is not None
+        assert len(result.token_ids) == 4
+
+
+# ---------------------------------------------------------------------------
+# Defense-aware loss tests
+# ---------------------------------------------------------------------------
+
+
+class TestDefenseAwarePenalty:
+    def test_zero_weight_no_penalty(self) -> None:
+        """defense_aware_weight=0 means no penalty contribution."""
+        from vauban.softprompt._loss import _compute_defense_aware_penalty
+
+        h = mx.ones((1, 4, D_MODEL))
+        direction = mx.ones((D_MODEL,))
+        result = _compute_defense_aware_penalty(
+            h, layer_idx=2, direction=direction,
+            sic_layer=2, sic_threshold=0.5,
+            cast_layers=[2], cast_threshold=0.5,
+        )
+        # The function itself returns a value; the weight=0 gating is external
+        assert float(result.item()) >= 0.0
+
+    def test_no_direction_returns_zero(self) -> None:
+        """No direction → zero penalty."""
+        from vauban.softprompt._loss import _compute_defense_aware_penalty
+
+        h = mx.ones((1, 4, D_MODEL))
+        result = _compute_defense_aware_penalty(
+            h, layer_idx=2, direction=None,
+            sic_layer=2, sic_threshold=0.5,
+            cast_layers=[2], cast_threshold=0.5,
+        )
+        assert float(result.item()) == 0.0
+
+    def test_sic_layer_mismatch_no_penalty(self) -> None:
+        """Wrong layer → no SIC penalty."""
+        from vauban.softprompt._loss import _compute_defense_aware_penalty
+
+        h = mx.ones((1, 4, D_MODEL))
+        direction = mx.ones((D_MODEL,))
+        result = _compute_defense_aware_penalty(
+            h, layer_idx=5, direction=direction,
+            sic_layer=2, sic_threshold=0.5,
+            cast_layers=None, cast_threshold=0.5,
+        )
+        assert float(result.item()) == 0.0
+
+    def test_defense_aware_config_defaults(self) -> None:
+        """New config fields have correct defaults."""
+        cfg = SoftPromptConfig()
+        assert cfg.defense_aware_weight == 0.0
+        assert cfg.defense_eval_alpha_tiers is None
+
+    def test_defense_aware_weight_custom(self) -> None:
+        """defense_aware_weight can be set."""
+        cfg = SoftPromptConfig(defense_aware_weight=0.5)
+        assert cfg.defense_aware_weight == 0.5
+
+    def test_alpha_tiers_custom(self) -> None:
+        """defense_eval_alpha_tiers can be set."""
+        tiers = [(0.3, 1.0), (0.6, 2.0)]
+        cfg = SoftPromptConfig(defense_eval_alpha_tiers=tiers)
+        assert cfg.defense_eval_alpha_tiers == tiers
+
+
+class TestGanRoundTransferResults:
+    def test_gan_round_result_transfer_results_default(self) -> None:
+        """GanRoundResult.transfer_results defaults to empty list."""
+        from vauban.types import GanRoundResult
+
+        # Create a minimal attack result
+        attack = SoftPromptResult(
+            mode="gcg", success_rate=0.5, final_loss=1.0,
+            loss_history=[1.0], n_steps=1, n_tokens=4,
+            embeddings=None, token_ids=[1, 2, 3, 4],
+            token_text="test", eval_responses=["resp"],
+        )
+        rr = GanRoundResult(
+            round_index=0, attack_result=attack,
+            defense_result=None, attacker_won=False,
+            config_snapshot={},
+        )
+        assert rr.transfer_results == []
+
+    def test_gan_round_result_to_dict_includes_transfer(self) -> None:
+        """to_dict should include transfer_results."""
+        from vauban.types import GanRoundResult, TransferEvalResult
+
+        attack = SoftPromptResult(
+            mode="gcg", success_rate=0.5, final_loss=1.0,
+            loss_history=[1.0], n_steps=1, n_tokens=4,
+            embeddings=None, token_ids=[1, 2, 3, 4],
+            token_text="test", eval_responses=["resp"],
+        )
+        tr = TransferEvalResult(
+            model_id="test-model", success_rate=0.8,
+            eval_responses=["ok"],
+        )
+        rr = GanRoundResult(
+            round_index=0, attack_result=attack,
+            defense_result=None, attacker_won=False,
+            config_snapshot={}, transfer_results=[tr],
+        )
+        d = rr.to_dict()
+        assert "transfer_results" in d
+        assert len(d["transfer_results"]) == 1  # type: ignore[arg-type]
+
+
+class TestEscalateDefenseAlphaTiers:
+    def test_escalate_scales_existing_tiers(self) -> None:
+        """Existing tiers should have alphas scaled by multiplier."""
+        from vauban.softprompt._gan import _escalate_defense
+
+        cfg = SoftPromptConfig(
+            defense_eval_alpha=1.0,
+            defense_eval_threshold=0.5,
+            defense_eval_alpha_tiers=[(0.3, 1.0), (0.6, 2.0)],
+            gan_defense_alpha_multiplier=2.0,
+        )
+        new = _escalate_defense(cfg)
+        assert new.defense_eval_alpha_tiers is not None
+        assert len(new.defense_eval_alpha_tiers) == 2
+        assert new.defense_eval_alpha_tiers[0] == (0.3, 2.0)
+        assert new.defense_eval_alpha_tiers[1] == (0.6, 4.0)
+
+    def test_escalate_auto_generates_tiers_from_flat(self) -> None:
+        """Without tiers, escalation auto-generates 3 TRYLOCK-style tiers."""
+        from vauban.softprompt._gan import _escalate_defense
+
+        cfg = SoftPromptConfig(
+            defense_eval_alpha=2.0,
+            defense_eval_threshold=1.0,
+            defense_eval_alpha_tiers=None,
+            gan_defense_alpha_multiplier=1.5,
+        )
+        new = _escalate_defense(cfg)
+        assert new.defense_eval_alpha_tiers is not None
+        assert len(new.defense_eval_alpha_tiers) == 3
+        # Thresholds: 0.5, 1.0, 1.5  Alphas: 1.0, 2.0, 3.0
+        assert new.defense_eval_alpha_tiers[0] == (0.5, 1.0)
+        assert new.defense_eval_alpha_tiers[1] == (1.0, 2.0)
+        assert new.defense_eval_alpha_tiers[2] == (1.5, 3.0)
+
+    def test_escalate_no_auto_gen_when_threshold_zero(self) -> None:
+        """No auto-generation when threshold=0 (would produce degenerate tiers)."""
+        from vauban.softprompt._gan import _escalate_defense
+
+        cfg = SoftPromptConfig(
+            defense_eval_alpha=2.0,
+            defense_eval_threshold=0.0,
+            defense_eval_alpha_tiers=None,
+            gan_defense_alpha_multiplier=1.5,
+        )
+        new = _escalate_defense(cfg)
+        assert new.defense_eval_alpha_tiers is None
+
+    def test_escalate_no_auto_gen_when_alpha_zero(self) -> None:
+        """No auto-generation when alpha=0."""
+        from vauban.softprompt._gan import _escalate_defense
+
+        cfg = SoftPromptConfig(
+            defense_eval_alpha=0.0,
+            defense_eval_threshold=0.5,
+            defense_eval_alpha_tiers=None,
+            gan_defense_alpha_multiplier=1.5,
+        )
+        new = _escalate_defense(cfg)
+        assert new.defense_eval_alpha_tiers is None
+
+
+class TestDefenseAwarePenaltyDirections:
+    """Test SIC/CAST penalty direction and combined behavior."""
+
+    def test_sic_penalty_when_proj_below_threshold(self) -> None:
+        """SIC penalty activates when projection < threshold."""
+        from vauban.softprompt._loss import _compute_defense_aware_penalty
+
+        # Small hidden state → small projection → below threshold
+        h = mx.ones((1, 4, D_MODEL)) * 0.01
+        direction = mx.ones((D_MODEL,)) / (D_MODEL ** 0.5)
+        result = _compute_defense_aware_penalty(
+            h, layer_idx=2, direction=direction,
+            sic_layer=2, sic_threshold=10.0,
+            cast_layers=None, cast_threshold=0.0,
+        )
+        assert float(result.item()) > 0.0
+
+    def test_sic_no_penalty_when_proj_above_threshold(self) -> None:
+        """SIC penalty is zero when projection >= threshold."""
+        from vauban.softprompt._loss import _compute_defense_aware_penalty
+
+        # Large hidden state → large projection → above threshold
+        h = mx.ones((1, 4, D_MODEL)) * 10.0
+        direction = mx.ones((D_MODEL,)) / (D_MODEL ** 0.5)
+        result = _compute_defense_aware_penalty(
+            h, layer_idx=2, direction=direction,
+            sic_layer=2, sic_threshold=0.01,
+            cast_layers=None, cast_threshold=0.0,
+        )
+        assert float(result.item()) == 0.0
+
+    def test_cast_penalty_when_proj_above_threshold(self) -> None:
+        """CAST penalty activates when projection > threshold."""
+        from vauban.softprompt._loss import _compute_defense_aware_penalty
+
+        # Large hidden state → large projection → above threshold
+        h = mx.ones((1, 4, D_MODEL)) * 10.0
+        direction = mx.ones((D_MODEL,)) / (D_MODEL ** 0.5)
+        result = _compute_defense_aware_penalty(
+            h, layer_idx=3, direction=direction,
+            sic_layer=None, sic_threshold=0.0,
+            cast_layers=[3], cast_threshold=0.01,
+        )
+        assert float(result.item()) > 0.0
+
+    def test_cast_no_penalty_when_proj_below_threshold(self) -> None:
+        """CAST penalty is zero when projection <= threshold."""
+        from vauban.softprompt._loss import _compute_defense_aware_penalty
+
+        # Small hidden state → small projection → below threshold
+        h = mx.ones((1, 4, D_MODEL)) * 0.01
+        direction = mx.ones((D_MODEL,)) / (D_MODEL ** 0.5)
+        result = _compute_defense_aware_penalty(
+            h, layer_idx=3, direction=direction,
+            sic_layer=None, sic_threshold=0.0,
+            cast_layers=[3], cast_threshold=10.0,
+        )
+        assert float(result.item()) == 0.0
+
+    def test_both_sic_and_cast_on_same_layer(self) -> None:
+        """Both penalties contribute when SIC and CAST are on the same layer."""
+        from vauban.softprompt._loss import _compute_defense_aware_penalty
+
+        # Use a moderate projection so it's below SIC threshold AND above CAST
+        # threshold — both penalties should fire
+        h = mx.ones((1, 4, D_MODEL))
+        direction = mx.ones((D_MODEL,)) / (D_MODEL ** 0.5)
+        # Projection = sum(1 * 1/sqrt(D)) = sqrt(D) ≈ 5.66 for D=32
+        sic_threshold = 100.0  # proj << threshold → SIC penalty
+        cast_threshold = 0.01  # proj >> threshold → CAST penalty
+
+        result = _compute_defense_aware_penalty(
+            h, layer_idx=2, direction=direction,
+            sic_layer=2, sic_threshold=sic_threshold,
+            cast_layers=[2], cast_threshold=cast_threshold,
+        )
+        # Both penalties contribute, so result > either alone
+        sic_only = _compute_defense_aware_penalty(
+            h, layer_idx=2, direction=direction,
+            sic_layer=2, sic_threshold=sic_threshold,
+            cast_layers=None, cast_threshold=0.0,
+        )
+        cast_only = _compute_defense_aware_penalty(
+            h, layer_idx=2, direction=direction,
+            sic_layer=None, sic_threshold=0.0,
+            cast_layers=[2], cast_threshold=cast_threshold,
+        )
+        assert float(result.item()) > float(sic_only.item())
+        assert float(result.item()) > float(cast_only.item())

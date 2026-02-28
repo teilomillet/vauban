@@ -1,6 +1,7 @@
 """Preprocessing and utility helpers for soft prompt attacks."""
 
 import math
+import random
 import unicodedata
 
 from vauban import _ops as ops
@@ -267,6 +268,27 @@ def _select_prompt_ids(
     return all_ids
 
 
+def _sample_prompt_ids(
+    all_ids: list[Array],
+    k: int,
+) -> list[Array]:
+    """Randomly sample k prompts per step (mini-batch SGD).
+
+    Unlike ``_select_worst_k_prompt_ids``, no extra forward pass is
+    needed — prompts are drawn uniformly at random.
+
+    Args:
+        all_ids: All pre-encoded prompt ID arrays.
+        k: Number of prompts to sample.
+
+    Returns:
+        Random subset of prompt ID arrays.
+    """
+    if k >= len(all_ids):
+        return all_ids
+    return random.sample(all_ids, k)
+
+
 def _compute_accessibility_score(final_loss: float) -> float:
     """Compute accessibility score from final loss (Nordby metric).
 
@@ -296,6 +318,11 @@ def _compute_per_prompt_losses(
     kl_ref_weight: float = 0.0,
     loss_mode: str = "targeted",
     refusal_ids: Array | None = None,
+    defense_aware_weight: float = 0.0,
+    sic_layer: int | None = None,
+    sic_threshold: float = 0.0,
+    cast_layers: list[int] | None = None,
+    cast_threshold: float = 0.0,
 ) -> list[float]:
     """Compute final loss for each prompt individually.
 
@@ -330,6 +357,8 @@ def _compute_per_prompt_losses(
                 direction_mode, direction_layers,
                 eos_token_id, eos_loss_mode, eos_loss_weight,
                 ref_model, kl_ref_weight,
+                defense_aware_weight, sic_layer, sic_threshold,
+                cast_layers, cast_threshold,
             )
         elif loss_mode == "untargeted" and refusal_ids is not None:
             loss = _compute_untargeted_loss(
@@ -339,6 +368,8 @@ def _compute_per_prompt_losses(
                 direction_mode, direction_layers,
                 eos_token_id, eos_loss_mode, eos_loss_weight,
                 ref_model, kl_ref_weight,
+                defense_aware_weight, sic_layer, sic_threshold,
+                cast_layers, cast_threshold,
             )
         else:
             loss = _compute_loss(
@@ -347,6 +378,8 @@ def _compute_per_prompt_losses(
                 direction_mode, direction_layers,
                 eos_token_id, eos_loss_mode, eos_loss_weight,
                 ref_model, kl_ref_weight,
+                defense_aware_weight, sic_layer, sic_threshold,
+                cast_layers, cast_threshold,
             )
         force_eval(loss)
         losses.append(float(loss.item()))
@@ -371,6 +404,11 @@ def _select_worst_k_prompt_ids(
     kl_ref_weight: float,
     loss_mode: str,
     refusal_ids: Array | None,
+    defense_aware_weight: float = 0.0,
+    sic_layer: int | None = None,
+    sic_threshold: float = 0.0,
+    cast_layers: list[int] | None = None,
+    cast_threshold: float = 0.0,
 ) -> list[Array]:
     """Select the top-k hardest prompts by loss (worst-k strategy).
 
@@ -407,6 +445,9 @@ def _select_worst_k_prompt_ids(
         eos_token_id, eos_loss_mode, eos_loss_weight,
         ref_model, kl_ref_weight,
         loss_mode=loss_mode, refusal_ids=refusal_ids,
+        defense_aware_weight=defense_aware_weight,
+        sic_layer=sic_layer, sic_threshold=sic_threshold,
+        cast_layers=cast_layers, cast_threshold=cast_threshold,
     )
     # Sort by loss descending, take top k
     effective_k = min(k, len(all_ids))

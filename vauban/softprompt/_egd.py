@@ -17,6 +17,7 @@ from vauban.softprompt._utils import (
     _encode_refusal_tokens,
     _encode_targets,
     _pre_encode_prompts,
+    _sample_prompt_ids,
     _select_prompt_ids,
     _select_worst_k_prompt_ids,
     _split_into_batches,
@@ -84,6 +85,13 @@ def _egd_attack(
     )
     eos_token_id: int | None = getattr(tokenizer, "eos_token_id", None)
 
+    # Pre-compute defense-aware loss config
+    da_weight = config.defense_aware_weight
+    da_sic_layer = config.defense_eval_layer
+    da_sic_threshold = config.defense_eval_threshold
+    da_cast_layers = config.defense_eval_cast_layers
+    da_cast_threshold = config.defense_eval_threshold
+
     # Initialize p on the simplex: warm-start or uniform
     if config.init_tokens is not None:
         # Warm-start: concentrate mass on init tokens
@@ -134,6 +142,13 @@ def _egd_attack(
                 eos_token_id, config.eos_loss_mode, config.eos_loss_weight,
                 ref_model, config.kl_ref_weight,
                 loss_mode=config.loss_mode, refusal_ids=refusal_ids,
+                defense_aware_weight=da_weight,
+                sic_layer=da_sic_layer, sic_threshold=da_sic_threshold,
+                cast_layers=da_cast_layers, cast_threshold=da_cast_threshold,
+            )
+        elif config.prompt_strategy == "sample":
+            selected_ids = _sample_prompt_ids(
+                all_prompt_ids, config.worst_k,
             )
         else:
             selected_ids = _select_prompt_ids(
@@ -165,6 +180,8 @@ def _egd_attack(
                             eos_token_id, config.eos_loss_mode,
                             config.eos_loss_weight,
                             ref_model, config.kl_ref_weight,
+                            da_weight, da_sic_layer, da_sic_threshold,
+                            da_cast_layers, da_cast_threshold,
                         )
                     elif (
                         config.loss_mode == "untargeted"
@@ -178,6 +195,8 @@ def _egd_attack(
                             eos_token_id, config.eos_loss_mode,
                             config.eos_loss_weight,
                             ref_model, config.kl_ref_weight,
+                            da_weight, da_sic_layer, da_sic_threshold,
+                            da_cast_layers, da_cast_threshold,
                         )
                     else:
                         total = total + _compute_loss(
@@ -188,6 +207,8 @@ def _egd_attack(
                             eos_token_id, config.eos_loss_mode,
                             config.eos_loss_weight,
                             ref_model, config.kl_ref_weight,
+                            da_weight, da_sic_layer, da_sic_threshold,
+                            da_cast_layers, da_cast_threshold,
                         )
                 return total / len(_sel)
 
@@ -263,6 +284,9 @@ def _egd_attack(
         eos_token_id, config.eos_loss_mode, config.eos_loss_weight,
         ref_model, config.kl_ref_weight,
         loss_mode=config.loss_mode, refusal_ids=refusal_ids,
+        defense_aware_weight=da_weight,
+        sic_layer=da_sic_layer, sic_threshold=da_sic_threshold,
+        cast_layers=da_cast_layers, cast_threshold=da_cast_threshold,
     )
     final_loss = best_loss
     accessibility_score = _compute_accessibility_score(final_loss)

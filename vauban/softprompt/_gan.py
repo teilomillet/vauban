@@ -14,7 +14,9 @@ conversation history prepended as hard token IDs.
 
 from dataclasses import replace
 
+from vauban import _ops as ops
 from vauban._array import Array
+from vauban._forward import force_eval
 from vauban.softprompt._continuous import _continuous_attack
 from vauban.softprompt._defense_eval import (
     evaluate_against_defenses,
@@ -22,13 +24,18 @@ from vauban.softprompt._defense_eval import (
 )
 from vauban.softprompt._egd import _egd_attack
 from vauban.softprompt._gcg import _gcg_attack
-from vauban.softprompt._utils import _pre_encode_prompts_with_history
+from vauban.softprompt._generation import _evaluate_attack
+from vauban.softprompt._utils import (
+    _pre_encode_prompts_with_history,
+    _project_to_tokens,
+)
 from vauban.types import (
     CausalLM,
     GanRoundResult,
     SoftPromptConfig,
     SoftPromptResult,
     Tokenizer,
+    TransferEvalResult,
 )
 
 
@@ -118,6 +125,7 @@ def gan_loop(
     config: SoftPromptConfig,
     direction: Array | None,
     ref_model: CausalLM | None = None,
+    transfer_models: list[tuple[str, CausalLM, Tokenizer]] | None = None,
 ) -> SoftPromptResult:
     """Run an iterative GAN-style attack-defense loop.
 
@@ -239,10 +247,48 @@ def gan_loop(
             if len(history) > max_messages:
                 history = history[-max_messages:]
 
+        # --- Transfer evaluation ---
+        round_transfer_results: list[TransferEvalResult] = []
+        mean_transfer = 0.0
+        if transfer_models and (
+            attack_result.embeddings is not None
+            or attack_result.token_ids is not None
+        ):
+            # Resolve token IDs for GCG/EGD (no embeddings), or project
+            # continuous embeddings to discrete tokens for transfer
+            if attack_result.token_ids is not None:
+                transfer_token_ids = attack_result.token_ids
+            else:
+                transfer_token_ids = _project_to_tokens(
+                    attack_result.embeddings,  # type: ignore[arg-type]
+                    model.model.embed_tokens.weight,
+                )
+
+            for t_name, t_model, t_tok in transfer_models:
+                t_token_array = ops.array(transfer_token_ids)[None, :]
+                t_embeds = t_model.model.embed_tokens(t_token_array)
+                force_eval(t_embeds)
+                t_sr, t_resps = _evaluate_attack(
+                    t_model, t_tok, round_prompts,
+                    t_embeds, current_config,
+                )
+                round_transfer_results.append(
+                    TransferEvalResult(
+                        model_id=t_name,
+                        success_rate=t_sr,
+                        eval_responses=t_resps,
+                    ),
+                )
+            mean_transfer = (
+                sum(r.success_rate for r in round_transfer_results)
+                / len(round_transfer_results)
+            )
+
         # Track bypass score: higher = better for attacker
         bypass_score = (
             attack_result.success_rate
             + (defense_result.sic_bypass_rate if defense_result else 0.0)
+            + mean_transfer
         )
 
         # Config snapshot for this round
@@ -266,6 +312,7 @@ def gan_loop(
             defense_result=defense_result,
             attacker_won=attacker_won,
             config_snapshot=snapshot,
+            transfer_results=round_transfer_results,
         )
         rounds.append(round_result)
 
@@ -306,6 +353,8 @@ def _escalate_defense(
 
     Increases CAST alpha, lowers detection threshold, and adds SIC
     iterations — mirrors ``_escalate_config`` for the defender side.
+    When alpha_tiers exist, scales their alphas; otherwise auto-generates
+    TRYLOCK-style tiers from flat alpha on first escalation.
 
     Args:
         config: Current config to escalate.
@@ -323,11 +372,32 @@ def _escalate_defense(
         + config.gan_defense_sic_iteration_escalation
     )
 
+    # Escalate alpha tiers
+    new_tiers = config.defense_eval_alpha_tiers
+    if new_tiers is not None:
+        # Scale existing tier alphas by multiplier
+        new_tiers = [
+            (threshold, alpha * config.gan_defense_alpha_multiplier)
+            for threshold, alpha in new_tiers
+        ]
+    elif config.defense_eval_alpha > 0 and config.defense_eval_threshold > 0:
+        # Auto-generate 3 TRYLOCK-style tiers from flat alpha.
+        # Requires a positive threshold; zero threshold would produce
+        # degenerate tiers with identical thresholds of 0.0.
+        base = config.defense_eval_alpha
+        thresh = config.defense_eval_threshold
+        new_tiers = [
+            (thresh * 0.5, base * 0.5),
+            (thresh, base),
+            (thresh * 1.5, base * 1.5),
+        ]
+
     return replace(
         config,
         defense_eval_alpha=new_alpha,
         defense_eval_threshold=new_threshold,
         defense_eval_sic_max_iterations=new_sic_iters,
+        defense_eval_alpha_tiers=new_tiers,
     )
 
 

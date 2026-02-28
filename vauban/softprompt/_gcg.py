@@ -18,6 +18,7 @@ from vauban.softprompt._utils import (
     _encode_refusal_tokens,
     _encode_targets,
     _pre_encode_prompts,
+    _sample_prompt_ids,
     _select_prompt_ids,
     _select_worst_k_prompt_ids,
     _split_into_batches,
@@ -74,6 +75,13 @@ def _gcg_attack(
     )
     eos_token_id: int | None = getattr(tokenizer, "eos_token_id", None)
 
+    # Pre-compute defense-aware loss config
+    da_weight = config.defense_aware_weight
+    da_sic_layer = config.defense_eval_layer
+    da_sic_threshold = config.defense_eval_threshold
+    da_cast_layers = config.defense_eval_cast_layers
+    da_cast_threshold = config.defense_eval_threshold
+
     # Build list of allowed token indices for constrained random init
     if vocab_mask is not None:
         force_eval(vocab_mask)
@@ -88,6 +96,62 @@ def _gcg_attack(
     all_loss_history: list[float] = []
     total_steps = 0
     early_stopped = False
+    beam_width = config.beam_width
+
+    # --- Evaluate a single candidate's average loss ---
+    def _eval_cand(
+        cand_ids: list[int],
+        sel: list[Array],
+    ) -> float:
+        cand_array = ops.array(cand_ids)[None, :]
+        cand_embeds = transformer.embed_tokens(cand_array)
+        cand_total = ops.array(0.0)
+        for pid in sel:
+            if (
+                config.loss_mode == "defensive"
+                and refusal_ids is not None
+            ):
+                cand_total = cand_total + _compute_defensive_loss(
+                    model, cand_embeds, pid,
+                    config.n_tokens, refusal_ids,
+                    direction, config.direction_weight,
+                    config.direction_mode, direction_layers_set,
+                    eos_token_id, config.eos_loss_mode,
+                    config.eos_loss_weight,
+                    ref_model, config.kl_ref_weight,
+                    da_weight, da_sic_layer, da_sic_threshold,
+                    da_cast_layers, da_cast_threshold,
+                )
+            elif (
+                config.loss_mode == "untargeted"
+                and refusal_ids is not None
+            ):
+                cand_total = cand_total + _compute_untargeted_loss(
+                    model, cand_embeds, pid,
+                    config.n_tokens, refusal_ids,
+                    direction, config.direction_weight,
+                    config.direction_mode, direction_layers_set,
+                    eos_token_id, config.eos_loss_mode,
+                    config.eos_loss_weight,
+                    ref_model, config.kl_ref_weight,
+                    da_weight, da_sic_layer, da_sic_threshold,
+                    da_cast_layers, da_cast_threshold,
+                )
+            else:
+                cand_total = cand_total + _compute_loss(
+                    model, cand_embeds, pid, target_ids,
+                    config.n_tokens, direction,
+                    config.direction_weight,
+                    config.direction_mode, direction_layers_set,
+                    eos_token_id, config.eos_loss_mode,
+                    config.eos_loss_weight,
+                    ref_model, config.kl_ref_weight,
+                    da_weight, da_sic_layer, da_sic_threshold,
+                    da_cast_layers, da_cast_threshold,
+                )
+        cand_avg = cand_total / len(sel)
+        force_eval(cand_avg)
+        return float(cand_avg.item())
 
     for _restart in range(config.n_restarts):
         # Initialize: warm-start from init_tokens or random
@@ -109,6 +173,18 @@ def _gcg_attack(
         restart_best_loss = float("inf")
         steps_without_improvement = 0
 
+        # Initialize beam for beam search (beam_width > 1)
+        beam: list[list[int]] = [list(current_ids)]
+        beam_losses_tracked: list[float] = [float("inf")]
+        if beam_width > 1:
+            for _ in range(beam_width - 1):
+                member = [
+                    random.choice(allowed_indices)
+                    for _ in range(config.n_tokens)
+                ]
+                beam.append(member)
+                beam_losses_tracked.append(float("inf"))
+
         for step in range(config.n_steps):
             total_steps += 1
 
@@ -128,6 +204,13 @@ def _gcg_attack(
                     config.eos_loss_weight,
                     ref_model, config.kl_ref_weight,
                     loss_mode=config.loss_mode, refusal_ids=refusal_ids,
+                    defense_aware_weight=da_weight,
+                    sic_layer=da_sic_layer, sic_threshold=da_sic_threshold,
+                    cast_layers=da_cast_layers, cast_threshold=da_cast_threshold,
+                )
+            elif config.prompt_strategy == "sample":
+                selected_ids = _sample_prompt_ids(
+                    all_prompt_ids, config.worst_k,
                 )
             else:
                 selected_ids = _select_prompt_ids(
@@ -160,6 +243,8 @@ def _gcg_attack(
                                 eos_token_id, config.eos_loss_mode,
                                 config.eos_loss_weight,
                                 ref_model, config.kl_ref_weight,
+                                da_weight, da_sic_layer, da_sic_threshold,
+                                da_cast_layers, da_cast_threshold,
                             )
                         elif (
                             config.loss_mode == "untargeted"
@@ -173,6 +258,8 @@ def _gcg_attack(
                                 eos_token_id, config.eos_loss_mode,
                                 config.eos_loss_weight,
                                 ref_model, config.kl_ref_weight,
+                                da_weight, da_sic_layer, da_sic_threshold,
+                                da_cast_layers, da_cast_threshold,
                             )
                         else:
                             total = total + _compute_loss(
@@ -183,6 +270,8 @@ def _gcg_attack(
                                 eos_token_id, config.eos_loss_mode,
                                 config.eos_loss_weight,
                                 ref_model, config.kl_ref_weight,
+                                da_weight, da_sic_layer, da_sic_threshold,
+                                da_cast_layers, da_cast_threshold,
                             )
                     return total / len(_sel)
 
@@ -226,66 +315,74 @@ def _gcg_attack(
             top_indices = sorted_indices[:, :effective_k]  # (n_tokens, top_k)
             force_eval(top_indices)
 
-            # Generate batch_size candidates
-            candidates: list[list[int]] = []
-            for _ in range(config.batch_size):
-                pos = random.randint(0, config.n_tokens - 1)
-                tok_idx = random.randint(0, effective_k - 1)
-                new_token = int(top_indices[pos, tok_idx].item())
-                candidate = list(current_ids)
-                candidate[pos] = new_token
-                candidates.append(candidate)
+            if beam_width <= 1:
+                # Fast path: exact greedy behavior (no regression)
+                candidates: list[list[int]] = []
+                for _ in range(config.batch_size):
+                    pos = random.randint(0, config.n_tokens - 1)
+                    tok_idx = random.randint(0, effective_k - 1)
+                    new_token = int(top_indices[pos, tok_idx].item())
+                    candidate = list(current_ids)
+                    candidate[pos] = new_token
+                    candidates.append(candidate)
 
-            # Evaluate all candidates (averaged across selected prompts)
-            candidate_losses: list[float] = []
-            for candidate in candidates:
-                cand_array = ops.array(candidate)[None, :]
-                cand_embeds = transformer.embed_tokens(cand_array)
-                cand_total = ops.array(0.0)
-                for pid in selected_ids:
-                    if (
-                        config.loss_mode == "defensive"
-                        and refusal_ids is not None
-                    ):
-                        cand_total = cand_total + _compute_defensive_loss(
-                            model, cand_embeds, pid,
-                            config.n_tokens, refusal_ids,
-                            direction, config.direction_weight,
-                            config.direction_mode, direction_layers_set,
-                            eos_token_id, config.eos_loss_mode,
-                            config.eos_loss_weight,
-                            ref_model, config.kl_ref_weight,
-                        )
-                    elif (
-                        config.loss_mode == "untargeted"
-                        and refusal_ids is not None
-                    ):
-                        cand_total = cand_total + _compute_untargeted_loss(
-                            model, cand_embeds, pid,
-                            config.n_tokens, refusal_ids,
-                            direction, config.direction_weight,
-                            config.direction_mode, direction_layers_set,
-                            eos_token_id, config.eos_loss_mode,
-                            config.eos_loss_weight,
-                            ref_model, config.kl_ref_weight,
-                        )
-                    else:
-                        cand_total = cand_total + _compute_loss(
-                            model, cand_embeds, pid, target_ids,
-                            config.n_tokens, direction,
-                            config.direction_weight,
-                            config.direction_mode, direction_layers_set,
-                            eos_token_id, config.eos_loss_mode,
-                            config.eos_loss_weight,
-                            ref_model, config.kl_ref_weight,
-                        )
-                cand_avg = cand_total / len(selected_ids)
-                force_eval(cand_avg)
-                candidate_losses.append(float(cand_avg.item()))
+                candidate_losses = [
+                    _eval_cand(c, selected_ids)
+                    for c in candidates
+                ]
 
-            best_candidate_idx = candidate_losses.index(min(candidate_losses))
-            if candidate_losses[best_candidate_idx] < current_loss:
-                current_ids = candidates[best_candidate_idx]
+                best_candidate_idx = candidate_losses.index(
+                    min(candidate_losses),
+                )
+                if candidate_losses[best_candidate_idx] < current_loss:
+                    current_ids = candidates[best_candidate_idx]
+            else:
+                # Beam search: distribute candidates across beam members
+                candidates_per_member = max(
+                    1, config.batch_size // beam_width,
+                )
+                candidates = []
+                for member in beam:
+                    for _ in range(candidates_per_member):
+                        pos = random.randint(0, config.n_tokens - 1)
+                        tok_idx = random.randint(0, effective_k - 1)
+                        candidate = list(member)
+                        candidate[pos] = int(
+                            top_indices[pos, tok_idx].item(),
+                        )
+                        candidates.append(candidate)
+
+                candidate_losses = [
+                    _eval_cand(c, selected_ids)
+                    for c in candidates
+                ]
+
+                # Pool candidates + current beam, deduplicate,
+                # keep top beam_width
+                pool: list[tuple[list[int], float]] = list(
+                    zip(candidates, candidate_losses, strict=True),
+                )
+                for i, member in enumerate(beam):
+                    pool.append((member, beam_losses_tracked[i]))
+                seen: set[tuple[int, ...]] = set()
+                unique: list[tuple[list[int], float]] = []
+                for ids, loss in pool:
+                    key = tuple(ids)
+                    if key not in seen:
+                        seen.add(key)
+                        unique.append((ids, loss))
+                unique.sort(key=lambda x: x[1])
+                beam = [ids for ids, _ in unique[:beam_width]]
+                beam_losses_tracked = [
+                    loss for _, loss in unique[:beam_width]
+                ]
+                current_ids = beam[0]
+
+                # Update restart best from beam selection
+                if beam_losses_tracked[0] < restart_best_loss:
+                    restart_best_loss = beam_losses_tracked[0]
+                    restart_best_ids = list(beam[0])
+                    steps_without_improvement = 0
 
         # Update overall best across restarts
         if restart_best_loss < overall_best_loss:
@@ -306,6 +403,9 @@ def _gcg_attack(
         eos_token_id, config.eos_loss_mode, config.eos_loss_weight,
         ref_model, config.kl_ref_weight,
         loss_mode=config.loss_mode, refusal_ids=refusal_ids,
+        defense_aware_weight=da_weight,
+        sic_layer=da_sic_layer, sic_threshold=da_sic_threshold,
+        cast_layers=da_cast_layers, cast_threshold=da_cast_threshold,
     )
     final_loss = overall_best_loss
     accessibility_score = _compute_accessibility_score(final_loss)

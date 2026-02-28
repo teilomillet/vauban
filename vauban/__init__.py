@@ -859,13 +859,32 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
     if config.eval.prompts_path is not None:
         sp_prompts: list[str] = load_prompts(config.eval.prompts_path)
     else:
-        sp_prompts = context.harmful[:config.eval.num_prompts]
+        pool_size = (
+            config.softprompt.prompt_pool_size
+            if config.softprompt.prompt_pool_size is not None
+            else config.eval.num_prompts
+        )
+        sp_prompts = context.harmful[:pool_size]
 
     ref_model: object | None = None
     if config.softprompt.ref_model is not None:
         ref_model, _ = load_model(config.softprompt.ref_model)
         if is_quantized(ref_model):
             dequantize_model(ref_model)
+
+    # Pre-load transfer models once (reused in GAN loop and/or post-hoc eval)
+    transfer_models_loaded: (
+        list[tuple[str, object, object]] | None
+    ) = None
+    if config.softprompt.transfer_models:
+        transfer_models_loaded = []
+        for transfer_model_id in config.softprompt.transfer_models:
+            t_model, t_tok = load_model(transfer_model_id)
+            if is_quantized(t_model):
+                dequantize_model(t_model)
+            transfer_models_loaded.append(
+                (transfer_model_id, t_model, t_tok),
+            )
 
     sp_result = softprompt_attack(
         model,
@@ -874,9 +893,14 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
         config.softprompt,
         direction_vec,
         ref_model,
+        transfer_models=transfer_models_loaded,  # type: ignore[arg-type]
     )
 
-    if config.softprompt.transfer_models:
+    # Post-hoc transfer eval (skip if GAN loop already did per-round eval)
+    if (
+        transfer_models_loaded
+        and not config.softprompt.gan_rounds
+    ):
         from vauban.softprompt import _evaluate_attack
 
         if sp_result.token_ids is not None:
@@ -890,23 +914,22 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
             transfer_token_ids = []
 
         transfer_results: list[TransferEvalResult] = []
-        for transfer_model_id in config.softprompt.transfer_models:
-            t_model, _ = load_model(transfer_model_id)
-            if is_quantized(t_model):
-                dequantize_model(t_model)
+        for t_name, t_model, t_tok in transfer_models_loaded:
             t_token_array = ops.array(transfer_token_ids)[None, :]
-            t_embeds = _get_transformer(t_model).embed_tokens(t_token_array)
+            t_embeds = _get_transformer(t_model).embed_tokens(  # type: ignore[union-attr]
+                t_token_array,
+            )
             force_eval(t_embeds)
             t_success, t_responses = _evaluate_attack(
                 t_model,
-                tokenizer,
+                t_tok,
                 sp_prompts,
                 t_embeds,
                 config.softprompt,
             )
             transfer_results.append(
                 TransferEvalResult(
-                    model_id=transfer_model_id,
+                    model_id=t_name,
                     success_rate=t_success,
                     eval_responses=t_responses,
                 ),

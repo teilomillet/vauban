@@ -2673,3 +2673,230 @@ class TestGanConfigParsing:
             ValueError, match="gan_defense_sic_iteration_escalation",
         ):
             load_config(toml_file)
+
+    # -- prompt_pool_size --
+
+    def test_softprompt_prompt_pool_size_default_none(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.prompt_pool_size is None
+
+    def test_softprompt_prompt_pool_size_parsed(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\nprompt_pool_size = 200\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.prompt_pool_size == 200
+
+    def test_softprompt_prompt_pool_size_zero_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\nprompt_pool_size = 0\n"
+        )
+        with pytest.raises(ValueError, match="prompt_pool_size"):
+            load_config(toml_file)
+
+    def test_softprompt_prompt_pool_size_type_error(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\nprompt_pool_size = "big"\n'
+        )
+        with pytest.raises(TypeError, match="prompt_pool_size"):
+            load_config(toml_file)
+
+    # -- beam_width --
+
+    def test_softprompt_beam_width_default(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.beam_width == 1
+
+    def test_softprompt_beam_width_parsed(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\nbeam_width = 4\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.beam_width == 4
+
+    def test_softprompt_beam_width_zero_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\nbeam_width = 0\n"
+        )
+        with pytest.raises(ValueError, match="beam_width"):
+            load_config(toml_file)
+
+    def test_softprompt_beam_width_type_error(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\nbeam_width = "wide"\n'
+        )
+        with pytest.raises(TypeError, match="beam_width"):
+            load_config(toml_file)
+
+    # -- prompt_strategy = "sample" --
+
+    def test_softprompt_prompt_strategy_sample(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\nprompt_strategy = "sample"\n'
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.prompt_strategy == "sample"
+
+    # -- defense_aware_weight --
+
+    def test_softprompt_defense_aware_weight_default(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.defense_aware_weight == 0.0
+
+    def test_softprompt_defense_aware_weight_parsed(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ndefense_aware_weight = 0.5\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.defense_aware_weight == 0.5
+
+    def test_softprompt_defense_aware_weight_negative_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ndefense_aware_weight = -0.1\n"
+        )
+        with pytest.raises(ValueError, match="defense_aware_weight"):
+            load_config(toml_file)
+
+    def test_softprompt_defense_aware_weight_type_error(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\ndefense_aware_weight = "high"\n'
+        )
+        with pytest.raises(TypeError, match="defense_aware_weight"):
+            load_config(toml_file)
+
+    # -- defense_eval_alpha_tiers --
+
+    def test_softprompt_alpha_tiers_default_none(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.defense_eval_alpha_tiers is None
+
+    def test_softprompt_alpha_tiers_parsed(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+            "defense_eval_alpha_tiers = [[0.3, 1.0], [0.6, 2.0]]\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.defense_eval_alpha_tiers == [
+            (0.3, 1.0), (0.6, 2.0),
+        ]
+
+    def test_softprompt_alpha_tiers_bad_pair_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+            "defense_eval_alpha_tiers = [[0.3]]\n"
+        )
+        with pytest.raises(ValueError, match="defense_eval_alpha_tiers"):
+            load_config(toml_file)
+
+    def test_softprompt_alpha_tiers_type_error(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\ndefense_eval_alpha_tiers = "bad"\n'
+        )
+        with pytest.raises(TypeError, match="defense_eval_alpha_tiers"):
+            load_config(toml_file)

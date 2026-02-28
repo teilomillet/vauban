@@ -541,6 +541,10 @@ class SoftPromptConfig:
     # --- Multi-turn GAN ---
     gan_multiturn: bool = False  # enable multi-turn conversation threading
     gan_multiturn_max_turns: int = 10  # max conversation turns to keep in history
+    prompt_pool_size: int | None = None  # override eval.num_prompts for pool size
+    beam_width: int = 1  # GCG beam search population (1 = greedy)
+    defense_aware_weight: float = 0.0  # defense evasion penalty (0 = off)
+    defense_eval_alpha_tiers: list[tuple[float, float]] | None = None  # TRYLOCK
     init_tokens: list[int] | None = None  # warm-start token IDs (GCG/EGD)
 
 
@@ -587,6 +591,7 @@ class GanRoundResult:
     defense_result: DefenseEvalResult | None
     attacker_won: bool  # suffix bypassed both SIC and CAST
     config_snapshot: dict[str, object]  # key params used this round
+    transfer_results: list[TransferEvalResult] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
         """Serialize to dict."""
@@ -600,6 +605,14 @@ class GanRoundResult:
             ),
             "attacker_won": self.attacker_won,
             "config_snapshot": self.config_snapshot,
+            "transfer_results": [
+                {
+                    "model_id": tr.model_id,
+                    "success_rate": tr.success_rate,
+                    "eval_responses": tr.eval_responses,
+                }
+                for tr in self.transfer_results
+            ],
         }
 
 

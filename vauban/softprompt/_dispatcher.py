@@ -59,6 +59,7 @@ def softprompt_attack(
     config: SoftPromptConfig,
     direction: Array | None = None,
     ref_model: CausalLM | None = None,
+    transfer_models: list[tuple[str, CausalLM, Tokenizer]] | None = None,
 ) -> SoftPromptResult:
     """Run a soft prompt attack against a model.
 
@@ -88,6 +89,7 @@ def softprompt_attack(
     if config.gan_rounds > 0:
         return gan_loop(
             model, tokenizer, prompts, config, direction, ref_model,
+            transfer_models=transfer_models,
         )
 
     # Single attack
