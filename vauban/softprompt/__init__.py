@@ -2,7 +2,10 @@
 
 from vauban._forward import make_cache as _make_cache
 from vauban.softprompt._continuous import _continuous_attack
-from vauban.softprompt._defense_eval import evaluate_against_defenses
+from vauban.softprompt._defense_eval import (
+    evaluate_against_defenses,
+    evaluate_against_defenses_multiturn,
+)
 from vauban.softprompt._dispatcher import softprompt_attack
 from vauban.softprompt._egd import _egd_attack
 from vauban.softprompt._gan import gan_loop
@@ -10,6 +13,7 @@ from vauban.softprompt._gcg import _gcg_attack
 from vauban.softprompt._generation import (
     _decode_step,
     _evaluate_attack,
+    _evaluate_attack_with_history,
     _prefill_with_cache,
 )
 from vauban.softprompt._loss import (
@@ -28,6 +32,7 @@ from vauban.softprompt._utils import (
     _encode_targets,
     _forward_with_prefix,
     _pre_encode_prompts,
+    _pre_encode_prompts_with_history,
     _project_to_tokens,
     _select_prompt_ids,
     _select_worst_k_prompt_ids,
@@ -50,16 +55,19 @@ __all__ = [
     "_encode_refusal_tokens",
     "_encode_targets",
     "_evaluate_attack",
+    "_evaluate_attack_with_history",
     "_forward_with_prefix",
     "_gcg_attack",
     "_make_cache",
     "_pre_encode_prompts",
+    "_pre_encode_prompts_with_history",
     "_prefill_with_cache",
     "_project_to_tokens",
     "_select_prompt_ids",
     "_select_worst_k_prompt_ids",
     "_split_into_batches",
     "evaluate_against_defenses",
+    "evaluate_against_defenses_multiturn",
     "gan_loop",
     "softprompt_attack",
 ]

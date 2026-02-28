@@ -29,15 +29,18 @@ from vauban.softprompt import (
     _encode_refusal_tokens,
     _encode_targets,
     _evaluate_attack,
+    _evaluate_attack_with_history,
     _forward_with_prefix,
     _gcg_attack,
     _pre_encode_prompts,
+    _pre_encode_prompts_with_history,
     _project_to_tokens,
     _select_prompt_ids,
     _select_worst_k_prompt_ids,
     _split_into_batches,
     softprompt_attack,
 )
+from vauban.softprompt._defense_eval import _build_sic_prompts_with_history
 from vauban.types import (
     DefenseEvalResult,
     GanRoundResult,
@@ -70,6 +73,8 @@ class TestSoftPromptConfig:
         assert cfg.lr_schedule == "constant"
         assert cfg.n_restarts == 1
         assert cfg.prompt_strategy == "all"
+        assert cfg.gan_multiturn is False
+        assert cfg.gan_multiturn_max_turns == 10
 
     def test_frozen(self) -> None:
         cfg = SoftPromptConfig()
@@ -2532,3 +2537,155 @@ class TestGanConfigDefaults:
         )
         d = result.to_dict()
         assert len(d["gan_history"]) == 1  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# Multi-turn GAN tests
+# ---------------------------------------------------------------------------
+
+
+class TestMultiturnConfig:
+    """Tests for multi-turn GAN config fields."""
+
+    def test_defaults(self) -> None:
+        cfg = SoftPromptConfig()
+        assert cfg.gan_multiturn is False
+        assert cfg.gan_multiturn_max_turns == 10
+
+    def test_custom(self) -> None:
+        cfg = SoftPromptConfig(gan_multiturn=True, gan_multiturn_max_turns=5)
+        assert cfg.gan_multiturn is True
+        assert cfg.gan_multiturn_max_turns == 5
+
+    def test_frozen(self) -> None:
+        cfg = SoftPromptConfig(gan_multiturn=True)
+        with pytest.raises(AttributeError):
+            cfg.gan_multiturn = False  # type: ignore[misc]
+
+    def test_continuous_mode_rejected(self) -> None:
+        """Multi-turn requires hard tokens — continuous mode is rejected."""
+        from vauban.softprompt import gan_loop
+
+        model = MockCausalLM(D_MODEL, VOCAB_SIZE, NUM_LAYERS, NUM_HEADS)
+        tok = MockTokenizer(VOCAB_SIZE)
+        cfg = SoftPromptConfig(
+            mode="continuous",
+            gan_rounds=2,
+            gan_multiturn=True,
+            n_tokens=2,
+            n_steps=1,
+        )
+        with pytest.raises(ValueError, match="hard tokens"):
+            gan_loop(model, tok, ["test"], cfg, direction=None)
+
+
+class TestPreEncodeWithHistory:
+    """Tests for _pre_encode_prompts_with_history."""
+
+    def test_no_history_matches_baseline(self) -> None:
+        tok = MockTokenizer(VOCAB_SIZE)
+        prompts = ["Hello world"]
+        baseline = _pre_encode_prompts(tok, prompts)
+        with_history = _pre_encode_prompts_with_history(
+            tok, prompts, history=[],
+        )
+        assert len(baseline) == len(with_history)
+        assert baseline[0].shape == with_history[0].shape
+
+    def test_history_increases_length(self) -> None:
+        tok = MockTokenizer(VOCAB_SIZE)
+        prompts = ["Hello"]
+        no_hist = _pre_encode_prompts(tok, prompts)
+        history = [
+            {"role": "user", "content": "Hi there"},
+            {"role": "assistant", "content": "Hello!"},
+        ]
+        with_hist = _pre_encode_prompts_with_history(
+            tok, prompts, history=history,
+        )
+        # With history, the encoded sequence must be longer
+        assert with_hist[0].shape[1] > no_hist[0].shape[1]
+
+    def test_system_prompt_with_history(self) -> None:
+        tok = MockTokenizer(VOCAB_SIZE)
+        prompts = ["Test"]
+        history = [{"role": "user", "content": "Prev"}]
+        result = _pre_encode_prompts_with_history(
+            tok, prompts, history=history, system_prompt="Be helpful",
+        )
+        assert len(result) == 1
+        assert result[0].shape[0] == 1  # batch dim
+
+    def test_multiple_prompts(self) -> None:
+        tok = MockTokenizer(VOCAB_SIZE)
+        prompts = ["A", "B", "C"]
+        history = [
+            {"role": "user", "content": "X"},
+            {"role": "assistant", "content": "Y"},
+        ]
+        result = _pre_encode_prompts_with_history(
+            tok, prompts, history=history,
+        )
+        assert len(result) == 3
+
+
+class TestEvaluateAttackWithHistory:
+    """Tests for _evaluate_attack_with_history."""
+
+    def test_basic_evaluation(self) -> None:
+        model = MockCausalLM(D_MODEL, VOCAB_SIZE, NUM_LAYERS, NUM_HEADS)
+        tok = MockTokenizer(VOCAB_SIZE)
+        config = SoftPromptConfig(n_tokens=2, max_gen_tokens=5)
+        soft_embeds = mx.random.normal((1, 2, D_MODEL))
+        history = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there"},
+        ]
+        success_rate, responses = _evaluate_attack_with_history(
+            model, tok, ["Test prompt"], soft_embeds, config, history,
+        )
+        assert 0.0 <= success_rate <= 1.0
+        assert len(responses) == 1
+
+    def test_empty_history_works(self) -> None:
+        model = MockCausalLM(D_MODEL, VOCAB_SIZE, NUM_LAYERS, NUM_HEADS)
+        tok = MockTokenizer(VOCAB_SIZE)
+        config = SoftPromptConfig(n_tokens=2, max_gen_tokens=3)
+        soft_embeds = mx.random.normal((1, 2, D_MODEL))
+        _success_rate, responses = _evaluate_attack_with_history(
+            model, tok, ["Hello"], soft_embeds, config, history=[],
+        )
+        assert len(responses) == 1
+
+
+class TestBuildSicPromptsWithHistory:
+    """Tests for _build_sic_prompts_with_history."""
+
+    def test_no_history_passthrough(self) -> None:
+        prompts = ["attack prompt"]
+        result = _build_sic_prompts_with_history(prompts, history=[])
+        assert result == prompts
+        # Should be a copy, not the same list
+        assert result is not prompts
+
+    def test_history_prepended(self) -> None:
+        prompts = ["current attack"]
+        history = [
+            {"role": "user", "content": "previous question"},
+            {"role": "assistant", "content": "previous answer"},
+        ]
+        result = _build_sic_prompts_with_history(prompts, history)
+        assert len(result) == 1
+        assert "previous question" in result[0]
+        assert "previous answer" in result[0]
+        assert "current attack" in result[0]
+
+    def test_multiple_prompts_with_history(self) -> None:
+        prompts = ["attack1", "attack2"]
+        history = [{"role": "user", "content": "context"}]
+        result = _build_sic_prompts_with_history(prompts, history)
+        assert len(result) == 2
+        assert "context" in result[0]
+        assert "context" in result[1]
+        assert "attack1" in result[0]
+        assert "attack2" in result[1]

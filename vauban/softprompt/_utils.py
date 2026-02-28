@@ -205,6 +205,44 @@ def _pre_encode_prompts(
     return encoded
 
 
+def _pre_encode_prompts_with_history(
+    tokenizer: Tokenizer,
+    prompts: list[str],
+    history: list[dict[str, str]],
+    system_prompt: str | None = None,
+) -> list[Array]:
+    """Pre-tokenize prompts with conversation history prepended.
+
+    Constructs ``messages = [system_prompt] + history + [user: prompt]``
+    for each prompt and tokenizes the full sequence. History turns are
+    baked in as hard token IDs so the attack optimizes against the
+    full multi-turn context.
+
+    Args:
+        tokenizer: Tokenizer with encode and chat template support.
+        prompts: List of prompt strings for the current turn.
+        history: Previous conversation turns as role/content dicts.
+        system_prompt: Optional system prompt to prepend.
+
+    Returns:
+        List of token ID arrays, each shape (1, seq_len).
+    """
+    encoded: list[Array] = []
+    for prompt in prompts:
+        messages: list[dict[str, str]] = []
+        if system_prompt is not None:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.extend(history)
+        messages.append({"role": "user", "content": prompt})
+        text = tokenizer.apply_chat_template(messages, tokenize=False)
+        if not isinstance(text, str):
+            msg = "apply_chat_template must return str when tokenize=False"
+            raise TypeError(msg)
+        ids = ops.array(tokenizer.encode(text))[None, :]
+        encoded.append(ids)
+    return encoded
+
+
 def _select_prompt_ids(
     all_ids: list[Array],
     step: int,

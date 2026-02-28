@@ -2502,3 +2502,50 @@ class TestGanConfigParsing:
         config = load_config(toml_file)
         assert config.softprompt is not None
         assert config.softprompt.init_tokens == [100, 200, 300]
+
+    def test_gan_multiturn_default(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.gan_multiturn is False
+        assert config.softprompt.gan_multiturn_max_turns == 10
+
+    def test_gan_multiturn_parsed(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ngan_multiturn = true\n"
+            "gan_multiturn_max_turns = 5\n"
+        )
+        config = load_config(toml_file)
+        assert config.softprompt is not None
+        assert config.softprompt.gan_multiturn is True
+        assert config.softprompt.gan_multiturn_max_turns == 5
+
+    def test_gan_multiturn_max_turns_zero_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[softprompt]\ngan_multiturn_max_turns = 0\n"
+        )
+        with pytest.raises(ValueError, match="gan_multiturn_max_turns"):
+            load_config(toml_file)
+
+    def test_gan_multiturn_type_error(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            '[softprompt]\ngan_multiturn = "yes"\n'
+        )
+        with pytest.raises(TypeError, match="gan_multiturn"):
+            load_config(toml_file)

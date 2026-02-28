@@ -533,6 +533,9 @@ class SoftPromptConfig:
     gan_step_multiplier: float = 1.5  # multiply n_steps each failed round
     gan_direction_escalation: float = 0.25  # add to direction_weight per round
     gan_token_escalation: int = 4  # add to n_tokens per failed round
+    # --- Multi-turn GAN ---
+    gan_multiturn: bool = False  # enable multi-turn conversation threading
+    gan_multiturn_max_turns: int = 10  # max conversation turns to keep in history
     init_tokens: list[int] | None = None  # warm-start token IDs (GCG/EGD)
 
 

@@ -617,6 +617,34 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
         )
         raise ValueError(msg)
 
+    # -- gan_multiturn --
+    gan_multiturn_raw = sec.get("gan_multiturn", False)  # type: ignore[arg-type]
+    if not isinstance(gan_multiturn_raw, bool):
+        msg = (
+            "[softprompt].gan_multiturn must be"
+            f" a boolean, got"
+            f" {type(gan_multiturn_raw).__name__}"
+        )
+        raise TypeError(msg)
+
+    # -- gan_multiturn_max_turns --
+    gan_mt_max_raw = sec.get(  # type: ignore[arg-type]
+        "gan_multiturn_max_turns", 10,
+    )
+    if not isinstance(gan_mt_max_raw, int):
+        msg = (
+            "[softprompt].gan_multiturn_max_turns must be"
+            f" an integer, got"
+            f" {type(gan_mt_max_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if gan_mt_max_raw < 1:
+        msg = (
+            "[softprompt].gan_multiturn_max_turns must be"
+            f" >= 1, got {gan_mt_max_raw}"
+        )
+        raise ValueError(msg)
+
     # -- init_tokens --
     init_tokens_raw = sec.get("init_tokens")  # type: ignore[arg-type]
     init_tokens: list[int] | None = None
@@ -672,5 +700,7 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
         gan_step_multiplier=float(gan_step_mult_raw),
         gan_direction_escalation=float(gan_dir_esc_raw),
         gan_token_escalation=gan_tok_esc_raw,
+        gan_multiturn=gan_multiturn_raw,
+        gan_multiturn_max_turns=gan_mt_max_raw,
         init_tokens=init_tokens,
     )

@@ -56,6 +56,87 @@ def cast_generate(
     from the projection magnitude via ``_resolve_alpha()``.
     """
     messages = [{"role": "user", "content": prompt}]
+    return _cast_generate_from_messages(
+        model, tokenizer, messages, prompt, direction, layers,
+        alpha, threshold, max_tokens, condition_direction, alpha_tiers,
+    )
+
+
+def cast_generate_with_messages(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    messages: list[dict[str, str]],
+    direction: Array,
+    layers: list[int],
+    alpha: float = 1.0,
+    threshold: float = 0.0,
+    max_tokens: int = 100,
+    condition_direction: Array | None = None,
+    alpha_tiers: list[AlphaTier] | None = None,
+) -> CastResult:
+    """Generate text with CAST steering over an arbitrary message list.
+
+    Same as ``cast_generate`` but takes a full message list instead of
+    a single prompt string, enabling multi-turn context for steering
+    decisions.
+
+    Args:
+        model: The causal language model.
+        tokenizer: Tokenizer with chat template support.
+        messages: Full conversation as role/content dicts.
+        direction: Refusal direction for steering correction.
+        layers: Layer indices to apply CAST on.
+        alpha: Base steering strength.
+        threshold: Minimum projection to trigger steering.
+        max_tokens: Maximum tokens to generate.
+        condition_direction: Separate detection direction (AdaSteer).
+        alpha_tiers: Adaptive alpha tiers (TRYLOCK/AlphaSteer).
+
+    Returns:
+        CastResult with generation and intervention stats.
+    """
+    prompt_str = ""
+    for m in reversed(messages):
+        if m["role"] == "user":
+            prompt_str = m["content"]
+            break
+    return _cast_generate_from_messages(
+        model, tokenizer, messages, prompt_str, direction, layers,
+        alpha, threshold, max_tokens, condition_direction, alpha_tiers,
+    )
+
+
+def _cast_generate_from_messages(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    messages: list[dict[str, str]],
+    prompt_label: str,
+    direction: Array,
+    layers: list[int],
+    alpha: float,
+    threshold: float,
+    max_tokens: int,
+    condition_direction: Array | None,
+    alpha_tiers: list[AlphaTier] | None,
+) -> CastResult:
+    """Shared CAST decode loop for single-prompt and multi-turn entry points.
+
+    Args:
+        model: The causal language model.
+        tokenizer: Tokenizer with chat template support.
+        messages: Full conversation as role/content dicts.
+        prompt_label: String stored in ``CastResult.prompt``.
+        direction: Refusal direction for steering correction.
+        layers: Layer indices to apply CAST on.
+        alpha: Base steering strength.
+        threshold: Minimum projection to trigger steering.
+        max_tokens: Maximum tokens to generate.
+        condition_direction: Separate detection direction (AdaSteer).
+        alpha_tiers: Adaptive alpha tiers (TRYLOCK/AlphaSteer).
+
+    Returns:
+        CastResult with generation and intervention stats.
+    """
     text = tokenizer.apply_chat_template(messages, tokenize=False)
     if not isinstance(text, str):
         msg = "apply_chat_template must return str when tokenize=False"
@@ -104,7 +185,7 @@ def cast_generate(
         considered += considered_step
 
     return CastResult(
-        prompt=prompt,
+        prompt=prompt_label,
         text=tokenizer.decode(generated),
         projections_before=projections_before_all,
         projections_after=projections_after_all,

@@ -31,6 +31,7 @@ def _continuous_attack(
     config: SoftPromptConfig,
     direction: Array | None,
     ref_model: CausalLM | None = None,
+    all_prompt_ids_override: list[Array] | None = None,
 ) -> SoftPromptResult:
     """Continuous soft prompt optimization via Adam.
 
@@ -53,11 +54,14 @@ def _continuous_attack(
     )
     force_eval(target_ids)
 
-    # Pre-encode all prompts
-    effective_prompts = prompts if prompts else ["Hello"]
-    all_prompt_ids = _pre_encode_prompts(
-        tokenizer, effective_prompts, config.system_prompt,
-    )
+    # Pre-encode all prompts (or use override with history baked in)
+    if all_prompt_ids_override is not None:
+        all_prompt_ids = all_prompt_ids_override
+    else:
+        effective_prompts = prompts if prompts else ["Hello"]
+        all_prompt_ids = _pre_encode_prompts(
+            tokenizer, effective_prompts, config.system_prompt,
+        )
 
     # Pre-compute direction config
     direction_layers_set: set[int] | None = (
