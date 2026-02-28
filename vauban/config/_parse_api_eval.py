@@ -81,11 +81,56 @@ def _parse_api_eval(raw: TomlDict) -> ApiEvalConfig | None:
             raise TypeError(msg)
         system_prompt = system_prompt_raw
 
+    # -- multiturn --
+    multiturn_raw = sec.get("multiturn", False)
+    if not isinstance(multiturn_raw, bool):
+        msg = (
+            f"[api_eval].multiturn must be a boolean,"
+            f" got {type(multiturn_raw).__name__}"
+        )
+        raise TypeError(msg)
+
+    # -- multiturn_max_turns --
+    multiturn_max_turns_raw = sec.get("multiturn_max_turns", 3)
+    if not isinstance(multiturn_max_turns_raw, int):
+        msg = (
+            f"[api_eval].multiturn_max_turns must be an integer,"
+            f" got {type(multiturn_max_turns_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if multiturn_max_turns_raw < 1:
+        msg = (
+            f"[api_eval].multiturn_max_turns must be >= 1,"
+            f" got {multiturn_max_turns_raw}"
+        )
+        raise ValueError(msg)
+
+    # -- follow_up_prompts --
+    follow_up_raw = sec.get("follow_up_prompts", [])
+    if not isinstance(follow_up_raw, list):
+        msg = (
+            f"[api_eval].follow_up_prompts must be a list,"
+            f" got {type(follow_up_raw).__name__}"
+        )
+        raise TypeError(msg)
+    follow_up_prompts: list[str] = []
+    for i, item in enumerate(follow_up_raw):
+        if not isinstance(item, str):
+            msg = (
+                f"[api_eval].follow_up_prompts[{i}] must be a string,"
+                f" got {type(item).__name__}"
+            )
+            raise TypeError(msg)
+        follow_up_prompts.append(item)
+
     return ApiEvalConfig(
         endpoints=endpoints,
         max_tokens=max_tokens_raw,
         timeout=timeout_raw,
         system_prompt=system_prompt,
+        multiturn=multiturn_raw,
+        multiturn_max_turns=multiturn_max_turns_raw,
+        follow_up_prompts=follow_up_prompts,
     )
 
 
@@ -135,10 +180,20 @@ def _parse_endpoint(ep: dict[str, object], index: int) -> ApiEvalEndpoint:
             raise TypeError(msg)
         system_prompt = system_prompt_raw
 
+    # -- auth_header (custom auth header name) --
+    auth_header_raw = ep.get("auth_header")
+    auth_header: str | None = None
+    if auth_header_raw is not None:
+        if not isinstance(auth_header_raw, str) or not auth_header_raw:
+            msg = f"{prefix}.auth_header must be a non-empty string"
+            raise ValueError(msg)
+        auth_header = auth_header_raw
+
     return ApiEvalEndpoint(
         name=name_raw,
         base_url=base_url_raw,
         model=model_raw,
         api_key_env=api_key_env_raw,
         system_prompt=system_prompt,
+        auth_header=auth_header,
     )

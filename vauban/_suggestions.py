@@ -101,6 +101,7 @@ _KNOWN_KEYS: dict[str, frozenset[str]] = {
     "cast": frozenset({"prompts", "layers", "alpha", "threshold", "max_tokens"}),
     "api_eval": frozenset({
         "endpoints", "max_tokens", "timeout", "system_prompt",
+        "multiturn", "multiturn_max_turns", "follow_up_prompts",
     }),
     "output": frozenset({"dir"}),
 }

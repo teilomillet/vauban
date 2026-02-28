@@ -3131,3 +3131,130 @@ class TestGanConfigParsing:
         )
         with pytest.raises(ValueError, match="max_tokens"):
             load_config(toml_file)
+
+    def test_api_eval_auth_header_parsed(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[api_eval]\n"
+            "[[api_eval.endpoints]]\n"
+            'name = "grayswan"\n'
+            'base_url = "https://api.grayswan.ai/cygnal"\n'
+            'model = "cygnal-v1"\n'
+            'api_key_env = "GS_KEY"\n'
+            'auth_header = "grayswan-api-key"\n'
+        )
+        config = load_config(toml_file)
+        assert config.api_eval is not None
+        ep = config.api_eval.endpoints[0]
+        assert ep.auth_header == "grayswan-api-key"
+
+    def test_api_eval_auth_header_default_none(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[api_eval]\n"
+            "[[api_eval.endpoints]]\n"
+            'name = "ep1"\n'
+            'base_url = "https://a.com/v1"\n'
+            'model = "m1"\n'
+            'api_key_env = "K1"\n'
+        )
+        config = load_config(toml_file)
+        assert config.api_eval is not None
+        assert config.api_eval.endpoints[0].auth_header is None
+
+    def test_api_eval_multiturn_parsed(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[api_eval]\n"
+            "multiturn = true\n"
+            "multiturn_max_turns = 5\n"
+            'follow_up_prompts = ["Be specific.", "More details."]\n'
+            "[[api_eval.endpoints]]\n"
+            'name = "ep1"\n'
+            'base_url = "https://a.com/v1"\n'
+            'model = "m1"\n'
+            'api_key_env = "K1"\n'
+        )
+        config = load_config(toml_file)
+        assert config.api_eval is not None
+        assert config.api_eval.multiturn is True
+        assert config.api_eval.multiturn_max_turns == 5
+        assert config.api_eval.follow_up_prompts == [
+            "Be specific.", "More details.",
+        ]
+
+    def test_api_eval_multiturn_defaults(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[api_eval]\n"
+            "[[api_eval.endpoints]]\n"
+            'name = "ep1"\n'
+            'base_url = "https://a.com/v1"\n'
+            'model = "m1"\n'
+            'api_key_env = "K1"\n'
+        )
+        config = load_config(toml_file)
+        assert config.api_eval is not None
+        assert config.api_eval.multiturn is False
+        assert config.api_eval.multiturn_max_turns == 3
+        assert config.api_eval.follow_up_prompts == []
+
+    def test_api_eval_multiturn_max_turns_zero_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[api_eval]\n"
+            "multiturn_max_turns = 0\n"
+            "[[api_eval.endpoints]]\n"
+            'name = "ep1"\n'
+            'base_url = "https://a.com/v1"\n'
+            'model = "m1"\n'
+            'api_key_env = "K1"\n'
+        )
+        with pytest.raises(ValueError, match="multiturn_max_turns"):
+            load_config(toml_file)
+
+    def test_api_eval_follow_up_prompts_wrong_type_raises(
+        self, tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[api_eval]\n"
+            'follow_up_prompts = "not a list"\n'
+            "[[api_eval.endpoints]]\n"
+            'name = "ep1"\n'
+            'base_url = "https://a.com/v1"\n'
+            'model = "m1"\n'
+            'api_key_env = "K1"\n'
+        )
+        with pytest.raises(TypeError, match="follow_up_prompts"):
+            load_config(toml_file)
+
+    def test_api_eval_auth_header_empty_raises(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "test.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\nharmful = 'h.jsonl'\nharmless = 'hl.jsonl'\n"
+            "[api_eval]\n"
+            "[[api_eval.endpoints]]\n"
+            'name = "ep1"\n'
+            'base_url = "https://a.com/v1"\n'
+            'model = "m1"\n'
+            'api_key_env = "K1"\n'
+            'auth_header = ""\n'
+        )
+        with pytest.raises(ValueError, match="auth_header"):
+            load_config(toml_file)

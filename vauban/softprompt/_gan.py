@@ -307,6 +307,7 @@ def gan_loop(
                 round_prompts,
                 api_eval_config,
                 config.system_prompt,
+                history=history if config.gan_multiturn else None,
             )
             round_transfer_results.extend(api_results)
             if round_transfer_results and not transfer_models:

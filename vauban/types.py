@@ -496,6 +496,7 @@ class ApiEvalEndpoint:
     model: str
     api_key_env: str
     system_prompt: str | None = None  # per-endpoint override
+    auth_header: str | None = None  # custom header name (e.g. "grayswan-api-key")
 
 
 @dataclass(frozen=True, slots=True)
@@ -506,6 +507,9 @@ class ApiEvalConfig:
     max_tokens: int = 100
     timeout: int = 30
     system_prompt: str | None = None  # shared default
+    multiturn: bool = False
+    multiturn_max_turns: int = 3  # total turns including initial
+    follow_up_prompts: list[str] = field(default_factory=list)  # empty = defaults
 
 
 @dataclass(frozen=True, slots=True)
@@ -932,6 +936,31 @@ class DirectionTransferResult:
 
 
 @dataclass(frozen=True, slots=True)
+class MetaDocRef:
+    """Reference to a document associated with an experiment."""
+
+    path: str
+    label: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class MetaConfig:
+    """Experiment metadata for tech tree tracking.
+
+    Does not affect pipeline execution.
+    """
+
+    id: str
+    title: str = ""
+    status: str = "wip"
+    parents: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
+    notes: str = ""
+    docs: list[MetaDocRef] = field(default_factory=list)
+    date: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class PipelineConfig:
     """Full pipeline configuration loaded from TOML."""
 
@@ -952,6 +981,7 @@ class PipelineConfig:
     cast: CastConfig | None = None
     eval: EvalConfig = field(default_factory=EvalConfig)
     api_eval: ApiEvalConfig | None = None
+    meta: MetaConfig | None = None
     output_dir: Path = field(default_factory=lambda: Path("output"))
     borderline_path: Path | DatasetRef | None = None
     verbose: bool = True
