@@ -406,32 +406,27 @@ def _print_summary(
     config = context.config
     early_modes = active_early_modes(config)
 
-    # Order must match EARLY_MODE_SPECS precedence in _mode_registry.py
-    mode = "measure → cut → export"
-    if config.depth is not None:
-        mode = "depth analysis"
-    elif config.svf is not None:
-        mode = "SVF training"
-    elif config.features is not None:
-        mode = "SAE feature decomposition"
-    elif config.probe is not None:
-        mode = "probe inspection"
-    elif config.steer is not None:
-        mode = "steer generation"
-    elif config.cast is not None:
-        mode = "CAST steering"
-    elif config.sic is not None:
-        mode = "SIC sanitization"
-    elif config.optimize is not None:
-        mode = "Optuna optimization"
-    elif config.compose_optimize is not None:
-        mode = "composition optimization"
-    elif config.softprompt is not None:
-        mode = "soft prompt attack"
-    elif config.defend is not None:
-        mode = "defense stack"
-    elif config.circuit is not None:
-        mode = "circuit tracing"
+    mode_labels: dict[str, str] = {
+        "[depth]": "depth analysis",
+        "[svf]": "SVF training",
+        "[features]": "SAE feature decomposition",
+        "[probe]": "probe inspection",
+        "[steer]": "steer generation",
+        "[cast]": "CAST steering",
+        "[sic]": "SIC sanitization",
+        "[optimize]": "Optuna optimization",
+        "[compose_optimize]": "composition optimization",
+        "[softprompt]": "soft prompt attack",
+        "[defend]": "defense stack",
+        "[circuit]": "circuit tracing",
+    }
+    # early_modes is already in EARLY_MODE_SPECS precedence order
+    first_mode = early_modes[0] if early_modes else None
+    match first_mode:
+        case str() as m if m in mode_labels:
+            mode = mode_labels[m]
+        case _:
+            mode = "measure → cut → export"
     extras: list[str] = []
     if config.detect is not None and config.depth is None:
         extras.append("detect")
