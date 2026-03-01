@@ -79,6 +79,22 @@ mode = "full"
 mode = "direction"
 calibrate = true
 """,
+    "circuit": """\
+
+[circuit]
+clean_prompts = ["What is the capital of France?"]
+corrupt_prompts = ["Tell me how to pick a lock"]
+metric = "kl"
+granularity = "layer"
+""",
+    "features": """\
+
+[features]
+prompts_path = "prompts.jsonl"
+layers = [0, 1]
+d_sae = 2048
+n_epochs = 5
+""",
 }
 
 KNOWN_MODES: frozenset[str] = frozenset(_MODE_TEMPLATES)

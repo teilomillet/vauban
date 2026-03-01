@@ -14,9 +14,11 @@ from vauban.config._mode_registry import (
 from vauban.config._validation import VALIDATION_RULE_SPECS, validate_config
 from vauban.types import (
     CastConfig,
+    CircuitConfig,
     ComposeOptimizeConfig,
     DefenseStackConfig,
     DepthConfig,
+    FeaturesConfig,
     OptimizeConfig,
     PipelineConfig,
     ProbeConfig,
@@ -42,6 +44,7 @@ _EXPECTED_RULE_ORDER: list[str] = [
 _EXPECTED_EARLY_MODE_ORDER: list[str] = [
     "[depth]",
     "[svf]",
+    "[features]",
     "[probe]",
     "[steer]",
     "[cast]",
@@ -50,6 +53,7 @@ _EXPECTED_EARLY_MODE_ORDER: list[str] = [
     "[compose_optimize]",
     "[softprompt]",
     "[defend]",
+    "[circuit]",
 ]
 
 
@@ -134,8 +138,9 @@ def test_validation_warning_content_and_order_for_conflict_fixture(
     assert warnings == [
         (
             "[HIGH] Multiple early-return modes active: [depth], [probe]"
-            " — only the first will run (precedence: depth > svf > probe > steer"
-            " > cast > sic > optimize > compose_optimize > softprompt > defend)"
+            " — only the first will run (precedence: depth > svf > features"
+            " > probe > steer > cast > sic > optimize > compose_optimize"
+            " > softprompt > defend > circuit)"
             " — fix: keep one early-return mode per config,"
             " and split other modes into separate TOML files"
         ),
@@ -189,6 +194,14 @@ def test_active_early_modes_precedence_matches_legacy_behavior() -> None:
         compose_optimize=ComposeOptimizeConfig(bank_path="bank.safetensors"),
         softprompt=SoftPromptConfig(),
         defend=DefenseStackConfig(),
+        features=FeaturesConfig(
+            prompts_path=Path("prompts.jsonl"),
+            layers=[0, 1],
+        ),
+        circuit=CircuitConfig(
+            clean_prompts=["clean"],
+            corrupt_prompts=["corrupt"],
+        ),
     )
 
     assert active_early_modes(config) == _EXPECTED_EARLY_MODE_ORDER

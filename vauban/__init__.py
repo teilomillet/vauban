@@ -1435,11 +1435,132 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
     )
 
 
+def _run_circuit_mode(context: _EarlyModeContext) -> None:
+    """Run [circuit] early-return mode: activation patching and report."""
+    import time
+
+    config = context.config
+    assert config.circuit is not None
+    v = config.verbose
+    model = _cast("CausalLM", context.model)
+    tokenizer = _cast("Tokenizer", context.tokenizer)
+
+    _log(
+        "Tracing circuit via activation patching",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+
+    from vauban.circuit import trace_circuit
+
+    direction: Array | None = None
+    if context.direction_result is not None and config.circuit.attribute_direction:
+        direction = context.direction_result.direction
+
+    result = trace_circuit(
+        model,
+        tokenizer,
+        config.circuit.clean_prompts,
+        config.circuit.corrupt_prompts,
+        metric=config.circuit.metric,
+        granularity=config.circuit.granularity,
+        layers=config.circuit.layers,
+        token_position=config.circuit.token_position,
+        direction=direction,
+        attribute_direction=config.circuit.attribute_direction,
+        logit_diff_tokens=config.circuit.logit_diff_tokens,
+    )
+
+    report: dict[str, object] = result.to_dict()
+    report_path = config.output_dir / "circuit_report.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=2))
+    _log(
+        f"Done — circuit report written to {report_path}",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+    _write_experiment_log(
+        context.config_path,
+        config,
+        "circuit",
+        ["circuit_report.json"],
+        {"n_effects": len(result.effects)},
+        time.monotonic() - context.t0,
+    )
+
+
+def _run_features_mode(context: _EarlyModeContext) -> None:
+    """Run [features] early-return mode: SAE training and report."""
+    import time
+
+    config = context.config
+    assert config.features is not None
+    v = config.verbose
+    model = _cast("CausalLM", context.model)
+    tokenizer = _cast("Tokenizer", context.tokenizer)
+
+    _log(
+        "Training sparse autoencoders",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+
+    from vauban.features import save_sae, train_sae_multi_layer
+
+    prompts = load_prompts(config.features.prompts_path)
+
+    direction: Array | None = None
+    if context.direction_result is not None:
+        direction = context.direction_result.direction
+
+    saes, features_result = train_sae_multi_layer(
+        model,
+        tokenizer,
+        prompts,
+        config.features.layers,
+        d_sae=config.features.d_sae,
+        l1_coeff=config.features.l1_coeff,
+        n_epochs=config.features.n_epochs,
+        learning_rate=config.features.learning_rate,
+        batch_size=config.features.batch_size,
+        token_position=config.features.token_position,
+        dead_feature_threshold=config.features.dead_feature_threshold,
+        direction=direction,
+        model_path=config.model_path,
+    )
+
+    # Save SAEs
+    for layer_idx, sae in saes.items():
+        sae_path = config.output_dir / f"sae_layer_{layer_idx}.safetensors"
+        save_sae(sae, sae_path)
+
+    report: dict[str, object] = features_result.to_dict()
+    report_path = config.output_dir / "features_report.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=2))
+    _log(
+        f"Done — features report written to {report_path}",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+    _write_experiment_log(
+        context.config_path,
+        config,
+        "features",
+        ["features_report.json"]
+        + [f"sae_layer_{idx}.safetensors" for idx in saes],
+        {"n_layers": len(features_result.layers)},
+        time.monotonic() - context.t0,
+    )
+
+
 type _EarlyModeRunner = Callable[[_EarlyModeContext], None]
 
 _EARLY_MODE_RUNNERS: dict[str, _EarlyModeRunner] = {
     "depth": _run_depth_mode,
     "svf": _run_svf_mode,
+    "features": _run_features_mode,
     "probe": _run_probe_mode,
     "steer": _run_steer_mode,
     "cast": _run_cast_mode,
@@ -1448,6 +1569,7 @@ _EARLY_MODE_RUNNERS: dict[str, _EarlyModeRunner] = {
     "compose_optimize": _run_compose_optimize_mode,
     "softprompt": _run_softprompt_mode,
     "defend": _run_defend_mode,
+    "circuit": _run_circuit_mode,
 }
 
 

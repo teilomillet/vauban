@@ -31,6 +31,7 @@ from vauban.types import (
     ApiEvalConfig,
     ApiEvalEndpoint,
     CastConfig,
+    CircuitConfig,
     ComposeOptimizeConfig,
     CutConfig,
     DefenseStackConfig,
@@ -40,6 +41,7 @@ from vauban.types import (
     EnvironmentTarget,
     EnvironmentTask,
     EvalConfig,
+    FeaturesConfig,
     IntentConfig,
     MeasureConfig,
     OptimizeConfig,
@@ -76,6 +78,8 @@ _EXPECTED_SECTION_ORDER: list[str] = [
     "policy",
     "intent",
     "defend",
+    "circuit",
+    "features",
 ]
 
 _MODEL = '[model]\npath = "test-model"\n'
@@ -409,6 +413,18 @@ def test_parse_registered_sections_respects_registry_order(
         call_order.append("defend")
         return DefenseStackConfig(fail_fast=False)
 
+    def fake_circuit(raw: TomlDict) -> CircuitConfig | None:
+        call_order.append("circuit")
+        return CircuitConfig(
+            clean_prompts=["a"], corrupt_prompts=["b"],
+        )
+
+    def fake_features(
+        base_dir: Path, raw: TomlDict,
+    ) -> FeaturesConfig | None:
+        call_order.append("features")
+        return None
+
     monkeypatch.setattr("vauban.config._registry._parse_depth", fake_depth)
     monkeypatch.setattr("vauban.config._registry._parse_cast", fake_cast)
     monkeypatch.setattr("vauban.config._registry._parse_cut", fake_cut)
@@ -434,6 +450,8 @@ def test_parse_registered_sections_respects_registry_order(
     monkeypatch.setattr("vauban.config._registry._parse_policy", fake_policy)
     monkeypatch.setattr("vauban.config._registry._parse_intent", fake_intent)
     monkeypatch.setattr("vauban.config._registry._parse_defend", fake_defend)
+    monkeypatch.setattr("vauban.config._registry._parse_circuit", fake_circuit)
+    monkeypatch.setattr("vauban.config._registry._parse_features", fake_features)
 
     context = ConfigParseContext(base_dir=tmp_path, raw={})
     parsed = parse_registered_sections(context)
@@ -465,6 +483,9 @@ def test_parse_registered_sections_respects_registry_order(
     assert parsed.intent.mode == "judge"
     assert parsed.defend is not None
     assert parsed.defend.fail_fast is False
+    assert parsed.circuit is not None
+    assert parsed.circuit.clean_prompts == ["a"]
+    assert parsed.features is None
 
 
 def test_parse_registered_sections_depth_override_bypasses_depth_parser(

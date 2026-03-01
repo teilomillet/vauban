@@ -1373,6 +1373,146 @@ class DefenseStackResult:
     reasons: list[str] = field(default_factory=list)
 
 
+# ---------------------------------------------------------------------------
+# Layer component detection
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class LayerComponents:
+    """Detected internal components of a transformer layer.
+
+    Used by circuit tracing to decompose a layer into attention + MLP
+    for component-level activation patching.
+    """
+
+    input_norm: object
+    self_attn: object
+    post_attn_norm: object
+    mlp: object
+
+
+# ---------------------------------------------------------------------------
+# Circuit tracing (activation patching)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class CircuitConfig:
+    """Configuration for [circuit] activation patching mode."""
+
+    clean_prompts: list[str]
+    corrupt_prompts: list[str]
+    metric: str = "kl"
+    granularity: str = "layer"
+    layers: list[int] | None = None
+    token_position: int = -1
+    attribute_direction: bool = False
+    logit_diff_tokens: list[int] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ComponentEffect:
+    """Effect of patching a single component at a single layer."""
+
+    layer: int
+    component: str
+    effect: float
+    direction_attribution: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CircuitResult:
+    """Output of circuit tracing: per-component causal effects."""
+
+    effects: list[ComponentEffect]
+    metric: str
+    granularity: str
+    n_layers: int
+    clean_prompts: list[str]
+    corrupt_prompts: list[str]
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to a JSON-compatible dict."""
+        return {
+            "effects": [
+                {
+                    "layer": e.layer,
+                    "component": e.component,
+                    "effect": e.effect,
+                    "direction_attribution": e.direction_attribution,
+                }
+                for e in self.effects
+            ],
+            "metric": self.metric,
+            "granularity": self.granularity,
+            "n_layers": self.n_layers,
+            "clean_prompts": self.clean_prompts,
+            "corrupt_prompts": self.corrupt_prompts,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Features (sparse autoencoder)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class FeaturesConfig:
+    """Configuration for [features] sparse autoencoder training mode."""
+
+    prompts_path: Path
+    layers: list[int]
+    d_sae: int = 2048
+    l1_coeff: float = 1e-3
+    n_epochs: int = 5
+    learning_rate: float = 1e-3
+    batch_size: int = 32
+    token_position: int = -1
+    dead_feature_threshold: float = 1e-6
+
+
+@dataclass(frozen=True, slots=True)
+class SAELayerResult:
+    """Training result for a single SAE layer."""
+
+    layer: int
+    final_loss: float
+    loss_history: list[float]
+    n_dead_features: int
+    n_active_features: int
+
+
+@dataclass(frozen=True, slots=True)
+class FeaturesResult:
+    """Output of SAE training across layers."""
+
+    layers: list[SAELayerResult]
+    d_model: int
+    d_sae: int
+    model_path: str
+    direction_alignment: list[list[float]] | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to a JSON-compatible dict."""
+        return {
+            "layers": [
+                {
+                    "layer": lr.layer,
+                    "final_loss": lr.final_loss,
+                    "loss_history": lr.loss_history,
+                    "n_dead_features": lr.n_dead_features,
+                    "n_active_features": lr.n_active_features,
+                }
+                for lr in self.layers
+            ],
+            "d_model": self.d_model,
+            "d_sae": self.d_sae,
+            "model_path": self.model_path,
+            "direction_alignment": self.direction_alignment,
+        }
+
+
 @dataclass(frozen=True, slots=True)
 class PipelineConfig:
     """Full pipeline configuration loaded from TOML."""
@@ -1399,6 +1539,8 @@ class PipelineConfig:
     policy: PolicyConfig | None = None
     intent: IntentConfig | None = None
     defend: DefenseStackConfig | None = None
+    circuit: CircuitConfig | None = None
+    features: FeaturesConfig | None = None
     eval: EvalConfig = field(default_factory=EvalConfig)
     api_eval: ApiEvalConfig | None = None
     meta: MetaConfig | None = None

@@ -31,6 +31,8 @@ _KNOWN_SECTIONS: frozenset[str] = frozenset({
     "policy",
     "intent",
     "defend",
+    "circuit",
+    "features",
 })
 
 _KNOWN_KEYS: dict[str, frozenset[str]] = {
@@ -158,6 +160,16 @@ _KNOWN_KEYS: dict[str, frozenset[str]] = {
         "mode", "target_layer", "similarity_threshold", "max_tokens",
     }),
     "defend": frozenset({"fail_fast"}),
+    "circuit": frozenset({
+        "clean_prompts", "corrupt_prompts", "metric", "granularity",
+        "layers", "token_position", "attribute_direction",
+        "logit_diff_tokens",
+    }),
+    "features": frozenset({
+        "prompts_path", "layers", "d_sae", "l1_coeff", "n_epochs",
+        "learning_rate", "batch_size", "token_position",
+        "dead_feature_threshold",
+    }),
     "output": frozenset({"dir"}),
 }
 
@@ -258,6 +270,8 @@ _KNOWN_VALUES: dict[tuple[str, str], frozenset[str]] = {
     ("sic", "calibrate_prompts"): frozenset({"harmless", "harmful"}),
     ("intent", "mode"): frozenset({"embedding", "judge"}),
     ("policy", "default_action"): frozenset({"allow", "block"}),
+    ("circuit", "metric"): frozenset({"kl", "logit_diff"}),
+    ("circuit", "granularity"): frozenset({"layer", "component"}),
     ("detect", "mode"): frozenset({"fast", "probe", "full", "margin"}),
     ("meta", "status"): frozenset({
         "wip", "promising", "dead_end", "baseline", "superseded", "archived",
@@ -274,6 +288,10 @@ _NUMERIC_RANGES: dict[tuple[str, str], tuple[float | None, float | None]] = {
     ("softprompt", "perplexity_weight"): (0.0, None),
     ("eval", "max_tokens"): (1, None),
     ("eval", "num_prompts"): (1, None),
+    ("features", "d_sae"): (1, None),
+    ("features", "n_epochs"): (1, None),
+    ("features", "batch_size"): (1, None),
+    ("features", "l1_coeff"): (0.0, None),
 }
 
 

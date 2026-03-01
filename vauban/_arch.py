@@ -6,6 +6,13 @@ Qwen, etc.) to a canonical interface with ``embed_tokens``, ``layers``,
 and ``norm`` attributes.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from vauban.types import LayerComponents
+
 # Ordered fallback lists — covers Llama/Mistral/Qwen/Gemma/
 # StarCoder/Phi/GPT-2/GPTNeoX/Cohere
 _INNER_ATTRS: tuple[str, ...] = ("model", "transformer", "gpt_neox")
@@ -83,3 +90,50 @@ class TransformerAdapter:
     def __getattr__(self, name: str) -> object:
         """Proxy all other attribute access to the underlying model."""
         return getattr(self._inner, name)
+
+
+# ---------------------------------------------------------------------------
+# Layer component detection for circuit tracing
+# ---------------------------------------------------------------------------
+
+# Ordered fallback lists for layer internal components
+_ATTN_ATTRS: tuple[str, ...] = (
+    "self_attn", "attn", "attention", "self_attention",
+)
+_MLP_ATTRS: tuple[str, ...] = (
+    "mlp", "feed_forward", "ff", "ffn",
+)
+_INPUT_NORM_ATTRS: tuple[str, ...] = (
+    "input_layernorm", "ln_1", "norm1", "pre_attn_norm",
+    "attn_norm", "layer_norm1",
+)
+_POST_ATTN_NORM_ATTRS: tuple[str, ...] = (
+    "post_attention_layernorm", "ln_2", "norm2", "post_attn_norm",
+    "ffn_norm", "layer_norm2",
+)
+
+
+def detect_layer_components(layer: object) -> LayerComponents:
+    """Probe a transformer layer for its internal components.
+
+    Detects self_attn, mlp, input_layernorm, and post_attention_layernorm
+    using ordered fallback attribute lists to handle different model
+    architectures (Llama, GPT-2, Phi, Mistral, Qwen, etc.).
+
+    Args:
+        layer: A single transformer layer object.
+
+    Returns:
+        LayerComponents with references to the detected sub-modules.
+
+    Raises:
+        AttributeError: If any required component cannot be found.
+    """
+    from vauban.types import LayerComponents as _LayerComponents
+
+    return _LayerComponents(
+        input_norm=_find_attr(layer, _INPUT_NORM_ATTRS),
+        self_attn=_find_attr(layer, _ATTN_ATTRS),
+        post_attn_norm=_find_attr(layer, _POST_ATTN_NORM_ATTRS),
+        mlp=_find_attr(layer, _MLP_ATTRS),
+    )

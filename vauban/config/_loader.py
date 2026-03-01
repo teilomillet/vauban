@@ -77,6 +77,8 @@ def load_config(path: str | Path) -> PipelineConfig:
     policy_config = parsed_sections.policy
     intent_config = parsed_sections.intent
     defend_config = parsed_sections.defend
+    circuit_config = parsed_sections.circuit
+    features_config = parsed_sections.features
 
     output_section = raw.get("output")
     output_dir_str = "output"
@@ -153,6 +155,8 @@ def load_config(path: str | Path) -> PipelineConfig:
         policy=policy_config,
         intent=intent_config,
         defend=defend_config,
+        circuit=circuit_config,
+        features=features_config,
         eval=eval_config,
         api_eval=api_eval_config,
         meta=meta_config,

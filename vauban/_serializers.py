@@ -2,12 +2,14 @@
 
 from vauban.types import (
     CastResult,
+    CircuitResult,
     DefenseStackResult,
     DepthDirectionResult,
     DepthResult,
     DetectResult,
     DiffResult,
     DirectionTransferResult,
+    FeaturesResult,
     IntentCheckResult,
     OptimizeResult,
     PolicyDecision,
@@ -371,3 +373,13 @@ def _defend_to_dict(result: DefenseStackResult) -> dict[str, object]:
         ),
         "reasons": result.reasons,
     }
+
+
+def _circuit_to_dict(result: CircuitResult) -> dict[str, object]:
+    """Serialize a CircuitResult to a JSON-compatible dict."""
+    return result.to_dict()
+
+
+def _features_to_dict(result: FeaturesResult) -> dict[str, object]:
+    """Serialize a FeaturesResult to a JSON-compatible dict."""
+    return result.to_dict()

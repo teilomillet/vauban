@@ -7,6 +7,7 @@ from typing import cast
 
 from vauban.config._parse_api_eval import _parse_api_eval
 from vauban.config._parse_cast import _parse_cast
+from vauban.config._parse_circuit import _parse_circuit
 from vauban.config._parse_compose_optimize import _parse_compose_optimize
 from vauban.config._parse_cut import _parse_cut
 from vauban.config._parse_defend import _parse_defend
@@ -14,6 +15,7 @@ from vauban.config._parse_depth import _parse_depth
 from vauban.config._parse_detect import _parse_detect
 from vauban.config._parse_environment import _parse_environment
 from vauban.config._parse_eval import _parse_eval
+from vauban.config._parse_features import _parse_features
 from vauban.config._parse_intent import _parse_intent
 from vauban.config._parse_measure import _parse_measure
 from vauban.config._parse_optimize import _parse_optimize
@@ -29,6 +31,7 @@ from vauban.config._types import TomlDict
 from vauban.types import (
     ApiEvalConfig,
     CastConfig,
+    CircuitConfig,
     ComposeOptimizeConfig,
     CutConfig,
     DefenseStackConfig,
@@ -36,6 +39,7 @@ from vauban.types import (
     DetectConfig,
     EnvironmentConfig,
     EvalConfig,
+    FeaturesConfig,
     IntentConfig,
     MeasureConfig,
     OptimizeConfig,
@@ -63,10 +67,12 @@ type _SectionParserResult = (
     | None
     | ApiEvalConfig
     | CastConfig
+    | CircuitConfig
     | ComposeOptimizeConfig
     | CutConfig
     | DefenseStackConfig
     | EnvironmentConfig
+    | FeaturesConfig
     | IntentConfig
     | MeasureConfig
     | PolicyConfig
@@ -119,6 +125,8 @@ class ParsedSectionValues:
     policy: PolicyConfig | None
     intent: IntentConfig | None
     defend: DefenseStackConfig | None
+    circuit: CircuitConfig | None
+    features: FeaturesConfig | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -259,6 +267,20 @@ def _parse_defend_adapter(
     return _parse_defend(context.raw)
 
 
+def _parse_circuit_adapter(
+    context: ConfigParseContext,
+) -> CircuitConfig | None:
+    """Adapter for parsers that accept the full raw config mapping."""
+    return _parse_circuit(context.raw)
+
+
+def _parse_features_adapter(
+    context: ConfigParseContext,
+) -> FeaturesConfig | None:
+    """Adapter for parsers that require base_dir + raw config mapping."""
+    return _parse_features(context.base_dir, context.raw)
+
+
 SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     SectionParseSpec("depth", "depth", _parse_depth_adapter, 10),
     SectionParseSpec("cast", "cast", _parse_cast_adapter, 20),
@@ -286,6 +308,8 @@ SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     SectionParseSpec("policy", "policy", _parse_policy_adapter, 145),
     SectionParseSpec("intent", "intent", _parse_intent_adapter, 150),
     SectionParseSpec("defend", "defend", _parse_defend_adapter, 155),
+    SectionParseSpec("circuit", "circuit", _parse_circuit_adapter, 160),
+    SectionParseSpec("features", "features", _parse_features_adapter, 165),
 )
 
 
@@ -348,4 +372,6 @@ def parse_registered_sections(
         policy=cast("PolicyConfig | None", parsed["policy"]),
         intent=cast("IntentConfig | None", parsed["intent"]),
         defend=cast("DefenseStackConfig | None", parsed["defend"]),
+        circuit=cast("CircuitConfig | None", parsed["circuit"]),
+        features=cast("FeaturesConfig | None", parsed["features"]),
     )

@@ -71,9 +71,20 @@ def _has_defend(config: PipelineConfig) -> bool:
     return config.defend is not None
 
 
+def _has_circuit(config: PipelineConfig) -> bool:
+    """Return whether [circuit] mode is active."""
+    return config.circuit is not None
+
+
+def _has_features(config: PipelineConfig) -> bool:
+    """Return whether [features] mode is active."""
+    return config.features is not None
+
+
 EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
     EarlyModeSpec("[depth]", "depth", "before_prompts", False, _has_depth),
     EarlyModeSpec("[svf]", "svf", "before_prompts", False, _has_svf),
+    EarlyModeSpec("[features]", "features", "before_prompts", False, _has_features),
     EarlyModeSpec("[probe]", "probe", "after_measure", True, _has_probe),
     EarlyModeSpec("[steer]", "steer", "after_measure", True, _has_steer),
     EarlyModeSpec("[cast]", "cast", "after_measure", True, _has_cast),
@@ -99,6 +110,13 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "after_measure",
         False,
         _has_defend,
+    ),
+    EarlyModeSpec(
+        "[circuit]",
+        "circuit",
+        "after_measure",
+        False,
+        _has_circuit,
     ),
 )
 
