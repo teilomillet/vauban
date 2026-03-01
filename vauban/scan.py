@@ -71,9 +71,7 @@ def scan(
     # h shape: (1, seq_len, d_model), direction shape: (d_model,)
     projections = ops.sum(h[0] * direction, axis=-1)  # (seq_len,)
     force_eval(projections)
-    per_token: list[float] = [
-        float(projections[j].item()) for j in range(len(token_ids_list))
-    ]
+    per_token: list[float] = projections.tolist()
 
     # Overall projection: mean of per-token projections
     overall_projection = sum(per_token) / len(per_token) if per_token else 0.0

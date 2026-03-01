@@ -15,7 +15,6 @@ class TestDefenseStackConfig:
         config = DefenseStackConfig()
         assert config.scan is None
         assert config.sic is None
-        assert config.cast is None
         assert config.policy is None
         assert config.intent is None
         assert config.fail_fast is True

@@ -14,6 +14,7 @@ from vauban.types import (
     DefenseStackConfig,
     DefenseStackResult,
     IntentCheckResult,
+    IntentState,
     PolicyDecision,
     ScanResult,
     Tokenizer,
@@ -87,9 +88,15 @@ def defend_content(
 
     # Layers 1-2 passed (CAST is applied at generation time, not here)
     blocked = bool(reasons)
+    blocker = None
+    if blocked and scan_result is not None and scan_result.flagged:
+        blocker = "scan"
+    elif blocked:
+        blocker = "sic"
+
     return DefenseStackResult(
         blocked=blocked,
-        layer_that_blocked="scan" if blocked else None,
+        layer_that_blocked=blocker,
         scan_result=scan_result,
         reasons=reasons,
     )
@@ -100,7 +107,7 @@ def defend_tool_call(
     tokenizer: Tokenizer,
     tool_name: str,
     arguments: dict[str, str],
-    intent_state: object | None,
+    intent_state: IntentState | None,
     config: DefenseStackConfig,
     layer_index: int = 0,
 ) -> DefenseStackResult:
@@ -114,7 +121,7 @@ def defend_tool_call(
         tokenizer: Tokenizer with encode/decode support.
         tool_name: Name of the tool being called.
         arguments: Tool call arguments.
-        intent_state: Captured user intent (IntentState or None).
+        intent_state: Captured user intent state, or None.
         config: Defense stack configuration.
         layer_index: Fallback layer index.
 
@@ -145,30 +152,28 @@ def defend_tool_call(
     # Layer 4: Intent alignment
     if config.intent is not None and intent_state is not None:
         from vauban.intent import check_alignment
-        from vauban.types import IntentState
 
-        if isinstance(intent_state, IntentState):
-            action_desc = (
-                f"Call {tool_name} with arguments"
-                f" {arguments}"
+        action_desc = (
+            f"Call {tool_name} with arguments"
+            f" {arguments}"
+        )
+        intent_check = check_alignment(
+            model, tokenizer, action_desc, intent_state,
+            config.intent, layer_index,
+        )
+        if not intent_check.aligned:
+            reasons.append(
+                f"Intent: action misaligned"
+                f" (score={intent_check.score:.3f})",
             )
-            intent_check = check_alignment(
-                model, tokenizer, action_desc, intent_state,
-                config.intent, layer_index,
-            )
-            if not intent_check.aligned:
-                reasons.append(
-                    f"Intent: action misaligned"
-                    f" (score={intent_check.score:.3f})",
+            if config.fail_fast:
+                return DefenseStackResult(
+                    blocked=True,
+                    layer_that_blocked="intent",
+                    policy_decision=policy_decision,
+                    intent_check=intent_check,
+                    reasons=reasons,
                 )
-                if config.fail_fast:
-                    return DefenseStackResult(
-                        blocked=True,
-                        layer_that_blocked="intent",
-                        policy_decision=policy_decision,
-                        intent_check=intent_check,
-                        reasons=reasons,
-                    )
 
     blocked = bool(reasons)
     blocker = None

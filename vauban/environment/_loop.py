@@ -5,7 +5,7 @@ payloads into tool results, and computes reward.
 """
 
 from vauban import _ops as ops
-from vauban._forward import force_eval, make_cache
+from vauban._forward import extract_logits, make_cache
 from vauban.environment._format import format_tools_for_prompt
 from vauban.environment._parse_tool_call import parse_tool_calls
 from vauban.environment._policy import check_policy
@@ -170,50 +170,23 @@ def _generate_response(
         msg = "apply_chat_template must return str when tokenize=False"
         raise TypeError(msg)
 
-    input_ids = tokenizer.encode(text)
-    input_array = ops.array(input_ids)[None, :]
-
-    transformer = model.model
-    cache = make_cache(model)
-
-    # Prefill
-    h = transformer.embed_tokens(input_array)
-    mask = ops.create_additive_causal_mask(h.shape[1])
-
-    for i, layer in enumerate(transformer.layers):
-        h = layer(h, mask, cache=cache[i])
-
-    h = transformer.norm(h)
-
-    # Get logits at last position
-    if hasattr(model, "lm_head"):
-        logits = model.lm_head(h[:, -1:, :])  # type: ignore[attr-defined]
-    else:
-        logits = transformer.embed_tokens.as_linear(h[:, -1:, :])  # type: ignore[union-attr]
-    force_eval(logits)
-
+    tokens = tokenizer.encode(text)
+    generated: list[int] = []
     eos_token_id: int | None = getattr(tokenizer, "eos_token_id", None)
 
-    generated_ids: list[int] = []
+    cache = make_cache(model)
+    token_ids = ops.array([tokens])
+
     for _ in range(max_tokens):
+        result = model(token_ids, cache=cache)  # type: ignore[call-non-callable]
+        logits = extract_logits(result)
         next_token = int(ops.argmax(logits[:, -1, :], axis=-1).item())
+        generated.append(next_token)
         if eos_token_id is not None and next_token == eos_token_id:
             break
-        generated_ids.append(next_token)
+        token_ids = ops.array([[next_token]])
 
-        # Decode step
-        h = transformer.embed_tokens(ops.array([[next_token]]))
-        for i, layer in enumerate(transformer.layers):
-            h = layer(h, None, cache=cache[i])
-        h = transformer.norm(h)
-
-        if hasattr(model, "lm_head"):
-            logits = model.lm_head(h)  # type: ignore[attr-defined]
-        else:
-            logits = transformer.embed_tokens.as_linear(h)  # type: ignore[union-attr]
-        force_eval(logits)
-
-    return tokenizer.decode(generated_ids)
+    return tokenizer.decode(generated)
 
 
 def _get_tool_result(

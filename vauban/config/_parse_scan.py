@@ -1,5 +1,7 @@
 """Parse the [scan] section of a TOML config."""
 
+from typing import cast
+
 from vauban.config._types import TomlDict
 from vauban.types import ScanConfig
 
@@ -16,8 +18,10 @@ def _parse_scan(raw: TomlDict) -> ScanConfig | None:
         msg = f"[scan] must be a table, got {type(sec).__name__}"
         raise TypeError(msg)
 
+    scan_dict = cast("dict[str, object]", sec)
+
     # -- target_layer --
-    target_layer_raw = sec.get("target_layer")  # type: ignore[arg-type]
+    target_layer_raw = scan_dict.get("target_layer")
     target_layer: int | None = None
     if target_layer_raw is not None:
         if not isinstance(target_layer_raw, int):
@@ -29,7 +33,7 @@ def _parse_scan(raw: TomlDict) -> ScanConfig | None:
         target_layer = target_layer_raw
 
     # -- span_threshold --
-    span_threshold_raw = sec.get("span_threshold", 0.5)  # type: ignore[arg-type]
+    span_threshold_raw = scan_dict.get("span_threshold", 0.5)
     if not isinstance(span_threshold_raw, int | float):
         msg = (
             f"[scan].span_threshold must be a number,"
@@ -38,7 +42,7 @@ def _parse_scan(raw: TomlDict) -> ScanConfig | None:
         raise TypeError(msg)
 
     # -- threshold --
-    threshold_raw = sec.get("threshold", 0.0)  # type: ignore[arg-type]
+    threshold_raw = scan_dict.get("threshold", 0.0)
     if not isinstance(threshold_raw, int | float):
         msg = (
             f"[scan].threshold must be a number,"
@@ -47,7 +51,7 @@ def _parse_scan(raw: TomlDict) -> ScanConfig | None:
         raise TypeError(msg)
 
     # -- calibrate --
-    calibrate_raw = sec.get("calibrate", False)  # type: ignore[arg-type]
+    calibrate_raw = scan_dict.get("calibrate", False)
     if not isinstance(calibrate_raw, bool):
         msg = (
             f"[scan].calibrate must be a boolean,"

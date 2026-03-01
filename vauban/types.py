@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from vauban._array import Array
 
@@ -1199,7 +1199,7 @@ class EnvironmentConfig:
 class AgentTurn:
     """A single turn in the agent conversation."""
 
-    role: str
+    role: Literal["assistant", "tool", "user", "system"]
     content: str
     tool_call: ToolCall | None = None
 
@@ -1262,7 +1262,7 @@ class PolicyRule:
     """A single tool-call policy rule."""
 
     name: str
-    action: str  # "allow", "block", or "confirm"
+    action: Literal["allow", "block", "confirm"]
     tool_pattern: str  # fnmatch pattern
     argument_key: str | None = None
     argument_pattern: str | None = None  # regex
@@ -1300,7 +1300,7 @@ class PolicyConfig:
 class PolicyDecision:
     """Result of evaluating a tool call against the policy engine."""
 
-    action: str  # "allow", "block", or "confirm"
+    action: Literal["allow", "block", "confirm"]
     matched_rules: list[str]
     reasons: list[str]
 
@@ -1314,7 +1314,7 @@ class PolicyDecision:
 class IntentConfig:
     """Configuration for intent alignment checking."""
 
-    mode: str = "embedding"  # "embedding" or "judge"
+    mode: Literal["embedding", "judge"] = "embedding"
     target_layer: int | None = None
     similarity_threshold: float = 0.7
     judge_prompt: str = (
@@ -1339,7 +1339,7 @@ class IntentCheckResult:
 
     aligned: bool
     score: float  # cosine similarity or judge confidence
-    mode: str
+    mode: Literal["embedding", "judge"]
 
 
 # ---------------------------------------------------------------------------
@@ -1353,7 +1353,6 @@ class DefenseStackConfig:
 
     scan: ScanConfig | None = None
     sic: SICConfig | None = None
-    cast: CastConfig | None = None
     policy: PolicyConfig | None = None
     intent: IntentConfig | None = None
     fail_fast: bool = True
@@ -1364,7 +1363,7 @@ class DefenseStackResult:
     """Result of running the full defense stack."""
 
     blocked: bool
-    layer_that_blocked: str | None  # "scan", "sic", "cast", "policy", "intent"
+    layer_that_blocked: Literal["scan", "sic", "cast", "policy", "intent"] | None
     scan_result: ScanResult | None = None
     policy_decision: PolicyDecision | None = None
     intent_check: IntentCheckResult | None = None
