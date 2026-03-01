@@ -157,14 +157,14 @@ def run(config_path: str | Path) -> None:
                 bank_entries, config.measure.top_k, clip_q,
             )
             # Save bank as subspace_bank.safetensors
-            import mlx.core as mx
+            from vauban import _ops as ops
 
             bank_path = config.output_dir / "subspace_bank.safetensors"
             bank_path.parent.mkdir(parents=True, exist_ok=True)
-            bank_arrays: dict[str, mx.array] = {}
+            bank_arrays: dict[str, Array] = {}
             for name, bank_result in bank_results.items():
                 bank_arrays[name] = bank_result.basis
-            mx.save_safetensors(str(bank_path), bank_arrays)
+            ops.save_safetensors(str(bank_path), bank_arrays)
             log(
                 f"Subspace bank written to {bank_path}"
                 f" ({len(bank_results)} subspaces)",
