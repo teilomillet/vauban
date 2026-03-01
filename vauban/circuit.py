@@ -27,9 +27,9 @@ from vauban.types import CausalLM, CircuitResult, ComponentEffect, Tokenizer
 
 def _create_causal_mask(h: Array) -> Array:
     """Create a causal attention mask matching h's sequence length."""
-    import mlx.nn as nn
+    from vauban import _nn
 
-    mask = nn.MultiHeadAttention.create_additive_causal_mask(h.shape[1])
+    mask = _nn.create_additive_causal_mask(h.shape[1])
     return mask.astype(h.dtype)
 
 

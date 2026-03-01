@@ -255,7 +255,9 @@ def _detect(
 ) -> float:
     """Dispatch to direction, SVF, or generation detection."""
     if config.mode == "direction":
-        assert direction is not None
+        if direction is None:
+            msg = "direction mode requires a measured direction"
+            raise ValueError(msg)
         return _detect_adversarial_direction(
             model, tokenizer, prompt, direction, target_layer,
         )
