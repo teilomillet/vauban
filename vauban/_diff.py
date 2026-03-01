@@ -69,6 +69,13 @@ _EXTRACTORS: dict[str, list[tuple[list[str], str, bool]]] = {
     "optimize_report.json": [
         # best_refusal.refusal_rate
     ],
+    "circuit_report.json": [
+        (["n_layers"], "n_layers", False),
+    ],
+    "features_report.json": [
+        (["d_model"], "d_model", False),
+        (["d_sae"], "d_sae", False),
+    ],
 }
 
 

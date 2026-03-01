@@ -83,6 +83,7 @@ class PipelineModeDoc:
 EARLY_RETURN_PRECEDENCE: tuple[str, ...] = (
     "depth",
     "svf",
+    "features",
     "probe",
     "steer",
     "cast",
@@ -91,6 +92,7 @@ EARLY_RETURN_PRECEDENCE: tuple[str, ...] = (
     "compose_optimize",
     "softprompt",
     "defend",
+    "circuit",
 )
 
 _PIPELINE_MODES: tuple[PipelineModeDoc, ...] = (
@@ -158,6 +160,18 @@ _PIPELINE_MODES: tuple[PipelineModeDoc, ...] = (
         mode="defend",
         trigger="[defend] section present.",
         output="defend_report.json.",
+        early_return=True,
+    ),
+    PipelineModeDoc(
+        mode="circuit",
+        trigger="[circuit] section present.",
+        output="circuit_report.json.",
+        early_return=True,
+    ),
+    PipelineModeDoc(
+        mode="features",
+        trigger="[features] section present.",
+        output="features_report.json + sae_layer_*.safetensors.",
         early_return=True,
     ),
 )
@@ -1239,6 +1253,143 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
         ),
         notes=(
             "Used as a sub-layer of [defend] or standalone for intent verification.",
+        ),
+    ),
+    SectionSpec(
+        name="circuit",
+        description="Causal circuit tracing via activation patching.",
+        early_return=True,
+        config_class="CircuitConfig",
+        fields=(
+            FieldSpec(
+                key="clean_prompts",
+                description="Harmless prompts for the clean forward pass.",
+                constraints="required non-empty list of strings.",
+                required=True,
+            ),
+            FieldSpec(
+                key="corrupt_prompts",
+                description="Harmful prompts for the corrupt forward pass.",
+                constraints=(
+                    "required non-empty list of strings;"
+                    " must have same length as clean_prompts."
+                ),
+                required=True,
+            ),
+            FieldSpec(
+                key="metric",
+                description="Effect metric for patching.",
+                constraints='one of: "kl", "logit_diff".',
+                default_override='"kl"',
+            ),
+            FieldSpec(
+                key="granularity",
+                description="Patching granularity.",
+                constraints='one of: "layer", "component".',
+                default_override='"layer"',
+            ),
+            FieldSpec(
+                key="layers",
+                description="Specific layers to trace.",
+                constraints="list of non-negative integers or null (all layers).",
+            ),
+            FieldSpec(
+                key="token_position",
+                description="Token index for metric computation.",
+                constraints="integer.",
+                default_override="-1",
+            ),
+            FieldSpec(
+                key="attribute_direction",
+                description="Compute direction attribution per component.",
+                constraints="boolean.",
+                default_override="false",
+            ),
+            FieldSpec(
+                key="logit_diff_tokens",
+                description="Target token IDs for logit_diff metric.",
+                constraints=(
+                    "non-empty list of integers;"
+                    " required when metric = 'logit_diff'."
+                ),
+            ),
+        ),
+        notes=(
+            (
+                "Implements causal tracing: patches clean activations"
+                " into a corrupt forward pass and measures the effect"
+                " on output at each layer or component (attn/mlp)."
+            ),
+        ),
+    ),
+    SectionSpec(
+        name="features",
+        description="Sparse autoencoder training for feature decomposition.",
+        early_return=True,
+        config_class="FeaturesConfig",
+        fields=(
+            FieldSpec(
+                key="prompts_path",
+                description="JSONL file of prompts for activation collection.",
+                constraints="required string path.",
+                required=True,
+            ),
+            FieldSpec(
+                key="layers",
+                description="Layer indices to train SAEs on.",
+                constraints="required non-empty list of non-negative integers.",
+                required=True,
+            ),
+            FieldSpec(
+                key="d_sae",
+                description="Dictionary size (number of SAE features).",
+                constraints="integer >= 1.",
+                default_override="2048",
+            ),
+            FieldSpec(
+                key="l1_coeff",
+                description="L1 sparsity coefficient.",
+                constraints="number >= 0.",
+                default_override="0.001",
+            ),
+            FieldSpec(
+                key="n_epochs",
+                description="Training epochs per SAE.",
+                constraints="integer >= 1.",
+                default_override="5",
+            ),
+            FieldSpec(
+                key="learning_rate",
+                description="Adam learning rate.",
+                constraints="number > 0.",
+                default_override="0.001",
+            ),
+            FieldSpec(
+                key="batch_size",
+                description="Mini-batch size for training.",
+                constraints="integer >= 1.",
+                default_override="32",
+            ),
+            FieldSpec(
+                key="token_position",
+                description="Token index for activation extraction.",
+                constraints="integer.",
+                default_override="-1",
+            ),
+            FieldSpec(
+                key="dead_feature_threshold",
+                description="Max activation below which a feature is considered dead.",
+                constraints="number >= 0.",
+                default_override="1e-6",
+            ),
+        ),
+        notes=(
+            (
+                "Trains per-layer sparse autoencoders on residual stream"
+                " activations. If a refusal direction is available from"
+                " [measure], computes cross-lens direction alignment"
+                " for each decoder feature."
+            ),
         ),
     ),
     SectionSpec(

@@ -421,6 +421,10 @@ def _print_summary(
         mode = "Optuna optimization"
     elif config.softprompt is not None:
         mode = "soft prompt attack"
+    elif config.circuit is not None:
+        mode = "circuit tracing"
+    elif config.features is not None:
+        mode = "SAE feature decomposition"
     extras: list[str] = []
     if config.detect is not None and config.depth is None:
         extras.append("detect")
