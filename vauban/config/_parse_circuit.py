@@ -35,6 +35,9 @@ def _parse_circuit(raw: TomlDict) -> CircuitConfig | None:
             )
             raise TypeError(msg)
     clean_prompts: list[str] = list(clean_raw)
+    if not clean_prompts:
+        msg = "[circuit].clean_prompts must not be empty"
+        raise ValueError(msg)
 
     # -- corrupt_prompts (required) --
     corrupt_raw = sec.get("corrupt_prompts")  # type: ignore[arg-type]
@@ -55,6 +58,15 @@ def _parse_circuit(raw: TomlDict) -> CircuitConfig | None:
             )
             raise TypeError(msg)
     corrupt_prompts: list[str] = list(corrupt_raw)
+    if not corrupt_prompts:
+        msg = "[circuit].corrupt_prompts must not be empty"
+        raise ValueError(msg)
+    if len(clean_prompts) != len(corrupt_prompts):
+        msg = (
+            f"[circuit].clean_prompts and corrupt_prompts must have"
+            f" the same length ({len(clean_prompts)} != {len(corrupt_prompts)})"
+        )
+        raise ValueError(msg)
 
     # -- metric (optional, default "kl") --
     metric_raw = sec.get("metric", "kl")  # type: ignore[arg-type]
@@ -141,6 +153,9 @@ def _parse_circuit(raw: TomlDict) -> CircuitConfig | None:
                 )
                 raise TypeError(msg)
         logit_diff_tokens = list(ldt_raw)
+        if not logit_diff_tokens:
+            msg = "[circuit].logit_diff_tokens must not be empty"
+            raise ValueError(msg)
 
     return CircuitConfig(
         clean_prompts=clean_prompts,

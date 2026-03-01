@@ -200,12 +200,16 @@ def train_sae(
             sae.set_parameters(params)
 
     # Count dead features via vectorized max reduction + comparison
-    codes = sae.encode(activations)
-    max_activations = codes[0]
-    for i in range(1, codes.shape[0]):
-        max_activations = ops.maximum(max_activations, codes[i])
-    force_eval(max_activations)
-    n_dead = int(ops.sum(max_activations < dead_feature_threshold).item())
+    n_dead = 0
+    if activations.shape[0] > 0:
+        codes = sae.encode(activations)
+        max_activations = codes[0]
+        for i in range(1, codes.shape[0]):
+            max_activations = ops.maximum(max_activations, codes[i])
+        force_eval(max_activations)
+        n_dead = int(ops.sum(max_activations < dead_feature_threshold).item())
+    else:
+        n_dead = sae.d_sae  # no data → all features are dead
 
     return SAELayerResult(
         layer=-1,  # set by caller

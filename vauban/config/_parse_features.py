@@ -52,6 +52,13 @@ def _parse_features(base_dir: Path, raw: TomlDict) -> FeaturesConfig | None:
             )
             raise TypeError(msg)
     layers: list[int] = list(layers_raw)
+    if not layers:
+        msg = "[features].layers must not be empty"
+        raise ValueError(msg)
+    for i, layer_val in enumerate(layers):
+        if layer_val < 0:
+            msg = f"[features].layers[{i}] must be >= 0, got {layer_val}"
+            raise ValueError(msg)
 
     # -- d_sae (optional, default 2048) --
     d_sae_raw = sec.get("d_sae", 2048)  # type: ignore[arg-type]
@@ -74,6 +81,10 @@ def _parse_features(base_dir: Path, raw: TomlDict) -> FeaturesConfig | None:
         )
         raise TypeError(msg)
 
+    if l1_raw < 0:
+        msg = f"[features].l1_coeff must be >= 0, got {l1_raw}"
+        raise ValueError(msg)
+
     # -- n_epochs (optional, default 5) --
     n_epochs_raw = sec.get("n_epochs", 5)  # type: ignore[arg-type]
     if not isinstance(n_epochs_raw, int):
@@ -94,6 +105,10 @@ def _parse_features(base_dir: Path, raw: TomlDict) -> FeaturesConfig | None:
             f" got {type(lr_raw).__name__}"
         )
         raise TypeError(msg)
+
+    if lr_raw <= 0:
+        msg = f"[features].learning_rate must be > 0, got {lr_raw}"
+        raise ValueError(msg)
 
     # -- batch_size (optional, default 32) --
     batch_raw = sec.get("batch_size", 32)  # type: ignore[arg-type]
@@ -124,6 +139,10 @@ def _parse_features(base_dir: Path, raw: TomlDict) -> FeaturesConfig | None:
             f" got {type(dead_raw).__name__}"
         )
         raise TypeError(msg)
+
+    if dead_raw < 0:
+        msg = f"[features].dead_feature_threshold must be >= 0, got {dead_raw}"
+        raise ValueError(msg)
 
     return FeaturesConfig(
         prompts_path=prompts_path,
