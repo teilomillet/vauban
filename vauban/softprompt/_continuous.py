@@ -4,17 +4,15 @@ from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import force_eval, get_transformer
 from vauban.softprompt._encoding import _pre_encode_prompts
-from vauban.softprompt._generation import _evaluate_attack
-from vauban.softprompt._loss import (
-    _compute_defensive_loss,
-    _compute_loss,
-    _compute_untargeted_loss,
+from vauban.softprompt._gcg_objective import (
+    _build_gcg_shared_state,
+    _compute_average_objective_loss,
 )
+from vauban.softprompt._generation import _evaluate_attack
 from vauban.softprompt._runtime import (
     _compute_accessibility_score,
     _compute_embed_regularization,
     _compute_learning_rate,
-    _encode_refusal_tokens,
     _encode_targets,
 )
 from vauban.softprompt._search import (
@@ -66,29 +64,17 @@ def _continuous_attack(
             tokenizer, effective_prompts, config.system_prompt,
         )
 
-    # Pre-compute direction config
-    direction_layers_set: set[int] | None = (
-        set(config.direction_layers) if config.direction_layers is not None
-        else None
+    objective_state = _build_gcg_shared_state(
+        model,
+        tokenizer,
+        config,
+        target_ids,
+        direction,
+        ref_model=ref_model,
+        perplexity_weight_override=0.0,
     )
-    refusal_ids: Array | None = None
-    if config.loss_mode in ("untargeted", "defensive"):
-        refusal_ids = _encode_refusal_tokens(tokenizer)
-        force_eval(refusal_ids)
-
-    # Pre-compute EOS token ID
-    eos_token_id: int | None = getattr(tokenizer, "eos_token_id", None)
-
-    # Pre-compute defense-aware loss config
-    da_weight = config.defense_aware_weight
-    da_sic_layer = config.defense_eval_layer
-    _sic_t = config.defense_eval_sic_threshold
-    da_sic_threshold = _sic_t if _sic_t is not None else config.defense_eval_threshold
-    da_cast_layers = config.defense_eval_cast_layers
-    da_cast_threshold = config.defense_eval_threshold
-
-    # Pre-compute position config (no perplexity for continuous mode)
-    tok_pos = config.token_position
+    direction_layers_set = objective_state.direction_layers
+    refusal_ids = objective_state.refusal_ids
 
     # Adam state: manual tracking since we're optimizing a bare array
     m = ops.zeros_like(soft_embeds)
@@ -114,12 +100,17 @@ def _continuous_attack(
                 config.n_tokens, config.worst_k,
                 direction, config.direction_weight,
                 config.direction_mode, direction_layers_set,
-                eos_token_id, config.eos_loss_mode, config.eos_loss_weight,
+                objective_state.eos_token_id,
+                config.eos_loss_mode, config.eos_loss_weight,
                 ref_model, config.kl_ref_weight,
                 loss_mode=config.loss_mode, refusal_ids=refusal_ids,
-                defense_aware_weight=da_weight,
-                sic_layer=da_sic_layer, sic_threshold=da_sic_threshold,
-                cast_layers=da_cast_layers, cast_threshold=da_cast_threshold,
+                defense_aware_weight=objective_state.defense.weight,
+                sic_layer=objective_state.defense.sic_layer,
+                sic_threshold=objective_state.defense.sic_threshold,
+                cast_layers=objective_state.defense.cast_layers,
+                cast_threshold=objective_state.defense.cast_threshold,
+                perplexity_weight=config.perplexity_weight,
+                token_position=objective_state.token_position,
             )
         elif config.prompt_strategy == "sample":
             selected_ids = _sample_prompt_ids(
@@ -140,66 +131,11 @@ def _continuous_attack(
                 embeds: Array,
                 _sel: list[Array] = batch,
             ) -> Array:
-                total = ops.array(0.0)
-                for pid in _sel:
-                    if (
-                        config.loss_mode == "defensive"
-                        and refusal_ids is not None
-                    ):
-                        total = total + _compute_defensive_loss(
-                            model, embeds, pid,
-                            config.n_tokens, refusal_ids,
-                            direction, config.direction_weight,
-                            config.direction_mode, direction_layers_set,
-                            eos_token_id, config.eos_loss_mode,
-                            config.eos_loss_weight,
-                            ref_model, config.kl_ref_weight,
-                            da_weight, da_sic_layer, da_sic_threshold,
-                            da_cast_layers, da_cast_threshold,
-                            token_position=tok_pos,
-                        )
-                    elif (
-                        config.loss_mode == "untargeted"
-                        and refusal_ids is not None
-                    ):
-                        total = total + _compute_untargeted_loss(
-                            model, embeds, pid,
-                            config.n_tokens, refusal_ids,
-                            direction, config.direction_weight,
-                            config.direction_mode, direction_layers_set,
-                            eos_token_id, config.eos_loss_mode,
-                            config.eos_loss_weight,
-                            ref_model, config.kl_ref_weight,
-                            da_weight, da_sic_layer, da_sic_threshold,
-                            da_cast_layers, da_cast_threshold,
-                            token_position=tok_pos,
-                        )
-                    elif config.loss_mode == "externality":
-                        from vauban.softprompt._loss import (
-                            _compute_externality_loss,
-                        )
-
-                        total = total + _compute_externality_loss(
-                            model, embeds, pid,
-                            config.n_tokens, direction,
-                            config.direction_weight,
-                            config.perplexity_weight,
-                            token_position=tok_pos,
-                        )
-                    else:
-                        total = total + _compute_loss(
-                            model, embeds, pid, target_ids,
-                            config.n_tokens, direction,
-                            config.direction_weight,
-                            config.direction_mode, direction_layers_set,
-                            eos_token_id, config.eos_loss_mode,
-                            config.eos_loss_weight,
-                            ref_model, config.kl_ref_weight,
-                            da_weight, da_sic_layer, da_sic_threshold,
-                            da_cast_layers, da_cast_threshold,
-                            token_position=tok_pos,
-                        )
-                avg = total / len(_sel)
+                avg = _compute_average_objective_loss(
+                    objective_state,
+                    embeds,
+                    _sel,
+                )
                 if config.embed_reg_weight > 0.0:
                     avg = avg + _compute_embed_regularization(
                         embeds, embed_matrix, config.embed_reg_weight,
@@ -250,14 +186,16 @@ def _continuous_attack(
         model, soft_embeds, all_prompt_ids, target_ids,
         config.n_tokens, direction, config.direction_weight,
         config.direction_mode, direction_layers_set,
-        eos_token_id, config.eos_loss_mode, config.eos_loss_weight,
+        objective_state.eos_token_id, config.eos_loss_mode, config.eos_loss_weight,
         ref_model, config.kl_ref_weight,
         loss_mode=config.loss_mode, refusal_ids=refusal_ids,
-        defense_aware_weight=da_weight,
-        sic_layer=da_sic_layer, sic_threshold=da_sic_threshold,
-        cast_layers=da_cast_layers, cast_threshold=da_cast_threshold,
+        defense_aware_weight=objective_state.defense.weight,
+        sic_layer=objective_state.defense.sic_layer,
+        sic_threshold=objective_state.defense.sic_threshold,
+        cast_layers=objective_state.defense.cast_layers,
+        cast_threshold=objective_state.defense.cast_threshold,
         perplexity_weight=config.perplexity_weight,
-        token_position=tok_pos,
+        token_position=objective_state.token_position,
     )
     final_loss = loss_history[-1] if loss_history else 0.0
     accessibility_score = _compute_accessibility_score(final_loss)

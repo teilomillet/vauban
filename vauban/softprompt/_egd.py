@@ -5,17 +5,14 @@ from vauban._array import Array
 from vauban._forward import force_eval
 from vauban.softprompt._constraints import _build_vocab_mask
 from vauban.softprompt._encoding import _pre_encode_prompts
-from vauban.softprompt._generation import _evaluate_attack
-from vauban.softprompt._loss import (
-    _compute_defensive_loss,
-    _compute_externality_loss,
-    _compute_loss,
-    _compute_untargeted_loss,
+from vauban.softprompt._gcg_objective import (
+    _build_gcg_shared_state,
+    _compute_average_objective_loss,
 )
+from vauban.softprompt._generation import _evaluate_attack
 from vauban.softprompt._runtime import (
     _compute_accessibility_score,
     _compute_learning_rate,
-    _encode_refusal_tokens,
     _encode_targets,
     _prepare_transfer_data,
     _score_transfer_loss,
@@ -88,29 +85,22 @@ def _egd_attack(
         transfer_models, config, prompts,
     )
 
-    # Pre-compute direction config
-    direction_layers_set: set[int] | None = (
-        set(config.direction_layers) if config.direction_layers is not None
-        else None
+    objective_state = _build_gcg_shared_state(
+        model,
+        tokenizer,
+        config,
+        target_ids,
+        direction,
+        ref_model=ref_model,
+        infix_map=infix_map,
     )
-    refusal_ids: Array | None = None
-    if config.loss_mode in ("untargeted", "defensive"):
-        refusal_ids = _encode_refusal_tokens(tokenizer)
-        force_eval(refusal_ids)
+    direction_layers_set = objective_state.direction_layers
+    refusal_ids = objective_state.refusal_ids
 
-    # Pre-compute vocab mask and EOS token ID
+    # Pre-compute vocab mask
     vocab_mask = _build_vocab_mask(
         tokenizer, vocab_size, config.token_constraint,
     )
-    eos_token_id: int | None = getattr(tokenizer, "eos_token_id", None)
-
-    # Pre-compute defense-aware loss config
-    da_weight = config.defense_aware_weight
-    da_sic_layer = config.defense_eval_layer
-    _sic_t = config.defense_eval_sic_threshold
-    da_sic_threshold = _sic_t if _sic_t is not None else config.defense_eval_threshold
-    da_cast_layers = config.defense_eval_cast_layers
-    da_cast_threshold = config.defense_eval_threshold
 
     # Initialize p on the simplex: warm-start or uniform
     if config.init_tokens is not None:
@@ -144,10 +134,6 @@ def _egd_attack(
         p = p / (row_sums + 1e-30)
     force_eval(p)
 
-    # Pre-compute perplexity and position config
-    ppl_weight = config.perplexity_weight
-    tok_pos = config.token_position
-
     loss_history: list[float] = []
     best_loss = float("inf")
     best_p = p
@@ -168,12 +154,17 @@ def _egd_attack(
                 config.n_tokens, config.worst_k,
                 direction, config.direction_weight,
                 config.direction_mode, direction_layers_set,
-                eos_token_id, config.eos_loss_mode, config.eos_loss_weight,
+                objective_state.eos_token_id,
+                config.eos_loss_mode, config.eos_loss_weight,
                 ref_model, config.kl_ref_weight,
                 loss_mode=config.loss_mode, refusal_ids=refusal_ids,
-                defense_aware_weight=da_weight,
-                sic_layer=da_sic_layer, sic_threshold=da_sic_threshold,
-                cast_layers=da_cast_layers, cast_threshold=da_cast_threshold,
+                defense_aware_weight=objective_state.defense.weight,
+                sic_layer=objective_state.defense.sic_layer,
+                sic_threshold=objective_state.defense.sic_threshold,
+                cast_layers=objective_state.defense.cast_layers,
+                cast_threshold=objective_state.defense.cast_threshold,
+                perplexity_weight=objective_state.perplexity_weight,
+                token_position=objective_state.token_position,
             )
         elif config.prompt_strategy == "sample":
             selected_ids = _sample_prompt_ids(
@@ -198,80 +189,14 @@ def _egd_attack(
                 # For perplexity: use argmax of probs as token IDs
                 # (gradient flows through soft_embeds, not argmax)
                 _suf_ids: Array | None = None
-                if ppl_weight > 0.0:
+                if objective_state.perplexity_weight > 0.0:
                     _suf_ids = ops.argmax(probs, axis=-1)[None, :]
-                total = ops.array(0.0)
-                for pid in _sel:
-                    _isplit = (
-                        infix_map.get(id(pid))
-                        if infix_map is not None
-                        else None
-                    )
-                    if (
-                        config.loss_mode == "defensive"
-                        and refusal_ids is not None
-                    ):
-                        total = total + _compute_defensive_loss(
-                            model, soft_embeds, pid,
-                            config.n_tokens, refusal_ids,
-                            direction, config.direction_weight,
-                            config.direction_mode, direction_layers_set,
-                            eos_token_id, config.eos_loss_mode,
-                            config.eos_loss_weight,
-                            ref_model, config.kl_ref_weight,
-                            da_weight, da_sic_layer, da_sic_threshold,
-                            da_cast_layers, da_cast_threshold,
-                            perplexity_weight=ppl_weight,
-                            suffix_token_ids=_suf_ids,
-                            token_position=tok_pos,
-                            infix_split=_isplit,
-                        )
-                    elif (
-                        config.loss_mode == "untargeted"
-                        and refusal_ids is not None
-                    ):
-                        total = total + _compute_untargeted_loss(
-                            model, soft_embeds, pid,
-                            config.n_tokens, refusal_ids,
-                            direction, config.direction_weight,
-                            config.direction_mode, direction_layers_set,
-                            eos_token_id, config.eos_loss_mode,
-                            config.eos_loss_weight,
-                            ref_model, config.kl_ref_weight,
-                            da_weight, da_sic_layer, da_sic_threshold,
-                            da_cast_layers, da_cast_threshold,
-                            perplexity_weight=ppl_weight,
-                            suffix_token_ids=_suf_ids,
-                            token_position=tok_pos,
-                            infix_split=_isplit,
-                        )
-                    elif config.loss_mode == "externality":
-                        total = total + _compute_externality_loss(
-                            model, soft_embeds, pid,
-                            config.n_tokens, direction,
-                            config.direction_weight,
-                            ppl_weight,
-                            suffix_token_ids=_suf_ids,
-                            token_position=tok_pos,
-                            infix_split=_isplit,
-                        )
-                    else:
-                        total = total + _compute_loss(
-                            model, soft_embeds, pid, target_ids,
-                            config.n_tokens, direction,
-                            config.direction_weight,
-                            config.direction_mode, direction_layers_set,
-                            eos_token_id, config.eos_loss_mode,
-                            config.eos_loss_weight,
-                            ref_model, config.kl_ref_weight,
-                            da_weight, da_sic_layer, da_sic_threshold,
-                            da_cast_layers, da_cast_threshold,
-                            perplexity_weight=ppl_weight,
-                            suffix_token_ids=_suf_ids,
-                            token_position=tok_pos,
-                            infix_split=_isplit,
-                        )
-                return total / len(_sel)
+                return _compute_average_objective_loss(
+                    objective_state,
+                    soft_embeds,
+                    _sel,
+                    suffix_token_ids=_suf_ids,
+                )
 
             batch_loss, batch_grad = ops.value_and_grad(loss_fn)(p)
             force_eval(batch_loss, batch_grad)
@@ -342,14 +267,16 @@ def _egd_attack(
         model, final_embeds, all_prompt_ids, target_ids,
         config.n_tokens, direction, config.direction_weight,
         config.direction_mode, direction_layers_set,
-        eos_token_id, config.eos_loss_mode, config.eos_loss_weight,
+        objective_state.eos_token_id, config.eos_loss_mode, config.eos_loss_weight,
         ref_model, config.kl_ref_weight,
         loss_mode=config.loss_mode, refusal_ids=refusal_ids,
-        defense_aware_weight=da_weight,
-        sic_layer=da_sic_layer, sic_threshold=da_sic_threshold,
-        cast_layers=da_cast_layers, cast_threshold=da_cast_threshold,
-        perplexity_weight=ppl_weight,
-        token_position=tok_pos,
+        defense_aware_weight=objective_state.defense.weight,
+        sic_layer=objective_state.defense.sic_layer,
+        sic_threshold=objective_state.defense.sic_threshold,
+        cast_layers=objective_state.defense.cast_layers,
+        cast_threshold=objective_state.defense.cast_threshold,
+        perplexity_weight=objective_state.perplexity_weight,
+        token_position=objective_state.token_position,
         suffix_token_ids=final_token_array,
     )
     final_loss = best_loss
