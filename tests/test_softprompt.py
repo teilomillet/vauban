@@ -48,6 +48,8 @@ from vauban.softprompt import (
 from vauban.softprompt._defense_eval import _build_sic_prompts_with_history
 from vauban.types import (
     DefenseEvalResult,
+    EnvironmentConfig,
+    EnvironmentResult,
     GanRoundResult,
     SoftPromptConfig,
     SoftPromptResult,
@@ -4068,10 +4070,8 @@ def _fake_rollout_score(
     _env_config: object,
     texts: list[str],
     losses: list[float],
-) -> tuple[list[float], list[object]]:
+) -> tuple[list[float], list[EnvironmentResult]]:
     """Stub for score_candidates_via_rollout — returns losses unchanged."""
-    from vauban.types import EnvironmentResult
-
     results = [
         EnvironmentResult(
             reward=0.0,
@@ -4088,7 +4088,7 @@ def _fake_rollout_score(
 
 def _make_rollout_env_config(
     rollout_every_n: int = 1,
-) -> object:
+) -> EnvironmentConfig:
     """Build a minimal EnvironmentConfig for rollout wiring tests."""
     from vauban.types import (
         EnvironmentConfig,
@@ -4168,3 +4168,44 @@ class TestGcgRolloutWiring:
             )
             # Steps 0,1,2,3,4,5 — rollout at 0,3 only = 2 calls
             assert mock_rollout.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Infix multiturn dispatch
+# ---------------------------------------------------------------------------
+
+
+class TestInfixMultiturnDispatch:
+    def test_dispatch_multiturn_forwards_infix_map(self) -> None:
+        """_dispatch_attack_multiturn resolves infix splits with history."""
+        from vauban.softprompt._gan import _dispatch_attack_multiturn
+
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="gcg",
+            n_tokens=4,
+            n_steps=1,
+            batch_size=4,
+            top_k=8,
+            seed=42,
+            max_gen_tokens=2,
+            token_position="infix",
+        )
+
+        history = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there!"},
+        ]
+        prompts = ["Tell me about {suffix} this topic"]
+
+        result = _dispatch_attack_multiturn(
+            model, tokenizer, prompts, config,
+            direction=None, ref_model=None,
+            history=history,
+        )
+        assert result.mode == "gcg"
+        assert result.token_ids is not None
+        assert len(result.token_ids) == 4
