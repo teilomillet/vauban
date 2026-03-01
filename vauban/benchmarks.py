@@ -187,7 +187,7 @@ def generate_infix_prompts(name: str, *, seed: int = 42) -> Path:
     rng = random.Random(seed)
     infix_records: list[dict[str, str]] = []
     for i, rec in enumerate(records):
-        template = _INFIX_TEMPLATES[rng.randint(0, len(_INFIX_TEMPLATES) - 1)]
+        template = rng.choice(_INFIX_TEMPLATES)
         prompt_text = str(rec.get("prompt", ""))
         # Lower-case first character for natural embedding
         if prompt_text:

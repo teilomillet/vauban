@@ -532,3 +532,77 @@ class TestPercentInPrompt:
         records = _read_jsonl(result)
         assert len(records) == 1
         assert "50%" in str(records[0]["prompt"])
+
+
+# ---------------------------------------------------------------------------
+# Staleness check tests
+# ---------------------------------------------------------------------------
+
+
+class TestManifestStaleness:
+    """Test _check_manifest_staleness warning on URL mismatch."""
+
+    def test_warns_on_url_mismatch(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Stale manifest URL triggers a warning."""
+        cache_dir = tmp_path / "harmbench"
+        cache_dir.mkdir()
+        manifest = {
+            "name": "harmbench",
+            "url": "https://old-url.example.com/data.csv",
+            "sha256": "abc",
+            "count": 10,
+        }
+        (cache_dir / "manifest.json").write_text(
+            json.dumps(manifest),
+        )
+
+        import logging
+
+        from vauban.benchmarks import _check_manifest_staleness
+
+        with caplog.at_level(logging.WARNING, "vauban.benchmarks"):
+            _check_manifest_staleness(cache_dir, "harmbench")
+
+        assert "cached manifest URL differs" in caplog.text
+
+    def test_no_warning_when_url_matches(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Matching URL produces no warning."""
+        from vauban.benchmarks import (
+            _BENCHMARK_SPECS,
+            _check_manifest_staleness,
+        )
+
+        spec = _BENCHMARK_SPECS["harmbench"]
+        cache_dir = tmp_path / "harmbench"
+        cache_dir.mkdir()
+        manifest = {
+            "name": "harmbench",
+            "url": spec.url,
+            "sha256": "abc",
+            "count": 10,
+        }
+        (cache_dir / "manifest.json").write_text(
+            json.dumps(manifest),
+        )
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, "vauban.benchmarks"):
+            _check_manifest_staleness(cache_dir, "harmbench")
+
+        assert caplog.text == ""
+
+    def test_no_crash_on_missing_manifest(
+        self, tmp_path: Path,
+    ) -> None:
+        """Missing manifest is silently ignored."""
+        from vauban.benchmarks import _check_manifest_staleness
+
+        cache_dir = tmp_path / "harmbench"
+        cache_dir.mkdir()
+        # Should not raise
+        _check_manifest_staleness(cache_dir, "harmbench")
