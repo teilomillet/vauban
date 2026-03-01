@@ -19,9 +19,12 @@ from vauban.types import (
     DefenseStackConfig,
     DepthConfig,
     FeaturesConfig,
+    FusionConfig,
+    LinearProbeConfig,
     OptimizeConfig,
     PipelineConfig,
     ProbeConfig,
+    RepBendConfig,
     SICConfig,
     SoftPromptConfig,
     SteerConfig,
@@ -54,6 +57,9 @@ _EXPECTED_EARLY_MODE_ORDER: list[str] = [
     "[softprompt]",
     "[defend]",
     "[circuit]",
+    "[linear_probe]",
+    "[fusion]",
+    "[repbend]",
 ]
 
 
@@ -140,7 +146,8 @@ def test_validation_warning_content_and_order_for_conflict_fixture(
             "[HIGH] Multiple early-return modes active: [depth], [probe]"
             " — only the first will run (precedence: depth > svf > features"
             " > probe > steer > cast > sic > optimize > compose_optimize"
-            " > softprompt > defend > circuit)"
+            " > softprompt > defend > circuit > linear_probe > fusion"
+            " > repbend)"
             " — fix: keep one early-return mode per config,"
             " and split other modes into separate TOML files"
         ),
@@ -202,6 +209,12 @@ def test_active_early_modes_precedence_matches_legacy_behavior() -> None:
             clean_prompts=["clean"],
             corrupt_prompts=["corrupt"],
         ),
+        linear_probe=LinearProbeConfig(layers=[0, 1]),
+        fusion=FusionConfig(
+            harmful_prompts=["harmful"],
+            benign_prompts=["benign"],
+        ),
+        repbend=RepBendConfig(layers=[0, 1]),
     )
 
     assert active_early_modes(config) == _EXPECTED_EARLY_MODE_ORDER

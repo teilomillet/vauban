@@ -22,11 +22,13 @@ from vauban.dequantize import dequantize_model, is_quantized
 from vauban.detect import detect
 from vauban.evaluate import evaluate
 from vauban.export import export_model
+from vauban.fusion import fuse_and_generate, fuse_batch
 from vauban.geometry import (
     DirectionGeometryResult,
     DirectionPair,
     analyze_directions,
 )
+from vauban.linear_probe import train_probe
 from vauban.measure import (
     default_eval_path,
     default_prompt_paths,
@@ -43,6 +45,7 @@ from vauban.measure import (
 )
 from vauban.optimize import optimize, optimize_composition
 from vauban.probe import multi_probe, probe, steer, steer_svf
+from vauban.repbend import repbend
 from vauban.sic import calibrate_threshold, sic_single
 from vauban.sic import sic as sic_sanitize
 from vauban.softprompt import softprompt_attack
@@ -90,12 +93,20 @@ from vauban.types import (
     DirectionTransferResult,
     EvalConfig,
     EvalResult,
+    FusionConfig,
+    FusionGeneration,
+    FusionResult,
+    LinearProbeConfig,
+    LinearProbeLayerResult,
+    LinearProbeResult,
     MeasureConfig,
     OptimizeConfig,
     OptimizeResult,
     PipelineConfig,
     ProbeConfig,
     ProbeResult,
+    RepBendConfig,
+    RepBendResult,
     SICConfig,
     SICPromptResult,
     SICResult,
@@ -139,12 +150,20 @@ __all__ = [
     "DirectionTransferResult",
     "EvalConfig",
     "EvalResult",
+    "FusionConfig",
+    "FusionGeneration",
+    "FusionResult",
+    "LinearProbeConfig",
+    "LinearProbeLayerResult",
+    "LinearProbeResult",
     "MeasureConfig",
     "OptimizeConfig",
     "OptimizeResult",
     "PipelineConfig",
     "ProbeConfig",
     "ProbeResult",
+    "RepBendConfig",
+    "RepBendResult",
     "SICConfig",
     "SICPromptResult",
     "SICResult",
@@ -193,6 +212,8 @@ __all__ = [
     "export_model",
     "find_instruction_boundary",
     "find_threshold",
+    "fuse_and_generate",
+    "fuse_batch",
     "generate_config_schema",
     "grassmann_distance",
     "is_quantized",
@@ -215,6 +236,7 @@ __all__ = [
     "probe",
     "project_subspace",
     "remove_subspace",
+    "repbend",
     "resolve_prompts",
     "run",
     "save_svf_boundary",
@@ -231,6 +253,7 @@ __all__ = [
     "subspace_overlap",
     "svf_gradient",
     "target_weight_keys",
+    "train_probe",
     "train_svf_boundary",
     "validate",
     "write_config_schema",

@@ -16,11 +16,14 @@ from vauban.config._parse_detect import _parse_detect
 from vauban.config._parse_environment import _parse_environment
 from vauban.config._parse_eval import _parse_eval
 from vauban.config._parse_features import _parse_features
+from vauban.config._parse_fusion import _parse_fusion
 from vauban.config._parse_intent import _parse_intent
+from vauban.config._parse_linear_probe import _parse_linear_probe
 from vauban.config._parse_measure import _parse_measure
 from vauban.config._parse_optimize import _parse_optimize
 from vauban.config._parse_policy import _parse_policy
 from vauban.config._parse_probe import _parse_probe
+from vauban.config._parse_repbend import _parse_repbend
 from vauban.config._parse_scan import _parse_scan
 from vauban.config._parse_sic import _parse_sic
 from vauban.config._parse_softprompt import _parse_softprompt
@@ -40,11 +43,14 @@ from vauban.types import (
     EnvironmentConfig,
     EvalConfig,
     FeaturesConfig,
+    FusionConfig,
     IntentConfig,
+    LinearProbeConfig,
     MeasureConfig,
     OptimizeConfig,
     PolicyConfig,
     ProbeConfig,
+    RepBendConfig,
     ScanConfig,
     SICConfig,
     SoftPromptConfig,
@@ -73,9 +79,13 @@ type _SectionParserResult = (
     | DefenseStackConfig
     | EnvironmentConfig
     | FeaturesConfig
+    | FusionConfig
     | IntentConfig
+    | LinearProbeConfig
     | MeasureConfig
+    | OptimizeConfig
     | PolicyConfig
+    | RepBendConfig
     | ScanConfig
     | SurfaceConfig
     | DetectConfig
@@ -127,6 +137,9 @@ class ParsedSectionValues:
     defend: DefenseStackConfig | None
     circuit: CircuitConfig | None
     features: FeaturesConfig | None
+    linear_probe: LinearProbeConfig | None
+    fusion: FusionConfig | None
+    repbend: RepBendConfig | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -281,6 +294,27 @@ def _parse_features_adapter(
     return _parse_features(context.base_dir, context.raw)
 
 
+def _parse_linear_probe_adapter(
+    context: ConfigParseContext,
+) -> LinearProbeConfig | None:
+    """Adapter for parsers that accept the full raw config mapping."""
+    return _parse_linear_probe(context.raw)
+
+
+def _parse_fusion_adapter(
+    context: ConfigParseContext,
+) -> FusionConfig | None:
+    """Adapter for parsers that require base_dir + raw config mapping."""
+    return _parse_fusion(context.base_dir, context.raw)
+
+
+def _parse_repbend_adapter(
+    context: ConfigParseContext,
+) -> RepBendConfig | None:
+    """Adapter for parsers that accept the full raw config mapping."""
+    return _parse_repbend(context.raw)
+
+
 SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     SectionParseSpec("depth", "depth", _parse_depth_adapter, 10),
     SectionParseSpec("cast", "cast", _parse_cast_adapter, 20),
@@ -310,6 +344,12 @@ SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     SectionParseSpec("defend", "defend", _parse_defend_adapter, 155),
     SectionParseSpec("circuit", "circuit", _parse_circuit_adapter, 160),
     SectionParseSpec("features", "features", _parse_features_adapter, 165),
+    SectionParseSpec(
+        "linear_probe", "linear_probe",
+        _parse_linear_probe_adapter, 170,
+    ),
+    SectionParseSpec("fusion", "fusion", _parse_fusion_adapter, 175),
+    SectionParseSpec("repbend", "repbend", _parse_repbend_adapter, 180),
 )
 
 
@@ -374,4 +414,9 @@ def parse_registered_sections(
         defend=cast("DefenseStackConfig | None", parsed["defend"]),
         circuit=cast("CircuitConfig | None", parsed["circuit"]),
         features=cast("FeaturesConfig | None", parsed["features"]),
+        linear_probe=cast(
+            "LinearProbeConfig | None", parsed["linear_probe"],
+        ),
+        fusion=cast("FusionConfig | None", parsed["fusion"]),
+        repbend=cast("RepBendConfig | None", parsed["repbend"]),
     )

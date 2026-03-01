@@ -79,6 +79,9 @@ def load_config(path: str | Path) -> PipelineConfig:
     defend_config = parsed_sections.defend
     circuit_config = parsed_sections.circuit
     features_config = parsed_sections.features
+    linear_probe_config = parsed_sections.linear_probe
+    fusion_config = parsed_sections.fusion
+    repbend_config = parsed_sections.repbend
 
     output_section = raw.get("output")
     output_dir_str = "output"
@@ -157,6 +160,9 @@ def load_config(path: str | Path) -> PipelineConfig:
         defend=defend_config,
         circuit=circuit_config,
         features=features_config,
+        linear_probe=linear_probe_config,
+        fusion=fusion_config,
+        repbend=repbend_config,
         eval=eval_config,
         api_eval=api_eval_config,
         meta=meta_config,

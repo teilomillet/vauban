@@ -81,6 +81,21 @@ def _has_features(config: PipelineConfig) -> bool:
     return config.features is not None
 
 
+def _has_linear_probe(config: PipelineConfig) -> bool:
+    """Return whether [linear_probe] mode is active."""
+    return config.linear_probe is not None
+
+
+def _has_fusion(config: PipelineConfig) -> bool:
+    """Return whether [fusion] mode is active."""
+    return config.fusion is not None
+
+
+def _has_repbend(config: PipelineConfig) -> bool:
+    """Return whether [repbend] mode is active."""
+    return config.repbend is not None
+
+
 EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
     EarlyModeSpec("[depth]", "depth", "before_prompts", False, _has_depth),
     EarlyModeSpec("[svf]", "svf", "before_prompts", False, _has_svf),
@@ -117,6 +132,27 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "after_measure",
         False,
         _has_circuit,
+    ),
+    EarlyModeSpec(
+        "[linear_probe]",
+        "linear_probe",
+        "after_measure",
+        False,
+        _has_linear_probe,
+    ),
+    EarlyModeSpec(
+        "[fusion]",
+        "fusion",
+        "before_prompts",
+        False,
+        _has_fusion,
+    ),
+    EarlyModeSpec(
+        "[repbend]",
+        "repbend",
+        "after_measure",
+        True,
+        _has_repbend,
     ),
 )
 

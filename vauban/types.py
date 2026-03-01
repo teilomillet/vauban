@@ -1560,6 +1560,135 @@ class FeaturesResult:
 
 
 @dataclass(frozen=True, slots=True)
+class LinearProbeConfig:
+    """Configuration for [linear_probe] mode."""
+
+    layers: list[int]
+    n_epochs: int = 20
+    learning_rate: float = 1e-2
+    batch_size: int = 32
+    token_position: int = -1
+    regularization: float = 1e-4
+
+
+@dataclass(frozen=True, slots=True)
+class LinearProbeLayerResult:
+    """Training result for a single linear probe layer."""
+
+    layer: int
+    accuracy: float
+    loss: float
+    loss_history: list[float]
+
+
+@dataclass(frozen=True, slots=True)
+class LinearProbeResult:
+    """Output of linear probe training across layers."""
+
+    layers: list[LinearProbeLayerResult]
+    d_model: int
+    model_path: str
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to a JSON-compatible dict."""
+        return {
+            "layers": [
+                {
+                    "layer": lr.layer,
+                    "accuracy": lr.accuracy,
+                    "loss": lr.loss,
+                    "loss_history": lr.loss_history,
+                }
+                for lr in self.layers
+            ],
+            "d_model": self.d_model,
+            "model_path": self.model_path,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class FusionGeneration:
+    """A single fusion generation result."""
+
+    harmful_prompt: str
+    benign_prompt: str
+    output: str
+    layer: int
+    alpha: float
+
+
+@dataclass(frozen=True, slots=True)
+class FusionConfig:
+    """Configuration for [fusion] mode."""
+
+    harmful_prompts: list[str]
+    benign_prompts: list[str]
+    layer: int = -1
+    alpha: float = 0.5
+    n_tokens: int = 128
+    temperature: float = 0.7
+
+
+@dataclass(frozen=True, slots=True)
+class FusionResult:
+    """Output of latent fusion generation."""
+
+    generations: list[FusionGeneration]
+    layer: int
+    alpha: float
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to a JSON-compatible dict."""
+        return {
+            "generations": [
+                {
+                    "harmful_prompt": g.harmful_prompt,
+                    "benign_prompt": g.benign_prompt,
+                    "output": g.output,
+                    "layer": g.layer,
+                    "alpha": g.alpha,
+                }
+                for g in self.generations
+            ],
+            "layer": self.layer,
+            "alpha": self.alpha,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class RepBendConfig:
+    """Configuration for [repbend] mode."""
+
+    layers: list[int]
+    n_epochs: int = 3
+    learning_rate: float = 1e-5
+    batch_size: int = 8
+    separation_coeff: float = 1.0
+    token_position: int = -1
+
+
+@dataclass(frozen=True, slots=True)
+class RepBendResult:
+    """Output of RepBend contrastive fine-tuning."""
+
+    initial_separation: float
+    final_separation: float
+    loss_history: list[float]
+    layers: list[int]
+    model_path: str
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to a JSON-compatible dict."""
+        return {
+            "initial_separation": self.initial_separation,
+            "final_separation": self.final_separation,
+            "loss_history": self.loss_history,
+            "layers": self.layers,
+            "model_path": self.model_path,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class PipelineConfig:
     """Full pipeline configuration loaded from TOML."""
 
@@ -1587,6 +1716,9 @@ class PipelineConfig:
     defend: DefenseStackConfig | None = None
     circuit: CircuitConfig | None = None
     features: FeaturesConfig | None = None
+    linear_probe: LinearProbeConfig | None = None
+    fusion: FusionConfig | None = None
+    repbend: RepBendConfig | None = None
     eval: EvalConfig = field(default_factory=EvalConfig)
     api_eval: ApiEvalConfig | None = None
     meta: MetaConfig | None = None

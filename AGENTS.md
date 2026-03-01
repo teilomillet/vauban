@@ -15,6 +15,12 @@
 - Prefer small, focused functions and classes over monolithic ones.
 - Interfaces between components should be simple and well-defined (dataclasses, protocols).
 
+### TOML Integration Required
+- **Every new pipeline module MUST be wired into the TOML config.** No feature ships without a `[section_name]` in the TOML.
+- Follow the 9-step wiring checklist: config dataclass → parser → registry → mode registry → mode runner → `_pipeline/_modes.py` → `__init__.py` re-exports → `_loader.py` → tests.
+- Config dataclasses go in `types.py` (frozen, slots). Parsers go in `config/_parse_{name}.py`. Mode runners go in `_pipeline/_mode_{name}.py`.
+- New modes MUST have an `EarlyModeSpec` in `_mode_registry.py` with correct phase and `requires_direction` flag.
+
 ### Verify First, Assume Nothing
 - **Never assume — always verify.** Before acting on any hypothesis, check the actual state.
 - Read the code, run the test, inspect the data. Do not guess.
