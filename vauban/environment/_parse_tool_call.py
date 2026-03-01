@@ -17,10 +17,9 @@ _TOOL_CALL_TAG_RE = re.compile(
     re.DOTALL,
 )
 
-# Bare JSON object with "name" and "arguments" keys
-_BARE_JSON_RE = re.compile(
-    r'\{\s*"name"\s*:\s*"[^"]+"\s*,\s*"arguments"\s*:\s*\{[^}]*\}\s*\}',
-    re.DOTALL,
+# Bare JSON prefix: starts with {"name": "..." to anchor extraction
+_BARE_JSON_PREFIX_RE = re.compile(
+    r'\{\s*"name"\s*:\s*"[^"]+"',
 )
 
 # Function-call style: func_name(key="value", ...)
@@ -57,11 +56,13 @@ def parse_tool_calls(text: str) -> list[ToolCall]:
     if calls:
         return calls
 
-    # Try bare JSON objects
-    for match in _BARE_JSON_RE.finditer(text):
-        parsed = _parse_json_tool_call(match.group(0))
-        if parsed is not None:
-            calls.append(parsed)
+    # Try bare JSON objects (balanced-brace extraction)
+    for match in _BARE_JSON_PREFIX_RE.finditer(text):
+        json_str = _extract_balanced_json(text, match.start())
+        if json_str is not None:
+            parsed = _parse_json_tool_call(json_str)
+            if parsed is not None:
+                calls.append(parsed)
 
     if calls:
         return calls
@@ -76,6 +77,47 @@ def parse_tool_calls(text: str) -> list[ToolCall]:
         calls.append(ToolCall(function=func_name, arguments=arguments))
 
     return calls
+
+
+def _extract_balanced_json(text: str, start: int) -> str | None:
+    """Extract a balanced JSON object starting at the given position.
+
+    Walks forward from ``start`` counting braces until the opening
+    ``{`` is matched by a closing ``}``.  Handles nested braces and
+    quoted strings correctly.
+
+    Args:
+        text: Full text to extract from.
+        start: Index of the opening ``{``.
+
+    Returns:
+        The balanced JSON substring, or None if unbalanced.
+    """
+    if start >= len(text) or text[start] != "{":
+        return None
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
 
 
 def _parse_json_tool_call(json_str: str) -> ToolCall | None:

@@ -83,6 +83,22 @@ def _parse_environment(raw: TomlDict) -> EnvironmentConfig | None:
         )
         raise ValueError(msg)
 
+    # -- temperature --
+    temperature_raw = env.get("temperature", 0.0)
+    if not isinstance(temperature_raw, (int, float)):
+        msg = (
+            f"[environment].temperature must be a number,"
+            f" got {type(temperature_raw).__name__}"
+        )
+        raise TypeError(msg)
+    temperature_val = float(temperature_raw)
+    if temperature_val < 0.0:
+        msg = (
+            f"[environment].temperature must be >= 0.0,"
+            f" got {temperature_val}"
+        )
+        raise ValueError(msg)
+
     # -- tools (required, list of tables) --
     tools_raw = env.get("tools")
     if not isinstance(tools_raw, list):
@@ -141,6 +157,7 @@ def _parse_environment(raw: TomlDict) -> EnvironmentConfig | None:
         max_gen_tokens=max_gen_tokens_raw,
         policy=policy,
         rollout_top_n=rollout_top_n_raw,
+        temperature=temperature_val,
     )
 
 

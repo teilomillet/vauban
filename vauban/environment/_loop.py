@@ -68,6 +68,7 @@ def run_agent_loop(
         # Generate response
         response_text = _generate_response(
             model, tokenizer, messages, env_config.max_gen_tokens,
+            env_config.temperature,
         )
 
         # Parse tool calls from response
@@ -150,6 +151,7 @@ def _generate_response(
     tokenizer: Tokenizer,
     messages: list[dict[str, str]],
     max_tokens: int,
+    temperature: float = 0.0,
 ) -> str:
     """Generate a response from the model given conversation messages.
 
@@ -161,6 +163,7 @@ def _generate_response(
         tokenizer: Tokenizer with chat template support.
         messages: Conversation history as role/content dicts.
         max_tokens: Maximum tokens to generate.
+        temperature: Sampling temperature. 0.0 = greedy (argmax).
 
     Returns:
         Generated text string.
@@ -180,7 +183,16 @@ def _generate_response(
     for _ in range(max_tokens):
         result = model(token_ids, cache=cache)  # type: ignore[call-non-callable]
         logits = extract_logits(result)
-        next_token = int(ops.argmax(logits[:, -1, :], axis=-1).item())
+        step_logits = logits[:, -1, :]
+
+        if temperature > 0.0:
+            probs = ops.softmax(step_logits / temperature, axis=-1)
+            next_token = int(
+                ops.random.categorical(ops.log(probs + 1e-10)).item(),
+            )
+        else:
+            next_token = int(ops.argmax(step_logits, axis=-1).item())
+
         generated.append(next_token)
         if eos_token_id is not None and next_token == eos_token_id:
             break

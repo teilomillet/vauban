@@ -1193,6 +1193,7 @@ class EnvironmentConfig:
     max_gen_tokens: int = 200
     policy: ToolCallPolicy | None = None
     rollout_top_n: int = 8
+    temperature: float = 0.0  # 0.0 = greedy (argmax)
 
 
 @dataclass(frozen=True, slots=True)

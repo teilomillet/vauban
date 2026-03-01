@@ -414,9 +414,10 @@ def _cast_forward_svf(
         # Gate: steer only when boundary score is positive
         if score > 0:
             correction = alpha * score * grad
-            h_list = [h[0, j, :] for j in range(h.shape[1])]
-            h_list[-1] = h_list[-1] - correction
-            h = ops.stack(h_list)[None, :, :]
+            steered_last = h[0, -1, :] - correction
+            h = ops.concatenate(
+                [h[:, :-1, :], steered_last[None, None, :]], axis=1,
+            )
             interventions += 1
 
         last_after = h[0, -1, :]
