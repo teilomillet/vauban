@@ -406,9 +406,14 @@ def _print_summary(
     config = context.config
     early_modes = active_early_modes(config)
 
+    # Order must match EARLY_MODE_SPECS precedence in _mode_registry.py
     mode = "measure → cut → export"
     if config.depth is not None:
         mode = "depth analysis"
+    elif config.svf is not None:
+        mode = "SVF training"
+    elif config.features is not None:
+        mode = "SAE feature decomposition"
     elif config.probe is not None:
         mode = "probe inspection"
     elif config.steer is not None:
@@ -419,12 +424,14 @@ def _print_summary(
         mode = "SIC sanitization"
     elif config.optimize is not None:
         mode = "Optuna optimization"
+    elif config.compose_optimize is not None:
+        mode = "composition optimization"
     elif config.softprompt is not None:
         mode = "soft prompt attack"
+    elif config.defend is not None:
+        mode = "defense stack"
     elif config.circuit is not None:
         mode = "circuit tracing"
-    elif config.features is not None:
-        mode = "SAE feature decomposition"
     extras: list[str] = []
     if config.detect is not None and config.depth is None:
         extras.append("detect")
