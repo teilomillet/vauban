@@ -803,6 +803,28 @@ def _run_cast_mode(context: _EarlyModeContext) -> None:
         loaded = ops.load(str(baseline_path))
         baseline_activations = {int(k): v for k, v in loaded.items()}
 
+    # Load condition direction (AdaSteer dual-direction) if configured.
+    # Hoisted before the branch so bank-path and direction-path both use it.
+    condition_direction: Array | None = None
+    if config.cast.condition_direction_path is not None:
+        cond_path = Path(config.cast.condition_direction_path)
+        if not cond_path.is_absolute():
+            cond_path = config.output_dir.parent / cond_path
+        _log(
+            f"Loading condition direction from {cond_path}",
+            verbose=v,
+            elapsed=time.monotonic() - context.t0,
+        )
+        cond_np = np.load(str(cond_path))
+        condition_direction = ops.array(cond_np)
+        expected_d = _get_transformer(model).embed_tokens.weight.shape[1]
+        if condition_direction.shape[-1] != expected_d:
+            msg = (
+                f"condition_direction d_model mismatch:"
+                f" {condition_direction.shape[-1]} != {expected_d}"
+            )
+            raise ValueError(msg)
+
     if config.cast.bank_path and config.cast.composition:
         from vauban._compose import compose_direction, load_bank
 
@@ -817,6 +839,8 @@ def _run_cast_mode(context: _EarlyModeContext) -> None:
                 model, tokenizer, prompt, composed,
                 cast_layers, config.cast.alpha, config.cast.threshold,
                 config.cast.max_tokens,
+                condition_direction=condition_direction,
+                alpha_tiers=config.cast.alpha_tiers,
                 baseline_activations=baseline_activations,
                 displacement_threshold=config.cast.displacement_threshold,
             )
@@ -838,27 +862,6 @@ def _run_cast_mode(context: _EarlyModeContext) -> None:
         ]
     else:
         assert context.direction_result is not None
-
-        # Load condition direction if configured
-        condition_direction: Array | None = None
-        if config.cast.condition_direction_path is not None:
-            cond_path = Path(config.cast.condition_direction_path)
-            if not cond_path.is_absolute():
-                cond_path = config.output_dir.parent / cond_path
-            _log(
-                f"Loading condition direction from {cond_path}",
-                verbose=v,
-                elapsed=time.monotonic() - context.t0,
-            )
-            cond_np = np.load(str(cond_path))
-            condition_direction = ops.array(cond_np)
-            if condition_direction.shape[-1] != context.direction_result.d_model:
-                msg = (
-                    f"condition_direction d_model mismatch:"
-                    f" {condition_direction.shape[-1]}"
-                    f" != {context.direction_result.d_model}"
-                )
-                raise ValueError(msg)
 
         cast_results = [
             cast_generate(

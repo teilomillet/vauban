@@ -641,6 +641,10 @@ def _compute_per_prompt_losses(
     sic_threshold: float = 0.0,
     cast_layers: list[int] | None = None,
     cast_threshold: float = 0.0,
+    perplexity_weight: float = 0.0,
+    token_position: str = "prefix",
+    suffix_token_ids: Array | None = None,
+    infix_split: int | None = None,
 ) -> list[float]:
     """Compute final loss for each prompt individually.
 
@@ -661,6 +665,10 @@ def _compute_per_prompt_losses(
         kl_ref_weight: Weight for KL collision loss.
         loss_mode: "targeted", "untargeted", "defensive", or "externality".
         refusal_ids: Refusal token IDs (required for untargeted/defensive).
+        perplexity_weight: Weight for perplexity term (externality mode).
+        token_position: Token position ("prefix", "suffix", or "infix").
+        suffix_token_ids: Suffix token IDs for perplexity loss.
+        infix_split: Infix split position.
 
     Returns:
         List of loss values, one per prompt.
@@ -694,6 +702,10 @@ def _compute_per_prompt_losses(
                 model, soft_embeds, prompt_ids,
                 n_tokens, direction,
                 direction_weight,
+                perplexity_weight,
+                suffix_token_ids=suffix_token_ids,
+                token_position=token_position,
+                infix_split=infix_split,
             )
         else:
             loss = _compute_loss(
@@ -733,6 +745,10 @@ def _select_worst_k_prompt_ids(
     sic_threshold: float = 0.0,
     cast_layers: list[int] | None = None,
     cast_threshold: float = 0.0,
+    perplexity_weight: float = 0.0,
+    token_position: str = "prefix",
+    suffix_token_ids: Array | None = None,
+    infix_split: int | None = None,
 ) -> list[Array]:
     """Select the top-k hardest prompts by loss (worst-k strategy).
 
@@ -757,6 +773,10 @@ def _select_worst_k_prompt_ids(
         kl_ref_weight: Weight for KL collision loss.
         loss_mode: Loss mode ("targeted", "untargeted", "defensive", or "externality").
         refusal_ids: Refusal token IDs.
+        perplexity_weight: Weight for perplexity term (externality mode).
+        token_position: Token position ("prefix", "suffix", or "infix").
+        suffix_token_ids: Suffix token IDs for perplexity loss.
+        infix_split: Infix split position.
 
     Returns:
         Top-k prompt ID arrays sorted by descending loss.
@@ -772,6 +792,10 @@ def _select_worst_k_prompt_ids(
         defense_aware_weight=defense_aware_weight,
         sic_layer=sic_layer, sic_threshold=sic_threshold,
         cast_layers=cast_layers, cast_threshold=cast_threshold,
+        perplexity_weight=perplexity_weight,
+        token_position=token_position,
+        suffix_token_ids=suffix_token_ids,
+        infix_split=infix_split,
     )
     # Sort by loss descending, take top k
     effective_k = min(k, len(all_ids))

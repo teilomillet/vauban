@@ -254,6 +254,8 @@ def _continuous_attack(
         defense_aware_weight=da_weight,
         sic_layer=da_sic_layer, sic_threshold=da_sic_threshold,
         cast_layers=da_cast_layers, cast_threshold=da_cast_threshold,
+        perplexity_weight=config.perplexity_weight,
+        token_position=tok_pos,
     )
     final_loss = loss_history[-1] if loss_history else 0.0
     accessibility_score = _compute_accessibility_score(final_loss)

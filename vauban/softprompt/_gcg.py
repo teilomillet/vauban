@@ -539,6 +539,9 @@ def _gcg_attack(
         defense_aware_weight=da_weight,
         sic_layer=da_sic_layer, sic_threshold=da_sic_threshold,
         cast_layers=da_cast_layers, cast_threshold=da_cast_threshold,
+        perplexity_weight=ppl_weight,
+        token_position=tok_pos,
+        suffix_token_ids=final_token_array,
     )
     final_loss = overall_best_loss
     accessibility_score = _compute_accessibility_score(final_loss)
