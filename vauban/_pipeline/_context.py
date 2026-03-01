@@ -76,5 +76,9 @@ def write_experiment_log(
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("a") as f:
             f.write(json.dumps(entry) + "\n")
-    except Exception:
-        pass
+    except Exception as exc:
+        print(
+            f"[vauban] warning: failed to write experiment log: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )

@@ -385,11 +385,11 @@ def _json_compatible_default(value: object) -> object | None:
     if isinstance(value, str | int | float | bool):
         return value
     if isinstance(value, list):
-        return [item for item in value]
+        return [_json_compatible_default(item) for item in value]
     if isinstance(value, tuple):
-        return [item for item in value]
+        return [_json_compatible_default(item) for item in value]
     if isinstance(value, dict):
-        return {str(key): item for key, item in value.items()}
+        return {str(key): _json_compatible_default(v) for key, v in value.items()}
     return None
 
 

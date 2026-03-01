@@ -84,8 +84,8 @@ def compose_subspaces(
     """Compose DirectionSpaces from a bank with weights (full-subspace Steer2Adapt).
 
     Unlike compose_direction() which only uses the first basis vector,
-    this uses all basis vectors from each entry, weighted by their
-    singular values.
+    this uses all basis vectors from each entry. Each entry's basis
+    vectors are weighted equally (bank arrays carry no singular values).
 
     Args:
         bank: Named subspace bases (shape (k, d_model) each).
