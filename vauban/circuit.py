@@ -462,7 +462,9 @@ def _compute_effect(
 ) -> float:
     """Compute the effect of patching using the chosen metric."""
     if metric == "logit_diff":
-        assert logit_diff_tokens is not None
+        if logit_diff_tokens is None:
+            msg = "logit_diff metric requires logit_diff_tokens"
+            raise ValueError(msg)
         orig_diff = _logit_diff(original_logits, logit_diff_tokens, token_position)
         patched_diff = _logit_diff(patched_logits, logit_diff_tokens, token_position)
         return abs(patched_diff - orig_diff)
