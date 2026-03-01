@@ -180,6 +180,7 @@ def _compute_infix_split(
     tokenizer: Tokenizer,
     prompt: str,
     system_prompt: str | None = None,
+    history: list[dict[str, str]] | None = None,
 ) -> tuple[list[int], int]:
     """Compute the infix split position for a prompt with ``{suffix}`` placeholder.
 
@@ -192,6 +193,8 @@ def _compute_infix_split(
         tokenizer: Tokenizer with encode and chat template support.
         prompt: Prompt string containing ``{suffix}`` placeholder.
         system_prompt: Optional system prompt to prepend to messages.
+        history: Optional conversation history to insert between
+            system prompt and user message.
 
     Returns:
         Tuple of (clean_token_ids, infix_split_index).
@@ -212,6 +215,8 @@ def _compute_infix_split(
     clean_messages: list[dict[str, str]] = []
     if system_prompt is not None:
         clean_messages.append({"role": "system", "content": system_prompt})
+    if history is not None:
+        clean_messages.extend(history)
     clean_messages.append({"role": "user", "content": clean_prompt})
     clean_text = tokenizer.apply_chat_template(clean_messages, tokenize=False)
     if not isinstance(clean_text, str):
@@ -225,6 +230,8 @@ def _compute_infix_split(
     marker_messages: list[dict[str, str]] = []
     if system_prompt is not None:
         marker_messages.append({"role": "system", "content": system_prompt})
+    if history is not None:
+        marker_messages.extend(history)
     marker_messages.append({"role": "user", "content": marker_prompt})
     marker_text = tokenizer.apply_chat_template(
         marker_messages, tokenize=False,
@@ -442,6 +449,40 @@ def _resolve_infix_overrides(
     for prompt in prompts:
         clean_ids, split_idx = _compute_infix_split(
             tokenizer, prompt, system_prompt,
+        )
+        arr = ops.array(clean_ids)[None, :]
+        encoded.append(arr)
+        infix_map[id(arr)] = split_idx
+    return encoded, infix_map
+
+
+def _resolve_infix_overrides_with_history(
+    tokenizer: Tokenizer,
+    prompts: list[str],
+    history: list[dict[str, str]],
+    system_prompt: str | None = None,
+) -> tuple[list[Array], dict[int, int]]:
+    """Pre-encode prompts for infix mode with conversation history.
+
+    Like :func:`_resolve_infix_overrides` but inserts ``history`` turns
+    between the system prompt and user message so the infix split is
+    computed against the full multi-turn context.
+
+    Args:
+        tokenizer: Tokenizer with encode and chat template support.
+        prompts: Prompt strings containing ``{suffix}`` placeholders.
+        history: Previous conversation turns as role/content dicts.
+        system_prompt: Optional system prompt to prepend.
+
+    Returns:
+        Tuple of (prompt_id_arrays, infix_map) where infix_map maps
+        ``id(array)`` to the infix split index for that prompt.
+    """
+    encoded: list[Array] = []
+    infix_map: dict[int, int] = {}
+    for prompt in prompts:
+        clean_ids, split_idx = _compute_infix_split(
+            tokenizer, prompt, system_prompt, history=history,
         )
         arr = ops.array(clean_ids)[None, :]
         encoded.append(arr)

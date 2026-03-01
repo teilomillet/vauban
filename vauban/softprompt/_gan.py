@@ -30,6 +30,7 @@ from vauban.softprompt._utils import (
     _pre_encode_prompts_with_history,
     _project_to_tokens,
     _resolve_infix_overrides,
+    _resolve_infix_overrides_with_history,
     _resolve_injection_ids,
 )
 from vauban.types import (
@@ -117,10 +118,13 @@ def _dispatch_attack_multiturn(
 
     Pre-encodes prompts with ``history`` prepended as hard token IDs,
     then passes the pre-encoded IDs to the attack function via
-    ``all_prompt_ids_override``. The attack still optimizes a single
-    hard-token suffix, but the loss is computed against the full
-    multi-turn context. Only GCG and EGD are supported — continuous
-    mode produces soft embeddings that cannot be sent through an API.
+    ``all_prompt_ids_override``. When ``config.token_position`` is
+    ``"infix"``, infix split positions are resolved with history so
+    that the ``infix_map`` is forwarded to GCG/EGD. The attack still
+    optimizes a single hard-token suffix, but the loss is computed
+    against the full multi-turn context. Only GCG and EGD are
+    supported — continuous mode produces soft embeddings that cannot
+    be sent through an API.
 
     Args:
         model: The causal language model.
@@ -130,19 +134,29 @@ def _dispatch_attack_multiturn(
         direction: Refusal direction vector.
         ref_model: Optional reference model for KL collision loss.
         history: Previous conversation turns as role/content dicts.
+        transfer_models: Optional transfer models for re-ranking.
+        environment_config: Optional environment config for rollout.
 
     Returns:
         SoftPromptResult from the attack.
     """
-    all_prompt_ids = _pre_encode_prompts_with_history(
-        tokenizer, prompts, history, config.system_prompt,
-    )
+    # Resolve infix split positions when token_position is "infix"
+    infix_map: dict[int, int] | None = None
+    if config.token_position == "infix":
+        all_prompt_ids, infix_map = _resolve_infix_overrides_with_history(
+            tokenizer, prompts, history, config.system_prompt,
+        )
+    else:
+        all_prompt_ids = _pre_encode_prompts_with_history(
+            tokenizer, prompts, history, config.system_prompt,
+        )
 
     if config.mode == "gcg":
         return _gcg_attack(
             model, tokenizer, prompts, config, direction, ref_model,
             all_prompt_ids_override=all_prompt_ids,
             transfer_models=transfer_models,
+            infix_map=infix_map,
             environment_config=environment_config,
         )
     if config.mode == "egd":
@@ -150,6 +164,7 @@ def _dispatch_attack_multiturn(
             model, tokenizer, prompts, config, direction, ref_model,
             all_prompt_ids_override=all_prompt_ids,
             transfer_models=transfer_models,
+            infix_map=infix_map,
             environment_config=environment_config,
         )
     msg = (

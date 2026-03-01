@@ -4055,3 +4055,116 @@ class TestThreeFeaturesIntegration:
         mx.eval(loss)
         assert loss.shape == ()
         assert float(loss.item()) > 0.0
+
+
+# ---------------------------------------------------------------------------
+# Rollout wiring
+# ---------------------------------------------------------------------------
+
+
+def _fake_rollout_score(
+    _model: object,
+    _tokenizer: object,
+    _env_config: object,
+    texts: list[str],
+    losses: list[float],
+) -> tuple[list[float], list[object]]:
+    """Stub for score_candidates_via_rollout — returns losses unchanged."""
+    from vauban.types import EnvironmentResult
+
+    results = [
+        EnvironmentResult(
+            reward=0.0,
+            target_called=False,
+            target_args_match=False,
+            turns=[],
+            tool_calls_made=[],
+            injection_payload=t,
+        )
+        for t in texts
+    ]
+    return list(losses), results
+
+
+def _make_rollout_env_config(
+    rollout_every_n: int = 1,
+) -> object:
+    """Build a minimal EnvironmentConfig for rollout wiring tests."""
+    from vauban.types import (
+        EnvironmentConfig,
+        EnvironmentTarget,
+        EnvironmentTask,
+        ToolSchema,
+    )
+
+    return EnvironmentConfig(
+        system_prompt="You are a helpful assistant.",
+        tools=[ToolSchema(name="noop", description="no-op", parameters={})],
+        target=EnvironmentTarget(function="noop"),
+        task=EnvironmentTask(content="Do something."),
+        injection_surface="tool_output",
+        rollout_every_n=rollout_every_n,
+    )
+
+
+class TestGcgRolloutWiring:
+    def test_rollout_called_during_gcg(self) -> None:
+        """Verify environment rollout is wired into GCG candidate scoring."""
+        from unittest.mock import patch
+
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="gcg",
+            n_tokens=4,
+            n_steps=1,
+            batch_size=4,
+            top_k=8,
+            seed=42,
+            max_gen_tokens=2,
+        )
+
+        with patch(
+            "vauban.environment.score_candidates_via_rollout",
+            side_effect=_fake_rollout_score,
+        ) as mock_rollout:
+            _gcg_attack(
+                model, tokenizer, ["test prompt"], config, None,
+                environment_config=_make_rollout_env_config(),
+            )
+            assert mock_rollout.call_count >= 1
+
+    def test_rollout_every_n_skips_steps(self) -> None:
+        """Verify rollout_every_n=3 skips intermediate steps.
+
+        With patience=0 (default, disabled) no early stopping can occur,
+        so all 6 steps run and rollout fires at steps 0 and 3 only.
+        """
+        from unittest.mock import patch
+
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="gcg",
+            n_tokens=4,
+            n_steps=6,
+            batch_size=4,
+            top_k=8,
+            seed=42,
+            max_gen_tokens=2,
+        )
+
+        with patch(
+            "vauban.environment.score_candidates_via_rollout",
+            side_effect=_fake_rollout_score,
+        ) as mock_rollout:
+            _gcg_attack(
+                model, tokenizer, ["test prompt"], config, None,
+                environment_config=_make_rollout_env_config(rollout_every_n=3),
+            )
+            # Steps 0,1,2,3,4,5 — rollout at 0,3 only = 2 calls
+            assert mock_rollout.call_count == 2

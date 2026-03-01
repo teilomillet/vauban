@@ -217,9 +217,13 @@ def _gcg_attack(
     def _apply_rollout_reranking(
         candidates: list[list[int]],
         candidate_losses: list[float],
+        step: int,
     ) -> None:
         """Re-rank top candidates using environment rollout (in-place)."""
         if environment_config is None:
+            return
+        stride = environment_config.rollout_every_n
+        if stride > 1 and step % stride != 0:
             return
         from vauban.environment import score_candidates_via_rollout
 
@@ -434,7 +438,7 @@ def _gcg_attack(
                 ]
 
                 _apply_transfer_reranking(candidates, candidate_losses)
-                _apply_rollout_reranking(candidates, candidate_losses)
+                _apply_rollout_reranking(candidates, candidate_losses, step)
 
                 best_candidate_idx = candidate_losses.index(
                     min(candidate_losses),
@@ -463,7 +467,7 @@ def _gcg_attack(
                 ]
 
                 _apply_transfer_reranking(candidates, candidate_losses)
-                _apply_rollout_reranking(candidates, candidate_losses)
+                _apply_rollout_reranking(candidates, candidate_losses, step)
 
                 # Pool candidates + current beam, deduplicate,
                 # keep top beam_width
