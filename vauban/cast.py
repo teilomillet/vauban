@@ -45,6 +45,8 @@ def cast_generate(
     max_tokens: int = 100,
     condition_direction: Array | None = None,
     alpha_tiers: list[AlphaTier] | None = None,
+    baseline_activations: dict[int, Array] | None = None,
+    displacement_threshold: float = 0.0,
 ) -> CastResult:
     """Generate text with conditional activation steering.
 
@@ -64,6 +66,7 @@ def cast_generate(
     return _cast_generate_from_messages(
         model, tokenizer, messages, prompt, direction, layers,
         alpha, threshold, max_tokens, condition_direction, alpha_tiers,
+        baseline_activations, displacement_threshold,
     )
 
 
@@ -78,6 +81,8 @@ def cast_generate_with_messages(
     max_tokens: int = 100,
     condition_direction: Array | None = None,
     alpha_tiers: list[AlphaTier] | None = None,
+    baseline_activations: dict[int, Array] | None = None,
+    displacement_threshold: float = 0.0,
 ) -> CastResult:
     """Generate text with CAST steering over an arbitrary message list.
 
@@ -96,6 +101,8 @@ def cast_generate_with_messages(
         max_tokens: Maximum tokens to generate.
         condition_direction: Separate detection direction (AdaSteer).
         alpha_tiers: Adaptive alpha tiers (TRYLOCK/AlphaSteer).
+        baseline_activations: Per-layer baseline for externality monitoring.
+        displacement_threshold: L2 displacement threshold for intervention.
 
     Returns:
         CastResult with generation and intervention stats.
@@ -108,6 +115,7 @@ def cast_generate_with_messages(
     return _cast_generate_from_messages(
         model, tokenizer, messages, prompt_str, direction, layers,
         alpha, threshold, max_tokens, condition_direction, alpha_tiers,
+        baseline_activations, displacement_threshold,
     )
 
 
@@ -123,6 +131,8 @@ def _cast_generate_from_messages(
     max_tokens: int,
     condition_direction: Array | None,
     alpha_tiers: list[AlphaTier] | None,
+    baseline_activations: dict[int, Array] | None = None,
+    displacement_threshold: float = 0.0,
 ) -> CastResult:
     """Shared CAST decode loop for single-prompt and multi-turn entry points.
 
@@ -138,6 +148,8 @@ def _cast_generate_from_messages(
         max_tokens: Maximum tokens to generate.
         condition_direction: Separate detection direction (AdaSteer).
         alpha_tiers: Adaptive alpha tiers (TRYLOCK/AlphaSteer).
+        baseline_activations: Per-layer baseline for externality monitoring.
+        displacement_threshold: L2 displacement threshold for intervention.
 
     Returns:
         CastResult with generation and intervention stats.
@@ -176,6 +188,8 @@ def _cast_generate_from_messages(
             cache,
             condition_direction=condition_direction,
             alpha_tiers=alpha_tiers,
+            baseline_activations=baseline_activations,
+            displacement_threshold=displacement_threshold,
         )
         next_token = ops.argmax(logits[:, -1, :], axis=-1)
         token_id = int(next_token.item())

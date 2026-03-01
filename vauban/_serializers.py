@@ -41,6 +41,8 @@ def _cast_to_dict(result: CastResult) -> dict[str, object]:
         "projections_after": result.projections_after,
         "interventions": result.interventions,
         "considered": result.considered,
+        "displacement_interventions": result.displacement_interventions,
+        "max_displacement": result.max_displacement,
     }
 
 

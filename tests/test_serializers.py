@@ -147,3 +147,20 @@ class TestCastToDict:
         assert d["projections_after"] == [0.2, 0.1]
         assert d["interventions"] == 2
         assert d["considered"] == 4
+        assert d["displacement_interventions"] == 0
+        assert d["max_displacement"] == 0.0
+
+    def test_externality_monitoring_fields(self) -> None:
+        result = CastResult(
+            prompt="test",
+            text="output",
+            projections_before=[0.5],
+            projections_after=[0.1],
+            interventions=1,
+            considered=2,
+            displacement_interventions=3,
+            max_displacement=1.5,
+        )
+        d = _cast_to_dict(result)
+        assert d["displacement_interventions"] == 3
+        assert d["max_displacement"] == 1.5

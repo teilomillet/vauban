@@ -791,6 +791,17 @@ def _run_cast_mode(context: _EarlyModeContext) -> None:
     n_layers = len(_get_transformer(model).layers)
     cast_layers = config.cast.layers or list(range(n_layers))
 
+    baseline_activations: dict[int, Array] | None = None
+    if (
+        config.cast.externality_monitor
+        and config.cast.baseline_activations_path is not None
+    ):
+        baseline_path = Path(config.cast.baseline_activations_path)
+        if not baseline_path.is_absolute():
+            baseline_path = config.output_dir.parent / baseline_path
+        loaded = ops.load(str(baseline_path))
+        baseline_activations = {int(k): v for k, v in loaded.items()}
+
     if config.cast.bank_path and config.cast.composition:
         from vauban._compose import compose_direction, load_bank
 
@@ -805,6 +816,8 @@ def _run_cast_mode(context: _EarlyModeContext) -> None:
                 model, tokenizer, prompt, composed,
                 cast_layers, config.cast.alpha, config.cast.threshold,
                 config.cast.max_tokens,
+                baseline_activations=baseline_activations,
+                displacement_threshold=config.cast.displacement_threshold,
             )
             for prompt in config.cast.prompts
         ]
@@ -858,6 +871,8 @@ def _run_cast_mode(context: _EarlyModeContext) -> None:
                 config.cast.max_tokens,
                 condition_direction=condition_direction,
                 alpha_tiers=config.cast.alpha_tiers,
+                baseline_activations=baseline_activations,
+                displacement_threshold=config.cast.displacement_threshold,
             )
             for prompt in config.cast.prompts
         ]
