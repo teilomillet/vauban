@@ -15,6 +15,7 @@ from vauban.config._validation import VALIDATION_RULE_SPECS, validate_config
 from vauban.types import (
     CastConfig,
     ComposeOptimizeConfig,
+    DefenseStackConfig,
     DepthConfig,
     OptimizeConfig,
     PipelineConfig,
@@ -48,6 +49,7 @@ _EXPECTED_EARLY_MODE_ORDER: list[str] = [
     "[optimize]",
     "[compose_optimize]",
     "[softprompt]",
+    "[defend]",
 ]
 
 
@@ -133,7 +135,7 @@ def test_validation_warning_content_and_order_for_conflict_fixture(
         (
             "[HIGH] Multiple early-return modes active: [depth], [probe]"
             " — only the first will run (precedence: depth > svf > probe > steer"
-            " > cast > sic > optimize > compose_optimize > softprompt)"
+            " > cast > sic > optimize > compose_optimize > softprompt > defend)"
             " — fix: keep one early-return mode per config,"
             " and split other modes into separate TOML files"
         ),
@@ -186,6 +188,7 @@ def test_active_early_modes_precedence_matches_legacy_behavior() -> None:
         optimize=OptimizeConfig(),
         compose_optimize=ComposeOptimizeConfig(bank_path="bank.safetensors"),
         softprompt=SoftPromptConfig(),
+        defend=DefenseStackConfig(),
     )
 
     assert active_early_modes(config) == _EXPECTED_EARLY_MODE_ORDER

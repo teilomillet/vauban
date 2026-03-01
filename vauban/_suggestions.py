@@ -146,6 +146,7 @@ _KNOWN_KEYS: dict[str, frozenset[str]] = {
     "environment": frozenset({
         "system_prompt", "tools", "target", "task", "injection_surface",
         "max_turns", "max_gen_tokens", "policy", "rollout_top_n",
+        "temperature", "rollout_every_n",
     }),
     "scan": frozenset({
         "target_layer", "span_threshold", "threshold", "calibrate",

@@ -4,6 +4,7 @@ import mlx.core as mx
 
 from vauban._serializers import (
     _cast_to_dict,
+    _defend_to_dict,
     _depth_direction_to_dict,
     _depth_to_dict,
     _probe_to_dict,
@@ -11,9 +12,15 @@ from vauban._serializers import (
 )
 from vauban.types import (
     CastResult,
+    DefenseStackResult,
     DepthDirectionResult,
     DepthResult,
+    IntentCheckResult,
+    PolicyDecision,
     ProbeResult,
+    ScanResult,
+    ScanSpan,
+    SICPromptResult,
     SteerResult,
     TokenDepth,
 )
@@ -164,3 +171,76 @@ class TestCastToDict:
         d = _cast_to_dict(result)
         assert d["displacement_interventions"] == 3
         assert d["max_displacement"] == 1.5
+
+
+class TestDefendToDict:
+    def test_blocked_result(self) -> None:
+        result = DefenseStackResult(
+            blocked=True,
+            layer_that_blocked="scan",
+            scan_result=ScanResult(
+                injection_probability=0.9,
+                overall_projection=1.2,
+                spans=[
+                    ScanSpan(start=0, end=5, text="hello", mean_projection=0.8),
+                ],
+                per_token_projections=[0.1, 0.5, 0.8, 0.3, 0.2],
+                flagged=True,
+            ),
+            sic_result=None,
+            policy_decision=None,
+            intent_check=None,
+            reasons=["Scan: injection detected (p=0.900, 1 spans)"],
+        )
+        d = _defend_to_dict(result)
+        assert d["blocked"] is True
+        assert d["layer_that_blocked"] == "scan"
+        assert d["sic_result"] is None
+        assert d["policy_decision"] is None
+        assert d["intent_check"] is None
+        scan_d: dict[str, object] = d["scan_result"]  # type: ignore[assignment]
+        assert scan_d["injection_probability"] == 0.9
+        assert scan_d["flagged"] is True
+        spans_list: list[object] = scan_d["spans"]  # type: ignore[assignment]
+        assert len(spans_list) == 1
+
+    def test_unblocked_result(self) -> None:
+        result = DefenseStackResult(
+            blocked=False,
+            layer_that_blocked=None,
+            scan_result=ScanResult(
+                injection_probability=0.1,
+                overall_projection=0.2,
+                spans=[],
+                per_token_projections=[0.1],
+                flagged=False,
+            ),
+            sic_result=SICPromptResult(
+                clean_prompt="safe content",
+                blocked=False,
+                iterations=1,
+                initial_score=0.1,
+                final_score=0.05,
+            ),
+            policy_decision=PolicyDecision(
+                action="allow",
+                matched_rules=[],
+                reasons=[],
+            ),
+            intent_check=IntentCheckResult(
+                aligned=True,
+                score=0.95,
+                mode="embedding",
+            ),
+            reasons=[],
+        )
+        d = _defend_to_dict(result)
+        assert d["blocked"] is False
+        assert d["layer_that_blocked"] is None
+        sic_d: dict[str, object] = d["sic_result"]  # type: ignore[assignment]
+        assert sic_d["blocked"] is False
+        policy_d: dict[str, object] = d["policy_decision"]  # type: ignore[assignment]
+        assert policy_d["action"] == "allow"
+        intent_d: dict[str, object] = d["intent_check"]  # type: ignore[assignment]
+        assert intent_d["aligned"] is True
+        assert intent_d["score"] == 0.95

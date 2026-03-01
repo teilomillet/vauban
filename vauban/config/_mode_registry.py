@@ -66,6 +66,11 @@ def _has_svf(config: PipelineConfig) -> bool:
     return config.svf is not None
 
 
+def _has_defend(config: PipelineConfig) -> bool:
+    """Return whether [defend] mode is active."""
+    return config.defend is not None
+
+
 EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
     EarlyModeSpec("[depth]", "depth", "before_prompts", False, _has_depth),
     EarlyModeSpec("[svf]", "svf", "before_prompts", False, _has_svf),
@@ -87,6 +92,13 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "after_measure",
         False,
         _has_softprompt,
+    ),
+    EarlyModeSpec(
+        "[defend]",
+        "defend",
+        "after_measure",
+        False,
+        _has_defend,
     ),
 )
 

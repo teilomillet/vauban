@@ -2,13 +2,19 @@
 
 from vauban.types import (
     CastResult,
+    DefenseStackResult,
     DepthDirectionResult,
     DepthResult,
     DetectResult,
     DiffResult,
     DirectionTransferResult,
+    IntentCheckResult,
     OptimizeResult,
+    PolicyDecision,
     ProbeResult,
+    ScanResult,
+    ScanSpan,
+    SICPromptResult,
     SICResult,
     SoftPromptResult,
     SteerResult,
@@ -279,4 +285,89 @@ def _steer_to_dict(result: SteerResult) -> dict[str, object]:
         "text": result.text,
         "projections_before": result.projections_before,
         "projections_after": result.projections_after,
+    }
+
+
+def _scan_span_to_dict(span: ScanSpan) -> dict[str, object]:
+    """Serialize a ScanSpan to a JSON-compatible dict."""
+    return {
+        "start": span.start,
+        "end": span.end,
+        "text": span.text,
+        "mean_projection": span.mean_projection,
+    }
+
+
+def _scan_result_to_dict(result: ScanResult) -> dict[str, object]:
+    """Serialize a ScanResult to a JSON-compatible dict."""
+    return {
+        "injection_probability": result.injection_probability,
+        "overall_projection": result.overall_projection,
+        "spans": [_scan_span_to_dict(s) for s in result.spans],
+        "per_token_projections": result.per_token_projections,
+        "flagged": result.flagged,
+    }
+
+
+def _sic_prompt_result_to_dict(
+    result: SICPromptResult,
+) -> dict[str, object]:
+    """Serialize a SICPromptResult to a JSON-compatible dict."""
+    return {
+        "clean_prompt": result.clean_prompt,
+        "blocked": result.blocked,
+        "iterations": result.iterations,
+        "initial_score": result.initial_score,
+        "final_score": result.final_score,
+    }
+
+
+def _policy_decision_to_dict(
+    result: PolicyDecision,
+) -> dict[str, object]:
+    """Serialize a PolicyDecision to a JSON-compatible dict."""
+    return {
+        "action": result.action,
+        "matched_rules": result.matched_rules,
+        "reasons": result.reasons,
+    }
+
+
+def _intent_check_to_dict(
+    result: IntentCheckResult,
+) -> dict[str, object]:
+    """Serialize an IntentCheckResult to a JSON-compatible dict."""
+    return {
+        "aligned": result.aligned,
+        "score": result.score,
+        "mode": result.mode,
+    }
+
+
+def _defend_to_dict(result: DefenseStackResult) -> dict[str, object]:
+    """Serialize a DefenseStackResult to a JSON-compatible dict."""
+    return {
+        "blocked": result.blocked,
+        "layer_that_blocked": result.layer_that_blocked,
+        "scan_result": (
+            _scan_result_to_dict(result.scan_result)
+            if result.scan_result is not None
+            else None
+        ),
+        "sic_result": (
+            _sic_prompt_result_to_dict(result.sic_result)
+            if result.sic_result is not None
+            else None
+        ),
+        "policy_decision": (
+            _policy_decision_to_dict(result.policy_decision)
+            if result.policy_decision is not None
+            else None
+        ),
+        "intent_check": (
+            _intent_check_to_dict(result.intent_check)
+            if result.intent_check is not None
+            else None
+        ),
+        "reasons": result.reasons,
     }

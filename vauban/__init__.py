@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 from vauban._serializers import (
     _cast_to_dict,
+    _defend_to_dict,
     _depth_direction_to_dict,
     _depth_to_dict,
     _detect_to_dict,
@@ -963,6 +964,77 @@ def _run_sic_mode(context: _EarlyModeContext) -> None:
     )
 
 
+def _run_defend_mode(context: _EarlyModeContext) -> None:
+    """Run [defend] early-return mode and write its report."""
+    import time
+
+    from vauban.defend import defend_content
+
+    config = context.config
+    assert config.defend is not None
+    assert context.harmful is not None
+    v = config.verbose
+    model = _cast("CausalLM", context.model)
+    tokenizer = _cast("Tokenizer", context.tokenizer)
+
+    _log(
+        "Running defense stack evaluation",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+
+    direction_vec = (
+        context.direction_result.direction
+        if context.direction_result is not None
+        else None
+    )
+    layer_idx = (
+        context.direction_result.layer_index
+        if context.direction_result is not None
+        else 0
+    )
+
+    if config.eval.prompts_path is not None:
+        defend_prompts: list[str] = load_prompts(config.eval.prompts_path)
+    else:
+        defend_prompts = context.harmful[:config.eval.num_prompts]
+
+    defend_results = [
+        defend_content(
+            model, tokenizer, prompt,
+            direction_vec, config.defend,
+            layer_idx,
+        )
+        for prompt in defend_prompts
+    ]
+
+    total_blocked = sum(1 for r in defend_results if r.blocked)
+    block_rate = total_blocked / len(defend_results) if defend_results else 0.0
+
+    report = {
+        "total_prompts": len(defend_results),
+        "total_blocked": total_blocked,
+        "block_rate": block_rate,
+        "results": [_defend_to_dict(r) for r in defend_results],
+    }
+    report_path = config.output_dir / "defend_report.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=2))
+    _log(
+        f"Done — defend report written to {report_path}",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+    _write_experiment_log(
+        context.config_path,
+        config,
+        "defend",
+        ["defend_report.json"],
+        {"block_rate": block_rate},
+        time.monotonic() - context.t0,
+    )
+
+
 def _run_optimize_mode(context: _EarlyModeContext) -> None:
     """Run [optimize] early-return mode and write its report."""
     import time
@@ -1361,6 +1433,7 @@ _EARLY_MODE_RUNNERS: dict[str, _EarlyModeRunner] = {
     "optimize": _run_optimize_mode,
     "compose_optimize": _run_compose_optimize_mode,
     "softprompt": _run_softprompt_mode,
+    "defend": _run_defend_mode,
 }
 
 
