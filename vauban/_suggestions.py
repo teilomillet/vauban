@@ -88,6 +88,12 @@ _KNOWN_KEYS: dict[str, frozenset[str]] = {
         "prompt_pool_size",
         # Injection context wrapping
         "injection_context", "injection_context_template",
+        # Perplexity regularization
+        "perplexity_weight",
+        # Token position
+        "token_position",
+        # Prompt paraphrasing
+        "paraphrase_strategies",
     }),
     "sic": frozenset({
         "mode", "threshold", "max_iterations", "max_tokens", "target_layer",
@@ -199,6 +205,9 @@ _KNOWN_VALUES: dict[tuple[str, str], frozenset[str]] = {
     ("softprompt", "injection_context"): frozenset({
         "web_page", "tool_output", "code_file",
     }),
+    ("softprompt", "token_position"): frozenset({
+        "prefix", "suffix", "infix",
+    }),
     ("eval", "refusal_mode"): frozenset({"phrases", "judge"}),
     ("sic", "mode"): frozenset({"direction", "generation"}),
     ("sic", "calibrate_prompts"): frozenset({"harmless", "harmful"}),
@@ -215,6 +224,7 @@ _NUMERIC_RANGES: dict[tuple[str, str], tuple[float | None, float | None]] = {
     ("depth", "clip_quantile"): (0.0, 0.5),
     ("softprompt", "n_tokens"): (1, None),
     ("softprompt", "n_steps"): (1, None),
+    ("softprompt", "perplexity_weight"): (0.0, None),
     ("eval", "max_tokens"): (1, None),
     ("eval", "num_prompts"): (1, None),
 }

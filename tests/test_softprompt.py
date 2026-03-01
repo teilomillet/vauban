@@ -576,6 +576,8 @@ class TestInvalidMode:
         object.__setattr__(bad_config, "gan_rounds", 0)
         object.__setattr__(bad_config, "injection_context", None)
         object.__setattr__(bad_config, "injection_context_template", None)
+        object.__setattr__(bad_config, "paraphrase_strategies", [])
+        object.__setattr__(bad_config, "token_position", "prefix")
 
         with pytest.raises(ValueError, match="Unknown soft prompt mode"):
             softprompt_attack(model, tokenizer, ["test"], bad_config, None)
@@ -3611,3 +3613,394 @@ class TestInjectionContextConfigDefaults:
             injection_context_template="X {payload} Y",
         )
         assert cfg.injection_context_template == "X {payload} Y"
+
+
+# ---------------------------------------------------------------------------
+# Perplexity loss tests
+# ---------------------------------------------------------------------------
+
+
+class TestPerplexityLoss:
+    def test_default_disabled(self) -> None:
+        cfg = SoftPromptConfig()
+        assert cfg.perplexity_weight == 0.0
+
+    def test_compute_perplexity_loss_basic(self) -> None:
+        from vauban.softprompt import _compute_perplexity_loss
+
+        # logits: (1, 4, 32), suffix_token_ids: (1, 4)
+        logits = mx.random.normal((1, 4, VOCAB_SIZE))
+        suffix_ids = mx.array([[1, 2, 3, 4]])
+        loss = _compute_perplexity_loss(
+            logits, suffix_ids, n_tokens=4, soft_token_offset=0,
+        )
+        mx.eval(loss)
+        assert loss.shape == ()
+        assert float(loss.item()) > 0.0
+
+    def test_perplexity_loss_single_token_returns_zero(self) -> None:
+        from vauban.softprompt import _compute_perplexity_loss
+
+        logits = mx.random.normal((1, 2, VOCAB_SIZE))
+        suffix_ids = mx.array([[1]])
+        loss = _compute_perplexity_loss(
+            logits, suffix_ids, n_tokens=1, soft_token_offset=0,
+        )
+        mx.eval(loss)
+        assert float(loss.item()) == 0.0
+
+    def test_compute_loss_with_perplexity(self) -> None:
+        from vauban.softprompt import _compute_loss
+
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
+        prompt_ids = mx.array([[1, 2, 3]])
+        target_ids = mx.array([5, 6])
+        suffix_ids = mx.array([[1, 2, 3, 4]])
+
+        loss_no_ppl = _compute_loss(
+            model, soft_embeds, prompt_ids, target_ids,
+            n_tokens=4, direction=None, direction_weight=0.0,
+        )
+        loss_with_ppl = _compute_loss(
+            model, soft_embeds, prompt_ids, target_ids,
+            n_tokens=4, direction=None, direction_weight=0.0,
+            perplexity_weight=0.1, suffix_token_ids=suffix_ids,
+        )
+        mx.eval(loss_no_ppl, loss_with_ppl)
+        # Perplexity adds a non-negative term
+        assert float(loss_with_ppl.item()) >= float(loss_no_ppl.item()) - 1e-6
+
+
+# ---------------------------------------------------------------------------
+# Token position tests
+# ---------------------------------------------------------------------------
+
+
+class TestTokenPosition:
+    def test_default_prefix(self) -> None:
+        cfg = SoftPromptConfig()
+        assert cfg.token_position == "prefix"
+
+    def test_suffix_position_config(self) -> None:
+        cfg = SoftPromptConfig(token_position="suffix")
+        assert cfg.token_position == "suffix"
+
+    def test_infix_position_config(self) -> None:
+        cfg = SoftPromptConfig(token_position="infix")
+        assert cfg.token_position == "infix"
+
+    def test_compute_loss_suffix_position(self) -> None:
+        from vauban.softprompt import _compute_loss
+
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
+        prompt_ids = mx.array([[1, 2, 3]])
+        target_ids = mx.array([5, 6])
+
+        loss = _compute_loss(
+            model, soft_embeds, prompt_ids, target_ids,
+            n_tokens=4, direction=None, direction_weight=0.0,
+            token_position="suffix",
+        )
+        mx.eval(loss)
+        assert loss.shape == ()
+
+    def test_compute_loss_infix_position(self) -> None:
+        from vauban.softprompt import _compute_loss
+
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
+        prompt_ids = mx.array([[1, 2, 3, 4, 5]])
+        target_ids = mx.array([5, 6])
+
+        loss = _compute_loss(
+            model, soft_embeds, prompt_ids, target_ids,
+            n_tokens=4, direction=None, direction_weight=0.0,
+            token_position="infix", infix_split=2,
+        )
+        mx.eval(loss)
+        assert loss.shape == ()
+
+    def test_embed_and_mask_with_prefix_suffix(self) -> None:
+        from vauban._forward import embed_and_mask_with_prefix
+
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        transformer = model.model
+        soft_embeds = mx.random.normal((1, 3, D_MODEL))
+        token_ids = mx.array([[1, 2]])
+
+        h_prefix, _ = embed_and_mask_with_prefix(
+            transformer, soft_embeds, token_ids, token_position="prefix",
+        )
+        h_suffix, _ = embed_and_mask_with_prefix(
+            transformer, soft_embeds, token_ids, token_position="suffix",
+        )
+        mx.eval(h_prefix, h_suffix)
+        # Both should have same total length
+        assert h_prefix.shape[1] == h_suffix.shape[1] == 5
+
+    def test_embed_and_mask_with_prefix_infix(self) -> None:
+        from vauban._forward import embed_and_mask_with_prefix
+
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        transformer = model.model
+        soft_embeds = mx.random.normal((1, 3, D_MODEL))
+        token_ids = mx.array([[1, 2, 3, 4]])
+
+        h_infix, _ = embed_and_mask_with_prefix(
+            transformer, soft_embeds, token_ids,
+            token_position="infix", infix_split=2,
+        )
+        mx.eval(h_infix)
+        # 4 prompt + 3 soft = 7
+        assert h_infix.shape[1] == 7
+
+
+# ---------------------------------------------------------------------------
+# Paraphrase strategy tests
+# ---------------------------------------------------------------------------
+
+
+class TestParaphrase:
+    def test_default_empty(self) -> None:
+        cfg = SoftPromptConfig()
+        assert cfg.paraphrase_strategies == []
+
+    def test_paraphrase_prompts_empty_strategies(self) -> None:
+        from vauban.softprompt import paraphrase_prompts
+
+        result = paraphrase_prompts(["hello"], [])
+        assert result == ["hello"]
+
+    def test_paraphrase_prompts_single_strategy(self) -> None:
+        from vauban.softprompt import paraphrase_prompts
+
+        result = paraphrase_prompts(["do X"], ["narrative"])
+        assert len(result) == 2  # original + 1 paraphrase
+        assert result[0] == "do X"
+        assert "do X" in result[1]
+        assert "story" in result[1].lower()
+
+    def test_paraphrase_prompts_multiple_strategies(self) -> None:
+        from vauban.softprompt import paraphrase_prompts
+
+        prompts = ["do X", "do Y"]
+        strategies = ["narrative", "technical"]
+        result = paraphrase_prompts(prompts, strategies)
+        # 2 original + 2*2 paraphrases = 6
+        assert len(result) == 6
+        assert result[0] == "do X"
+        assert result[1] == "do Y"
+
+    def test_paraphrase_unknown_strategy_raises(self) -> None:
+        from vauban.softprompt import paraphrase_prompts
+
+        with pytest.raises(ValueError, match="Unknown paraphrase strategy"):
+            paraphrase_prompts(["test"], ["nonexistent"])
+
+    def test_all_strategies_produce_output(self) -> None:
+        from vauban.softprompt import paraphrase_prompts
+        from vauban.softprompt._paraphrase import _STRATEGY_TEMPLATES
+
+        all_strategies = list(_STRATEGY_TEMPLATES.keys())
+        result = paraphrase_prompts(["test prompt"], all_strategies)
+        assert len(result) == 1 + len(all_strategies)
+
+
+# ---------------------------------------------------------------------------
+# Perplexity with position offset tests
+# ---------------------------------------------------------------------------
+
+
+class TestPerplexityWithOffset:
+    def test_perplexity_suffix_offset(self) -> None:
+        from vauban.softprompt import _compute_perplexity_loss
+
+        # 3 prompt tokens + 4 soft tokens = logits at positions 3..5
+        logits = mx.random.normal((1, 10, VOCAB_SIZE))
+        suffix_ids = mx.array([[1, 2, 3, 4]])
+        loss = _compute_perplexity_loss(
+            logits, suffix_ids, n_tokens=4, soft_token_offset=3,
+        )
+        mx.eval(loss)
+        assert loss.shape == ()
+        assert float(loss.item()) > 0.0
+
+    def test_perplexity_infix_offset(self) -> None:
+        from vauban.softprompt import _compute_perplexity_loss
+
+        # infix_split=2: soft tokens start at position 2
+        logits = mx.random.normal((1, 12, VOCAB_SIZE))
+        suffix_ids = mx.array([[1, 2, 3, 4]])
+        loss = _compute_perplexity_loss(
+            logits, suffix_ids, n_tokens=4, soft_token_offset=2,
+        )
+        mx.eval(loss)
+        assert loss.shape == ()
+        assert float(loss.item()) > 0.0
+
+    def test_add_perplexity_term_disabled(self) -> None:
+        from vauban.softprompt import _add_perplexity_term
+
+        logits = mx.random.normal((1, 8, VOCAB_SIZE))
+        base_loss = mx.array(1.5)
+        result = _add_perplexity_term(
+            base_loss, logits,
+            perplexity_weight=0.0, suffix_token_ids=None,
+            n_tokens=4, n_prompt=3,
+            token_position="prefix", infix_split=None,
+        )
+        mx.eval(result)
+        assert float(result.item()) == float(base_loss.item())
+
+    def test_add_perplexity_term_suffix(self) -> None:
+        from vauban.softprompt import _add_perplexity_term
+
+        logits = mx.random.normal((1, 10, VOCAB_SIZE))
+        base_loss = mx.array(1.0)
+        suffix_ids = mx.array([[1, 2, 3, 4]])
+        result = _add_perplexity_term(
+            base_loss, logits,
+            perplexity_weight=0.1, suffix_token_ids=suffix_ids,
+            n_tokens=4, n_prompt=3,
+            token_position="suffix", infix_split=None,
+        )
+        mx.eval(result)
+        assert float(result.item()) >= float(base_loss.item()) - 1e-6
+
+    def test_add_perplexity_term_infix(self) -> None:
+        from vauban.softprompt import _add_perplexity_term
+
+        logits = mx.random.normal((1, 12, VOCAB_SIZE))
+        base_loss = mx.array(1.0)
+        suffix_ids = mx.array([[1, 2, 3, 4]])
+        result = _add_perplexity_term(
+            base_loss, logits,
+            perplexity_weight=0.1, suffix_token_ids=suffix_ids,
+            n_tokens=4, n_prompt=5,
+            token_position="infix", infix_split=2,
+        )
+        mx.eval(result)
+        assert float(result.item()) >= float(base_loss.item()) - 1e-6
+
+    def test_loss_with_perplexity_suffix_position(self) -> None:
+        from vauban.softprompt import _compute_loss
+
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
+        prompt_ids = mx.array([[1, 2, 3]])
+        target_ids = mx.array([5, 6])
+        suffix_ids = mx.array([[1, 2, 3, 4]])
+
+        loss = _compute_loss(
+            model, soft_embeds, prompt_ids, target_ids,
+            n_tokens=4, direction=None, direction_weight=0.0,
+            perplexity_weight=0.1, suffix_token_ids=suffix_ids,
+            token_position="suffix",
+        )
+        mx.eval(loss)
+        assert loss.shape == ()
+
+    def test_loss_with_perplexity_infix_position(self) -> None:
+        from vauban.softprompt import _compute_loss
+
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
+        prompt_ids = mx.array([[1, 2, 3, 4, 5]])
+        target_ids = mx.array([5, 6])
+        suffix_ids = mx.array([[1, 2, 3, 4]])
+
+        loss = _compute_loss(
+            model, soft_embeds, prompt_ids, target_ids,
+            n_tokens=4, direction=None, direction_weight=0.0,
+            perplexity_weight=0.1, suffix_token_ids=suffix_ids,
+            token_position="infix", infix_split=2,
+        )
+        mx.eval(loss)
+        assert loss.shape == ()
+
+
+# ---------------------------------------------------------------------------
+# Infix split computation tests
+# ---------------------------------------------------------------------------
+
+
+class TestInfixSplit:
+    def test_compute_infix_split_basic(self) -> None:
+        from vauban.softprompt import _compute_infix_split
+
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        clean_ids, split_idx = _compute_infix_split(
+            tokenizer, "Write about {suffix} something",
+        )
+        # Clean prompt should not contain {suffix}
+        assert isinstance(clean_ids, list)
+        assert len(clean_ids) > 0
+        assert split_idx >= 0
+        assert split_idx <= len(clean_ids)
+
+    def test_compute_infix_split_no_placeholder_raises(self) -> None:
+        from vauban.softprompt import _compute_infix_split
+
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        with pytest.raises(ValueError, match="\\{suffix\\}"):
+            _compute_infix_split(tokenizer, "no placeholder here")
+
+    def test_resolve_infix_overrides(self) -> None:
+        from vauban.softprompt import _resolve_infix_overrides
+
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        prompts = [
+            "Write about {suffix} something",
+            "Tell me {suffix} a story",
+        ]
+        encoded, infix_map = _resolve_infix_overrides(tokenizer, prompts)
+        assert len(encoded) == 2
+        assert len(infix_map) == 2
+        # Each encoded array should have an entry in the map
+        for arr in encoded:
+            assert id(arr) in infix_map
+            assert infix_map[id(arr)] >= 0
+
+
+# ---------------------------------------------------------------------------
+# Integration: all three features together
+# ---------------------------------------------------------------------------
+
+
+class TestThreeFeaturesIntegration:
+    def test_loss_with_all_features(self) -> None:
+        """Compute loss with perplexity + infix position + paraphrased prompts."""
+        from vauban.softprompt import _compute_loss, paraphrase_prompts
+
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+
+        # Paraphrase
+        prompts = ["do something dangerous"]
+        expanded = paraphrase_prompts(prompts, ["narrative", "technical"])
+        assert len(expanded) == 3  # 1 original + 2 paraphrased
+
+        # Infix position with perplexity
+        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
+        prompt_ids = mx.array([[1, 2, 3, 4, 5]])
+        target_ids = mx.array([5, 6])
+        suffix_ids = mx.array([[1, 2, 3, 4]])
+
+        loss = _compute_loss(
+            model, soft_embeds, prompt_ids, target_ids,
+            n_tokens=4, direction=None, direction_weight=0.0,
+            perplexity_weight=0.1, suffix_token_ids=suffix_ids,
+            token_position="infix", infix_split=2,
+        )
+        mx.eval(loss)
+        assert loss.shape == ()
+        assert float(loss.item()) > 0.0

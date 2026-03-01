@@ -576,6 +576,12 @@ class SoftPromptConfig:
     # --- Injection context wrapping ---
     injection_context: str | None = None  # "web_page", "tool_output", "code_file"
     injection_context_template: str | None = None  # custom template with {payload}
+    # --- Perplexity regularization ---
+    perplexity_weight: float = 0.0  # CE penalty pushing suffixes toward fluent text
+    # --- Token position ---
+    token_position: str = "prefix"  # "prefix", "suffix", or "infix"
+    # --- Prompt paraphrasing ---
+    paraphrase_strategies: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)

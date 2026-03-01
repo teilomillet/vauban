@@ -17,17 +17,21 @@ from vauban.softprompt._generation import (
     _prefill_with_cache,
 )
 from vauban.softprompt._loss import (
+    _add_perplexity_term,
     _compute_defense_aware_penalty,
     _compute_defensive_loss,
     _compute_eos_loss,
     _compute_kl_collision_loss,
     _compute_loss,
+    _compute_perplexity_loss,
     _compute_untargeted_loss,
 )
+from vauban.softprompt._paraphrase import paraphrase_prompts
 from vauban.softprompt._utils import (
     _build_vocab_mask,
     _compute_accessibility_score,
     _compute_embed_regularization,
+    _compute_infix_split,
     _compute_learning_rate,
     _encode_refusal_tokens,
     _encode_targets,
@@ -37,6 +41,7 @@ from vauban.softprompt._utils import (
     _pre_encode_prompts_with_injection_context,
     _pre_encode_prompts_with_injection_template,
     _project_to_tokens,
+    _resolve_infix_overrides,
     _resolve_injection_ids,
     _sample_prompt_ids,
     _select_prompt_ids,
@@ -45,15 +50,18 @@ from vauban.softprompt._utils import (
 )
 
 __all__ = [
+    "_add_perplexity_term",
     "_build_vocab_mask",
     "_compute_accessibility_score",
     "_compute_defense_aware_penalty",
     "_compute_defensive_loss",
     "_compute_embed_regularization",
     "_compute_eos_loss",
+    "_compute_infix_split",
     "_compute_kl_collision_loss",
     "_compute_learning_rate",
     "_compute_loss",
+    "_compute_perplexity_loss",
     "_compute_untargeted_loss",
     "_continuous_attack",
     "_decode_step",
@@ -71,6 +79,7 @@ __all__ = [
     "_pre_encode_prompts_with_injection_template",
     "_prefill_with_cache",
     "_project_to_tokens",
+    "_resolve_infix_overrides",
     "_resolve_injection_ids",
     "_sample_prompt_ids",
     "_select_prompt_ids",
@@ -79,5 +88,6 @@ __all__ = [
     "evaluate_against_defenses",
     "evaluate_against_defenses_multiturn",
     "gan_loop",
+    "paraphrase_prompts",
     "softprompt_attack",
 ]

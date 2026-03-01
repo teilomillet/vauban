@@ -901,6 +901,82 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
         )
         raise ValueError(msg)
 
+    # -- perplexity_weight --
+    perplexity_weight_raw = sec.get(  # type: ignore[arg-type]
+        "perplexity_weight", 0.0,
+    )
+    if not isinstance(perplexity_weight_raw, int | float):
+        msg = (
+            "[softprompt].perplexity_weight must be"
+            f" a number, got"
+            f" {type(perplexity_weight_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if float(perplexity_weight_raw) < 0.0:
+        msg = (
+            "[softprompt].perplexity_weight must be"
+            f" >= 0.0, got {perplexity_weight_raw}"
+        )
+        raise ValueError(msg)
+
+    # -- token_position --
+    token_position_raw = sec.get(  # type: ignore[arg-type]
+        "token_position", "prefix",
+    )
+    if not isinstance(token_position_raw, str):
+        msg = (
+            f"[softprompt].token_position must be a string,"
+            f" got {type(token_position_raw).__name__}"
+        )
+        raise TypeError(msg)
+    valid_token_positions = ("prefix", "suffix", "infix")
+    if token_position_raw not in valid_token_positions:
+        msg = (
+            f"[softprompt].token_position must be one of"
+            f" {valid_token_positions!r},"
+            f" got {token_position_raw!r}"
+        )
+        raise ValueError(msg)
+
+    # Cross-field: infix requires discrete modes (same as injection_context)
+    if token_position_raw == "infix" and mode_raw == "continuous":
+        msg = (
+            "[softprompt].token_position = 'infix' requires mode"
+            " 'gcg' or 'egd' (discrete tokens);"
+            " continuous mode cannot resolve infix split positions"
+        )
+        raise ValueError(msg)
+
+    # -- paraphrase_strategies --
+    paraphrase_strategies_raw = sec.get(  # type: ignore[arg-type]
+        "paraphrase_strategies", [],
+    )
+    if not isinstance(paraphrase_strategies_raw, list):
+        msg = (
+            f"[softprompt].paraphrase_strategies must be a list,"
+            f" got {type(paraphrase_strategies_raw).__name__}"
+        )
+        raise TypeError(msg)
+    valid_paraphrase = (
+        "narrative", "deceptive_delight", "technical",
+        "historical", "code_block", "educational",
+    )
+    paraphrase_strategies: list[str] = []
+    for item in paraphrase_strategies_raw:
+        if not isinstance(item, str):
+            msg = (
+                "[softprompt].paraphrase_strategies elements"
+                f" must be strings, got {type(item).__name__}"
+            )
+            raise TypeError(msg)
+        if item not in valid_paraphrase:
+            msg = (
+                f"[softprompt].paraphrase_strategies element"
+                f" {item!r} is not one of {valid_paraphrase!r}"
+            )
+            raise ValueError(msg)
+        paraphrase_strategies.append(item)
+
     # -- init_tokens --
     init_tokens_raw = sec.get("init_tokens")  # type: ignore[arg-type]
     init_tokens: list[int] | None = None
@@ -971,4 +1047,7 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
         init_tokens=init_tokens,
         injection_context=injection_context,
         injection_context_template=injection_context_template,
+        perplexity_weight=float(perplexity_weight_raw),
+        token_position=token_position_raw,
+        paraphrase_strategies=paraphrase_strategies,
     )

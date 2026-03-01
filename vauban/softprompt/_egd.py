@@ -36,6 +36,7 @@ def _egd_attack(
     ref_model: CausalLM | None = None,
     all_prompt_ids_override: list[Array] | None = None,
     transfer_models: list[tuple[str, CausalLM, Tokenizer]] | None = None,
+    infix_map: dict[int, int] | None = None,
 ) -> SoftPromptResult:
     """EGD (Exponentiated Gradient Descent) on the probability simplex.
 
@@ -127,6 +128,10 @@ def _egd_attack(
         p = p / (row_sums + 1e-30)
     force_eval(p)
 
+    # Pre-compute perplexity and position config
+    ppl_weight = config.perplexity_weight
+    tok_pos = config.token_position
+
     loss_history: list[float] = []
     best_loss = float("inf")
     best_p = p
@@ -174,8 +179,18 @@ def _egd_attack(
                 _sel: list[Array] = batch,
             ) -> Array:
                 soft_embeds = (probs @ embed_matrix)[None, :]
+                # For perplexity: use argmax of probs as token IDs
+                # (gradient flows through soft_embeds, not argmax)
+                _suf_ids: Array | None = None
+                if ppl_weight > 0.0:
+                    _suf_ids = ops.argmax(probs, axis=-1)[None, :]
                 total = ops.array(0.0)
                 for pid in _sel:
+                    _isplit = (
+                        infix_map.get(id(pid))
+                        if infix_map is not None
+                        else None
+                    )
                     if (
                         config.loss_mode == "defensive"
                         and refusal_ids is not None
@@ -190,6 +205,10 @@ def _egd_attack(
                             ref_model, config.kl_ref_weight,
                             da_weight, da_sic_layer, da_sic_threshold,
                             da_cast_layers, da_cast_threshold,
+                            perplexity_weight=ppl_weight,
+                            suffix_token_ids=_suf_ids,
+                            token_position=tok_pos,
+                            infix_split=_isplit,
                         )
                     elif (
                         config.loss_mode == "untargeted"
@@ -205,6 +224,10 @@ def _egd_attack(
                             ref_model, config.kl_ref_weight,
                             da_weight, da_sic_layer, da_sic_threshold,
                             da_cast_layers, da_cast_threshold,
+                            perplexity_weight=ppl_weight,
+                            suffix_token_ids=_suf_ids,
+                            token_position=tok_pos,
+                            infix_split=_isplit,
                         )
                     else:
                         total = total + _compute_loss(
@@ -217,6 +240,10 @@ def _egd_attack(
                             ref_model, config.kl_ref_weight,
                             da_weight, da_sic_layer, da_sic_threshold,
                             da_cast_layers, da_cast_threshold,
+                            perplexity_weight=ppl_weight,
+                            suffix_token_ids=_suf_ids,
+                            token_position=tok_pos,
+                            infix_split=_isplit,
                         )
                 return total / len(_sel)
 

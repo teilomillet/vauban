@@ -176,6 +176,78 @@ def _compute_embed_regularization(
     return weight * (mean_soft_norm - mean_real_norm) ** 2
 
 
+def _compute_infix_split(
+    tokenizer: Tokenizer,
+    prompt: str,
+    system_prompt: str | None = None,
+) -> tuple[list[int], int]:
+    """Compute the infix split position for a prompt with ``{suffix}`` placeholder.
+
+    Tokenizes the prompt with ``{suffix}`` removed to get clean token IDs,
+    then finds where the placeholder was by comparing against a version with
+    a marker inserted. The split index is the first position where the two
+    tokenizations diverge.
+
+    Args:
+        tokenizer: Tokenizer with encode and chat template support.
+        prompt: Prompt string containing ``{suffix}`` placeholder.
+        system_prompt: Optional system prompt to prepend to messages.
+
+    Returns:
+        Tuple of (clean_token_ids, infix_split_index).
+
+    Raises:
+        ValueError: If prompt does not contain ``{suffix}`` placeholder.
+    """
+    if "{suffix}" not in prompt:
+        msg = (
+            "Infix token_position requires prompts with a"
+            " {suffix} placeholder, but none found in:"
+            f" {prompt!r}"
+        )
+        raise ValueError(msg)
+
+    # Tokenize prompt with placeholder removed
+    clean_prompt = prompt.replace("{suffix}", "")
+    clean_messages: list[dict[str, str]] = []
+    if system_prompt is not None:
+        clean_messages.append({"role": "system", "content": system_prompt})
+    clean_messages.append({"role": "user", "content": clean_prompt})
+    clean_text = tokenizer.apply_chat_template(clean_messages, tokenize=False)
+    if not isinstance(clean_text, str):
+        msg = "apply_chat_template must return str when tokenize=False"
+        raise TypeError(msg)
+    clean_ids = tokenizer.encode(clean_text)
+
+    # Tokenize prompt with marker to find divergence point
+    marker = "\x00INFIX_MARKER\x00"
+    marker_prompt = prompt.replace("{suffix}", marker)
+    marker_messages: list[dict[str, str]] = []
+    if system_prompt is not None:
+        marker_messages.append({"role": "system", "content": system_prompt})
+    marker_messages.append({"role": "user", "content": marker_prompt})
+    marker_text = tokenizer.apply_chat_template(
+        marker_messages, tokenize=False,
+    )
+    if not isinstance(marker_text, str):
+        msg = "apply_chat_template must return str when tokenize=False"
+        raise TypeError(msg)
+    marker_ids = tokenizer.encode(marker_text)
+
+    # Find first divergence
+    infix_split = 0
+    for i in range(min(len(clean_ids), len(marker_ids))):
+        if clean_ids[i] != marker_ids[i]:
+            infix_split = i
+            break
+    else:
+        # If no divergence found (marker was consumed by tokenizer),
+        # place at end of clean sequence
+        infix_split = len(clean_ids)
+
+    return clean_ids, infix_split
+
+
 def _pre_encode_prompts(
     tokenizer: Tokenizer,
     prompts: list[str],
@@ -343,6 +415,38 @@ def _pre_encode_prompts_with_injection_template(
         ids = ops.array(tokenizer.encode(text))[None, :]
         encoded.append(ids)
     return encoded
+
+
+def _resolve_infix_overrides(
+    tokenizer: Tokenizer,
+    prompts: list[str],
+    system_prompt: str | None = None,
+) -> tuple[list[Array], dict[int, int]]:
+    """Pre-encode prompts for infix mode, computing per-prompt split positions.
+
+    Each prompt must contain a ``{suffix}`` placeholder marking where
+    optimizable tokens are inserted. The placeholder is removed for
+    tokenization, and the split index is recorded.
+
+    Args:
+        tokenizer: Tokenizer with encode and chat template support.
+        prompts: Prompt strings containing ``{suffix}`` placeholders.
+        system_prompt: Optional system prompt to prepend.
+
+    Returns:
+        Tuple of (prompt_id_arrays, infix_map) where infix_map maps
+        ``id(array)`` to the infix split index for that prompt.
+    """
+    encoded: list[Array] = []
+    infix_map: dict[int, int] = {}
+    for prompt in prompts:
+        clean_ids, split_idx = _compute_infix_split(
+            tokenizer, prompt, system_prompt,
+        )
+        arr = ops.array(clean_ids)[None, :]
+        encoded.append(arr)
+        infix_map[id(arr)] = split_idx
+    return encoded, infix_map
 
 
 def _resolve_injection_ids(

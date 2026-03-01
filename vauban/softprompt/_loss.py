@@ -7,6 +7,83 @@ from vauban._forward import embed_and_mask_with_prefix, lm_head_forward
 from vauban.types import CausalLM
 
 
+def _compute_perplexity_loss(
+    logits: Array,
+    suffix_token_ids: Array,
+    n_tokens: int,
+    soft_token_offset: int,
+) -> Array:
+    """Compute perplexity loss to push suffixes toward fluent text.
+
+    Extracts logits at soft token positions and computes cross-entropy
+    against actual suffix token IDs (next-token prediction within the
+    suffix). Lower loss = more fluent, natural-sounding suffix.
+
+    Args:
+        logits: Full logits tensor, shape (1, seq_len, vocab_size).
+        suffix_token_ids: Actual suffix token IDs, shape (1, n_tokens).
+        n_tokens: Number of soft prompt tokens.
+        soft_token_offset: Position of soft tokens in the sequence
+            (0 for prefix, n_prompt for suffix, infix_split for infix).
+
+    Returns:
+        Scalar mean cross-entropy loss over suffix positions.
+    """
+    if n_tokens < 2:
+        return ops.array(0.0)
+    # Logits at positions offset..offset+n_tokens-2 predict
+    # suffix tokens at positions 1..n_tokens-1
+    pred_logits = logits[:, soft_token_offset : soft_token_offset + n_tokens - 1, :]
+    target = suffix_token_ids[0, 1:n_tokens]
+    return _nn.cross_entropy(
+        pred_logits.reshape(-1, pred_logits.shape[-1]),
+        target,
+        reduction="mean",
+    )
+
+
+def _add_perplexity_term(
+    loss: Array,
+    logits: Array,
+    perplexity_weight: float,
+    suffix_token_ids: Array | None,
+    n_tokens: int,
+    n_prompt: int,
+    token_position: str,
+    infix_split: int | None,
+) -> Array:
+    """Add perplexity regularization term to a loss value.
+
+    Computes the correct soft-token offset based on token position
+    and adds the weighted perplexity loss. Returns the original loss
+    unchanged when perplexity is disabled or suffix IDs are absent.
+
+    Args:
+        loss: Current loss value to augment.
+        logits: Full logits tensor, shape (1, seq_len, vocab_size).
+        perplexity_weight: Weight for perplexity regularization.
+        suffix_token_ids: Suffix token IDs, shape (1, n_tokens), or None.
+        n_tokens: Number of soft prompt tokens.
+        n_prompt: Number of prompt tokens (for suffix offset).
+        token_position: "prefix", "suffix", or "infix".
+        infix_split: Token index in prompt for infix insertion point.
+
+    Returns:
+        Loss with perplexity term added (or unchanged if disabled).
+    """
+    if perplexity_weight <= 0.0 or suffix_token_ids is None:
+        return loss
+    if token_position == "suffix":
+        ppl_offset = n_prompt
+    elif token_position == "infix" and infix_split is not None:
+        ppl_offset = infix_split
+    else:
+        ppl_offset = 0
+    return loss + perplexity_weight * _compute_perplexity_loss(
+        logits, suffix_token_ids, n_tokens, soft_token_offset=ppl_offset,
+    )
+
+
 def _compute_eos_loss(
     logits: Array,
     position: int,
@@ -164,6 +241,10 @@ def _compute_loss(
     sic_threshold: float = 0.0,
     cast_layers: list[int] | None = None,
     cast_threshold: float = 0.0,
+    perplexity_weight: float = 0.0,
+    suffix_token_ids: Array | None = None,
+    token_position: str = "prefix",
+    infix_split: int | None = None,
 ) -> Array:
     """Compute cross-entropy loss with teacher forcing.
 
@@ -198,6 +279,10 @@ def _compute_loss(
         sic_threshold: SIC detection threshold.
         cast_layers: Layer indices where CAST intervenes.
         cast_threshold: CAST intervention threshold.
+        perplexity_weight: Weight for perplexity regularization loss.
+        suffix_token_ids: Suffix token IDs for perplexity loss, shape (1, n_tokens).
+        token_position: Soft token placement: "prefix", "suffix", or "infix".
+        infix_split: Token index in prompt where soft tokens are inserted (infix only).
 
     Returns:
         Scalar loss value.
@@ -206,8 +291,21 @@ def _compute_loss(
     prompt_embeds = transformer.embed_tokens(prompt_token_ids)
     target_embeds = transformer.embed_tokens(target_ids[None, :])
 
-    # Teacher forcing: model sees prefix + prompt + target tokens
-    h = ops.concatenate([soft_embeds, prompt_embeds, target_embeds], axis=1)
+    # Teacher forcing: assemble [soft | prompt | target] based on position
+    if token_position == "suffix":
+        h = ops.concatenate(
+            [prompt_embeds, soft_embeds, target_embeds], axis=1,
+        )
+    elif token_position == "infix" and infix_split is not None:
+        part1 = prompt_embeds[:, :infix_split, :]
+        part2 = prompt_embeds[:, infix_split:, :]
+        h = ops.concatenate(
+            [part1, soft_embeds, part2, target_embeds], axis=1,
+        )
+    else:  # prefix (default)
+        h = ops.concatenate(
+            [soft_embeds, prompt_embeds, target_embeds], axis=1,
+        )
 
     mask = _nn.create_additive_causal_mask(h.shape[1])
     mask = mask.astype(h.dtype)
@@ -288,6 +386,12 @@ def _compute_loss(
             model, ref_model, soft_embeds, prompt_token_ids, n_tokens,
         )
 
+    # Perplexity regularization — push suffix toward fluent text
+    ce_loss = _add_perplexity_term(
+        ce_loss, logits, perplexity_weight, suffix_token_ids,
+        n_tokens, n_prompt, token_position, infix_split,
+    )
+
     return ce_loss
 
 
@@ -311,6 +415,10 @@ def _compute_defensive_loss(
     sic_threshold: float = 0.0,
     cast_layers: list[int] | None = None,
     cast_threshold: float = 0.0,
+    perplexity_weight: float = 0.0,
+    suffix_token_ids: Array | None = None,
+    token_position: str = "prefix",
+    infix_split: int | None = None,
 ) -> Array:
     """Compute defensive loss: maximize refusal probability.
 
@@ -341,12 +449,19 @@ def _compute_defensive_loss(
         sic_threshold: SIC detection threshold.
         cast_layers: Layer indices where CAST intervenes.
         cast_threshold: CAST intervention threshold.
+        perplexity_weight: Weight for perplexity regularization loss.
+        suffix_token_ids: Suffix token IDs for perplexity loss, shape (1, n_tokens).
+        token_position: Soft token placement: "prefix", "suffix", or "infix".
+        infix_split: Token index in prompt where soft tokens are inserted (infix only).
 
     Returns:
         Scalar loss value.
     """
     transformer = model.model
-    h, mask = embed_and_mask_with_prefix(transformer, soft_embeds, prompt_token_ids)
+    h, mask = embed_and_mask_with_prefix(
+        transformer, soft_embeds, prompt_token_ids,
+        token_position=token_position, infix_split=infix_split,
+    )
 
     n_prompt = prompt_token_ids.shape[1]
 
@@ -427,6 +542,12 @@ def _compute_defensive_loss(
             model, ref_model, soft_embeds, prompt_token_ids, n_tokens,
         )
 
+    # Perplexity regularization
+    loss = _add_perplexity_term(
+        loss, logits, perplexity_weight, suffix_token_ids,
+        n_tokens, n_prompt, token_position, infix_split,
+    )
+
     return loss
 
 
@@ -450,6 +571,10 @@ def _compute_untargeted_loss(
     sic_threshold: float = 0.0,
     cast_layers: list[int] | None = None,
     cast_threshold: float = 0.0,
+    perplexity_weight: float = 0.0,
+    suffix_token_ids: Array | None = None,
+    token_position: str = "prefix",
+    infix_split: int | None = None,
 ) -> Array:
     """Compute untargeted jailbreak loss (UJA, Deng et al. 2024).
 
@@ -478,12 +603,19 @@ def _compute_untargeted_loss(
         sic_threshold: SIC detection threshold.
         cast_layers: Layer indices where CAST intervenes.
         cast_threshold: CAST intervention threshold.
+        perplexity_weight: Weight for perplexity regularization loss.
+        suffix_token_ids: Suffix token IDs for perplexity loss, shape (1, n_tokens).
+        token_position: Soft token placement: "prefix", "suffix", or "infix".
+        infix_split: Token index in prompt where soft tokens are inserted (infix only).
 
     Returns:
         Scalar loss value.
     """
     transformer = model.model
-    h, mask = embed_and_mask_with_prefix(transformer, soft_embeds, prompt_token_ids)
+    h, mask = embed_and_mask_with_prefix(
+        transformer, soft_embeds, prompt_token_ids,
+        token_position=token_position, infix_split=infix_split,
+    )
 
     n_prompt = prompt_token_ids.shape[1]
 
@@ -560,5 +692,11 @@ def _compute_untargeted_loss(
         loss = loss + kl_ref_weight * _compute_kl_collision_loss(
             model, ref_model, soft_embeds, prompt_token_ids, n_tokens,
         )
+
+    # Perplexity regularization
+    loss = _add_perplexity_term(
+        loss, logits, perplexity_weight, suffix_token_ids,
+        n_tokens, n_prompt, token_position, infix_split,
+    )
 
     return loss

@@ -25,9 +25,11 @@ from vauban.softprompt._defense_eval import (
 from vauban.softprompt._egd import _egd_attack
 from vauban.softprompt._gcg import _gcg_attack
 from vauban.softprompt._generation import _evaluate_attack
+from vauban.softprompt._paraphrase import paraphrase_prompts
 from vauban.softprompt._utils import (
     _pre_encode_prompts_with_history,
     _project_to_tokens,
+    _resolve_infix_overrides,
     _resolve_injection_ids,
 )
 from vauban.types import (
@@ -56,7 +58,19 @@ def _dispatch_attack(
     is set, pre-encodes prompts wrapped in realistic surrounding context and
     passes them as ``all_prompt_ids_override`` to GCG/EGD.
     """
+    # Expand prompts with paraphrase strategies
+    if config.paraphrase_strategies:
+        prompts = paraphrase_prompts(prompts, config.paraphrase_strategies)
+
     injection_ids = _resolve_injection_ids(config, tokenizer, prompts)
+
+    # Resolve infix split positions when token_position is "infix"
+    infix_map: dict[int, int] | None = None
+    if config.token_position == "infix" and injection_ids is None:
+        infix_ids, infix_map = _resolve_infix_overrides(
+            tokenizer, prompts, config.system_prompt,
+        )
+        injection_ids = infix_ids
 
     if config.mode == "continuous":
         return _continuous_attack(
@@ -67,12 +81,14 @@ def _dispatch_attack(
             model, tokenizer, prompts, config, direction, ref_model,
             all_prompt_ids_override=injection_ids,
             transfer_models=transfer_models,
+            infix_map=infix_map,
         )
     if config.mode == "egd":
         return _egd_attack(
             model, tokenizer, prompts, config, direction, ref_model,
             all_prompt_ids_override=injection_ids,
             transfer_models=transfer_models,
+            infix_map=infix_map,
         )
     msg = (
         f"Unknown soft prompt mode: {config.mode!r},"

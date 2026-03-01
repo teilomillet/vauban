@@ -75,15 +75,26 @@ if TYPE_CHECKING or _BACKEND == "mlx":
         transformer: TransformerModel,
         prefix_embeds: Array,
         token_ids: Array,
+        token_position: str = "prefix",
+        infix_split: int | None = None,
     ) -> tuple[Array, Array]:
-        """Embed tokens, prepend prefix embeddings, and create causal mask.
+        """Embed tokens, combine with soft embeddings, and create causal mask.
+
+        Supports prefix (default), suffix, and infix placement of soft
+        embeddings relative to prompt token embeddings.
 
         Returns:
-            Tuple of (hidden_states, causal_mask) where hidden_states is
-            [prefix_embeds | embed(token_ids)].
+            Tuple of (hidden_states, causal_mask).
         """
         prompt_embeds = transformer.embed_tokens(token_ids)
-        h = mx.concatenate([prefix_embeds, prompt_embeds], axis=1)
+        if token_position == "suffix":
+            h = mx.concatenate([prompt_embeds, prefix_embeds], axis=1)
+        elif token_position == "infix" and infix_split is not None:
+            part1 = prompt_embeds[:, :infix_split, :]
+            part2 = prompt_embeds[:, infix_split:, :]
+            h = mx.concatenate([part1, prefix_embeds, part2], axis=1)
+        else:
+            h = mx.concatenate([prefix_embeds, prompt_embeds], axis=1)
         mask = nn.MultiHeadAttention.create_additive_causal_mask(h.shape[1])
         mask = mask.astype(h.dtype)
         return h, mask
@@ -159,17 +170,27 @@ elif _BACKEND == "torch":
         transformer: TransformerModel,
         prefix_embeds: Array,
         token_ids: Array,
+        token_position: str = "prefix",
+        infix_split: int | None = None,
     ) -> tuple[Array, Array | None]:
-        """Embed tokens, prepend prefix embeddings.
+        """Embed tokens, combine with soft embeddings.
+
+        Supports prefix (default), suffix, and infix placement.
 
         Returns:
-            Tuple of (hidden_states, None) where hidden_states is
-            [prefix_embeds | embed(token_ids)].
+            Tuple of (hidden_states, None).
         """
         dev = transformer.embed_tokens.weight.device
         token_ids = token_ids.to(dev)
         prompt_embeds = transformer.embed_tokens(token_ids)
-        h = _torch.cat([prefix_embeds, prompt_embeds], dim=1)
+        if token_position == "suffix":
+            h = _torch.cat([prompt_embeds, prefix_embeds], dim=1)
+        elif token_position == "infix" and infix_split is not None:
+            part1 = prompt_embeds[:, :infix_split, :]
+            part2 = prompt_embeds[:, infix_split:, :]
+            h = _torch.cat([part1, prefix_embeds, part2], dim=1)
+        else:
+            h = _torch.cat([prefix_embeds, prompt_embeds], dim=1)
         return h, None
 
     def svd_stable(matrix: Array) -> tuple[Array, Array, Array]:

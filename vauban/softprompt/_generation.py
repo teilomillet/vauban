@@ -17,18 +17,23 @@ def _prefill_with_cache(
     soft_embeds: Array,
     prompt_token_ids: Array,
     cache: list[LayerCache],
+    token_position: str = "prefix",
+    infix_split: int | None = None,
 ) -> Array:
     """Forward pass populating KV cache, returns logits at last position.
 
-    Feeds [soft_prefix | prompt] through the model layer by layer,
-    updating the KV cache at each layer so subsequent decode steps
-    have full context.
+    Feeds soft embeddings combined with prompt through the model layer
+    by layer, updating the KV cache at each layer so subsequent decode
+    steps have full context. Supports prefix, suffix, and infix placement.
 
     Returns:
         Logits at the last position, shape (1, 1, vocab_size).
     """
     transformer = model.model
-    h, mask = embed_and_mask_with_prefix(transformer, soft_embeds, prompt_token_ids)
+    h, mask = embed_and_mask_with_prefix(
+        transformer, soft_embeds, prompt_token_ids,
+        token_position=token_position, infix_split=infix_split,
+    )
 
     for i, layer in enumerate(transformer.layers):
         h = layer(h, mask, cache=cache[i])
@@ -101,7 +106,10 @@ def _evaluate_attack_with_history(
         prompt_ids = ops.array(tokenizer.encode(text))[None, :]
 
         cache = make_cache(model)
-        next_logits = _prefill_with_cache(model, soft_embeds, prompt_ids, cache)
+        next_logits = _prefill_with_cache(
+            model, soft_embeds, prompt_ids, cache,
+            token_position=config.token_position,
+        )
         force_eval(next_logits)
 
         generated_ids: list[int] = []
@@ -168,9 +176,12 @@ def _evaluate_attack(
             raise TypeError(msg)
         prompt_ids = ops.array(tokenizer.encode(text))[None, :]
 
-        # Prefill: forward [soft_prefix | prompt] through model with cache
+        # Prefill: forward soft + prompt through model with cache
         cache = make_cache(model)
-        next_logits = _prefill_with_cache(model, soft_embeds, prompt_ids, cache)
+        next_logits = _prefill_with_cache(
+            model, soft_embeds, prompt_ids, cache,
+            token_position=config.token_position,
+        )
         force_eval(next_logits)
 
         # Decode autoregressively using the cache

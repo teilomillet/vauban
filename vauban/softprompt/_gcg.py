@@ -37,6 +37,7 @@ def _gcg_attack(
     ref_model: CausalLM | None = None,
     all_prompt_ids_override: list[Array] | None = None,
     transfer_models: list[tuple[str, CausalLM, Tokenizer]] | None = None,
+    infix_map: dict[int, int] | None = None,
 ) -> SoftPromptResult:
     """GCG (Greedy Coordinate Gradient) discrete token search.
 
@@ -106,6 +107,10 @@ def _gcg_attack(
     early_stopped = False
     beam_width = config.beam_width
 
+    # Pre-compute perplexity and position config
+    ppl_weight = config.perplexity_weight
+    tok_pos = config.token_position
+
     # --- Evaluate a single candidate's average loss ---
     def _eval_cand(
         cand_ids: list[int],
@@ -115,6 +120,9 @@ def _gcg_attack(
         cand_embeds = transformer.embed_tokens(cand_array)
         cand_total = ops.array(0.0)
         for pid in sel:
+            _infix_split = (
+                infix_map.get(id(pid)) if infix_map is not None else None
+            )
             if (
                 config.loss_mode == "defensive"
                 and refusal_ids is not None
@@ -129,6 +137,10 @@ def _gcg_attack(
                     ref_model, config.kl_ref_weight,
                     da_weight, da_sic_layer, da_sic_threshold,
                     da_cast_layers, da_cast_threshold,
+                    perplexity_weight=ppl_weight,
+                    suffix_token_ids=cand_array,
+                    token_position=tok_pos,
+                    infix_split=_infix_split,
                 )
             elif (
                 config.loss_mode == "untargeted"
@@ -144,6 +156,10 @@ def _gcg_attack(
                     ref_model, config.kl_ref_weight,
                     da_weight, da_sic_layer, da_sic_threshold,
                     da_cast_layers, da_cast_threshold,
+                    perplexity_weight=ppl_weight,
+                    suffix_token_ids=cand_array,
+                    token_position=tok_pos,
+                    infix_split=_infix_split,
                 )
             else:
                 cand_total = cand_total + _compute_loss(
@@ -156,6 +172,10 @@ def _gcg_attack(
                     ref_model, config.kl_ref_weight,
                     da_weight, da_sic_layer, da_sic_threshold,
                     da_cast_layers, da_cast_threshold,
+                    perplexity_weight=ppl_weight,
+                    suffix_token_ids=cand_array,
+                    token_position=tok_pos,
+                    infix_split=_infix_split,
                 )
         cand_avg = cand_total / len(sel)
         force_eval(cand_avg)
@@ -261,9 +281,16 @@ def _gcg_attack(
                 def loss_fn(
                     embeds: Array,
                     _sel: list[Array] = batch,
+                    _tok_arr: Array = token_array,
                 ) -> Array:
+                    _suf_ids = _tok_arr if ppl_weight > 0.0 else None
                     total = ops.array(0.0)
                     for pid in _sel:
+                        _isplit = (
+                            infix_map.get(id(pid))
+                            if infix_map is not None
+                            else None
+                        )
                         if (
                             config.loss_mode == "defensive"
                             and refusal_ids is not None
@@ -278,6 +305,10 @@ def _gcg_attack(
                                 ref_model, config.kl_ref_weight,
                                 da_weight, da_sic_layer, da_sic_threshold,
                                 da_cast_layers, da_cast_threshold,
+                                perplexity_weight=ppl_weight,
+                                suffix_token_ids=_suf_ids,
+                                token_position=tok_pos,
+                                infix_split=_isplit,
                             )
                         elif (
                             config.loss_mode == "untargeted"
@@ -293,6 +324,10 @@ def _gcg_attack(
                                 ref_model, config.kl_ref_weight,
                                 da_weight, da_sic_layer, da_sic_threshold,
                                 da_cast_layers, da_cast_threshold,
+                                perplexity_weight=ppl_weight,
+                                suffix_token_ids=_suf_ids,
+                                token_position=tok_pos,
+                                infix_split=_isplit,
                             )
                         else:
                             total = total + _compute_loss(
@@ -305,6 +340,10 @@ def _gcg_attack(
                                 ref_model, config.kl_ref_weight,
                                 da_weight, da_sic_layer, da_sic_threshold,
                                 da_cast_layers, da_cast_threshold,
+                                perplexity_weight=ppl_weight,
+                                suffix_token_ids=_suf_ids,
+                                token_position=tok_pos,
+                                infix_split=_isplit,
                             )
                     return total / len(_sel)
 

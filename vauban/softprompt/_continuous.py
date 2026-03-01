@@ -84,6 +84,9 @@ def _continuous_attack(
     da_cast_layers = config.defense_eval_cast_layers
     da_cast_threshold = config.defense_eval_threshold
 
+    # Pre-compute position config (no perplexity for continuous mode)
+    tok_pos = config.token_position
+
     # Adam state: manual tracking since we're optimizing a bare array
     m = ops.zeros_like(soft_embeds)
     v = ops.zeros_like(soft_embeds)
@@ -150,6 +153,7 @@ def _continuous_attack(
                             ref_model, config.kl_ref_weight,
                             da_weight, da_sic_layer, da_sic_threshold,
                             da_cast_layers, da_cast_threshold,
+                            token_position=tok_pos,
                         )
                     elif (
                         config.loss_mode == "untargeted"
@@ -165,6 +169,7 @@ def _continuous_attack(
                             ref_model, config.kl_ref_weight,
                             da_weight, da_sic_layer, da_sic_threshold,
                             da_cast_layers, da_cast_threshold,
+                            token_position=tok_pos,
                         )
                     else:
                         total = total + _compute_loss(
@@ -177,6 +182,7 @@ def _continuous_attack(
                             ref_model, config.kl_ref_weight,
                             da_weight, da_sic_layer, da_sic_threshold,
                             da_cast_layers, da_cast_threshold,
+                            token_position=tok_pos,
                         )
                 avg = total / len(_sel)
                 if config.embed_reg_weight > 0.0:
