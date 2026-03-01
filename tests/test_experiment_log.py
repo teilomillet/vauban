@@ -1,9 +1,9 @@
-"""Tests for _write_experiment_log in vauban.__init__."""
+"""Tests for write_experiment_log in vauban._pipeline._context."""
 
 import json
 from pathlib import Path
 
-from vauban import _write_experiment_log
+from vauban._pipeline._context import write_experiment_log as _write_experiment_log
 from vauban.types import (
     CutConfig,
     EvalConfig,

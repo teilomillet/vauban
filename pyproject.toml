@@ -1,6 +1,6 @@
 [project]
 name = "vauban"
-version = "0.2.6"
+dynamic = ["version"]
 description = "LLM red-teaming and adversarial testing framework"
 readme = "README.md"
 license = "Apache-2.0"
@@ -45,6 +45,9 @@ unresolved-import = "ignore"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "vauban/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["vauban"]

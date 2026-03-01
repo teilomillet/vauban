@@ -47,8 +47,9 @@ class TestRunMeasureOnly:
             raise AssertionError("measure_only should not export a model")
 
         monkeypatch.setattr("vauban._model_io.load_model", _fake_load_model)
-        monkeypatch.setattr(vauban, "resolve_prompts", lambda _path: ["a", "b"])
-        monkeypatch.setattr(vauban, "export_model", _unexpected_export)
+        monkeypatch.setattr("vauban.dataset.resolve_prompts", lambda _path: ["a", "b"])
+        monkeypatch.setattr("vauban.export.export_model", _unexpected_export)
+        monkeypatch.setattr("vauban.resolve_prompts", lambda _path: ["a", "b"])
 
         config_path = tmp_path / "measure_only.toml"
         output_dir = tmp_path / "out"

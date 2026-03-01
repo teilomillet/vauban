@@ -10,6 +10,7 @@ from pathlib import Path
 
 from vauban import _ops as ops
 from vauban._array import Array
+from vauban.types import DirectionSpace
 
 
 def load_bank(path: str | Path) -> dict[str, Array]:
@@ -73,3 +74,44 @@ def compose_direction(
         msg = "Composed direction has near-zero norm"
         raise ValueError(msg)
     return result / norm
+
+
+def compose_subspaces(
+    bank: dict[str, Array],
+    composition: dict[str, float],
+    max_rank: int | None = None,
+) -> DirectionSpace:
+    """Compose DirectionSpaces from a bank with weights (full-subspace Steer2Adapt).
+
+    Unlike compose_direction() which only uses the first basis vector,
+    this uses all basis vectors from each entry, weighted by their
+    singular values.
+
+    Args:
+        bank: Named subspace bases (shape (k, d_model) each).
+        composition: Mapping of subspace name to weight.
+        max_rank: Maximum rank of the output space.
+
+    Raises:
+        KeyError: If a composition name is not found in the bank.
+        ValueError: If the composition is empty.
+    """
+    from vauban.algebra import compose, from_array
+
+    if not composition:
+        msg = "Composition is empty"
+        raise ValueError(msg)
+
+    spaces: list[DirectionSpace] = []
+    weights: list[float] = []
+    for name, weight in composition.items():
+        if name not in bank:
+            msg = (
+                f"Composition references unknown bank entry {name!r}."
+                f" Available: {sorted(bank.keys())}"
+            )
+            raise KeyError(msg)
+        spaces.append(from_array(bank[name], label=name))
+        weights.append(weight)
+
+    return compose(spaces, weights, max_rank=max_rank)

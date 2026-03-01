@@ -1522,6 +1522,7 @@ def render_manual(topic: str | None = None) -> str:
     lines.append("SYNOPSIS")
     lines.append("    vauban <config.toml>")
     lines.append("    vauban --validate <config.toml>")
+    lines.append("    vauban schema [--output FILE]")
     lines.append(
         "    vauban init [--mode MODE] [--model PATH]"
         " [--output FILE] [--force]",
@@ -1559,6 +1560,8 @@ def render_manual(topic: str | None = None) -> str:
         lines.append(
             "      Validate config + prompt files without loading model weights.",
         )
+        lines.append("    vauban schema [--output FILE]")
+        lines.append("      Print or write the current JSON Schema for TOML configs.")
         lines.append(
             "    vauban init [--mode MODE] [--model PATH]"
             " [--output FILE] [--force]",

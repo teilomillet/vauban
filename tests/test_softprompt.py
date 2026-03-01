@@ -3395,7 +3395,7 @@ class TestEgdTransferScoring:
 class TestWriteArenaCard:
     def test_basic_card_written(self, tmp_path: Path) -> None:
         """Arena card should be written with expected sections."""
-        from vauban import _write_arena_card
+        from vauban._pipeline._helpers import write_arena_card as _write_arena_card
 
         result = SoftPromptResult(
             mode="gcg", success_rate=0.75, final_loss=1.2,
@@ -3417,7 +3417,7 @@ class TestWriteArenaCard:
 
     def test_card_with_transfer_results(self, tmp_path: Path) -> None:
         """Arena card should include transfer results when present."""
-        from vauban import _write_arena_card
+        from vauban._pipeline._helpers import write_arena_card as _write_arena_card
 
         result = SoftPromptResult(
             mode="gcg", success_rate=0.5, final_loss=2.0,
@@ -3441,7 +3441,7 @@ class TestWriteArenaCard:
 
     def test_card_with_gan_history(self, tmp_path: Path) -> None:
         """Arena card should include GAN round history."""
-        from vauban import _write_arena_card
+        from vauban._pipeline._helpers import write_arena_card as _write_arena_card
 
         attack = SoftPromptResult(
             mode="gcg", success_rate=0.6, final_loss=1.5,

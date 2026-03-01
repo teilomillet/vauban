@@ -5,6 +5,7 @@ from pathlib import Path
 from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import force_eval
+from vauban.types import DirectionSpace
 
 
 def cut(
@@ -208,6 +209,42 @@ def cut_subspace(
             result[key] = w
 
     return result
+
+
+def cut_space(
+    weights: dict[str, Array],
+    space: DirectionSpace,
+    target_layers: list[int],
+    alpha: float = 1.0,
+    norm_preserve: bool = False,
+    layer_weights: list[float] | None = None,
+) -> dict[str, Array]:
+    """Cut a DirectionSpace from model weights.
+
+    Dispatches to cut() for rank-1 spaces or cut_subspace() for
+    higher-rank spaces.
+
+    Args:
+        weights: Flat dict of model weights (key -> Array).
+        space: The DirectionSpace to remove.
+        target_layers: Layer indices to modify.
+        alpha: Base scaling factor for the projection removal.
+        norm_preserve: If True, rescale rows to preserve original norms.
+        layer_weights: Per-layer alpha multipliers.
+    """
+    if space.rank == 0:
+        return dict(weights)
+    if space.rank == 1:
+        return cut(
+            weights, space.basis[0], target_layers,
+            alpha=alpha, norm_preserve=norm_preserve,
+            layer_weights=layer_weights,
+        )
+    return cut_subspace(
+        weights, space.basis, target_layers,
+        alpha=alpha, norm_preserve=norm_preserve,
+        layer_weights=layer_weights,
+    )
 
 
 def sparsify_direction(direction: Array, sparsity: float) -> Array:

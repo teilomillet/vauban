@@ -3,39 +3,12 @@
 import difflib
 from typing import cast
 
+from vauban.config._schema import KNOWN_SECTION_KEYS, KNOWN_TOP_LEVEL_KEYS
 from vauban.config._types import TomlDict
 
-_KNOWN_SECTIONS: frozenset[str] = frozenset({
-    "model",
-    "data",
-    "measure",
-    "cut",
-    "eval",
-    "surface",
-    "detect",
-    "optimize",
-    "compose_optimize",
-    "softprompt",
-    "sic",
-    "depth",
-    "probe",
-    "steer",
-    "cast",
-    "svf",
-    "api_eval",
-    "meta",
-    "output",
-    "verbose",
-    "environment",
-    "scan",
-    "policy",
-    "intent",
-    "defend",
-    "circuit",
-    "features",
-})
+_KNOWN_SECTIONS: frozenset[str] = KNOWN_TOP_LEVEL_KEYS
 
-_KNOWN_KEYS: dict[str, frozenset[str]] = {
+_VALUE_CONSTRAINT_KEYS: dict[str, frozenset[str]] = {
     "model": frozenset({"path"}),
     "data": frozenset({"harmful", "harmless", "borderline"}),
     "measure": frozenset({
@@ -170,8 +143,9 @@ _KNOWN_KEYS: dict[str, frozenset[str]] = {
         "learning_rate", "batch_size", "token_position",
         "dead_feature_threshold",
     }),
-    "output": frozenset({"dir"}),
 }
+
+_KNOWN_KEYS: dict[str, frozenset[str]] = KNOWN_SECTION_KEYS
 
 
 def check_unknown_sections(raw: TomlDict) -> list[str]:

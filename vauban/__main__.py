@@ -3,17 +3,20 @@
 Usage:
     vauban <config.toml>
     vauban --validate <config.toml>
+    vauban schema [--output FILE]
     vauban init [--mode MODE] [--model PATH] [--output FILE] [--force]
     vauban diff [--format text|markdown] [--threshold FLOAT] <dir_a> <dir_b>
     vauban man [topic]
 """
 
 import difflib
+import json
 import sys
 from pathlib import Path
 
 USAGE = """\
 Usage: vauban [--validate] <config.toml>
+       vauban schema [--output FILE]
        vauban init [--mode MODE] [--model PATH] [--output FILE] [--force]
        vauban diff [--format text|markdown] [--threshold FLOAT] <dir_a> <dir_b>
        vauban man [topic]
@@ -22,6 +25,7 @@ Run the full measure -> cut -> evaluate pipeline from a TOML config file.
 All configuration lives in the TOML file.
 
 Commands:
+  schema          Print the current JSON Schema for Vauban TOML configs.
   init            Generate a starter TOML config file.
   diff            Compare JSON reports from two output directories.
                   Use --threshold as a CI gate (exit 1 on large deltas).
@@ -45,6 +49,8 @@ _DIFF_USAGE = (
     " [--threshold FLOAT] <dir_a> <dir_b>\n"
 )
 
+_SCHEMA_USAGE = "Usage: vauban schema [--output FILE]\n"
+
 _DIFF_HELP = (
     "Usage: vauban diff [--format text|markdown]"
     " [--threshold FLOAT] <dir_a> <dir_b>\n"
@@ -58,7 +64,7 @@ _DIFF_HELP = (
 
 def _command_suggestion(token: str) -> str | None:
     """Return a suggested command for typo'd subcommands."""
-    candidates = ("man", "init", "diff", "validate")
+    candidates = ("man", "init", "diff", "schema", "validate")
     aliases = {"validate": "--validate"}
     matches = difflib.get_close_matches(token, candidates, n=1, cutoff=0.6)
     if not matches:
@@ -194,6 +200,37 @@ def _run_diff(args: list[str]) -> None:
     raise SystemExit(0)
 
 
+def _run_schema(args: list[str]) -> None:
+    """Handle ``vauban schema`` with optional output path."""
+    if len(args) == 1 and args[0] in ("--help", "-h"):
+        sys.stdout.write(_SCHEMA_USAGE)
+        raise SystemExit(0)
+
+    output_path: Path | None = None
+    i = 0
+    while i < len(args):
+        if args[i] in ("--help", "-h"):
+            sys.stdout.write(_SCHEMA_USAGE)
+            raise SystemExit(0)
+        if args[i] == "--output" and i + 1 < len(args):
+            output_path = Path(args[i + 1])
+            i += 2
+            continue
+        sys.stderr.write(f"Error: unexpected argument {args[i]!r}\n\n")
+        sys.stderr.write(_SCHEMA_USAGE)
+        raise SystemExit(1)
+
+    from vauban.config import generate_config_schema, write_config_schema
+
+    if output_path is None:
+        sys.stdout.write(json.dumps(generate_config_schema(), indent=2) + "\n")
+        raise SystemExit(0)
+
+    write_config_schema(output_path)
+    sys.stderr.write(f"Wrote schema to {output_path}\n")
+    raise SystemExit(0)
+
+
 def _set_backend_from_config(path: str) -> None:
     """Read backend from TOML and set VAUBAN_BACKEND env var.
 
@@ -255,6 +292,10 @@ def main() -> None:
 
     if args[0] == "diff":
         _run_diff(args[1:])
+        raise SystemExit(0)
+
+    if args[0] == "schema":
+        _run_schema(args[1:])
         raise SystemExit(0)
 
     known_prefixes = {"--validate", "--help", "-h"}

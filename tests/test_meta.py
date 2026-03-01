@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from vauban._pipeline._context import write_experiment_log
 from vauban.config._parse_meta import parse_meta
 from vauban.types import (
     CutConfig,
@@ -217,9 +218,7 @@ class TestExperimentLogMeta:
             output_dir=output_dir,
         )
 
-        from vauban import _write_experiment_log
-
-        _write_experiment_log(
+        write_experiment_log(
             config_path=tmp_path / "test.toml",
             config=config,
             mode="measure",
@@ -250,9 +249,7 @@ class TestExperimentLogMeta:
             output_dir=output_dir,
         )
 
-        from vauban import _write_experiment_log
-
-        _write_experiment_log(
+        write_experiment_log(
             config_path=tmp_path / "test.toml",
             config=config,
             mode="measure",

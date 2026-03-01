@@ -186,6 +186,52 @@ class DBDIResult:
 
 
 @dataclass(frozen=True, slots=True)
+class DirectionProvenance:
+    """Lineage node tracking how a DirectionSpace was produced."""
+
+    operation: str  # "measure", "add", "subtract", "intersect", etc.
+    parents: tuple[str, ...]  # labels of parent spaces (empty for leaf nodes)
+    params: dict[str, float | int | str]  # operation parameters
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize provenance to a JSON-compatible dict."""
+        return {
+            "operation": self.operation,
+            "parents": list(self.parents),
+            "params": dict(self.params),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class DirectionSpace:
+    """Algebraic subspace with closed operations and provenance.
+
+    All algebraic operations (add, subtract, intersect, compose, negate)
+    return new DirectionSpace instances, ensuring closure. Provenance
+    tracks the full lineage DAG.
+    """
+
+    basis: Array  # (k, d_model), orthonormal rows
+    d_model: int
+    rank: int  # k (number of basis vectors)
+    label: str = ""
+    layer_index: int | None = None
+    singular_values: list[float] = field(default_factory=list)
+    provenance: DirectionProvenance | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to dict (basis excluded — use safetensors for binary data)."""
+        return {
+            "d_model": self.d_model,
+            "rank": self.rank,
+            "label": self.label,
+            "layer_index": self.layer_index,
+            "singular_values": self.singular_values,
+            "provenance": self.provenance.to_dict() if self.provenance else None,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class CutConfig:
     """Configuration for the cut step."""
 
