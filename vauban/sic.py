@@ -253,11 +253,15 @@ def _detect(
     direction: Array | None,
     target_layer: int,
 ) -> float:
-    """Dispatch to direction or generation detection."""
+    """Dispatch to direction, SVF, or generation detection."""
     if config.mode == "direction":
         assert direction is not None
         return _detect_adversarial_direction(
             model, tokenizer, prompt, direction, target_layer,
+        )
+    if config.mode == "svf":
+        return _detect_adversarial_svf(
+            model, tokenizer, prompt, config, target_layer,
         )
     return _detect_adversarial_generation(
         model, tokenizer, prompt, config.max_tokens,
@@ -303,6 +307,61 @@ def _detect_adversarial_direction(
     proj = ops.sum(last_token * direction)
     force_eval(proj)
     return float(proj.item())
+
+
+def _detect_adversarial_svf(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    prompt: str,
+    config: SICConfig,
+    target_layer: int,
+) -> float:
+    """Detect adversarial content via SVF boundary evaluation.
+
+    Loads the SVF boundary and evaluates f(h) at the target layer.
+    Higher score = more benign (positive side of boundary).
+    Lower score = more adversarial (negative side).
+
+    Returns:
+        Boundary score (float). Higher = more benign.
+    """
+    from vauban.svf import load_svf_boundary
+
+    if config.svf_boundary_path is None:
+        msg = "SIC mode='svf' requires svf_boundary_path"
+        raise ValueError(msg)
+
+    transformer = model.model
+    d_model = transformer.embed_tokens.weight.shape[1]
+    n_layers = len(transformer.layers)
+    boundary = load_svf_boundary(
+        config.svf_boundary_path, d_model,
+        projection_dim=16, hidden_dim=64,
+        n_layers=n_layers,
+    )
+
+    messages = [{"role": "user", "content": prompt}]
+    text = tokenizer.apply_chat_template(messages, tokenize=False)
+    if not isinstance(text, str):
+        msg = "apply_chat_template must return str when tokenize=False"
+        raise TypeError(msg)
+    token_ids = ops.array(tokenizer.encode(text))[None, :]
+
+    h, mask = embed_and_mask(transformer, token_ids)
+
+    for i, layer in enumerate(transformer.layers):
+        h = layer(h, mask)
+        if i == target_layer:
+            last_token = h[0, -1, :]
+            score = boundary(last_token, i)
+            force_eval(score)
+            return float(score.item())
+
+    # Fallback: use last layer
+    last_token = h[0, -1, :]
+    score = boundary(last_token, n_layers - 1)
+    force_eval(score)
+    return float(score.item())
 
 
 def _detect_adversarial_generation(

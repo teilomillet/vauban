@@ -1,9 +1,14 @@
 """Conditional Activation Steering (CAST) runtime generation."""
 
+from typing import TYPE_CHECKING
+
 from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import embed_and_mask, force_eval, lm_head_forward, make_cache
 from vauban.types import AlphaTier, CastResult, CausalLM, LayerCache, Tokenizer
+
+if TYPE_CHECKING:
+    from vauban.svf import SVFBoundary
 
 
 def _resolve_alpha(
@@ -149,6 +154,8 @@ def _cast_generate_from_messages(
     projections_after_all: list[float] = []
     interventions = 0
     considered = 0
+    disp_interventions_total = 0
+    max_disp_total = 0.0
 
     for _ in range(max_tokens):
         (
@@ -157,6 +164,8 @@ def _cast_generate_from_messages(
             projections_after_step,
             interventions_step,
             considered_step,
+            disp_interventions_step,
+            max_disp_step,
         ) = _cast_forward(
             model,
             token_ids,
@@ -183,6 +192,9 @@ def _cast_generate_from_messages(
             )
         interventions += interventions_step
         considered += considered_step
+        disp_interventions_total += disp_interventions_step
+        if max_disp_step > max_disp_total:
+            max_disp_total = max_disp_step
 
     return CastResult(
         prompt=prompt_label,
@@ -191,6 +203,8 @@ def _cast_generate_from_messages(
         projections_after=projections_after_all,
         interventions=interventions,
         considered=considered,
+        displacement_interventions=disp_interventions_total,
+        max_displacement=max_disp_total,
     )
 
 
@@ -205,11 +219,14 @@ def _cast_forward(
     *,
     condition_direction: Array | None = None,
     alpha_tiers: list[AlphaTier] | None = None,
-) -> tuple[Array, list[float], list[float], int, int]:
+    baseline_activations: dict[int, Array] | None = None,
+    displacement_threshold: float = 0.0,
+) -> tuple[Array, list[float], list[float], int, int, int, float]:
     """Run one forward step with conditional steering.
 
     Returns:
-        ``(logits, projections_before, projections_after, interventions, considered)``
+        ``(logits, projections_before, projections_after, interventions,
+        considered, displacement_interventions, max_displacement)``
         where ``considered`` is the number of cast layers visited in this step.
     """
     transformer = model.model
@@ -223,6 +240,8 @@ def _cast_forward(
     cast_layer_set = set(cast_layers)
     interventions = 0
     considered = 0
+    displacement_interventions = 0
+    max_displacement = 0.0
 
     for i, layer in enumerate(transformer.layers):
         h = layer(h, mask, cache=cache[i])
@@ -244,7 +263,24 @@ def _cast_forward(
         projections_before.append(projection_value)
         considered += 1
 
-        if detect_value > threshold:
+        # Externality monitoring: check activation displacement
+        displacement_triggered = False
+        if (
+            baseline_activations is not None
+            and displacement_threshold > 0.0
+            and i in baseline_activations
+        ):
+            diff = last_token - baseline_activations[i]
+            disp = float(
+                ops.sqrt(ops.sum(diff * diff)).item(),
+            )
+            if disp > max_displacement:
+                max_displacement = disp
+            if disp > displacement_threshold:
+                displacement_triggered = True
+                displacement_interventions += 1
+
+        if detect_value > threshold or displacement_triggered:
             effective_alpha = _resolve_alpha(
                 detect_value, alpha, alpha_tiers,
             )
@@ -262,4 +298,132 @@ def _cast_forward(
     h = transformer.norm(h)
     logits = lm_head_forward(model, h)
     force_eval(logits)
-    return logits, projections_before, projections_after, interventions, considered
+    return (
+        logits, projections_before, projections_after,
+        interventions, considered,
+        displacement_interventions, max_displacement,
+    )
+
+
+# ---------------------------------------------------------------------------
+# SVF-aware CAST
+# ---------------------------------------------------------------------------
+
+
+def cast_generate_svf(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    prompt: str,
+    boundary: "SVFBoundary",
+    layers: list[int],
+    alpha: float = 1.0,
+    max_tokens: int = 100,
+) -> CastResult:
+    """Generate text with SVF boundary-gradient CAST.
+
+    Uses the SVF boundary score as the gate (positive = harmful) and the
+    boundary gradient as the steering direction. Context-dependent per-layer.
+
+    Reference: Li, Li & Huang (2026) — arxiv.org/abs/2602.01654
+    """
+    messages = [{"role": "user", "content": prompt}]
+    text = tokenizer.apply_chat_template(messages, tokenize=False)
+    if not isinstance(text, str):
+        msg = "apply_chat_template must return str when tokenize=False"
+        raise TypeError(msg)
+
+    token_ids = ops.array(tokenizer.encode(text))[None, :]
+    generated: list[int] = []
+    cache = make_cache(model)
+    scores_before_all: list[float] = []
+    scores_after_all: list[float] = []
+    interventions = 0
+    considered = 0
+
+    for _ in range(max_tokens):
+        (
+            logits,
+            scores_before_step,
+            scores_after_step,
+            interventions_step,
+            considered_step,
+        ) = _cast_forward_svf(
+            model, token_ids, boundary, layers, alpha, cache,
+        )
+        next_token = ops.argmax(logits[:, -1, :], axis=-1)
+        token_id = int(next_token.item())
+        generated.append(token_id)
+        token_ids = next_token[:, None]
+
+        if scores_before_step:
+            scores_before_all.append(
+                sum(scores_before_step) / len(scores_before_step),
+            )
+        if scores_after_step:
+            scores_after_all.append(
+                sum(scores_after_step) / len(scores_after_step),
+            )
+        interventions += interventions_step
+        considered += considered_step
+
+    return CastResult(
+        prompt=prompt,
+        text=tokenizer.decode(generated),
+        projections_before=scores_before_all,
+        projections_after=scores_after_all,
+        interventions=interventions,
+        considered=considered,
+    )
+
+
+def _cast_forward_svf(
+    model: CausalLM,
+    token_ids: Array,
+    boundary: "SVFBoundary",
+    cast_layers: list[int],
+    alpha: float,
+    cache: list[LayerCache],
+) -> tuple[Array, list[float], list[float], int, int]:
+    """One forward step with SVF boundary-gradient conditional steering.
+
+    Gate: boundary score > 0 (harmful side).
+    Direction: normalized gradient of boundary at current activation.
+    """
+    from vauban.svf import svf_gradient
+
+    transformer = model.model
+    h, mask = embed_and_mask(transformer, token_ids)
+
+    scores_before: list[float] = []
+    scores_after: list[float] = []
+    cast_set = set(cast_layers)
+    interventions = 0
+    considered = 0
+
+    for i, layer in enumerate(transformer.layers):
+        h = layer(h, mask, cache=cache[i])
+
+        if i not in cast_set:
+            continue
+
+        last_token = h[0, -1, :]
+        score, grad = svf_gradient(boundary, last_token, i)
+        scores_before.append(score)
+        considered += 1
+
+        # Gate: steer only when boundary score is positive
+        if score > 0:
+            correction = alpha * score * grad
+            h_list = [h[0, j, :] for j in range(h.shape[1])]
+            h_list[-1] = h_list[-1] - correction
+            h = ops.stack(h_list)[None, :, :]
+            interventions += 1
+
+        last_after = h[0, -1, :]
+        score_after, _ = svf_gradient(boundary, last_after, i)
+        scores_after.append(score_after)
+
+    h = transformer.norm(h)
+    logits = lm_head_forward(model, h)
+    force_eval(logits)
+    return logits, scores_before, scores_after, interventions, considered

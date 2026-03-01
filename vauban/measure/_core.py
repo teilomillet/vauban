@@ -214,3 +214,27 @@ def measure_subspace(
         per_layer_bases=per_layer_bases,
         layer_types=layer_types,
     )
+
+
+def measure_subspace_bank(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    bank_entries: list[tuple[str, list[str], list[str]]],
+    top_k: int = 5,
+    clip_quantile: float = 0.0,
+) -> dict[str, SubspaceResult]:
+    """Measure named subspaces for a bank of prompt sets.
+
+    Each entry is (name, harmful_prompts, harmless_prompts). Calls
+    measure_subspace() for each, returning a dict keyed by name.
+
+    Reference: Han et al. (2026) — arxiv.org/abs/2602.07276
+    """
+    results: dict[str, SubspaceResult] = {}
+    for name, harmful_prompts, harmless_prompts in bank_entries:
+        result = measure_subspace(
+            model, tokenizer, harmful_prompts, harmless_prompts,
+            top_k, clip_quantile,
+        )
+        results[name] = result
+    return results

@@ -20,7 +20,7 @@ def _parse_detect(raw: TomlDict) -> DetectConfig | None:
     if not isinstance(mode_raw, str):
         msg = f"[detect].mode must be a string, got {type(mode_raw).__name__}"
         raise TypeError(msg)
-    valid_modes = ("fast", "probe", "full")
+    valid_modes = ("fast", "probe", "full", "margin")
     if mode_raw not in valid_modes:
         msg = (
             f"[detect].mode must be one of {valid_modes!r},"
@@ -57,10 +57,62 @@ def _parse_detect(raw: TomlDict) -> DetectConfig | None:
         )
         raise TypeError(msg)
 
+    # -- margin_directions (list of direction file paths, for margin mode) --
+    margin_dirs_raw = sec.get("margin_directions", [])  # type: ignore[arg-type]
+    if not isinstance(margin_dirs_raw, list):
+        msg = (
+            f"[detect].margin_directions must be a list,"
+            f" got {type(margin_dirs_raw).__name__}"
+        )
+        raise TypeError(msg)
+    margin_directions: list[str] = []
+    for i, item in enumerate(margin_dirs_raw):
+        if not isinstance(item, str):
+            msg = (
+                f"[detect].margin_directions[{i}] must be a string,"
+                f" got {type(item).__name__}"
+            )
+            raise TypeError(msg)
+        margin_directions.append(item)
+
+    if mode_raw == "margin" and not margin_directions:
+        msg = "[detect].margin_directions is required when mode = 'margin'"
+        raise ValueError(msg)
+
+    # -- margin_alphas (list of alpha values to sweep) --
+    margin_alphas_raw = sec.get("margin_alphas", [0.5, 1.0, 2.0])  # type: ignore[arg-type]
+    if not isinstance(margin_alphas_raw, list):
+        msg = (
+            f"[detect].margin_alphas must be a list,"
+            f" got {type(margin_alphas_raw).__name__}"
+        )
+        raise TypeError(msg)
+    margin_alphas: list[float] = []
+    for i, item in enumerate(margin_alphas_raw):
+        if not isinstance(item, int | float):
+            msg = (
+                f"[detect].margin_alphas[{i}] must be a number,"
+                f" got {type(item).__name__}"
+            )
+            raise TypeError(msg)
+        margin_alphas.append(float(item))
+
+    # -- svf_compare (bool) --
+    svf_compare_raw = sec.get("svf_compare", False)  # type: ignore[arg-type]
+    if not isinstance(svf_compare_raw, bool):
+        msg = (
+            f"[detect].svf_compare must be a boolean,"
+            f" got {type(svf_compare_raw).__name__}"
+        )
+        raise TypeError(msg)
+
     return DetectConfig(
         mode=mode_raw,
         top_k=int(top_k_raw),
         clip_quantile=float(clip_quantile_raw),
         alpha=float(alpha_raw),
         max_tokens=max_tokens_raw,
+        margin_directions=margin_directions,
+        margin_alphas=margin_alphas,
+        svf_compare=svf_compare_raw,
     )

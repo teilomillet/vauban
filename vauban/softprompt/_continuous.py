@@ -80,7 +80,8 @@ def _continuous_attack(
     # Pre-compute defense-aware loss config
     da_weight = config.defense_aware_weight
     da_sic_layer = config.defense_eval_layer
-    da_sic_threshold = config.defense_eval_threshold
+    _sic_t = config.defense_eval_sic_threshold
+    da_sic_threshold = _sic_t if _sic_t is not None else config.defense_eval_threshold
     da_cast_layers = config.defense_eval_cast_layers
     da_cast_threshold = config.defense_eval_threshold
 
@@ -169,6 +170,18 @@ def _continuous_attack(
                             ref_model, config.kl_ref_weight,
                             da_weight, da_sic_layer, da_sic_threshold,
                             da_cast_layers, da_cast_threshold,
+                            token_position=tok_pos,
+                        )
+                    elif config.loss_mode == "externality":
+                        from vauban.softprompt._loss import (
+                            _compute_externality_loss,
+                        )
+
+                        total = total + _compute_externality_loss(
+                            model, embeds, pid,
+                            config.n_tokens, direction,
+                            config.direction_weight,
+                            config.perplexity_weight,
                             token_position=tok_pos,
                         )
                     else:

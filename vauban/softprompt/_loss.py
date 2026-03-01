@@ -174,6 +174,7 @@ def _compute_defense_aware_penalty(
     sic_threshold: float,
     cast_layers: list[int] | None,
     cast_threshold: float,
+    prompt_last_pos: int = -1,
 ) -> Array:
     """Penalty for being detectable by SIC or CAST defenses.
 
@@ -183,9 +184,13 @@ def _compute_defense_aware_penalty(
     - SIC evasion: projection should stay ABOVE threshold (benign signal).
       SIC detects adversarial content when projection < threshold
       (low refusal = suspicious). Penalty: max(0, threshold - proj).
+      Uses the last prompt position (before targets) to match SIC's
+      runtime behavior of checking the prompt-only sequence.
     - CAST evasion: projection should stay BELOW threshold (avoid steering).
       CAST intervenes when projection > threshold (high refusal = steer).
       Penalty: max(0, proj - threshold).
+      Uses the last token position because CAST fires during generation,
+      where each generated token is the "last" in its context.
 
     When both are active on the same layer with the same threshold, the
     penalties push projection in opposite directions, creating a narrow
@@ -201,6 +206,9 @@ def _compute_defense_aware_penalty(
         sic_threshold: SIC detection threshold.
         cast_layers: Layer indices where CAST intervenes.
         cast_threshold: CAST intervention threshold.
+        prompt_last_pos: Index of the last prompt token (before targets).
+            SIC uses this position to match runtime behavior. Defaults
+            to -1 (last token) for backward compatibility.
 
     Returns:
         Scalar penalty value.
@@ -209,12 +217,12 @@ def _compute_defense_aware_penalty(
         return ops.array(0.0)
     penalty = ops.array(0.0)
     # SIC evasion: SIC detects adversarial when proj < threshold
-    # So we penalize when proj is below threshold
+    # Use prompt-end position (matches SIC runtime: prompt-only check)
     if sic_layer is not None and layer_idx == sic_layer:
-        proj = ops.sum(h[:, -1, :] * direction)
+        proj = ops.sum(h[:, prompt_last_pos, :] * direction)
         penalty = penalty + ops.maximum(ops.array(0.0), sic_threshold - proj)
     # CAST evasion: CAST intervenes when proj > threshold
-    # So we penalize when proj is above threshold
+    # Use last token (matches CAST runtime: per-generation-step)
     if cast_layers is not None and layer_idx in cast_layers:
         proj = ops.sum(h[:, -1, :] * direction)
         penalty = penalty + ops.maximum(ops.array(0.0), proj - cast_threshold)
@@ -337,6 +345,7 @@ def _compute_loss(
             defense_penalty = defense_penalty + _compute_defense_aware_penalty(
                 h, i, direction, sic_layer, sic_threshold,
                 cast_layers, cast_threshold,
+                prompt_last_pos=n_tokens + n_prompt - 1,
             )
 
     h = transformer.norm(h)
@@ -700,3 +709,99 @@ def _compute_untargeted_loss(
     )
 
     return loss
+
+
+# ---------------------------------------------------------------------------
+# Externality loss (Steering Externalities)
+# ---------------------------------------------------------------------------
+
+
+def _soft_token_offset(
+    token_position: str,
+    n_prompt: int,
+    infix_split: int | None,
+) -> int:
+    """Compute the sequence offset of soft tokens based on placement mode."""
+    if token_position == "suffix":
+        return n_prompt
+    if token_position == "infix" and infix_split is not None:
+        return infix_split
+    return 0  # prefix
+
+
+def _compute_externality_loss(
+    model: CausalLM,
+    soft_embeds: Array,
+    prompt_token_ids: Array,
+    n_tokens: int,
+    target_direction: Array | None,
+    direction_weight: float,
+    perplexity_weight: float = 0.0,
+    suffix_token_ids: Array | None = None,
+    token_position: str = "prefix",
+    infix_split: int | None = None,
+) -> Array:
+    """Compute externality loss: minimize perplexity + maximize safety erosion.
+
+    Dual objective from Steering Externalities (Xiong et al., 2026):
+    - Minimize perplexity: push the suffix toward fluent, benign-looking text
+    - Maximize projection onto target direction: erode safety margin
+
+    The suffix should look innocuous while consuming the model's safety margin.
+
+    Args:
+        model: The causal language model.
+        soft_embeds: Learnable prefix, shape (1, n_tokens, d_model).
+        prompt_token_ids: Prompt token IDs, shape (1, seq_len).
+        n_tokens: Number of soft prompt tokens.
+        target_direction: Direction to maximize projection onto (erosion target).
+        direction_weight: Weight for erosion term.
+        perplexity_weight: Weight for perplexity term (fluency).
+        suffix_token_ids: Suffix token IDs for perplexity loss.
+        token_position: "prefix", "suffix", or "infix".
+        infix_split: Infix split position.
+    """
+    transformer = model.model
+    prompt_embeds = transformer.embed_tokens(prompt_token_ids)
+
+    # Assemble embeddings based on token position
+    if token_position == "suffix":
+        h = ops.concatenate([prompt_embeds, soft_embeds], axis=1)
+    elif token_position == "infix" and infix_split is not None:
+        part1 = prompt_embeds[:, :infix_split, :]
+        part2 = prompt_embeds[:, infix_split:, :]
+        h = ops.concatenate([part1, soft_embeds, part2], axis=1)
+    else:
+        h = ops.concatenate([soft_embeds, prompt_embeds], axis=1)
+
+    mask = _nn.create_additive_causal_mask(h.shape[1])
+    mask = mask.astype(h.dtype)
+
+    n_prompt = prompt_token_ids.shape[1]
+
+    for layer in transformer.layers:
+        h = layer(h, mask)
+
+    h = transformer.norm(h)
+    logits = lm_head_forward(model, h)
+
+    # Perplexity loss (benign appearance)
+    soft_offset = _soft_token_offset(token_position, n_prompt, infix_split)
+    ppl_loss = (
+        _compute_perplexity_loss(
+            logits, suffix_token_ids, n_tokens, soft_offset,
+        )
+        if suffix_token_ids is not None and perplexity_weight > 0
+        else ops.array(0.0)
+    )
+
+    # Safety erosion: maximize projection onto target direction
+    erosion_loss = ops.array(0.0)
+    if target_direction is not None and direction_weight > 0.0:
+        last_pos = n_tokens + n_prompt - 1
+        last_hidden = h[:, last_pos, :]
+        proj = ops.sum(last_hidden * target_direction)
+        # Negative = maximize erosion (push along target direction)
+        erosion_loss = -direction_weight * proj
+
+    return perplexity_weight * ppl_loss + erosion_loss

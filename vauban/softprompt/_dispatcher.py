@@ -15,6 +15,7 @@ from vauban.softprompt._utils import _resolve_infix_overrides, _resolve_injectio
 from vauban.types import (
     ApiEvalConfig,
     CausalLM,
+    EnvironmentConfig,
     SoftPromptConfig,
     SoftPromptResult,
     Tokenizer,
@@ -92,6 +93,7 @@ def softprompt_attack(
     ref_model: CausalLM | None = None,
     transfer_models: list[tuple[str, CausalLM, Tokenizer]] | None = None,
     api_eval_config: ApiEvalConfig | None = None,
+    environment_config: EnvironmentConfig | None = None,
 ) -> SoftPromptResult:
     """Run a soft prompt attack against a model.
 
@@ -127,6 +129,7 @@ def softprompt_attack(
             model, tokenizer, prompts, config, direction, ref_model,
             transfer_models=transfer_models,
             api_eval_config=api_eval_config,
+            environment_config=environment_config,
         )
 
     # Single attack
@@ -134,6 +137,19 @@ def softprompt_attack(
         model, tokenizer, prompts, config, direction, ref_model,
         transfer_models=transfer_models,
     )
+
+    # Post-attack environment rollout evaluation
+    if environment_config is not None and result.token_text:
+        from vauban.environment import run_agent_loop
+
+        env_result = run_agent_loop(
+            model, tokenizer, environment_config, result.token_text,
+        )
+        if env_result.reward > 0.0:
+            result = replace(
+                result,
+                success_rate=max(result.success_rate, env_result.reward),
+            )
 
     # Post-attack defense evaluation
     if config.defense_eval is not None and direction is not None:

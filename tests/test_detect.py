@@ -1,10 +1,15 @@
 """Tests for vauban.detect: defense detection pipeline."""
 
-from tests.conftest import MockCausalLM, MockTokenizer
+from pathlib import Path
+
+import mlx.core as mx
+
+from tests.conftest import D_MODEL, MockCausalLM, MockTokenizer
 from vauban.detect import (
     _compute_verdict,
     _dbdi_layer,
     _geometry_layer,
+    _margin_layer,
     detect,
 )
 from vauban.types import DetectConfig, DetectResult
@@ -173,3 +178,55 @@ class TestDetectResult:
             mock_model, mock_tokenizer, HARMFUL, HARMLESS, config,
         )
         assert len(result.evidence) >= 3
+
+
+class TestMarginLayer:
+    def test_returns_margin_result(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+        tmp_path: Path,
+    ) -> None:
+        # Save a fake direction
+        direction = mx.random.normal((D_MODEL,))
+        mx.eval(direction)
+        dir_path = tmp_path / "test_dir.safetensors"
+        mx.save_safetensors(str(dir_path), {"direction": direction})
+
+        config = DetectConfig(
+            mode="margin",
+            margin_directions=[str(dir_path)],
+            margin_alphas=[0.5, 1.0],
+            max_tokens=5,
+        )
+        result = _margin_layer(mock_model, mock_tokenizer, HARMFUL, config)
+        assert result.baseline_refusal_rate >= 0.0
+        assert len(result.curve) == 2  # 1 direction x 2 alphas
+        assert result.curve[0].direction_name == "test_dir"
+        assert "test_dir" in result.collapse_alpha
+        assert len(result.evidence) >= 2  # baseline + direction summary
+
+    def test_detect_margin_mode(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+        tmp_path: Path,
+    ) -> None:
+        direction = mx.random.normal((D_MODEL,))
+        mx.eval(direction)
+        dir_path = tmp_path / "safety.safetensors"
+        mx.save_safetensors(str(dir_path), {"direction": direction})
+
+        config = DetectConfig(
+            mode="margin",
+            top_k=2,
+            margin_directions=[str(dir_path)],
+            margin_alphas=[1.0],
+            max_tokens=5,
+        )
+        result = detect(
+            mock_model, mock_tokenizer, HARMFUL, HARMLESS, config,
+        )
+        assert isinstance(result, DetectResult)
+        assert result.margin_result is not None
+        assert len(result.margin_result.curve) == 1

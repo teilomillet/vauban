@@ -24,7 +24,7 @@ def _parse_sic(raw: TomlDict) -> SICConfig | None:
             f" got {type(mode_raw).__name__}"
         )
         raise TypeError(msg)
-    valid_modes = ("direction", "generation")
+    valid_modes = ("direction", "generation", "svf")
     if mode_raw not in valid_modes:
         msg = (
             f"[sic].mode must be one of {valid_modes!r},"
@@ -143,6 +143,28 @@ def _parse_sic(raw: TomlDict) -> SICConfig | None:
         )
         raise ValueError(msg)
 
+    # -- svf_boundary_path --
+    svf_boundary_path_raw = sec.get(  # type: ignore[arg-type]
+        "svf_boundary_path", None,
+    )
+    svf_boundary_path: str | None = None
+    if svf_boundary_path_raw is not None:
+        if not isinstance(svf_boundary_path_raw, str):
+            msg = (
+                "[sic].svf_boundary_path must be a string,"
+                f" got {type(svf_boundary_path_raw).__name__}"
+            )
+            raise TypeError(msg)
+        svf_boundary_path = svf_boundary_path_raw
+
+    # Cross-field: svf mode requires svf_boundary_path
+    if mode_raw == "svf" and svf_boundary_path is None:
+        msg = (
+            "[sic].svf_boundary_path is required"
+            " when mode = 'svf'"
+        )
+        raise ValueError(msg)
+
     return SICConfig(
         mode=mode_raw,
         threshold=float(threshold_raw),
@@ -154,4 +176,5 @@ def _parse_sic(raw: TomlDict) -> SICConfig | None:
         block_on_failure=block_raw,
         calibrate=calibrate_raw,
         calibrate_prompts=cal_prompts_raw,
+        svf_boundary_path=svf_boundary_path,
     )

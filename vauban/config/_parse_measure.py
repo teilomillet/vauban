@@ -1,7 +1,7 @@
 """Parse the [measure] section of a TOML config."""
 
 from vauban.config._types import TomlDict
-from vauban.types import MeasureConfig
+from vauban.types import MeasureConfig, SubspaceBankEntry
 
 
 def _parse_measure(raw: TomlDict) -> MeasureConfig:
@@ -81,6 +81,48 @@ def _parse_measure(raw: TomlDict) -> MeasureConfig:
         msg = "[measure].diff_model is required when mode = 'diff'"
         raise ValueError(msg)
 
+    # -- bank (list of inline tables for Steer2Adapt subspace bank) --
+    bank_raw = raw.get("bank", [])
+    if not isinstance(bank_raw, list):
+        msg = (
+            f"[measure].bank must be a list of tables,"
+            f" got {type(bank_raw).__name__}"
+        )
+        raise TypeError(msg)
+
+    bank: list[SubspaceBankEntry] = []
+    for i, entry in enumerate(bank_raw):
+        if not isinstance(entry, dict):
+            msg = (
+                f"[measure].bank[{i}] must be a table,"
+                f" got {type(entry).__name__}"
+            )
+            raise TypeError(msg)
+        name = entry.get("name")
+        if not isinstance(name, str):
+            msg = (
+                f"[measure].bank[{i}].name must be a string,"
+                f" got {type(name).__name__}"
+            )
+            raise TypeError(msg)
+        harmful_src = entry.get("harmful", "default")
+        if not isinstance(harmful_src, str):
+            msg = (
+                f"[measure].bank[{i}].harmful must be a string,"
+                f" got {type(harmful_src).__name__}"
+            )
+            raise TypeError(msg)
+        harmless_src = entry.get("harmless", "default")
+        if not isinstance(harmless_src, str):
+            msg = (
+                f"[measure].bank[{i}].harmless must be a string,"
+                f" got {type(harmless_src).__name__}"
+            )
+            raise TypeError(msg)
+        bank.append(SubspaceBankEntry(
+            name=name, harmful=harmful_src, harmless=harmless_src,
+        ))
+
     return MeasureConfig(
         mode=mode_raw,
         top_k=int(top_k_raw),
@@ -88,4 +130,5 @@ def _parse_measure(raw: TomlDict) -> MeasureConfig:
         transfer_models=transfer_models,
         diff_model=diff_model,
         measure_only=measure_only_raw,
+        bank=bank,
     )

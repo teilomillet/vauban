@@ -28,9 +28,11 @@ torch = [
 
 [dependency-groups]
 dev = [
+    "matplotlib>=3.10.8",
     "pytest",
     "pytest-asyncio",
     "ruff",
+    "scipy>=1.17.1",
     "ty",
 ]
 

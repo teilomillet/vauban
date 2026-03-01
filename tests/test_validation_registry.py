@@ -14,6 +14,7 @@ from vauban.config._mode_registry import (
 from vauban.config._validation import VALIDATION_RULE_SPECS, validate_config
 from vauban.types import (
     CastConfig,
+    ComposeOptimizeConfig,
     DepthConfig,
     OptimizeConfig,
     PipelineConfig,
@@ -21,6 +22,7 @@ from vauban.types import (
     SICConfig,
     SoftPromptConfig,
     SteerConfig,
+    SVFConfig,
 )
 
 _EXPECTED_RULE_ORDER: list[str] = [
@@ -38,11 +40,13 @@ _EXPECTED_RULE_ORDER: list[str] = [
 
 _EXPECTED_EARLY_MODE_ORDER: list[str] = [
     "[depth]",
+    "[svf]",
     "[probe]",
     "[steer]",
     "[cast]",
     "[sic]",
     "[optimize]",
+    "[compose_optimize]",
     "[softprompt]",
 ]
 
@@ -128,8 +132,8 @@ def test_validation_warning_content_and_order_for_conflict_fixture(
     assert warnings == [
         (
             "[HIGH] Multiple early-return modes active: [depth], [probe]"
-            " — only the first will run (precedence: depth > probe > steer"
-            " > cast > sic > optimize > softprompt)"
+            " — only the first will run (precedence: depth > svf > probe > steer"
+            " > cast > sic > optimize > compose_optimize > softprompt)"
             " — fix: keep one early-return mode per config,"
             " and split other modes into separate TOML files"
         ),
@@ -171,11 +175,16 @@ def test_active_early_modes_precedence_matches_legacy_behavior() -> None:
         harmful_path=Path("harmful.jsonl"),
         harmless_path=Path("harmless.jsonl"),
         depth=DepthConfig(prompts=["a", "b"]),
+        svf=SVFConfig(
+            prompts_target=Path("target.jsonl"),
+            prompts_opposite=Path("opposite.jsonl"),
+        ),
         probe=ProbeConfig(prompts=["probe"]),
         steer=SteerConfig(prompts=["steer"]),
         cast=CastConfig(prompts=["cast"]),
         sic=SICConfig(),
         optimize=OptimizeConfig(),
+        compose_optimize=ComposeOptimizeConfig(bank_path="bank.safetensors"),
         softprompt=SoftPromptConfig(),
     )
 

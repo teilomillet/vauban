@@ -66,6 +66,9 @@ This project builds upon abliteration research — the discovery that refusal in
 - **AdaSteer** — Separate detect and steer directions for conditional activation steering. — arxiv.org/abs/2504.09466
 - **TRYLOCK** — Identifies non-monotonic danger zone in fixed-alpha steering; proposes tiered alpha schedules. — arxiv.org/abs/2601.03300
 - **AlphaSteer** — Adaptive alpha selection based on per-token signal strength. — arxiv.org/abs/2506.07022
+- **Steering Vector Fields** — Li, Li & Huang (2026) — Learns a differentiable boundary MLP whose gradient gives the steering direction at each activation. Context-dependent, multi-layer coordinated, replaces static vectors. — arxiv.org/abs/2602.01654
+- **Steer2Adapt** — Han et al. (2026) — Reusable semantic subspace + Bayesian optimization of linear combinations of basis vectors for few-shot adaptation. 8.2% improvement across safety and reasoning tasks. — arxiv.org/abs/2602.07276
+- **Steering Externalities** — Xiong et al. (2026) — Benign steering vectors (format compliance, JSON) erode safety margins; jailbreak ASR jumps to >80%. Safety margin is a finite resource consumed by any steering. — arxiv.org/abs/2602.04896
 
 ### Latent Space Geometry
 - **Latent Fusion Jailbreak** — "Blending Harmful and Harmless Representations to Elicit Unsafe LLM Outputs" — Fuses hidden states of harmful + benign queries in continuous latent space. The prompt-side dual of abliteration. — arxiv.org/abs/2508.10029

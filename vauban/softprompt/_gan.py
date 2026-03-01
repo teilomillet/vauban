@@ -35,6 +35,8 @@ from vauban.softprompt._utils import (
 from vauban.types import (
     ApiEvalConfig,
     CausalLM,
+    EnvironmentConfig,
+    EnvironmentResult,
     GanRoundResult,
     SoftPromptConfig,
     SoftPromptResult,
@@ -160,6 +162,7 @@ def gan_loop(
     ref_model: CausalLM | None = None,
     transfer_models: list[tuple[str, CausalLM, Tokenizer]] | None = None,
     api_eval_config: ApiEvalConfig | None = None,
+    environment_config: EnvironmentConfig | None = None,
 ) -> SoftPromptResult:
     """Run an iterative GAN-style attack-defense loop.
 
@@ -287,6 +290,23 @@ def gan_loop(
             if len(history) > max_messages:
                 history = history[-max_messages:]
 
+        # --- Environment evaluation ---
+        env_result: EnvironmentResult | None = None
+        if environment_config is not None and attack_result.token_text:
+            from vauban.environment import run_agent_loop
+
+            env_result = run_agent_loop(
+                model, tokenizer, environment_config,
+                attack_result.token_text,
+            )
+            # Override attacker_won if environment target was achieved
+            if env_result.reward >= 1.0:
+                if not direction or attacker_won:
+                    attacker_won = True
+                else:
+                    # Need both defense bypass AND environment success
+                    attacker_won = attacker_won and True
+
         # --- Transfer evaluation ---
         round_transfer_results: list[TransferEvalResult] = []
         mean_transfer = 0.0
@@ -371,6 +391,7 @@ def gan_loop(
             attacker_won=attacker_won,
             config_snapshot=snapshot,
             transfer_results=round_transfer_results,
+            environment_result=env_result,
         )
         rounds.append(round_result)
 

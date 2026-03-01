@@ -78,9 +78,78 @@ def _parse_steer(raw: TomlDict) -> SteerConfig | None:
         msg = f"[steer].max_tokens must be >= 1, got {max_tokens_raw}"
         raise ValueError(msg)
 
+    # -- direction_source (optional, default "linear") --
+    direction_source_raw = sec.get("direction_source", "linear")  # type: ignore[arg-type]
+    if not isinstance(direction_source_raw, str):
+        msg = (
+            f"[steer].direction_source must be a string,"
+            f" got {type(direction_source_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if direction_source_raw not in ("linear", "svf"):
+        msg = (
+            f"[steer].direction_source must be 'linear' or 'svf',"
+            f" got {direction_source_raw!r}"
+        )
+        raise ValueError(msg)
+
+    # -- svf_boundary_path (optional, required when direction_source="svf") --
+    svf_path_raw = sec.get("svf_boundary_path")  # type: ignore[arg-type]
+    svf_boundary_path: str | None = None
+    if svf_path_raw is not None:
+        if not isinstance(svf_path_raw, str):
+            msg = (
+                f"[steer].svf_boundary_path must be a string,"
+                f" got {type(svf_path_raw).__name__}"
+            )
+            raise TypeError(msg)
+        svf_boundary_path = svf_path_raw
+
+    if direction_source_raw == "svf" and svf_boundary_path is None:
+        msg = (
+            "[steer].svf_boundary_path is required"
+            " when direction_source = 'svf'"
+        )
+        raise ValueError(msg)
+
+    # -- bank_path (optional) --
+    bank_path_raw = sec.get("bank_path")  # type: ignore[arg-type]
+    bank_path: str | None = None
+    if bank_path_raw is not None:
+        if not isinstance(bank_path_raw, str):
+            msg = (
+                f"[steer].bank_path must be a string,"
+                f" got {type(bank_path_raw).__name__}"
+            )
+            raise TypeError(msg)
+        bank_path = bank_path_raw
+
+    # -- composition (optional, dict of name -> float) --
+    comp_raw = sec.get("composition")  # type: ignore[arg-type]
+    composition: dict[str, float] = {}
+    if comp_raw is not None:
+        if not isinstance(comp_raw, dict):
+            msg = (
+                f"[steer].composition must be a table,"
+                f" got {type(comp_raw).__name__}"
+            )
+            raise TypeError(msg)
+        for k, v in comp_raw.items():
+            if not isinstance(v, int | float):
+                msg = (
+                    f"[steer].composition.{k} must be a number,"
+                    f" got {type(v).__name__}"
+                )
+                raise TypeError(msg)
+            composition[str(k)] = float(v)
+
     return SteerConfig(
         prompts=list(prompts_raw),
         layers=layers,
         alpha=float(alpha_raw),
         max_tokens=max_tokens_raw,
+        direction_source=direction_source_raw,
+        svf_boundary_path=svf_boundary_path,
+        bank_path=bank_path,
+        composition=composition,
     )

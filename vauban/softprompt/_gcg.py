@@ -87,7 +87,8 @@ def _gcg_attack(
     # Pre-compute defense-aware loss config
     da_weight = config.defense_aware_weight
     da_sic_layer = config.defense_eval_layer
-    da_sic_threshold = config.defense_eval_threshold
+    _sic_t = config.defense_eval_sic_threshold
+    da_sic_threshold = _sic_t if _sic_t is not None else config.defense_eval_threshold
     da_cast_layers = config.defense_eval_cast_layers
     da_cast_threshold = config.defense_eval_threshold
 

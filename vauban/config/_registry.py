@@ -7,32 +7,46 @@ from typing import cast
 
 from vauban.config._parse_api_eval import _parse_api_eval
 from vauban.config._parse_cast import _parse_cast
+from vauban.config._parse_compose_optimize import _parse_compose_optimize
 from vauban.config._parse_cut import _parse_cut
+from vauban.config._parse_defend import _parse_defend
 from vauban.config._parse_depth import _parse_depth
 from vauban.config._parse_detect import _parse_detect
+from vauban.config._parse_environment import _parse_environment
 from vauban.config._parse_eval import _parse_eval
+from vauban.config._parse_intent import _parse_intent
 from vauban.config._parse_measure import _parse_measure
 from vauban.config._parse_optimize import _parse_optimize
+from vauban.config._parse_policy import _parse_policy
 from vauban.config._parse_probe import _parse_probe
+from vauban.config._parse_scan import _parse_scan
 from vauban.config._parse_sic import _parse_sic
 from vauban.config._parse_softprompt import _parse_softprompt
 from vauban.config._parse_steer import _parse_steer
 from vauban.config._parse_surface import _parse_surface
+from vauban.config._parse_svf import _parse_svf
 from vauban.config._types import TomlDict
 from vauban.types import (
     ApiEvalConfig,
     CastConfig,
+    ComposeOptimizeConfig,
     CutConfig,
+    DefenseStackConfig,
     DepthConfig,
     DetectConfig,
+    EnvironmentConfig,
     EvalConfig,
+    IntentConfig,
     MeasureConfig,
     OptimizeConfig,
+    PolicyConfig,
     ProbeConfig,
+    ScanConfig,
     SICConfig,
     SoftPromptConfig,
     SteerConfig,
     SurfaceConfig,
+    SVFConfig,
 )
 
 
@@ -49,8 +63,14 @@ type _SectionParserResult = (
     | None
     | ApiEvalConfig
     | CastConfig
+    | ComposeOptimizeConfig
     | CutConfig
+    | DefenseStackConfig
+    | EnvironmentConfig
+    | IntentConfig
     | MeasureConfig
+    | PolicyConfig
+    | ScanConfig
     | SurfaceConfig
     | DetectConfig
     | OptimizeConfig
@@ -59,6 +79,7 @@ type _SectionParserResult = (
     | ProbeConfig
     | SteerConfig
     | EvalConfig
+    | SVFConfig
 )
 
 type SectionParser[T] = Callable[[ConfigParseContext], T]
@@ -85,12 +106,19 @@ class ParsedSectionValues:
     surface: SurfaceConfig | None
     detect: DetectConfig | None
     optimize: OptimizeConfig | None
+    compose_optimize: ComposeOptimizeConfig | None
     softprompt: SoftPromptConfig | None
     sic: SICConfig | None
     probe: ProbeConfig | None
     steer: SteerConfig | None
     eval: EvalConfig
     api_eval: ApiEvalConfig | None
+    svf: SVFConfig | None
+    environment: EnvironmentConfig | None
+    scan: ScanConfig | None
+    policy: PolicyConfig | None
+    intent: IntentConfig | None
+    defend: DefenseStackConfig | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,11 +176,18 @@ def _parse_optimize_adapter(context: ConfigParseContext) -> OptimizeConfig | Non
     return _parse_optimize(context.raw)
 
 
+def _parse_compose_optimize_adapter(
+    context: ConfigParseContext,
+) -> ComposeOptimizeConfig | None:
+    """Adapter for parsers that require base_dir + raw config mapping."""
+    return _parse_compose_optimize(context.base_dir, context.raw)
+
+
 def _parse_softprompt_adapter(
     context: ConfigParseContext,
 ) -> SoftPromptConfig | None:
     """Adapter for parsers that accept the full raw config mapping."""
-    return _parse_softprompt(context.raw)
+    return _parse_softprompt(context.raw, context.base_dir)
 
 
 def _parse_sic_adapter(context: ConfigParseContext) -> SICConfig | None:
@@ -182,6 +217,48 @@ def _parse_api_eval_adapter(
     return _parse_api_eval(context.raw)
 
 
+def _parse_svf_adapter(
+    context: ConfigParseContext,
+) -> SVFConfig | None:
+    """Adapter for parsers that require base_dir + raw config mapping."""
+    return _parse_svf(context.base_dir, context.raw)
+
+
+def _parse_environment_adapter(
+    context: ConfigParseContext,
+) -> EnvironmentConfig | None:
+    """Adapter for parsers that accept the full raw config mapping."""
+    return _parse_environment(context.raw)
+
+
+def _parse_scan_adapter(
+    context: ConfigParseContext,
+) -> ScanConfig | None:
+    """Adapter for parsers that accept the full raw config mapping."""
+    return _parse_scan(context.raw)
+
+
+def _parse_policy_adapter(
+    context: ConfigParseContext,
+) -> PolicyConfig | None:
+    """Adapter for parsers that accept the full raw config mapping."""
+    return _parse_policy(context.raw)
+
+
+def _parse_intent_adapter(
+    context: ConfigParseContext,
+) -> IntentConfig | None:
+    """Adapter for parsers that accept the full raw config mapping."""
+    return _parse_intent(context.raw)
+
+
+def _parse_defend_adapter(
+    context: ConfigParseContext,
+) -> DefenseStackConfig | None:
+    """Adapter for parsers that accept the full raw config mapping."""
+    return _parse_defend(context.raw)
+
+
 SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     SectionParseSpec("depth", "depth", _parse_depth_adapter, 10),
     SectionParseSpec("cast", "cast", _parse_cast_adapter, 20),
@@ -190,12 +267,25 @@ SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     SectionParseSpec("surface", "surface", _parse_surface_adapter, 50),
     SectionParseSpec("detect", "detect", _parse_detect_adapter, 60),
     SectionParseSpec("optimize", "optimize", _parse_optimize_adapter, 70),
+    SectionParseSpec(
+        "compose_optimize", "compose_optimize",
+        _parse_compose_optimize_adapter, 75,
+    ),
     SectionParseSpec("softprompt", "softprompt", _parse_softprompt_adapter, 80),
     SectionParseSpec("sic", "sic", _parse_sic_adapter, 90),
+    SectionParseSpec("svf", "svf", _parse_svf_adapter, 95),
     SectionParseSpec("probe", "probe", _parse_probe_adapter, 100),
     SectionParseSpec("steer", "steer", _parse_steer_adapter, 110),
     SectionParseSpec("eval", "eval", _parse_eval_adapter, 120),
     SectionParseSpec("api_eval", "api_eval", _parse_api_eval_adapter, 130),
+    SectionParseSpec(
+        "environment", "environment",
+        _parse_environment_adapter, 135,
+    ),
+    SectionParseSpec("scan", "scan", _parse_scan_adapter, 140),
+    SectionParseSpec("policy", "policy", _parse_policy_adapter, 145),
+    SectionParseSpec("intent", "intent", _parse_intent_adapter, 150),
+    SectionParseSpec("defend", "defend", _parse_defend_adapter, 155),
 )
 
 
@@ -240,10 +330,22 @@ def parse_registered_sections(
         surface=cast("SurfaceConfig | None", parsed["surface"]),
         detect=cast("DetectConfig | None", parsed["detect"]),
         optimize=cast("OptimizeConfig | None", parsed["optimize"]),
+        compose_optimize=cast(
+            "ComposeOptimizeConfig | None",
+            parsed["compose_optimize"],
+        ),
         softprompt=cast("SoftPromptConfig | None", parsed["softprompt"]),
         sic=cast("SICConfig | None", parsed["sic"]),
         probe=cast("ProbeConfig | None", parsed["probe"]),
         steer=cast("SteerConfig | None", parsed["steer"]),
         eval=cast("EvalConfig", parsed["eval"]),
         api_eval=cast("ApiEvalConfig | None", parsed["api_eval"]),
+        svf=cast("SVFConfig | None", parsed["svf"]),
+        environment=cast(
+            "EnvironmentConfig | None", parsed["environment"],
+        ),
+        scan=cast("ScanConfig | None", parsed["scan"]),
+        policy=cast("PolicyConfig | None", parsed["policy"]),
+        intent=cast("IntentConfig | None", parsed["intent"]),
+        defend=cast("DefenseStackConfig | None", parsed["defend"]),
     )

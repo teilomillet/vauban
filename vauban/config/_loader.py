@@ -69,6 +69,14 @@ def load_config(path: str | Path) -> PipelineConfig:
     steer_config = parsed_sections.steer
     eval_config = parsed_sections.eval
     api_eval_config = parsed_sections.api_eval
+    svf_config = parsed_sections.svf
+    compose_optimize_config = parsed_sections.compose_optimize
+
+    environment_config = parsed_sections.environment
+    scan_config = parsed_sections.scan
+    policy_config = parsed_sections.policy
+    intent_config = parsed_sections.intent
+    defend_config = parsed_sections.defend
 
     output_section = raw.get("output")
     output_dir_str = "output"
@@ -138,6 +146,13 @@ def load_config(path: str | Path) -> PipelineConfig:
         probe=probe_config,
         steer=steer_config,
         cast=cast_config,
+        svf=svf_config,
+        compose_optimize=compose_optimize_config,
+        environment=environment_config,
+        scan=scan_config,
+        policy=policy_config,
+        intent=intent_config,
+        defend=defend_config,
         eval=eval_config,
         api_eval=api_eval_config,
         meta=meta_config,

@@ -1,10 +1,14 @@
 """Parse the [softprompt] section of a TOML config."""
 
+from pathlib import Path
+
 from vauban.config._types import TomlDict
 from vauban.types import SoftPromptConfig
 
 
-def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
+def _parse_softprompt(
+    raw: TomlDict, base_dir: Path | None = None,
+) -> SoftPromptConfig | None:
     """Parse the optional [softprompt] section into a SoftPromptConfig.
 
     Returns None if the section is absent.
@@ -241,7 +245,7 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
             f" got {type(loss_mode_raw).__name__}"
         )
         raise TypeError(msg)
-    valid_loss_modes = ("targeted", "untargeted", "defensive")
+    valid_loss_modes = ("targeted", "untargeted", "defensive", "externality")
     if loss_mode_raw not in valid_loss_modes:
         msg = (
             f"[softprompt].loss_mode must be one of"
@@ -499,6 +503,20 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
         )
         raise TypeError(msg)
 
+    # -- defense_eval_sic_threshold --
+    defense_eval_sic_threshold_raw = sec.get(  # type: ignore[arg-type]
+        "defense_eval_sic_threshold", None,
+    )
+    if defense_eval_sic_threshold_raw is not None and not isinstance(
+        defense_eval_sic_threshold_raw, int | float,
+    ):
+        msg = (
+            "[softprompt].defense_eval_sic_threshold must be"
+            f" a number or omitted, got"
+            f" {type(defense_eval_sic_threshold_raw).__name__}"
+        )
+        raise TypeError(msg)
+
     # -- defense_eval_sic_mode --
     sic_mode_raw = sec.get(  # type: ignore[arg-type]
         "defense_eval_sic_mode", "direction",
@@ -509,7 +527,7 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
             f" a string, got {type(sic_mode_raw).__name__}"
         )
         raise TypeError(msg)
-    valid_sic_modes = ("direction", "generation")
+    valid_sic_modes = ("direction", "generation", "svf")
     if sic_mode_raw not in valid_sic_modes:
         msg = (
             "[softprompt].defense_eval_sic_mode must be"
@@ -977,6 +995,31 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
             raise ValueError(msg)
         paraphrase_strategies.append(item)
 
+    # -- externality_target --
+    externality_target_raw = sec.get(  # type: ignore[arg-type]
+        "externality_target", None,
+    )
+    externality_target: str | None = None
+    if externality_target_raw is not None:
+        if not isinstance(externality_target_raw, str):
+            msg = (
+                "[softprompt].externality_target must be a string,"
+                f" got {type(externality_target_raw).__name__}"
+            )
+            raise TypeError(msg)
+        resolve_dir = base_dir if base_dir is not None else Path.cwd()
+        externality_target = str(
+            (resolve_dir / externality_target_raw).resolve(),
+        )
+
+    # Cross-field: externality loss_mode requires externality_target
+    if loss_mode_raw == "externality" and externality_target is None:
+        msg = (
+            "[softprompt].externality_target is required"
+            " when loss_mode = 'externality'"
+        )
+        raise ValueError(msg)
+
     # -- init_tokens --
     init_tokens_raw = sec.get("init_tokens")  # type: ignore[arg-type]
     init_tokens: list[int] | None = None
@@ -1025,6 +1068,11 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
         defense_eval_layer=defense_eval_layer,
         defense_eval_alpha=float(defense_eval_alpha_raw),
         defense_eval_threshold=float(defense_eval_threshold_raw),
+        defense_eval_sic_threshold=(
+            float(defense_eval_sic_threshold_raw)
+            if defense_eval_sic_threshold_raw is not None
+            else None
+        ),
         defense_eval_sic_mode=sic_mode_raw,
         defense_eval_sic_max_iterations=sic_max_iter_raw,
         defense_eval_cast_layers=defense_eval_cast_layers,
@@ -1050,4 +1098,5 @@ def _parse_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
         perplexity_weight=float(perplexity_weight_raw),
         token_position=token_position_raw,
         paraphrase_strategies=paraphrase_strategies,
+        externality_target=externality_target,
     )

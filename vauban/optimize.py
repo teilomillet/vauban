@@ -22,6 +22,9 @@ from vauban.evaluate import (
 from vauban.measure import select_target_layers
 from vauban.types import (
     CausalLM,
+    ComposeOptimizeConfig,
+    ComposeOptimizeResult,
+    CompositionTrialResult,
     DirectionResult,
     OptimizeConfig,
     OptimizeResult,
@@ -216,6 +219,165 @@ def optimize(
         best_refusal=best_refusal,
         best_balanced=best_balanced,
     )
+
+
+def optimize_composition(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    eval_prompts: list[str],
+    config: ComposeOptimizeConfig,
+) -> ComposeOptimizeResult:
+    """Bayesian optimization over composition weights for steering.
+
+    Uses Optuna to search weight combinations for named subspace bank
+    entries. Each trial composes a direction, steers the model, and
+    measures refusal rate + perplexity.
+
+    Reference: Han et al. (2026) — arxiv.org/abs/2602.07276
+
+    Args:
+        model: The causal language model.
+        tokenizer: Tokenizer with chat template support.
+        eval_prompts: Prompts for evaluation.
+        config: Composition optimization configuration.
+
+    Returns:
+        ComposeOptimizeResult with trials and Pareto front.
+
+    Raises:
+        ImportError: If optuna is not installed.
+    """
+    from vauban._compose import compose_direction, load_bank
+    from vauban.probe import steer
+
+    try:
+        import optuna  # type: ignore[unresolved-import]
+    except ImportError:
+        msg = (
+            "optuna is required for optimization. "
+            "Install it with: pip install vauban[optimize]"
+        )
+        raise ImportError(msg) from None
+
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    logging.getLogger("optuna").setLevel(logging.WARNING)
+
+    bank = load_bank(config.bank_path)
+    bank_names = sorted(bank.keys())
+    num_layers = len(get_transformer(model).layers)
+    all_layers = list(range(num_layers))
+
+    all_trials: list[CompositionTrialResult] = []
+
+    def objective(trial: optuna.Trial) -> tuple[float, float]:
+        # Sample weight for each bank entry
+        weights: dict[str, float] = {}
+        for name in bank_names:
+            w = trial.suggest_float(name, -2.0, 2.0)
+            weights[name] = w
+
+        # Compose direction
+        direction = compose_direction(bank, weights)
+
+        # Steer and measure refusal rate
+        refusals = 0
+        for prompt in eval_prompts:
+            result = steer(
+                model, tokenizer, prompt, direction,
+                all_layers, alpha=1.0,
+                max_tokens=config.max_tokens,
+            )
+            lower = result.text.lower()
+            if any(
+                phrase.lower() in lower
+                for phrase in DEFAULT_REFUSAL_PHRASES
+            ):
+                refusals += 1
+
+        refusal_rate = refusals / len(eval_prompts) if eval_prompts else 0.0
+
+        # Measure perplexity
+        perplexity = _perplexity(model, tokenizer, eval_prompts)
+
+        trial_result = CompositionTrialResult(
+            trial_number=trial.number,
+            weights=weights,
+            refusal_rate=refusal_rate,
+            perplexity=perplexity,
+        )
+        all_trials.append(trial_result)
+
+        return refusal_rate, perplexity
+
+    sampler = optuna.samplers.TPESampler(seed=config.seed)
+    study = optuna.create_study(
+        directions=["minimize", "minimize"],
+        sampler=sampler,
+    )
+    study.optimize(
+        objective,
+        n_trials=config.n_trials,
+        timeout=config.timeout,
+    )
+
+    # Extract Pareto front
+    pareto_numbers = {t.number for t in study.best_trials}
+    pareto_trials = [
+        t for t in all_trials if t.trial_number in pareto_numbers
+    ]
+
+    # Convenience picks
+    best_refusal = (
+        min(all_trials, key=lambda t: t.refusal_rate)
+        if all_trials else None
+    )
+    best_balanced = _pick_composition_balanced(all_trials)
+
+    return ComposeOptimizeResult(
+        all_trials=all_trials,
+        pareto_trials=pareto_trials,
+        best_refusal=best_refusal,
+        best_balanced=best_balanced,
+        n_trials=len(all_trials),
+        bank_entries=bank_names,
+    )
+
+
+def _pick_composition_balanced(
+    trials: list[CompositionTrialResult],
+) -> CompositionTrialResult | None:
+    """Pick the composition trial with the best balanced score.
+
+    Min-max normalizes refusal_rate and perplexity, then picks the
+    trial with the lowest sum.
+    """
+    if not trials:
+        return None
+    if len(trials) == 1:
+        return trials[0]
+
+    refusals = [t.refusal_rate for t in trials]
+    ppls = [t.perplexity for t in trials]
+
+    def _norm(values: list[float]) -> list[float]:
+        lo, hi = min(values), max(values)
+        span = hi - lo
+        if span < 1e-10:
+            return [0.0] * len(values)
+        return [(v - lo) / span for v in values]
+
+    norm_r = _norm(refusals)
+    norm_p = _norm(ppls)
+
+    best_idx = 0
+    best_score = math.inf
+    for i in range(len(trials)):
+        score = norm_r[i] + norm_p[i]
+        if score < best_score:
+            best_score = score
+            best_idx = i
+
+    return trials[best_idx]
 
 
 def _precompute_logits(

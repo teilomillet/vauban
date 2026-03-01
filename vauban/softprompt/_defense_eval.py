@@ -11,6 +11,45 @@ from vauban.types import (
     Tokenizer,
 )
 
+_SUFFIX_MARKER = "{suffix}"
+
+
+def _build_adv_prompts(
+    prompts: list[str],
+    token_text: str | None,
+    token_position: str,
+) -> list[str]:
+    """Build adversarial prompts with suffix at the correct position.
+
+    For prefix/suffix positions: appends token_text after the prompt.
+    For infix position: replaces the ``{suffix}`` marker in the prompt
+    with token_text, preserving the intended placement within narrative
+    context.
+
+    Args:
+        prompts: Original attack prompts (may contain ``{suffix}`` markers).
+        token_text: Decoded suffix string, or None for continuous mode.
+        token_position: One of ``"prefix"``, ``"suffix"``, or ``"infix"``.
+
+    Returns:
+        List of adversarial prompts with token_text inserted.
+    """
+    if token_text is None:
+        return list(prompts)
+
+    if token_position == "infix":
+        result: list[str] = []
+        for p in prompts:
+            if _SUFFIX_MARKER in p:
+                result.append(p.replace(_SUFFIX_MARKER, token_text))
+            else:
+                # Fallback: append as suffix if no marker found
+                result.append(p + " " + token_text)
+        return result
+
+    # prefix / suffix: append token_text after the prompt
+    return [p + " " + token_text for p in prompts]
+
 
 def evaluate_against_defenses(
     model: CausalLM,
@@ -47,11 +86,8 @@ def evaluate_against_defenses(
         else layer_index
     )
 
-    # Build adversarial prompts with suffix appended
-    if token_text is not None:
-        adv_prompts = [p + " " + token_text for p in prompts]
-    else:
-        adv_prompts = list(prompts)
+    # Build adversarial prompts with suffix at the correct position
+    adv_prompts = _build_adv_prompts(prompts, token_text, config.token_position)
 
     # --- SIC evaluation ---
     sic_blocked = 0
@@ -60,10 +96,12 @@ def evaluate_against_defenses(
     sic_bypass_rate = 0.0
 
     if eval_mode in ("sic", "both") and direction is not None:
+        _sic_t = config.defense_eval_sic_threshold
+        sic_threshold = _sic_t if _sic_t is not None else config.defense_eval_threshold
         sic_blocked, sic_sanitized, sic_clean, sic_bypass_rate = (
             _eval_sic(
                 model, tokenizer, adv_prompts, direction, layer,
-                config.defense_eval_threshold,
+                sic_threshold,
                 config.defense_eval_sic_mode,
                 config.defense_eval_sic_max_iterations,
             )
@@ -143,11 +181,8 @@ def evaluate_against_defenses_multiturn(
         else layer_index
     )
 
-    # Build adversarial prompts with suffix appended
-    if token_text is not None:
-        adv_prompts = [p + " " + token_text for p in prompts]
-    else:
-        adv_prompts = list(prompts)
+    # Build adversarial prompts with suffix at the correct position
+    adv_prompts = _build_adv_prompts(prompts, token_text, config.token_position)
 
     # For SIC: serialize history + current prompt into a single string
     # SIC works on text, so we concatenate history turns as context
@@ -157,11 +192,13 @@ def evaluate_against_defenses_multiturn(
     sic_bypass_rate = 0.0
 
     if eval_mode in ("sic", "both") and direction is not None:
+        _sic_t = config.defense_eval_sic_threshold
+        sic_threshold = _sic_t if _sic_t is not None else config.defense_eval_threshold
         sic_prompts = _build_sic_prompts_with_history(adv_prompts, history)
         sic_blocked, sic_sanitized, sic_clean, sic_bypass_rate = (
             _eval_sic(
                 model, tokenizer, sic_prompts, direction, layer,
-                config.defense_eval_threshold,
+                sic_threshold,
                 config.defense_eval_sic_mode,
                 config.defense_eval_sic_max_iterations,
             )

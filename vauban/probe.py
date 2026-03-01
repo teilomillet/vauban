@@ -1,9 +1,14 @@
 """Probe activations and steer generation at runtime."""
 
+from typing import TYPE_CHECKING
+
 from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import embed_and_mask, force_eval, lm_head_forward, make_cache
 from vauban.types import CausalLM, LayerCache, ProbeResult, SteerResult, Tokenizer
+
+if TYPE_CHECKING:
+    from vauban.svf import SVFBoundary
 
 
 def probe(
@@ -151,3 +156,100 @@ def _steered_forward(
     logits = lm_head_forward(model, h)
     force_eval(logits)
     return logits, proj_before, proj_after
+
+
+def steer_svf(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    prompt: str,
+    boundary: "SVFBoundary",
+    layers: list[int],
+    alpha: float = 1.0,
+    max_tokens: int = 100,
+) -> SteerResult:
+    """Generate text with SVF boundary-gradient steering.
+
+    Uses the SVF boundary's gradient as a context-dependent direction at each
+    layer, instead of a fixed linear direction.
+
+    Reference: Li, Li & Huang (2026) — arxiv.org/abs/2602.01654
+    """
+    messages = [{"role": "user", "content": prompt}]
+    text = tokenizer.apply_chat_template(messages, tokenize=False)
+    if not isinstance(text, str):
+        msg = "apply_chat_template must return str when tokenize=False"
+        raise TypeError(msg)
+    token_ids = ops.array(tokenizer.encode(text))[None, :]
+
+    generated: list[int] = []
+    cache = make_cache(model)
+    scores_before: list[float] = []
+    scores_after: list[float] = []
+
+    for _ in range(max_tokens):
+        logits, s_before, s_after = _svf_steered_forward(
+            model, token_ids, boundary, layers, alpha, cache,
+        )
+        next_token = ops.argmax(logits[:, -1, :], axis=-1)
+        token_id = int(next_token.item())
+        generated.append(token_id)
+        token_ids = next_token[:, None]
+
+        if s_before:
+            scores_before.append(sum(s_before) / len(s_before))
+        if s_after:
+            scores_after.append(sum(s_after) / len(s_after))
+
+    return SteerResult(
+        text=tokenizer.decode(generated),
+        projections_before=scores_before,
+        projections_after=scores_after,
+    )
+
+
+def _svf_steered_forward(
+    model: CausalLM,
+    token_ids: Array,
+    boundary: "SVFBoundary",
+    steer_layers: list[int],
+    alpha: float,
+    cache: list[LayerCache],
+) -> tuple[Array, list[float], list[float]]:
+    """Forward pass with SVF boundary-gradient steering.
+
+    At each steer layer, computes the boundary score and gradient. If the
+    score is positive (harmful side), steers by removing the gradient
+    direction scaled by alpha.
+    """
+    from vauban.svf import svf_gradient
+
+    transformer = model.model
+    h, mask = embed_and_mask(transformer, token_ids)
+
+    scores_before: list[float] = []
+    scores_after: list[float] = []
+    steer_set = set(steer_layers)
+
+    for i, layer in enumerate(transformer.layers):
+        h = layer(h, mask, cache=cache[i])
+
+        if i in steer_set:
+            last_token = h[0, -1, :]
+            score, grad = svf_gradient(boundary, last_token, i)
+            scores_before.append(score)
+
+            if score > 0:
+                correction = alpha * score * grad
+                h_list = [h[0, j, :] for j in range(h.shape[1])]
+                h_list[-1] = h_list[-1] - correction
+                h = ops.stack(h_list)[None, :, :]
+
+            # Score after steering
+            last_after = h[0, -1, :]
+            score_after, _ = svf_gradient(boundary, last_after, i)
+            scores_after.append(score_after)
+
+    h = transformer.norm(h)
+    logits = lm_head_forward(model, h)
+    force_eval(logits)
+    return logits, scores_before, scores_after

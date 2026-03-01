@@ -51,18 +51,36 @@ def _has_optimize(config: PipelineConfig) -> bool:
     return config.optimize is not None
 
 
+def _has_compose_optimize(config: PipelineConfig) -> bool:
+    """Return whether [compose_optimize] mode is active."""
+    return config.compose_optimize is not None
+
+
 def _has_softprompt(config: PipelineConfig) -> bool:
     """Return whether [softprompt] mode is active."""
     return config.softprompt is not None
 
 
+def _has_svf(config: PipelineConfig) -> bool:
+    """Return whether [svf] mode is active."""
+    return config.svf is not None
+
+
 EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
     EarlyModeSpec("[depth]", "depth", "before_prompts", False, _has_depth),
+    EarlyModeSpec("[svf]", "svf", "before_prompts", False, _has_svf),
     EarlyModeSpec("[probe]", "probe", "after_measure", True, _has_probe),
     EarlyModeSpec("[steer]", "steer", "after_measure", True, _has_steer),
     EarlyModeSpec("[cast]", "cast", "after_measure", True, _has_cast),
     EarlyModeSpec("[sic]", "sic", "after_measure", False, _has_sic),
     EarlyModeSpec("[optimize]", "optimize", "after_measure", True, _has_optimize),
+    EarlyModeSpec(
+        "[compose_optimize]",
+        "compose_optimize",
+        "after_measure",
+        False,
+        _has_compose_optimize,
+    ),
     EarlyModeSpec(
         "[softprompt]",
         "softprompt",

@@ -31,18 +31,28 @@ from vauban.types import (
     ApiEvalConfig,
     ApiEvalEndpoint,
     CastConfig,
+    ComposeOptimizeConfig,
     CutConfig,
+    DefenseStackConfig,
     DepthConfig,
     DetectConfig,
+    EnvironmentConfig,
+    EnvironmentTarget,
+    EnvironmentTask,
     EvalConfig,
+    IntentConfig,
     MeasureConfig,
     OptimizeConfig,
     PipelineConfig,
+    PolicyConfig,
     ProbeConfig,
+    ScanConfig,
     SICConfig,
     SoftPromptConfig,
     SteerConfig,
     SurfaceConfig,
+    SVFConfig,
+    ToolSchema,
 )
 
 _EXPECTED_SECTION_ORDER: list[str] = [
@@ -53,12 +63,19 @@ _EXPECTED_SECTION_ORDER: list[str] = [
     "surface",
     "detect",
     "optimize",
+    "compose_optimize",
     "softprompt",
     "sic",
+    "svf",
     "probe",
     "steer",
     "eval",
     "api_eval",
+    "environment",
+    "scan",
+    "policy",
+    "intent",
+    "defend",
 ]
 
 _MODEL = '[model]\npath = "test-model"\n'
@@ -321,13 +338,25 @@ def test_parse_registered_sections_respects_registry_order(
         call_order.append("optimize")
         return OptimizeConfig(n_trials=2)
 
-    def fake_softprompt(raw: TomlDict) -> SoftPromptConfig | None:
+    def fake_compose_optimize(
+        base_dir: Path, raw: TomlDict,
+    ) -> ComposeOptimizeConfig | None:
+        call_order.append("compose_optimize")
+        return ComposeOptimizeConfig(bank_path="bank.safetensors")
+
+    def fake_softprompt(
+        raw: TomlDict, base_dir: Path | None = None,
+    ) -> SoftPromptConfig | None:
         call_order.append("softprompt")
         return SoftPromptConfig(n_tokens=8)
 
     def fake_sic(raw: TomlDict) -> SICConfig | None:
         call_order.append("sic")
         return SICConfig(max_iterations=4)
+
+    def fake_svf(base_dir: Path, raw: TomlDict) -> SVFConfig | None:
+        call_order.append("svf")
+        return None
 
     def fake_probe(raw: TomlDict) -> ProbeConfig | None:
         call_order.append("probe")
@@ -354,6 +383,32 @@ def test_parse_registered_sections_respects_registry_order(
             ],
         )
 
+    def fake_environment(raw: TomlDict) -> EnvironmentConfig | None:
+        call_order.append("environment")
+        return EnvironmentConfig(
+            system_prompt="test",
+            tools=[ToolSchema(name="t", description="d", parameters={})],
+            target=EnvironmentTarget(function="t"),
+            task=EnvironmentTask(content="do it"),
+            injection_surface="t",
+        )
+
+    def fake_scan(raw: TomlDict) -> ScanConfig | None:
+        call_order.append("scan")
+        return ScanConfig(threshold=0.5)
+
+    def fake_policy(raw: TomlDict) -> PolicyConfig | None:
+        call_order.append("policy")
+        return PolicyConfig()
+
+    def fake_intent(raw: TomlDict) -> IntentConfig | None:
+        call_order.append("intent")
+        return IntentConfig(mode="judge")
+
+    def fake_defend(raw: TomlDict) -> DefenseStackConfig | None:
+        call_order.append("defend")
+        return DefenseStackConfig(fail_fast=False)
+
     monkeypatch.setattr("vauban.config._registry._parse_depth", fake_depth)
     monkeypatch.setattr("vauban.config._registry._parse_cast", fake_cast)
     monkeypatch.setattr("vauban.config._registry._parse_cut", fake_cut)
@@ -361,12 +416,24 @@ def test_parse_registered_sections_respects_registry_order(
     monkeypatch.setattr("vauban.config._registry._parse_surface", fake_surface)
     monkeypatch.setattr("vauban.config._registry._parse_detect", fake_detect)
     monkeypatch.setattr("vauban.config._registry._parse_optimize", fake_optimize)
+    monkeypatch.setattr(
+        "vauban.config._registry._parse_compose_optimize",
+        fake_compose_optimize,
+    )
     monkeypatch.setattr("vauban.config._registry._parse_softprompt", fake_softprompt)
     monkeypatch.setattr("vauban.config._registry._parse_sic", fake_sic)
+    monkeypatch.setattr("vauban.config._registry._parse_svf", fake_svf)
     monkeypatch.setattr("vauban.config._registry._parse_probe", fake_probe)
     monkeypatch.setattr("vauban.config._registry._parse_steer", fake_steer)
     monkeypatch.setattr("vauban.config._registry._parse_eval", fake_eval)
     monkeypatch.setattr("vauban.config._registry._parse_api_eval", fake_api_eval)
+    monkeypatch.setattr(
+        "vauban.config._registry._parse_environment", fake_environment,
+    )
+    monkeypatch.setattr("vauban.config._registry._parse_scan", fake_scan)
+    monkeypatch.setattr("vauban.config._registry._parse_policy", fake_policy)
+    monkeypatch.setattr("vauban.config._registry._parse_intent", fake_intent)
+    monkeypatch.setattr("vauban.config._registry._parse_defend", fake_defend)
 
     context = ConfigParseContext(base_dir=tmp_path, raw={})
     parsed = parse_registered_sections(context)
@@ -379,6 +446,9 @@ def test_parse_registered_sections_respects_registry_order(
     assert parsed.surface == SurfaceConfig(prompts_path=tmp_path / "surface.jsonl")
     assert parsed.detect == DetectConfig(mode="probe")
     assert parsed.optimize == OptimizeConfig(n_trials=2)
+    assert parsed.compose_optimize == ComposeOptimizeConfig(
+        bank_path="bank.safetensors",
+    )
     assert parsed.softprompt == SoftPromptConfig(n_tokens=8)
     assert parsed.sic == SICConfig(max_iterations=4)
     assert parsed.probe == ProbeConfig(prompts=["probe"])
@@ -386,6 +456,15 @@ def test_parse_registered_sections_respects_registry_order(
     assert parsed.eval.max_tokens == 222
     assert parsed.api_eval is not None
     assert parsed.api_eval.endpoints[0].name == "fake"
+    assert parsed.environment is not None
+    assert parsed.environment.injection_surface == "t"
+    assert parsed.scan is not None
+    assert parsed.scan.threshold == 0.5
+    assert parsed.policy is not None
+    assert parsed.intent is not None
+    assert parsed.intent.mode == "judge"
+    assert parsed.defend is not None
+    assert parsed.defend.fail_fast is False
 
 
 def test_parse_registered_sections_depth_override_bypasses_depth_parser(

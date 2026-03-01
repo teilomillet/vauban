@@ -149,6 +149,107 @@ def _parse_cast(raw: TomlDict) -> CastConfig | None:
                 )
                 raise ValueError(msg)
 
+    # -- direction_source (optional, default "linear") --
+    direction_source_raw = sec.get("direction_source", "linear")  # type: ignore[arg-type]
+    if not isinstance(direction_source_raw, str):
+        msg = (
+            f"[cast].direction_source must be a string,"
+            f" got {type(direction_source_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if direction_source_raw not in ("linear", "svf"):
+        msg = (
+            f"[cast].direction_source must be 'linear' or 'svf',"
+            f" got {direction_source_raw!r}"
+        )
+        raise ValueError(msg)
+
+    # -- svf_boundary_path (optional, required when direction_source="svf") --
+    svf_path_raw = sec.get("svf_boundary_path")  # type: ignore[arg-type]
+    svf_boundary_path: str | None = None
+    if svf_path_raw is not None:
+        if not isinstance(svf_path_raw, str):
+            msg = (
+                f"[cast].svf_boundary_path must be a string,"
+                f" got {type(svf_path_raw).__name__}"
+            )
+            raise TypeError(msg)
+        svf_boundary_path = svf_path_raw
+
+    if direction_source_raw == "svf" and svf_boundary_path is None:
+        msg = (
+            "[cast].svf_boundary_path is required"
+            " when direction_source = 'svf'"
+        )
+        raise ValueError(msg)
+
+    # -- bank_path (optional) --
+    bank_path_raw = sec.get("bank_path")  # type: ignore[arg-type]
+    bank_path: str | None = None
+    if bank_path_raw is not None:
+        if not isinstance(bank_path_raw, str):
+            msg = (
+                f"[cast].bank_path must be a string,"
+                f" got {type(bank_path_raw).__name__}"
+            )
+            raise TypeError(msg)
+        bank_path = bank_path_raw
+
+    # -- composition (optional, dict of name -> float) --
+    comp_raw = sec.get("composition")  # type: ignore[arg-type]
+    composition: dict[str, float] = {}
+    if comp_raw is not None:
+        if not isinstance(comp_raw, dict):
+            msg = (
+                f"[cast].composition must be a table,"
+                f" got {type(comp_raw).__name__}"
+            )
+            raise TypeError(msg)
+        for k, v in comp_raw.items():
+            if not isinstance(v, int | float):
+                msg = (
+                    f"[cast].composition.{k} must be a number,"
+                    f" got {type(v).__name__}"
+                )
+                raise TypeError(msg)
+            composition[str(k)] = float(v)
+
+    # -- externality_monitor (optional, bool) --
+    ext_monitor_raw = sec.get(  # type: ignore[arg-type]
+        "externality_monitor", False,
+    )
+    if not isinstance(ext_monitor_raw, bool):
+        msg = (
+            "[cast].externality_monitor must be a boolean,"
+            f" got {type(ext_monitor_raw).__name__}"
+        )
+        raise TypeError(msg)
+
+    # -- displacement_threshold (optional, float) --
+    disp_thresh_raw = sec.get(  # type: ignore[arg-type]
+        "displacement_threshold", 0.0,
+    )
+    if not isinstance(disp_thresh_raw, int | float):
+        msg = (
+            "[cast].displacement_threshold must be a number,"
+            f" got {type(disp_thresh_raw).__name__}"
+        )
+        raise TypeError(msg)
+
+    # -- baseline_activations_path (optional, string) --
+    baseline_path_raw = sec.get(  # type: ignore[arg-type]
+        "baseline_activations_path", None,
+    )
+    baseline_activations_path: str | None = None
+    if baseline_path_raw is not None:
+        if not isinstance(baseline_path_raw, str):
+            msg = (
+                "[cast].baseline_activations_path must be"
+                f" a string, got {type(baseline_path_raw).__name__}"
+            )
+            raise TypeError(msg)
+        baseline_activations_path = baseline_path_raw
+
     return CastConfig(
         prompts=list(prompts_raw),
         layers=layers,
@@ -157,4 +258,11 @@ def _parse_cast(raw: TomlDict) -> CastConfig | None:
         max_tokens=max_tokens_raw,
         condition_direction_path=condition_direction,
         alpha_tiers=alpha_tiers,
+        direction_source=direction_source_raw,
+        svf_boundary_path=svf_boundary_path,
+        bank_path=bank_path,
+        composition=composition,
+        externality_monitor=ext_monitor_raw,
+        displacement_threshold=float(disp_thresh_raw),
+        baseline_activations_path=baseline_activations_path,
     )

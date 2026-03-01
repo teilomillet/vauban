@@ -14,16 +14,23 @@ _KNOWN_SECTIONS: frozenset[str] = frozenset({
     "surface",
     "detect",
     "optimize",
+    "compose_optimize",
     "softprompt",
     "sic",
     "depth",
     "probe",
     "steer",
     "cast",
+    "svf",
     "api_eval",
     "meta",
     "output",
     "verbose",
+    "environment",
+    "scan",
+    "policy",
+    "intent",
+    "defend",
 })
 
 _KNOWN_KEYS: dict[str, frozenset[str]] = {
@@ -31,7 +38,7 @@ _KNOWN_KEYS: dict[str, frozenset[str]] = {
     "data": frozenset({"harmful", "harmless", "borderline"}),
     "measure": frozenset({
         "mode", "top_k", "clip_quantile", "transfer_models", "diff_model",
-        "measure_only",
+        "measure_only", "bank",
     }),
     "cut": frozenset({
         "alpha", "layers", "norm_preserve", "biprojected",
@@ -53,11 +60,15 @@ _KNOWN_KEYS: dict[str, frozenset[str]] = {
     }),
     "detect": frozenset({
         "mode", "top_k", "clip_quantile", "alpha", "max_tokens",
+        "margin_directions", "margin_alphas", "svf_compare",
     }),
     "optimize": frozenset({
         "n_trials", "alpha_min", "alpha_max", "sparsity_min", "sparsity_max",
         "search_norm_preserve", "search_strategies", "layer_top_k_min",
         "layer_top_k_max", "max_tokens", "seed", "timeout",
+    }),
+    "compose_optimize": frozenset({
+        "bank_path", "n_trials", "max_tokens", "timeout", "seed",
     }),
     "softprompt": frozenset({
         "mode", "n_tokens", "n_steps", "learning_rate", "init_scale",
@@ -71,7 +82,8 @@ _KNOWN_KEYS: dict[str, frozenset[str]] = {
         "beam_width", "init_tokens",
         # Defense evaluation
         "defense_eval", "defense_eval_layer", "defense_eval_alpha",
-        "defense_eval_threshold", "defense_eval_sic_mode",
+        "defense_eval_threshold", "defense_eval_sic_threshold",
+        "defense_eval_sic_mode",
         "defense_eval_sic_max_iterations", "defense_eval_cast_layers",
         "defense_eval_alpha_tiers",
         # Defense-aware attack
@@ -94,11 +106,13 @@ _KNOWN_KEYS: dict[str, frozenset[str]] = {
         "token_position",
         # Prompt paraphrasing
         "paraphrase_strategies",
+        # Externality loss
+        "externality_target",
     }),
     "sic": frozenset({
         "mode", "threshold", "max_iterations", "max_tokens", "target_layer",
         "sanitize_system_prompt", "max_sanitize_tokens", "block_on_failure",
-        "calibrate", "calibrate_prompts",
+        "calibrate", "calibrate_prompts", "svf_boundary_path",
     }),
     "depth": frozenset({
         "prompts", "settling_threshold", "deep_fraction", "top_k_logits",
@@ -106,8 +120,22 @@ _KNOWN_KEYS: dict[str, frozenset[str]] = {
         "clip_quantile",
     }),
     "probe": frozenset({"prompts"}),
-    "steer": frozenset({"prompts", "layers", "alpha", "max_tokens"}),
-    "cast": frozenset({"prompts", "layers", "alpha", "threshold", "max_tokens"}),
+    "steer": frozenset({
+        "prompts", "layers", "alpha", "max_tokens",
+        "direction_source", "svf_boundary_path",
+        "bank_path", "composition",
+    }),
+    "cast": frozenset({
+        "prompts", "layers", "alpha", "threshold", "max_tokens",
+        "direction_source", "svf_boundary_path",
+        "bank_path", "composition",
+        "externality_monitor", "displacement_threshold",
+        "baseline_activations_path",
+    }),
+    "svf": frozenset({
+        "prompts_target", "prompts_opposite", "projection_dim",
+        "hidden_dim", "n_epochs", "learning_rate", "layers",
+    }),
     "api_eval": frozenset({
         "endpoints", "max_tokens", "timeout", "system_prompt",
         "multiturn", "multiturn_max_turns", "follow_up_prompts",
@@ -115,6 +143,20 @@ _KNOWN_KEYS: dict[str, frozenset[str]] = {
     "meta": frozenset({
         "id", "title", "status", "parents", "tags", "notes", "docs", "date",
     }),
+    "environment": frozenset({
+        "system_prompt", "tools", "target", "task", "injection_surface",
+        "max_turns", "max_gen_tokens", "policy", "rollout_top_n",
+    }),
+    "scan": frozenset({
+        "target_layer", "span_threshold", "threshold", "calibrate",
+    }),
+    "policy": frozenset({
+        "rules", "data_flow_rules", "rate_limits", "default_action",
+    }),
+    "intent": frozenset({
+        "mode", "target_layer", "similarity_threshold", "max_tokens",
+    }),
+    "defend": frozenset({"fail_fast"}),
     "output": frozenset({"dir"}),
 }
 
@@ -193,7 +235,9 @@ _KNOWN_VALUES: dict[tuple[str, str], frozenset[str]] = {
         "all", "cycle", "first", "worst_k", "sample",
     }),
     ("softprompt", "direction_mode"): frozenset({"last", "raid", "all_positions"}),
-    ("softprompt", "loss_mode"): frozenset({"targeted", "untargeted", "defensive"}),
+    ("softprompt", "loss_mode"): frozenset({
+        "targeted", "untargeted", "defensive", "externality",
+    }),
     ("softprompt", "lr_schedule"): frozenset({"constant", "cosine"}),
     ("softprompt", "token_constraint"): frozenset({
         "ascii", "alpha", "alphanumeric", "non_latin", "chinese",
@@ -209,9 +253,11 @@ _KNOWN_VALUES: dict[tuple[str, str], frozenset[str]] = {
         "prefix", "suffix", "infix",
     }),
     ("eval", "refusal_mode"): frozenset({"phrases", "judge"}),
-    ("sic", "mode"): frozenset({"direction", "generation"}),
+    ("sic", "mode"): frozenset({"direction", "generation", "svf"}),
     ("sic", "calibrate_prompts"): frozenset({"harmless", "harmful"}),
-    ("detect", "mode"): frozenset({"fast", "probe", "full"}),
+    ("intent", "mode"): frozenset({"embedding", "judge"}),
+    ("policy", "default_action"): frozenset({"allow", "block"}),
+    ("detect", "mode"): frozenset({"fast", "probe", "full", "margin"}),
     ("meta", "status"): frozenset({
         "wip", "promising", "dead_end", "baseline", "superseded", "archived",
     }),

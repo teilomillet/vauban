@@ -23,7 +23,7 @@ from vauban._serializers import (
     _steer_to_dict,
     _surface_comparison_to_dict,
 )
-from vauban.cast import cast_generate
+from vauban.cast import cast_generate, cast_generate_svf
 from vauban.config import load_config
 from vauban.config._mode_registry import (
     EarlyModePhase,
@@ -60,11 +60,12 @@ from vauban.measure import (
     measure_dbdi,
     measure_diff,
     measure_subspace,
+    measure_subspace_bank,
     select_target_layers,
     silhouette_scores,
 )
-from vauban.optimize import optimize
-from vauban.probe import multi_probe, probe, steer
+from vauban.optimize import optimize, optimize_composition
+from vauban.probe import multi_probe, probe, steer, steer_svf
 from vauban.sic import calibrate_threshold, sic_single
 from vauban.sic import sic as sic_sanitize
 from vauban.softprompt import _project_to_tokens, softprompt_attack
@@ -87,6 +88,12 @@ from vauban.surface import (
     load_surface_prompts,
     map_surface,
     scan,
+)
+from vauban.svf import (
+    load_svf_boundary,
+    save_svf_boundary,
+    svf_gradient,
+    train_svf_boundary,
 )
 from vauban.types import (
     AlphaTier,
@@ -127,6 +134,8 @@ from vauban.types import (
     SurfacePoint,
     SurfacePrompt,
     SurfaceResult,
+    SVFConfig,
+    SVFResult,
     TokenDepth,
     Tokenizer,
     TransferEvalResult,
@@ -163,6 +172,8 @@ __all__ = [
     "SICConfig",
     "SICPromptResult",
     "SICResult",
+    "SVFConfig",
+    "SVFResult",
     "SoftPromptConfig",
     "SoftPromptResult",
     "SteerConfig",
@@ -182,6 +193,7 @@ __all__ = [
     "analyze_directions",
     "calibrate_threshold",
     "cast_generate",
+    "cast_generate_svf",
     "compare_surfaces",
     "cut",
     "cut_biprojected",
@@ -209,13 +221,16 @@ __all__ = [
     "load_hf_prompts",
     "load_prompts",
     "load_surface_prompts",
+    "load_svf_boundary",
     "map_surface",
     "measure",
     "measure_dbdi",
     "measure_diff",
     "measure_subspace",
+    "measure_subspace_bank",
     "multi_probe",
     "optimize",
+    "optimize_composition",
     "orthonormalize",
     "principal_angles",
     "probe",
@@ -223,6 +238,7 @@ __all__ = [
     "remove_subspace",
     "resolve_prompts",
     "run",
+    "save_svf_boundary",
     "save_weights",
     "scan",
     "select_target_layers",
@@ -232,8 +248,11 @@ __all__ = [
     "softprompt_attack",
     "sparsify_direction",
     "steer",
+    "steer_svf",
     "subspace_overlap",
+    "svf_gradient",
     "target_weight_keys",
+    "train_svf_boundary",
     "validate",
 ]
 
@@ -546,6 +565,78 @@ def _run_depth_mode(context: _EarlyModeContext) -> None:
     )
 
 
+def _run_svf_mode(context: _EarlyModeContext) -> None:
+    """Run [svf] early-return mode: train SVF boundary and write its report."""
+    import time
+
+    config = context.config
+    assert config.svf is not None
+    v = config.verbose
+    model = _cast("CausalLM", context.model)
+    tokenizer = _cast("Tokenizer", context.tokenizer)
+
+    _log(
+        "Training SVF boundary",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+
+    from vauban._forward import get_transformer as _get_transformer
+
+    transformer = _get_transformer(model)
+    d_model = transformer.embed_tokens.weight.shape[1]
+    n_layers = len(transformer.layers)
+
+    # Load prompt files
+    target_prompts = load_prompts(config.svf.prompts_target)
+    opposite_prompts = load_prompts(config.svf.prompts_opposite)
+
+    boundary, svf_result = train_svf_boundary(
+        model,
+        tokenizer,
+        target_prompts,
+        opposite_prompts,
+        d_model,
+        n_layers,
+        projection_dim=config.svf.projection_dim,
+        hidden_dim=config.svf.hidden_dim,
+        n_epochs=config.svf.n_epochs,
+        learning_rate=config.svf.learning_rate,
+        layers=config.svf.layers,
+    )
+
+    # Save boundary
+    boundary_path = config.output_dir / "svf_boundary.safetensors"
+    save_svf_boundary(boundary, boundary_path)
+
+    # Write report
+    report: dict[str, object] = {
+        "train_loss_history": svf_result.train_loss_history,
+        "final_accuracy": svf_result.final_accuracy,
+        "per_layer_separation": svf_result.per_layer_separation,
+        "projection_dim": svf_result.projection_dim,
+        "hidden_dim": svf_result.hidden_dim,
+        "n_layers_trained": svf_result.n_layers_trained,
+        "boundary_path": str(boundary_path),
+    }
+    report_path = config.output_dir / "svf_report.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=2))
+    _log(
+        f"Done — SVF report written to {report_path}",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+    _write_experiment_log(
+        context.config_path,
+        config,
+        "svf",
+        ["svf_report.json", "svf_boundary.safetensors"],
+        {"final_accuracy": svf_result.final_accuracy},
+        time.monotonic() - context.t0,
+    )
+
+
 def _run_probe_mode(context: _EarlyModeContext) -> None:
     """Run [probe] early-return mode and write its report."""
     import time
@@ -597,7 +688,6 @@ def _run_steer_mode(context: _EarlyModeContext) -> None:
 
     config = context.config
     assert config.steer is not None
-    assert context.direction_result is not None
     v = config.verbose
     model = _cast("CausalLM", context.model)
     tokenizer = _cast("Tokenizer", context.tokenizer)
@@ -611,18 +701,54 @@ def _run_steer_mode(context: _EarlyModeContext) -> None:
 
     n_layers = len(_get_transformer(model).layers)
     steer_layers = config.steer.layers or list(range(n_layers))
-    steer_results = [
-        steer(
-            model,
-            tokenizer,
-            prompt,
-            context.direction_result.direction,
-            steer_layers,
-            config.steer.alpha,
-            config.steer.max_tokens,
+
+    if config.steer.bank_path and config.steer.composition:
+        from vauban._compose import compose_direction, load_bank
+
+        _log(
+            f"Composing direction from bank: {config.steer.bank_path}",
+            verbose=v, elapsed=time.monotonic() - context.t0,
         )
-        for prompt in config.steer.prompts
-    ]
+        bank = load_bank(config.steer.bank_path)
+        composed = compose_direction(bank, config.steer.composition)
+        steer_results = [
+            steer(
+                model, tokenizer, prompt, composed,
+                steer_layers, config.steer.alpha, config.steer.max_tokens,
+            )
+            for prompt in config.steer.prompts
+        ]
+    elif config.steer.direction_source == "svf":
+        assert config.steer.svf_boundary_path is not None
+        from vauban.probe import steer_svf as _steer_svf
+
+        boundary = load_svf_boundary(
+            Path(config.steer.svf_boundary_path),
+            d_model=_get_transformer(model).layers[0].self_attn.o_proj.weight.shape[0],
+            projection_dim=16, hidden_dim=64,
+            n_layers=n_layers,
+        )
+        steer_results = [
+            _steer_svf(
+                model, tokenizer, prompt, boundary,
+                steer_layers, config.steer.alpha, config.steer.max_tokens,
+            )
+            for prompt in config.steer.prompts
+        ]
+    else:
+        assert context.direction_result is not None
+        steer_results = [
+            steer(
+                model,
+                tokenizer,
+                prompt,
+                context.direction_result.direction,
+                steer_layers,
+                config.steer.alpha,
+                config.steer.max_tokens,
+            )
+            for prompt in config.steer.prompts
+        ]
     report_path = config.output_dir / "steer_report.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(
@@ -653,7 +779,6 @@ def _run_cast_mode(context: _EarlyModeContext) -> None:
 
     config = context.config
     assert config.cast is not None
-    assert context.direction_result is not None
     v = config.verbose
     model = _cast("CausalLM", context.model)
     tokenizer = _cast("Tokenizer", context.tokenizer)
@@ -664,45 +789,84 @@ def _run_cast_mode(context: _EarlyModeContext) -> None:
         elapsed=time.monotonic() - context.t0,
     )
 
-    # Load condition direction if configured
-    condition_direction: Array | None = None
-    if config.cast.condition_direction_path is not None:
-        cond_path = Path(config.cast.condition_direction_path)
-        if not cond_path.is_absolute():
-            cond_path = config.output_dir.parent / cond_path
-        _log(
-            f"Loading condition direction from {cond_path}",
-            verbose=v,
-            elapsed=time.monotonic() - context.t0,
-        )
-        cond_np = np.load(str(cond_path))
-        condition_direction = ops.array(cond_np)
-        if condition_direction.shape[-1] != context.direction_result.d_model:
-            msg = (
-                f"condition_direction d_model mismatch:"
-                f" {condition_direction.shape[-1]}"
-                f" != {context.direction_result.d_model}"
-            )
-            raise ValueError(msg)
-
     from vauban._forward import get_transformer as _get_transformer
 
-    cast_layers = config.cast.layers or list(range(len(_get_transformer(model).layers)))
-    cast_results = [
-        cast_generate(
-            model,
-            tokenizer,
-            prompt,
-            context.direction_result.direction,
-            cast_layers,
-            config.cast.alpha,
-            config.cast.threshold,
-            config.cast.max_tokens,
-            condition_direction=condition_direction,
-            alpha_tiers=config.cast.alpha_tiers,
+    n_layers = len(_get_transformer(model).layers)
+    cast_layers = config.cast.layers or list(range(n_layers))
+
+    if config.cast.bank_path and config.cast.composition:
+        from vauban._compose import compose_direction, load_bank
+
+        _log(
+            f"Composing direction from bank: {config.cast.bank_path}",
+            verbose=v, elapsed=time.monotonic() - context.t0,
         )
-        for prompt in config.cast.prompts
-    ]
+        bank = load_bank(config.cast.bank_path)
+        composed = compose_direction(bank, config.cast.composition)
+        cast_results = [
+            cast_generate(
+                model, tokenizer, prompt, composed,
+                cast_layers, config.cast.alpha, config.cast.threshold,
+                config.cast.max_tokens,
+            )
+            for prompt in config.cast.prompts
+        ]
+    elif config.cast.direction_source == "svf":
+        assert config.cast.svf_boundary_path is not None
+        from vauban.cast import cast_generate_svf as _cast_gen_svf
+
+        boundary = load_svf_boundary(
+            Path(config.cast.svf_boundary_path),
+            d_model=_get_transformer(model).layers[0].self_attn.o_proj.weight.shape[0],
+            projection_dim=16, hidden_dim=64,
+            n_layers=n_layers,
+        )
+        cast_results = [
+            _cast_gen_svf(
+                model, tokenizer, prompt, boundary,
+                cast_layers, config.cast.alpha, config.cast.max_tokens,
+            )
+            for prompt in config.cast.prompts
+        ]
+    else:
+        assert context.direction_result is not None
+
+        # Load condition direction if configured
+        condition_direction: Array | None = None
+        if config.cast.condition_direction_path is not None:
+            cond_path = Path(config.cast.condition_direction_path)
+            if not cond_path.is_absolute():
+                cond_path = config.output_dir.parent / cond_path
+            _log(
+                f"Loading condition direction from {cond_path}",
+                verbose=v,
+                elapsed=time.monotonic() - context.t0,
+            )
+            cond_np = np.load(str(cond_path))
+            condition_direction = ops.array(cond_np)
+            if condition_direction.shape[-1] != context.direction_result.d_model:
+                msg = (
+                    f"condition_direction d_model mismatch:"
+                    f" {condition_direction.shape[-1]}"
+                    f" != {context.direction_result.d_model}"
+                )
+                raise ValueError(msg)
+
+        cast_results = [
+            cast_generate(
+                model,
+                tokenizer,
+                prompt,
+                context.direction_result.direction,
+                cast_layers,
+                config.cast.alpha,
+                config.cast.threshold,
+                config.cast.max_tokens,
+                condition_direction=condition_direction,
+                alpha_tiers=config.cast.alpha_tiers,
+            )
+            for prompt in config.cast.prompts
+        ]
     report_path = config.output_dir / "cast_report.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(
@@ -838,6 +1002,64 @@ def _run_optimize_mode(context: _EarlyModeContext) -> None:
     )
 
 
+def _run_compose_optimize_mode(context: _EarlyModeContext) -> None:
+    """Run [compose_optimize] early-return mode and write its report."""
+    import time
+
+    from vauban.optimize import optimize_composition
+
+    config = context.config
+    assert config.compose_optimize is not None
+    assert context.harmful is not None
+    v = config.verbose
+    model = _cast("CausalLM", context.model)
+    tokenizer = _cast("Tokenizer", context.tokenizer)
+
+    _log(
+        f"Running composition optimization"
+        f" ({config.compose_optimize.n_trials} trials)",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+    if config.eval.prompts_path is not None:
+        eval_prompts_co = load_prompts(config.eval.prompts_path)
+    else:
+        eval_prompts_co = context.harmful[:config.eval.num_prompts]
+
+    co_result = optimize_composition(
+        model, tokenizer, eval_prompts_co, config.compose_optimize,
+    )
+
+    report: dict[str, object] = {
+        "n_trials": co_result.n_trials,
+        "bank_entries": co_result.bank_entries,
+        "best_refusal": (
+            {
+                "weights": co_result.best_refusal.weights,
+                "refusal_rate": co_result.best_refusal.refusal_rate,
+                "perplexity": co_result.best_refusal.perplexity,
+            }
+            if co_result.best_refusal is not None else None
+        ),
+        "best_balanced": (
+            {
+                "weights": co_result.best_balanced.weights,
+                "refusal_rate": co_result.best_balanced.refusal_rate,
+                "perplexity": co_result.best_balanced.perplexity,
+            }
+            if co_result.best_balanced is not None else None
+        ),
+    }
+    report_path = config.output_dir / "compose_optimize_report.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=2))
+    _log(
+        f"Done — compose_optimize report written to {report_path}",
+        verbose=v,
+        elapsed=time.monotonic() - context.t0,
+    )
+
+
 def _write_arena_card(
     path: Path,
     result: "SoftPromptResult",
@@ -941,6 +1163,18 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
         if context.direction_result is not None
         else None
     )
+
+    # Externality mode: load target direction from explicit path
+    if (
+        config.softprompt.loss_mode == "externality"
+        and config.softprompt.externality_target is not None
+    ):
+        loaded = ops.load(config.softprompt.externality_target)
+        if isinstance(loaded, dict):
+            direction_vec = next(iter(loaded.values()))
+        else:
+            direction_vec = loaded
+
     if config.eval.prompts_path is not None:
         sp_prompts: list[str] = load_prompts(config.eval.prompts_path)
     else:
@@ -980,6 +1214,7 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
         ref_model,
         transfer_models=transfer_models_loaded,  # type: ignore[arg-type]
         api_eval_config=config.api_eval,
+        environment_config=config.environment,
     )
 
     # Post-hoc transfer eval (skip if GAN loop already did per-round eval)
@@ -1109,11 +1344,13 @@ type _EarlyModeRunner = Callable[[_EarlyModeContext], None]
 
 _EARLY_MODE_RUNNERS: dict[str, _EarlyModeRunner] = {
     "depth": _run_depth_mode,
+    "svf": _run_svf_mode,
     "probe": _run_probe_mode,
     "steer": _run_steer_mode,
     "cast": _run_cast_mode,
     "sic": _run_sic_mode,
     "optimize": _run_optimize_mode,
+    "compose_optimize": _run_compose_optimize_mode,
     "softprompt": _run_softprompt_mode,
 }
 
@@ -1212,6 +1449,43 @@ def run(config_path: str | Path) -> None:
             model, tokenizer, harmful, harmless,
             config.measure.top_k, clip_q,
         )
+        # Subspace bank: measure additional named subspaces (Steer2Adapt)
+        if config.measure.bank:
+            base_dir = Path(config_path).resolve().parent
+            bank_entries: list[tuple[str, list[str], list[str]]] = []
+            for entry in config.measure.bank:
+                bank_harmful = (
+                    harmful if entry.harmful == "default"
+                    else load_prompts(base_dir / entry.harmful)
+                )
+                bank_harmless = (
+                    harmless if entry.harmless == "default"
+                    else load_prompts(base_dir / entry.harmless)
+                )
+                bank_entries.append((entry.name, bank_harmful, bank_harmless))
+            _log(
+                f"Measuring subspace bank ({len(bank_entries)} entries)",
+                verbose=v, elapsed=time.monotonic() - t0,
+            )
+            bank_results = measure_subspace_bank(
+                _cast("CausalLM", model),
+                _cast("Tokenizer", tokenizer),
+                bank_entries, config.measure.top_k, clip_q,
+            )
+            # Save bank as subspace_bank.safetensors
+            import mlx.core as mx
+
+            bank_path = config.output_dir / "subspace_bank.safetensors"
+            bank_path.parent.mkdir(parents=True, exist_ok=True)
+            bank_arrays: dict[str, mx.array] = {}
+            for name, result in bank_results.items():
+                bank_arrays[name] = result.basis
+            mx.save_safetensors(str(bank_path), bank_arrays)
+            _log(
+                f"Subspace bank written to {bank_path}"
+                f" ({len(bank_results)} subspaces)",
+                verbose=v, elapsed=time.monotonic() - t0,
+            )
     elif config.measure.mode == "diff":
         assert config.measure.diff_model is not None
         _log(

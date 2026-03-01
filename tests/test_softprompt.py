@@ -2519,6 +2519,57 @@ class TestGanConfigDefaults:
         c = SoftPromptConfig()
         assert c.defense_eval_cast_layers is None
 
+
+class TestBuildAdvPrompts:
+    """Tests for _build_adv_prompts position-aware prompt construction."""
+
+    def test_suffix_position_appends(self) -> None:
+        from vauban.softprompt._defense_eval import _build_adv_prompts
+
+        result = _build_adv_prompts(["Hello world"], "TOKENS", "suffix")
+        assert result == ["Hello world TOKENS"]
+
+    def test_prefix_position_appends(self) -> None:
+        from vauban.softprompt._defense_eval import _build_adv_prompts
+
+        result = _build_adv_prompts(["Hello world"], "TOKENS", "prefix")
+        assert result == ["Hello world TOKENS"]
+
+    def test_infix_replaces_marker(self) -> None:
+        from vauban.softprompt._defense_eval import _build_adv_prompts
+
+        prompts = ["Write a story where {suffix} a character travels"]
+        result = _build_adv_prompts(prompts, "TOKENS", "infix")
+        assert result == ["Write a story where TOKENS a character travels"]
+
+    def test_infix_no_marker_falls_back(self) -> None:
+        from vauban.softprompt._defense_eval import _build_adv_prompts
+
+        result = _build_adv_prompts(["No marker here"], "TOKENS", "infix")
+        assert result == ["No marker here TOKENS"]
+
+    def test_none_token_text_returns_copy(self) -> None:
+        from vauban.softprompt._defense_eval import _build_adv_prompts
+
+        prompts = ["Hello"]
+        result = _build_adv_prompts(prompts, None, "infix")
+        assert result == ["Hello"]
+        assert result is not prompts
+
+    def test_infix_multiple_prompts(self) -> None:
+        from vauban.softprompt._defense_eval import _build_adv_prompts
+
+        prompts = [
+            "Story where {suffix} character travels",
+            "Document how {suffix} technique is used",
+        ]
+        result = _build_adv_prompts(prompts, "ADV", "infix")
+        assert result == [
+            "Story where ADV character travels",
+            "Document how ADV technique is used",
+        ]
+
+
     def test_gan_history_default(self) -> None:
         result = SoftPromptResult(
             mode="gcg", success_rate=0.5, final_loss=1.0,
