@@ -3,8 +3,14 @@
 import json
 import logging
 import os
+import sys
 import urllib.error
 import urllib.request
+
+if sys.version_info >= (3, 13):
+    from typing import TypeIs
+else:
+    from typing_extensions import TypeIs
 
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES
 from vauban.types import ApiEvalConfig, ApiEvalEndpoint, TransferEvalResult
@@ -252,6 +258,11 @@ def _build_auth_headers(
     return headers
 
 
+def _is_str_dict(obj: object) -> TypeIs[dict[str, object]]:
+    """Type-narrow an object to dict[str, object]."""
+    return isinstance(obj, dict)
+
+
 def _is_violation_finish_reason(data: dict[str, object]) -> bool:
     """Check if any choice has finish_reason == 'violation' (Gray Swan).
 
@@ -265,7 +276,9 @@ def _is_violation_finish_reason(data: dict[str, object]) -> bool:
     if not isinstance(choices, list):
         return False
     for choice in choices:
-        if isinstance(choice, dict) and choice.get("finish_reason") == "violation":
+        if not _is_str_dict(choice):
+            continue
+        if choice.get("finish_reason") == "violation":
             return True
     return False
 
@@ -363,10 +376,10 @@ def _extract_content(data: dict[str, object]) -> str:
     if not isinstance(choices, list) or not choices:
         return ""
     first = choices[0]
-    if not isinstance(first, dict):
+    if not _is_str_dict(first):
         return ""
     message = first.get("message", {})
-    if not isinstance(message, dict):
+    if not _is_str_dict(message):
         return ""
     return str(message.get("content", ""))
 

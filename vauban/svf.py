@@ -369,6 +369,9 @@ def load_svf_boundary(path: str | Path) -> SVFBoundary:
         SVFBoundary with loaded parameters.
     """
     tensors = ops.load(str(path))
+    if not isinstance(tensors, dict):
+        msg = f"Expected dict from safetensors file, got {type(tensors).__name__}"
+        raise ValueError(msg)
     projection = tensors["projection"]
     d_model = projection.shape[0]
     projection_dim = projection.shape[1]

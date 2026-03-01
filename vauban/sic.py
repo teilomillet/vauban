@@ -349,13 +349,13 @@ def _detect_adversarial_svf(
         h = layer(h, mask)
         if i == target_layer:
             last_token = h[0, -1, :]
-            score = boundary(last_token, i)
+            score = boundary.forward(last_token, i)
             force_eval(score)
             return float(score.item())
 
     # Fallback: use last layer
     last_token = h[0, -1, :]
-    score = boundary(last_token, n_layers - 1)
+    score = boundary.forward(last_token, n_layers - 1)
     force_eval(score)
     return float(score.item())
 

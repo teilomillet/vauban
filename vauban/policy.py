@@ -11,7 +11,14 @@ Usage:
 
 import fnmatch
 import re
+import sys
 import time
+from typing import Literal
+
+if sys.version_info >= (3, 13):
+    from typing import TypeIs
+else:
+    from typing_extensions import TypeIs
 
 from vauban.types import (
     DataFlowRule,
@@ -20,6 +27,17 @@ from vauban.types import (
     PolicyRule,
     RateLimitRule,
 )
+
+_VALID_ACTIONS: dict[str, Literal["allow", "block", "confirm"]] = {
+    "allow": "allow",
+    "block": "block",
+    "confirm": "confirm",
+}
+
+
+def _is_str_dict(obj: object) -> TypeIs[dict[str, object]]:
+    """Type-narrow an object to dict[str, object]."""
+    return isinstance(obj, dict)
 
 
 def evaluate_tool_call(
@@ -86,8 +104,9 @@ def evaluate_tool_call(
             reasons=reasons,
         )
 
+    default_action = _VALID_ACTIONS.get(config.default_action, "allow")
     return PolicyDecision(
-        action=config.default_action,
+        action=default_action,
         matched_rules=[],
         reasons=[f"No rules matched; default action: {config.default_action}"],
     )
@@ -187,9 +206,11 @@ def _check_rate_limits(
     """Check rate limits and return a block decision if exceeded."""
     now = time.monotonic()
     history_key = "_rate_limit_history"
-    history = state.get(history_key)
-    if not isinstance(history, dict):
-        history = {}
+    history_raw = state.get(history_key)
+    if _is_str_dict(history_raw):
+        history = history_raw
+    else:
+        history: dict[str, object] = {}
         state[history_key] = history
 
     for rule in rate_limits:
@@ -197,14 +218,17 @@ def _check_rate_limits(
             continue
 
         pattern_key = rule.tool_pattern
-        calls = history.get(pattern_key)
-        if not isinstance(calls, list):
+        calls_raw = history.get(pattern_key)
+        calls: list[float]
+        if isinstance(calls_raw, list):
+            calls = [t for t in calls_raw if isinstance(t, float)]
+        else:
             calls = []
-            history[pattern_key] = calls  # type: ignore[index]
+        history[pattern_key] = calls
 
         # Prune old calls outside window
         cutoff = now - rule.window_seconds
-        calls[:] = [t for t in calls if isinstance(t, float) and t > cutoff]
+        calls[:] = [t for t in calls if t > cutoff]
 
         if len(calls) >= rule.max_calls:
             return PolicyDecision(

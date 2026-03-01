@@ -104,7 +104,8 @@ def _parse_environment(raw: TomlDict) -> EnvironmentConfig | None:
     if not isinstance(tools_raw, list):
         msg = "[environment].tools is required and must be a list of tables"
         raise TypeError(msg)
-    tools = _parse_tools(tools_raw)
+    tools_list: list[object] = list(tools_raw)
+    tools = _parse_tools(tools_list)
 
     # -- target (required, table) --
     target_raw = env.get("target")

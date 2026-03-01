@@ -801,7 +801,14 @@ def _run_cast_mode(context: _EarlyModeContext) -> None:
         if not baseline_path.is_absolute():
             baseline_path = config.output_dir.parent / baseline_path
         loaded = ops.load(str(baseline_path))
-        baseline_activations = {int(k): v for k, v in loaded.items()}
+        if not isinstance(loaded, dict):
+            msg = (
+                "Expected dict from baseline activations file,"
+                f" got {type(loaded).__name__}"
+            )
+            raise TypeError(msg)
+        loaded_dict = _cast("dict[str, Array]", loaded)
+        baseline_activations = {int(k): v for k, v in loaded_dict.items()}
 
     # Load condition direction (AdaSteer dual-direction) if configured.
     # Hoisted before the branch so bank-path and direction-path both use it.
@@ -1242,7 +1249,7 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
         verbose=v,
         elapsed=time.monotonic() - context.t0,
     )
-    direction_vec = (
+    direction_vec: Array | None = (
         context.direction_result.direction
         if context.direction_result is not None
         else None
@@ -1255,7 +1262,11 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
     ):
         loaded = ops.load(config.softprompt.externality_target)
         if isinstance(loaded, dict):
-            direction_vec = next(iter(loaded.values()))
+            loaded_dict = _cast("dict[str, Array]", loaded)
+            direction_vec = next(iter(loaded_dict.values()))
+        elif isinstance(loaded, tuple):
+            msg = "Expected array or dict from externality target, got tuple"
+            raise TypeError(msg)
         else:
             direction_vec = loaded
 
@@ -1269,7 +1280,7 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
         )
         sp_prompts = context.harmful[:pool_size]
 
-    ref_model: object | None = None
+    ref_model: CausalLM | None = None
     if config.softprompt.ref_model is not None:
         ref_model, _ = load_model(config.softprompt.ref_model)
         if is_quantized(ref_model):
@@ -1277,7 +1288,7 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
 
     # Pre-load transfer models once (reused in GAN loop and/or post-hoc eval)
     transfer_models_loaded: (
-        list[tuple[str, object, object]] | None
+        list[tuple[str, CausalLM, Tokenizer]] | None
     ) = None
     if config.softprompt.transfer_models:
         transfer_models_loaded = []
@@ -1296,7 +1307,7 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
         config.softprompt,
         direction_vec,
         ref_model,
-        transfer_models=transfer_models_loaded,  # type: ignore[arg-type]
+        transfer_models=transfer_models_loaded,
         api_eval_config=config.api_eval,
         environment_config=config.environment,
     )
@@ -1321,7 +1332,7 @@ def _run_softprompt_mode(context: _EarlyModeContext) -> None:
         transfer_results: list[TransferEvalResult] = []
         for t_name, t_model, t_tok in transfer_models_loaded:
             t_token_array = ops.array(transfer_token_ids)[None, :]
-            t_embeds = _get_transformer(t_model).embed_tokens(  # type: ignore[union-attr]
+            t_embeds = _get_transformer(t_model).embed_tokens(
                 t_token_array,
             )
             force_eval(t_embeds)
@@ -1553,8 +1564,8 @@ def run(config_path: str | Path) -> None:
                 verbose=v, elapsed=time.monotonic() - t0,
             )
             bank_results = measure_subspace_bank(
-                _cast("CausalLM", model),
-                _cast("Tokenizer", tokenizer),
+                model,
+                tokenizer,
                 bank_entries, config.measure.top_k, clip_q,
             )
             # Save bank as subspace_bank.safetensors
@@ -1563,8 +1574,8 @@ def run(config_path: str | Path) -> None:
             bank_path = config.output_dir / "subspace_bank.safetensors"
             bank_path.parent.mkdir(parents=True, exist_ok=True)
             bank_arrays: dict[str, mx.array] = {}
-            for name, result in bank_results.items():
-                bank_arrays[name] = result.basis
+            for name, bank_result in bank_results.items():
+                bank_arrays[name] = bank_result.basis
             mx.save_safetensors(str(bank_path), bank_arrays)
             _log(
                 f"Subspace bank written to {bank_path}"

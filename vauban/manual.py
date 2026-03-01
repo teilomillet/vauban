@@ -82,12 +82,15 @@ class PipelineModeDoc:
 
 EARLY_RETURN_PRECEDENCE: tuple[str, ...] = (
     "depth",
+    "svf",
     "probe",
     "steer",
     "cast",
     "sic",
     "optimize",
+    "compose_optimize",
     "softprompt",
+    "defend",
 )
 
 _PIPELINE_MODES: tuple[PipelineModeDoc, ...] = (
@@ -101,6 +104,12 @@ _PIPELINE_MODES: tuple[PipelineModeDoc, ...] = (
         mode="depth",
         trigger="[depth] section present.",
         output="depth_report.json (+ optional depth_direction.npy).",
+        early_return=True,
+    ),
+    PipelineModeDoc(
+        mode="svf",
+        trigger="[svf] section present.",
+        output="svf_report.json.",
         early_return=True,
     ),
     PipelineModeDoc(
@@ -134,9 +143,21 @@ _PIPELINE_MODES: tuple[PipelineModeDoc, ...] = (
         early_return=True,
     ),
     PipelineModeDoc(
+        mode="compose_optimize",
+        trigger="[compose_optimize] section present.",
+        output="compose_optimize_report.json.",
+        early_return=True,
+    ),
+    PipelineModeDoc(
         mode="softprompt",
         trigger="[softprompt] section present.",
         output="softprompt_report.json.",
+        early_return=True,
+    ),
+    PipelineModeDoc(
+        mode="defend",
+        trigger="[defend] section present.",
+        output="defend_report.json.",
         early_return=True,
     ),
 )
@@ -952,6 +973,272 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                     " steering.",
                 ),
             ),
+        ),
+    ),
+    SectionSpec(
+        name="defend",
+        description="Composed defense stack that layers scan, SIC, policy, and intent.",
+        early_return=True,
+        config_class="DefenseStackConfig",
+        fields=(
+            FieldSpec(
+                key="fail_fast",
+                description="Stop at the first layer that blocks.",
+                constraints="boolean.",
+            ),
+        ),
+        notes=(
+            (
+                "The [defend] section composes [scan], [sic], [policy], and"
+                " [intent] sections. Define those sections alongside [defend]"
+                " to configure each defense layer."
+            ),
+        ),
+    ),
+    SectionSpec(
+        name="environment",
+        description="Agent simulation harness for indirect prompt injection testing.",
+        config_class="EnvironmentConfig",
+        fields=(
+            FieldSpec(
+                key="system_prompt",
+                description="System prompt defining the agent persona.",
+                constraints="required string.",
+                required=True,
+            ),
+            FieldSpec(
+                key="injection_surface",
+                description="Name of the tool whose output carries the injection.",
+                constraints="required string; must match a defined tool name.",
+                required=True,
+            ),
+            FieldSpec(
+                key="max_turns",
+                description="Maximum agent conversation turns.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="max_gen_tokens",
+                description="Generation cap per agent turn.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="rollout_top_n",
+                description="Top-N candidates evaluated via environment rollout.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="rollout_every_n",
+                description="Run environment rollout every N optimization steps.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="temperature",
+                description="Sampling temperature for agent generation.",
+                constraints="number >= 0.0.",
+            ),
+        ),
+        notes=(
+            (
+                "Define [[environment.tools]], [environment.target], and"
+                " [environment.task] sub-tables to configure the agent"
+                " tools, target action, and benign task."
+            ),
+        ),
+    ),
+    SectionSpec(
+        name="svf",
+        description="Steering Vector Field boundary MLP training.",
+        early_return=True,
+        config_class="SVFConfig",
+        fields=(
+            FieldSpec(
+                key="prompts_target",
+                description="Path to JSONL prompts for the target behavior.",
+                constraints="required string path.",
+                required=True,
+            ),
+            FieldSpec(
+                key="prompts_opposite",
+                description="Path to JSONL prompts for the opposite behavior.",
+                constraints="required string path.",
+                required=True,
+            ),
+            FieldSpec(
+                key="projection_dim",
+                description="Dimensionality of the learned projection.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="hidden_dim",
+                description="Hidden layer size in the boundary MLP.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="n_epochs",
+                description="Training epochs.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="learning_rate",
+                description="Optimizer learning rate.",
+                constraints="number > 0.",
+            ),
+            FieldSpec(
+                key="layers",
+                description="Layer subset to train SVF on.",
+                constraints="list of integers or null (null means all layers).",
+            ),
+        ),
+        notes=(
+            (
+                "Reference: Li, Li & Huang (2026) — Steering Vector Fields."
+                " Learns a differentiable boundary MLP whose gradient gives"
+                " a context-dependent steering direction at each activation."
+            ),
+        ),
+    ),
+    SectionSpec(
+        name="compose_optimize",
+        description=(
+            "Bayesian optimization of Steer2Adapt composition weights"
+            " over a subspace bank."
+        ),
+        early_return=True,
+        config_class="ComposeOptimizeConfig",
+        fields=(
+            FieldSpec(
+                key="bank_path",
+                description="Path to the subspace bank TOML file.",
+                constraints="required string path.",
+                required=True,
+            ),
+            FieldSpec(
+                key="n_trials",
+                description="Number of Optuna trials.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="max_tokens",
+                description="Generation cap for scoring each trial.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="timeout",
+                description="Optional wall-clock timeout in seconds.",
+                constraints="number or null.",
+            ),
+            FieldSpec(
+                key="seed",
+                description="Optional optimizer seed.",
+                constraints="integer or null.",
+            ),
+        ),
+        notes=(
+            (
+                "Reference: Han et al. (2026) — Steer2Adapt."
+                " Optimizes linear combination weights over a bank of"
+                " precomputed semantic subspaces."
+            ),
+        ),
+    ),
+    SectionSpec(
+        name="scan",
+        description="Injection content scanner using per-token projection analysis.",
+        config_class="ScanConfig",
+        fields=(
+            FieldSpec(
+                key="target_layer",
+                description="Layer override for direction projection.",
+                constraints="integer or null.",
+            ),
+            FieldSpec(
+                key="span_threshold",
+                description="Minimum mean projection for a token span to be flagged.",
+                constraints="number.",
+            ),
+            FieldSpec(
+                key="threshold",
+                description="Overall detection threshold.",
+                constraints="number.",
+            ),
+            FieldSpec(
+                key="calibrate",
+                description="Auto-calibrate threshold from prompt samples.",
+                constraints="boolean.",
+            ),
+        ),
+        notes=(
+            "Used as a sub-layer of [defend] or standalone for injection scanning.",
+        ),
+    ),
+    SectionSpec(
+        name="policy",
+        description="Tool-call policy engine with rules, data flow, and rate limits.",
+        config_class="PolicyConfig",
+        fields=(
+            FieldSpec(
+                key="default_action",
+                description="Default action when no rule matches.",
+                constraints='one of: "allow", "block".',
+            ),
+            FieldSpec(
+                key="rules",
+                description="List of tool-call filtering rules.",
+                constraints="list of tables with name, action, tool_pattern keys.",
+            ),
+            FieldSpec(
+                key="data_flow_rules",
+                description="Rules restricting data flow between tools.",
+                constraints=(
+                    "list of tables with source_tool, source_labels,"
+                    " blocked_targets keys."
+                ),
+            ),
+            FieldSpec(
+                key="rate_limits",
+                description="Rate limits for tool invocations.",
+                constraints=(
+                    "list of tables with tool_pattern, max_calls,"
+                    " window_seconds keys."
+                ),
+            ),
+        ),
+        notes=(
+            "Used as a sub-layer of [defend] or standalone for policy enforcement.",
+        ),
+    ),
+    SectionSpec(
+        name="intent",
+        description=(
+            "Intent alignment checking between user request"
+            " and proposed action."
+        ),
+        config_class="IntentConfig",
+        fields=(
+            FieldSpec(
+                key="mode",
+                description="Alignment detection method.",
+                constraints='one of: "embedding", "judge".',
+            ),
+            FieldSpec(
+                key="target_layer",
+                description="Layer for embedding-mode cosine similarity.",
+                constraints="integer or null.",
+            ),
+            FieldSpec(
+                key="similarity_threshold",
+                description="Cosine similarity threshold for alignment.",
+                constraints="number in [0.0, 1.0].",
+            ),
+            FieldSpec(
+                key="max_tokens",
+                description="Generation cap for judge mode.",
+                constraints="integer >= 1.",
+            ),
+        ),
+        notes=(
+            "Used as a sub-layer of [defend] or standalone for intent verification.",
         ),
     ),
     SectionSpec(

@@ -120,8 +120,13 @@ def _egd_attack(
         # 90% on warm-start token, 10% uniform over rest
         uniform_mass = 0.1 / max(vocab_size - 1, 1)
         warm_ids = ops.array(init)
-        one_hot = (
+        one_hot_raw = (
             ops.arange(vocab_size)[None, :] == warm_ids[:, None]
+        )
+        one_hot: Array = (
+            one_hot_raw
+            if isinstance(one_hot_raw, Array)
+            else ops.array(one_hot_raw)
         )
         p = (
             ops.ones((config.n_tokens, vocab_size)) * uniform_mass

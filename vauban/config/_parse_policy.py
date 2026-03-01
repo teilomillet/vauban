@@ -1,6 +1,6 @@
 """Parse the [policy] section of a TOML config."""
 
-from typing import cast
+from typing import Literal, cast
 
 from vauban.config._types import TomlDict
 from vauban.types import (
@@ -46,21 +46,24 @@ def _parse_policy(raw: TomlDict) -> PolicyConfig | None:
     if not isinstance(rules_raw, list):
         msg = "[policy].rules must be a list"
         raise TypeError(msg)
-    rules = _parse_rules(rules_raw)
+    rules_list: list[object] = list(rules_raw)
+    rules = _parse_rules(rules_list)
 
     # -- data_flow_rules --
     df_raw = policy_dict.get("data_flow_rules", [])
     if not isinstance(df_raw, list):
         msg = "[policy].data_flow_rules must be a list"
         raise TypeError(msg)
-    data_flow_rules = _parse_data_flow_rules(df_raw)
+    df_list: list[object] = list(df_raw)
+    data_flow_rules = _parse_data_flow_rules(df_list)
 
     # -- rate_limits --
     rl_raw = policy_dict.get("rate_limits", [])
     if not isinstance(rl_raw, list):
         msg = "[policy].rate_limits must be a list"
         raise TypeError(msg)
-    rate_limits = _parse_rate_limits(rl_raw)
+    rl_list: list[object] = list(rl_raw)
+    rate_limits = _parse_rate_limits(rl_list)
 
     return PolicyConfig(
         rules=rules,
@@ -94,6 +97,13 @@ def _parse_rules(raw: list[object]) -> list[PolicyRule]:
                 f" 'allow', 'block', or 'confirm', got {action!r}"
             )
             raise ValueError(msg)
+        action_literal: Literal["allow", "block", "confirm"]
+        if action == "allow":
+            action_literal = "allow"
+        elif action == "block":
+            action_literal = "block"
+        else:
+            action_literal = "confirm"
 
         tool_pattern = t.get("tool_pattern")
         if not isinstance(tool_pattern, str):
@@ -123,7 +133,7 @@ def _parse_rules(raw: list[object]) -> list[PolicyRule]:
 
         rules.append(PolicyRule(
             name=name,
-            action=action,
+            action=action_literal,
             tool_pattern=tool_pattern,
             argument_key=argument_key,
             argument_pattern=argument_pattern,

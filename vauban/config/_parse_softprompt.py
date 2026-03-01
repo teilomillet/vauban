@@ -465,8 +465,8 @@ def _parse_softprompt(
         defense_eval = defense_eval_raw
 
     # -- defense_eval_layer --
-    defense_eval_layer_raw = sec.get(  # type: ignore[arg-type]
-        "defense_eval_layer",
+    defense_eval_layer_raw = sec.get(
+        "defense_eval_layer",  # type: ignore[arg-type]
     )
     defense_eval_layer: int | None = None
     if defense_eval_layer_raw is not None:
@@ -555,8 +555,8 @@ def _parse_softprompt(
         raise ValueError(msg)
 
     # -- defense_eval_cast_layers --
-    cast_layers_raw = sec.get(  # type: ignore[arg-type]
-        "defense_eval_cast_layers",
+    cast_layers_raw = sec.get(
+        "defense_eval_cast_layers",  # type: ignore[arg-type]
     )
     defense_eval_cast_layers: list[int] | None = None
     if cast_layers_raw is not None:
@@ -803,8 +803,8 @@ def _parse_softprompt(
         raise ValueError(msg)
 
     # -- defense_eval_alpha_tiers --
-    alpha_tiers_raw = sec.get(  # type: ignore[arg-type]
-        "defense_eval_alpha_tiers",
+    alpha_tiers_raw = sec.get(
+        "defense_eval_alpha_tiers",  # type: ignore[arg-type]
     )
     defense_eval_alpha_tiers: list[tuple[float, float]] | None = None
     if alpha_tiers_raw is not None:
@@ -875,8 +875,8 @@ def _parse_softprompt(
         injection_context = injection_context_raw
 
     # -- injection_context_template --
-    injection_context_template_raw = sec.get(  # type: ignore[arg-type]
-        "injection_context_template",
+    injection_context_template_raw = sec.get(
+        "injection_context_template",  # type: ignore[arg-type]
     )
     injection_context_template: str | None = None
     if injection_context_template_raw is not None:

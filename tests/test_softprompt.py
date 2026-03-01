@@ -2086,7 +2086,7 @@ class TestNewTokenConstraints:
     def test_non_latin_excludes_ascii(self) -> None:
         """non_latin constraint: only tokens with all chars ord > 127."""
         tok = _UnicodeTokenizer()
-        mask = _build_vocab_mask(tok, tok.VOCAB_SIZE, "non_latin")  # type: ignore[arg-type]
+        mask = _build_vocab_mask(tok, tok.VOCAB_SIZE, "non_latin")
         assert mask is not None
         mx.eval(mask)
         # IDs 4-10 have ord > 127 (CJK, extended Latin, Cyrillic, zero-width)
@@ -2099,7 +2099,7 @@ class TestNewTokenConstraints:
     def test_chinese_filters_to_cjk(self) -> None:
         """chinese constraint: only CJK Unified Ideographs (U+4E00-U+9FFF)."""
         tok = _UnicodeTokenizer()
-        mask = _build_vocab_mask(tok, tok.VOCAB_SIZE, "chinese")  # type: ignore[arg-type]
+        mask = _build_vocab_mask(tok, tok.VOCAB_SIZE, "chinese")
         assert mask is not None
         mx.eval(mask)
         # Only IDs 4, 5 are CJK
@@ -2111,7 +2111,7 @@ class TestNewTokenConstraints:
     def test_non_alphabetic_excludes_letters(self) -> None:
         """non_alphabetic constraint: no alpha chars."""
         tok = _UnicodeTokenizer()
-        mask = _build_vocab_mask(tok, tok.VOCAB_SIZE, "non_alphabetic")  # type: ignore[arg-type]
+        mask = _build_vocab_mask(tok, tok.VOCAB_SIZE, "non_alphabetic")
         assert mask is not None
         mx.eval(mask)
         # Alpha tokens: 0 (A), 1 (Z), 6 (e-acute), 7 (Cyrillic A), 15 (b)
@@ -2124,7 +2124,7 @@ class TestNewTokenConstraints:
     def test_invisible_matches_format_chars(self) -> None:
         """invisible constraint: zero-width, format, and non-printable whitespace."""
         tok = _UnicodeTokenizer()
-        mask = _build_vocab_mask(tok, tok.VOCAB_SIZE, "invisible")  # type: ignore[arg-type]
+        mask = _build_vocab_mask(tok, tok.VOCAB_SIZE, "invisible")
         assert mask is not None
         mx.eval(mask)
         # IDs 8 (ZWSP, Cf), 9 (ZWJ, Cf), 10 (soft hyphen, Cf) are invisible
@@ -2137,7 +2137,7 @@ class TestNewTokenConstraints:
     def test_emoji_matches_symbol_chars(self) -> None:
         """emoji constraint: Unicode So category and emoji ranges."""
         tok = _UnicodeTokenizer()
-        mask = _build_vocab_mask(tok, tok.VOCAB_SIZE, "emoji")  # type: ignore[arg-type]
+        mask = _build_vocab_mask(tok, tok.VOCAB_SIZE, "emoji")
         assert mask is not None
         mx.eval(mask)
         # IDs 13 (sun, So), 14 (heart, So) are emoji/symbols
@@ -2212,8 +2212,18 @@ class TestEncodeTargetsRepeat:
         ids_base = _encode_targets(tokenizer, ["AB"])
         ids_repeated = _encode_targets(tokenizer, ["AB"], repeat_count=2)
         mx.eval(ids_base, ids_repeated)
-        base_list = ids_base.tolist()
-        repeated_list = ids_repeated.tolist()
+        raw_base = ids_base.tolist()
+        raw_repeated = ids_repeated.tolist()
+        base_list: list[int] = (
+            list(raw_base)
+            if isinstance(raw_base, list)
+            else [int(raw_base)]
+        )
+        repeated_list: list[int] = (
+            list(raw_repeated)
+            if isinstance(raw_repeated, list)
+            else [int(raw_repeated)]
+        )
         assert repeated_list == base_list + base_list
 
 
@@ -2304,10 +2314,10 @@ class TestMultiConstraint:
         """chinese is a subset of non_latin, so intersection = chinese."""
         tok = _UnicodeTokenizer()
         mask_chinese = _build_vocab_mask(
-            tok, tok.VOCAB_SIZE, "chinese",  # type: ignore[arg-type]
+            tok, tok.VOCAB_SIZE, "chinese",
         )
         mask_multi = _build_vocab_mask(
-            tok, tok.VOCAB_SIZE, ["non_latin", "chinese"],  # type: ignore[arg-type]
+            tok, tok.VOCAB_SIZE, ["non_latin", "chinese"],
         )
         assert mask_chinese is not None
         assert mask_multi is not None
@@ -2321,7 +2331,7 @@ class TestMultiConstraint:
         """["ascii", "non_latin"] has no overlap — all False."""
         tok = _UnicodeTokenizer()
         mask = _build_vocab_mask(
-            tok, tok.VOCAB_SIZE, ["ascii", "non_latin"],  # type: ignore[arg-type]
+            tok, tok.VOCAB_SIZE, ["ascii", "non_latin"],
         )
         assert mask is not None
         mx.eval(mask)
@@ -2871,7 +2881,10 @@ class TestSamplePromptIds:
     def test_no_duplicates(self) -> None:
         pool = [mx.array([i]) for i in range(10)]
         result = _sample_prompt_ids(pool, 5)
-        ids = [tuple(r.tolist()) for r in result]
+        ids = [
+            tuple(v) if isinstance(v := r.tolist(), list) else (v,)
+            for r in result
+        ]
         assert len(set(ids)) == 5
 
 

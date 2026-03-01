@@ -17,11 +17,18 @@ def load_bank(path: str | Path) -> dict[str, Array]:
 
     Returns a dict mapping subspace names to their basis arrays.
     """
-    loaded = ops.load(str(path))
-    if not isinstance(loaded, dict):
-        msg = f"Expected dict from bank file, got {type(loaded).__name__}"
+    raw = ops.load(str(path))
+    if not isinstance(raw, dict):
+        msg = f"Expected dict from bank file, got {type(raw).__name__}"
         raise TypeError(msg)
-    return {str(k): v for k, v in loaded.items()}
+    # ops.load returns dict[str, Array]; narrow values through isinstance
+    loaded: dict[str, Array] = {}
+    for k, v in raw.items():
+        if not isinstance(v, Array):
+            msg = f"Bank value for {k!r} is not an Array"
+            raise TypeError(msg)
+        loaded[str(k)] = v
+    return loaded
 
 
 def compose_direction(

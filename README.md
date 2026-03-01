@@ -15,9 +15,13 @@ Refusal in language models is mediated by a single direction in activation space
 - **CAST** runtime generation with conditional activation steering rules
 - **Map** the full refusal surface across diverse prompts
 - **Optimize** cut parameters automatically (Optuna search)
-- **Soft-prompt** — optimize learnable prefixes in embedding space (GCG, continuous, EGD)
+- **Soft-prompt** — optimize learnable prefixes in embedding space (GCG, continuous, EGD) with perplexity regularization, token position control, prompt paraphrasing, and externality monitoring
 - **Sanitize** inputs iteratively before they reach the model (SIC)
 - **Detect** whether a model has been hardened against abliteration
+- **Defend** — compose scan, SIC, policy, and intent layers into a unified defense stack
+- **Environment** — agent simulation harness for indirect prompt injection testing
+- **SVF** — train steering vector field boundary MLPs for context-dependent steering
+- **Compose-optimize** — Bayesian optimization of Steer2Adapt composition weights
 - **GAN loop** — iterative attack-defense with escalation and multi-turn threading
 - **API eval** — test optimized suffixes against remote endpoints
 - **Track** experiments with metadata and tech tree lineage
@@ -186,10 +190,14 @@ The TOML sections you include determine what vauban does. The default is measure
 | `[optimize]` | Optuna search for best cut parameters | `optimize_report.json` |
 | `[softprompt]` | Optimize learnable prefixes in embedding space (GCG, continuous, EGD) | `softprompt_report.json` |
 | `[sic]` | Iterative input sanitization (SIC) | `sic_report.json` |
+| `[defend]` | Composed defense stack (scan + SIC + policy + intent) | `defend_report.json` |
+| `[environment]` | Agent simulation for indirect prompt injection | `environment_report.json` |
+| `[svf]` | Steering vector field boundary training | `svf_report.json` |
+| `[compose_optimize]` | Bayesian optimization of Steer2Adapt composition weights | `compose_optimize_report.json` |
 | `[api_eval]` | Remote API suffix evaluation | `api_eval_report.json` |
 | `[meta]` | Experiment metadata (no pipeline effect) | `python -m vauban.tree` |
 
-Early-return precedence is: `[depth]` > `[probe]` > `[steer]` > `[cast]` > `[sic]` > `[optimize]` > `[softprompt]`. Use `--validate` to catch conflicts.
+Early-return precedence is: `[depth]` > `[svf]` > `[probe]` > `[steer]` > `[cast]` > `[sic]` > `[optimize]` > `[compose_optimize]` > `[softprompt]` > `[defend]`. Use `--validate` to catch conflicts.
 
 ## Python API
 

@@ -1,6 +1,6 @@
 """Parse the [intent] section of a TOML config."""
 
-from typing import cast
+from typing import Literal, cast
 
 from vauban.config._types import TomlDict
 from vauban.types import IntentConfig
@@ -28,13 +28,15 @@ def _parse_intent(raw: TomlDict) -> IntentConfig | None:
             f" got {type(mode_raw).__name__}"
         )
         raise TypeError(msg)
-    valid_modes = ("embedding", "judge")
-    if mode_raw not in valid_modes:
+    if mode_raw not in ("embedding", "judge"):
         msg = (
-            f"[intent].mode must be one of {valid_modes!r},"
+            f"[intent].mode must be one of ('embedding', 'judge'),"
             f" got {mode_raw!r}"
         )
         raise ValueError(msg)
+    mode: Literal["embedding", "judge"] = (
+        "embedding" if mode_raw == "embedding" else "judge"
+    )
 
     # -- target_layer --
     target_layer_raw = intent_dict.get("target_layer")
@@ -67,7 +69,7 @@ def _parse_intent(raw: TomlDict) -> IntentConfig | None:
         raise TypeError(msg)
 
     return IntentConfig(
-        mode=mode_raw,
+        mode=mode,
         target_layer=target_layer,
         similarity_threshold=float(sim_raw),
         max_tokens=max_tokens_raw,

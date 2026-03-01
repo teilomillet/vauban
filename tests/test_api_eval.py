@@ -613,15 +613,20 @@ class TestMultiturnEvaluation:
         assert len(sent_bodies) == 2
 
         # Turn 1: system + history + user prompt
-        msgs_t1 = sent_bodies[0]["messages"]
-        assert isinstance(msgs_t1, list)
+        msgs_t1_raw = sent_bodies[0]["messages"]
+        assert isinstance(msgs_t1_raw, list)
+        msgs_t1: list[dict[str, str]] = [
+            {str(k): str(v) for k, v in m.items()}
+            for m in msgs_t1_raw
+            if isinstance(m, dict)
+        ]
         assert len(msgs_t1) == 4
         assert msgs_t1[0] == {"role": "system", "content": "Be helpful."}
         assert msgs_t1[1] == {"role": "user", "content": "Prior Q"}
         assert msgs_t1[2] == {"role": "assistant", "content": "Prior A"}
         assert msgs_t1[3]["role"] == "user"
-        assert "Attack prompt" in str(msgs_t1[3]["content"])
-        assert "suffix" in str(msgs_t1[3]["content"])
+        assert "Attack prompt" in msgs_t1[3]["content"]
+        assert "suffix" in msgs_t1[3]["content"]
 
         # Turn 2: same as turn 1 + assistant response + follow-up
         msgs_t2 = sent_bodies[1]["messages"]

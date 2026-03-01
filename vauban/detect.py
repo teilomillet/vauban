@@ -6,9 +6,9 @@ building blocks into a single ``detect()`` entry point.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from vauban import _ops as ops
+from vauban._array import Array
 from vauban._forward import get_transformer
 from vauban.cut import cut
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES, _generate, _refusal_rate
@@ -28,9 +28,6 @@ from vauban.types import (
     MarginResult,
     Tokenizer,
 )
-
-if TYPE_CHECKING:
-    from vauban._array import Array
 
 
 def detect(
@@ -470,10 +467,14 @@ def _margin_layer(
         # Load direction from .npy file
         dir_path = Path(dir_path_str)
         loaded = ops.load(str(dir_path))
-        direction = (
+        direction_raw = (
             next(iter(loaded.values()))
             if isinstance(loaded, dict) else loaded
         )
+        if not isinstance(direction_raw, Array):
+            msg = f"Expected array from {dir_path}"
+            raise TypeError(msg)
+        direction: Array = direction_raw
         dir_name = dir_path.stem
 
         dir_collapse: float | None = None

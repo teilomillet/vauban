@@ -243,14 +243,40 @@ These activate specialized pipelines. If multiple are present, only the first on
 | Priority | Section | What it does | Output |
 |----------|---------|--------------|--------|
 | 1 | `[depth]` | Deep-thinking token analysis | `depth_report.json` |
-| 2 | `[probe]` | Per-layer projection inspection | `probe_report.json` |
-| 3 | `[steer]` | Runtime steered generation | `steer_report.json` |
-| 4 | `[cast]` | Conditional activation steering generation | `cast_report.json` |
-| 5 | `[sic]` | Iterative input sanitization defense | `sic_report.json` |
-| 6 | `[optimize]` | Optuna hyperparameter search over cut params | `optimize_report.json` |
-| 7 | `[softprompt]` | Adversarial soft prompt / suffix attack | `softprompt_report.json` |
+| 2 | `[svf]` | Steering vector field boundary training | `svf_report.json` |
+| 3 | `[probe]` | Per-layer projection inspection | `probe_report.json` |
+| 4 | `[steer]` | Runtime steered generation | `steer_report.json` |
+| 5 | `[cast]` | Conditional activation steering generation | `cast_report.json` |
+| 6 | `[sic]` | Iterative input sanitization defense | `sic_report.json` |
+| 7 | `[optimize]` | Optuna hyperparameter search over cut params | `optimize_report.json` |
+| 8 | `[compose_optimize]` | Bayesian optimization of composition weights | `compose_optimize_report.json` |
+| 9 | `[softprompt]` | Adversarial soft prompt / suffix attack | `softprompt_report.json` |
+| 10 | `[defend]` | Composed defense stack (scan + SIC + policy + intent) | `defend_report.json` |
 
 > **Warning:** If you include more than one early-return section, `--validate` will warn you. The extra sections are silently ignored at runtime.
+
+### Additional pipeline modes
+
+These sections were added more recently. Each activates a specialized pipeline:
+
+- **`[defend]`** -- Composes multiple defense layers (scan, SIC, policy, intent) into a unified stack. Define `[scan]`, `[sic]`, `[policy]`, and `[intent]` sections alongside `[defend]` to configure each layer. The stack runs layers in order and stops at the first block when `fail_fast = true`.
+
+- **`[environment]`** -- Agent simulation harness for indirect prompt injection testing. Defines a set of tools, a target action, and a benign task, then runs an agent loop to evaluate whether injected payloads can hijack tool calls.
+
+- **`[svf]`** -- Trains steering vector field boundary MLPs that produce context-dependent steering directions instead of static vectors. Based on Li, Li & Huang (2026). Requires target and opposite prompt JSONL files.
+
+- **`[compose_optimize]`** -- Bayesian optimization over Steer2Adapt composition weights. Takes a bank of precomputed subspaces and searches for the linear combination that best balances refusal rate and perplexity.
+
+### Advanced softprompt features
+
+The `[softprompt]` section supports several features beyond basic GCG/EGD/continuous optimization:
+
+- **Perplexity regularization** (`perplexity_weight`) -- Adds a cross-entropy penalty that pushes optimized tokens toward fluent text.
+- **Token position** (`token_position`) -- Controls where the learnable tokens are placed: `"prefix"`, `"suffix"`, or `"infix"`.
+- **Prompt paraphrasing** (`paraphrase_strategies`) -- Augments the prompt pool with paraphrased variants during optimization.
+- **Externality monitoring** (`externality_target`) -- Adds an auxiliary loss that penalizes degradation of a secondary safety direction during optimization.
+
+See [Configuration Reference](config.md) for full field details.
 
 ---
 

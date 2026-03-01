@@ -18,16 +18,20 @@ Only `[model]` and `[data]` are required. All other sections are optional and ac
 | `[eval]` | … + refusal rate / perplexity / KL evaluation |
 | `[detect]` | defense detection (runs before measure/cut) |
 | `[depth]` | deep-thinking token analysis (early return) |
+| `[svf]` | steering vector field boundary training (early return) |
 | `[probe]` | per-layer projection inspection (early return) |
 | `[steer]` | steered generation (early return) |
 | `[cast]` | conditional activation steering (early return) |
 | `[sic]` | iterative input sanitization (early return) |
 | `[optimize]` | Optuna hyperparameter search (early return) |
+| `[compose_optimize]` | Bayesian composition weight optimization (early return) |
 | `[softprompt]` | soft prompt attack (early return) |
+| `[defend]` | composed defense stack evaluation (early return) |
+| `[environment]` | agent tool harness (used with `[softprompt]`) |
 | `[api_eval]` | remote API suffix evaluation |
 | `[meta]` | experiment metadata (no pipeline effect) |
 
-Early-return precedence: `[depth]` > `[probe]` > `[steer]` > `[cast]` > `[sic]` > `[optimize]` > `[softprompt]`.
+Early-return precedence: `[depth]` > `[svf]` > `[probe]` > `[steer]` > `[cast]` > `[sic]` > `[optimize]` > `[compose_optimize]` > `[softprompt]` > `[defend]`.
 
 ## Data file formats
 
@@ -209,9 +213,10 @@ Optimizes a learnable prefix (soft prompt) to bypass the model's refusal. Three 
 | `direction_weight` | float ≥ 0 | `0.0` | Direction-guided weight. 0 = standalone attack. |
 | `direction_mode` | `"last"` \| `"raid"` \| `"all_positions"` | `"last"` | How to apply direction guidance. |
 | `direction_layers` | list of ints | — | Layers for direction constraint. Null = all layers. |
-| `loss_mode` | `"targeted"` \| `"untargeted"` \| `"defensive"` | `"targeted"` | Loss function. |
+| `loss_mode` | `"targeted"` \| `"untargeted"` \| `"defensive"` \| `"externality"` | `"targeted"` | Loss function. `"externality"` requires `externality_target`. |
 | `egd_temperature` | float > 0 | `1.0` | Bregman projection temperature (EGD mode). |
 | `defense_aware_weight` | float ≥ 0 | `0.0` | Defense evasion penalty added to loss. 0 = off. |
+| `externality_target` | path | — | Path to `.npy` direction file for externality loss. Required when `loss_mode = "externality"`. Penalizes safety margin erosion (Xiong et al. 2026). |
 
 ### Token constraints
 
@@ -269,7 +274,7 @@ Evaluate the optimized suffix against defense modules during training.
 | `defense_eval_layer` | int | — | Layer for SIC/CAST direction projection. Null = auto from measurement. |
 | `defense_eval_alpha` | float | `1.0` | CAST steering alpha. |
 | `defense_eval_threshold` | float | `0.0` | SIC/CAST detection threshold. |
-| `defense_eval_sic_mode` | `"direction"` \| `"generation"` | `"direction"` | SIC detection method. |
+| `defense_eval_sic_mode` | `"direction"` \| `"generation"` \| `"svf"` | `"direction"` | SIC detection method. `"svf"` uses trained boundary MLP. |
 | `defense_eval_sic_max_iterations` | int ≥ 1 | `3` | SIC max sanitization iterations. |
 | `defense_eval_cast_layers` | list of ints | — | CAST steering layers. Null = auto. |
 | `defense_eval_alpha_tiers` | list of `[threshold, alpha]` pairs | — | TRYLOCK adaptive alpha tiers for CAST. |
@@ -315,6 +320,38 @@ Wrap the optimized suffix in realistic surrounding context (e.g., a web page, to
 | `injection_context_template` | string | — | Custom template with `{payload}` placeholder. Overrides preset. |
 
 **Constraints:** Injection context requires `mode = "gcg"` or `mode = "egd"` (continuous mode produces soft embeddings that cannot represent wrapped context). Cannot be combined with `gan_multiturn`.
+
+### Perplexity regularization
+
+Cross-entropy penalty pushing optimized suffixes toward fluent text. Encourages token sequences that look like natural language instead of adversarial noise.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `perplexity_weight` | float >= 0 | `0.0` | Weight for perplexity (CE) auxiliary loss. 0 = off. Higher values produce more fluent but potentially less effective suffixes. |
+
+### Token position
+
+Controls where the learnable tokens are inserted relative to the prompt.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `token_position` | `"prefix"` \| `"suffix"` \| `"infix"` | `"prefix"` | Placement of optimized tokens. `"prefix"` = before the prompt, `"suffix"` = after the prompt, `"infix"` = split and inserted within the prompt. |
+
+**Constraints:** `token_position = "infix"` requires `mode = "gcg"` or `mode = "egd"` (continuous mode cannot resolve infix split positions).
+
+### Prompt paraphrasing
+
+Augment the prompt pool with paraphrased variants. Each strategy applies a different rewriting style to diversify the attack surface.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `paraphrase_strategies` | list of strings | `[]` | Paraphrase strategies to apply. Empty = no paraphrasing. |
+
+Valid strategies: `"narrative"`, `"deceptive_delight"`, `"technical"`, `"historical"`, `"code_block"`, `"educational"`.
+
+### Environment rollout integration
+
+When `[environment]` is present alongside `[softprompt]`, the optimizer periodically runs the top candidates through the agent environment to compute reward-based re-ranking. See the `[environment]` section for full configuration.
 
 ## `[sic]` — Iterative input sanitization
 
@@ -447,6 +484,176 @@ View the experiment tree with:
 ```bash
 python -m vauban.tree experiments/
 ```
+
+## `[defend]` — Defense stack composition
+
+Composes multiple defense layers (scan, SIC, policy, intent) into a single evaluation pipeline. When `[defend]` is present, it acts as an early-return mode that runs each enabled defense layer in sequence against evaluation prompts and writes a combined report.
+
+The `[defend]` section itself has only one field. The individual defense layers are configured via their own top-level sections (`[scan]`, `[sic]`, `[policy]`, `[intent]`), which are pulled in automatically when `[defend]` is present.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `fail_fast` | bool | `true` | Stop at the first defense layer that blocks. `false` = run all layers and report all results. |
+
+**Layer composition:** The defense stack runs layers in order: scan (Layer 0, injection detection) -> SIC (Layer 1, iterative sanitization) -> policy (Layer 3, tool-call filtering) -> intent (Layer 4, intent alignment). Each layer is optional; only layers with a corresponding top-level section are active.
+
+**Example:**
+
+```toml
+[defend]
+fail_fast = false
+
+[scan]
+threshold = 0.5
+calibrate = true
+
+[sic]
+mode = "direction"
+max_iterations = 3
+```
+
+### `[scan]` — Injection content scanning
+
+Configure the Layer 0 injection scanner. Only active when `[defend]` is present.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `target_layer` | int | — | Layer for direction projection. Null = use measurement result. |
+| `span_threshold` | float | `0.5` | Minimum mean projection for a token span to be flagged. |
+| `threshold` | float | `0.0` | Overall detection threshold. |
+| `calibrate` | bool | `false` | Auto-calibrate threshold from clean prompts. |
+
+### `[policy]` — Tool-call policy engine
+
+Configure the Layer 3 tool-call policy engine. Only active when `[defend]` is present.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `default_action` | `"allow"` \| `"block"` | `"allow"` | Default action for unmatched tool calls. |
+| `rules` | list of tables | `[]` | Policy rules (see below). |
+| `data_flow_rules` | list of tables | `[]` | Data flow restriction rules. |
+| `rate_limits` | list of tables | `[]` | Rate limit rules. |
+
+Each `[[policy.rules]]` entry:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | string | *(required)* | Rule name for logging. |
+| `action` | `"allow"` \| `"block"` \| `"confirm"` | *(required)* | Action when matched. |
+| `tool_pattern` | string | *(required)* | fnmatch pattern for tool names. |
+| `argument_key` | string | — | Optional argument key to check. |
+| `argument_pattern` | string | — | Regex pattern for argument value. |
+
+### `[intent]` — Intent alignment checking
+
+Configure the Layer 4 intent alignment checker. Only active when `[defend]` is present.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `mode` | `"embedding"` \| `"judge"` | `"embedding"` | Alignment detection method. |
+| `target_layer` | int | — | Layer for embedding similarity. Null = auto. |
+| `similarity_threshold` | float | `0.7` | Cosine similarity threshold for `"embedding"` mode. |
+| `judge_prompt` | string | *(built-in)* | System prompt for `"judge"` mode. |
+| `max_tokens` | int >= 1 | `10` | Max tokens for judge generation. |
+
+## `[environment]` — Agent tool harness
+
+Defines a simulated agent environment for indirect prompt injection testing. The environment provides tools, a benign user task, and a target tool call that the injection payload should elicit. Used alongside `[softprompt]` to evaluate whether optimized suffixes can hijack agent behavior.
+
+### Top-level
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `system_prompt` | string | *(required)* | System prompt for the agent. |
+| `injection_surface` | string | *(required)* | Name of the tool whose output contains the injection payload. Must match a defined tool name. |
+| `max_turns` | int >= 1 | `6` | Maximum agent loop turns. |
+| `max_gen_tokens` | int >= 1 | `200` | Max tokens per agent generation step. |
+| `temperature` | float >= 0 | `0.0` | Sampling temperature. 0.0 = greedy (argmax). |
+| `rollout_top_n` | int >= 1 | `8` | Number of top candidates to evaluate via environment rollout. |
+| `rollout_every_n` | int >= 1 | `1` | Run environment rollouts every N optimization steps. 1 = every step. |
+
+### `[environment.target]`
+
+The tool call the injection payload should trigger.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `function` | string | *(required)* | Target tool name. Must match a defined tool. |
+| `required_args` | list of strings | `[]` | Argument keys that must be present. |
+| `arg_contains` | table | `{}` | Key-value pairs the arguments must contain (substring match). |
+
+### `[environment.task]`
+
+The benign user task that initiates the agent loop.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `content` | string | *(required)* | The user's task prompt. |
+
+### `[[environment.tools]]`
+
+Each tool available to the agent is defined as an array-of-tables entry:
+
+```toml
+[[environment.tools]]
+name = "web_search"
+description = "Search the web for information."
+parameters = { query = "string" }
+result = "Search results as text."
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | string | *(required)* | Tool name (referenced by `injection_surface` and `target.function`). |
+| `description` | string | `""` | Human-readable description shown to the agent. |
+| `parameters` | table | `{}` | Parameter names mapped to type descriptions. |
+| `result` | string | — | Description of the tool's return value. |
+
+### `[environment.policy]`
+
+Optional inline tool-call policy for the environment harness (separate from the `[policy]` defense layer).
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `blocked_functions` | list of strings | `[]` | Tool names to block outright. |
+| `require_confirmation` | list of strings | `[]` | Tool names requiring confirmation. |
+| `arg_blocklist` | table of lists | `{}` | Per-argument blocked value patterns. |
+
+**Cross-field validation:** `injection_surface` and `target.function` must both reference tools defined in `[[environment.tools]]`.
+
+## `[svf]` — Steering vector field training
+
+Trains a boundary MLP that learns a differentiable decision surface in activation space. The gradient of the boundary function at each activation gives the steering direction, replacing static linear vectors with context-dependent steering.
+
+Reference: Li, Li & Huang (2026) -- arxiv.org/abs/2602.01654
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `prompts_target` | path | *(required)* | JSONL file with target-behavior prompts (e.g., harmful prompts). |
+| `prompts_opposite` | path | *(required)* | JSONL file with opposite-behavior prompts (e.g., harmless prompts). |
+| `projection_dim` | int >= 1 | `16` | Dimensionality of the projected activation space fed to the boundary MLP. |
+| `hidden_dim` | int >= 1 | `64` | Hidden layer width in the boundary MLP. |
+| `n_epochs` | int >= 1 | `10` | Training epochs. |
+| `learning_rate` | float > 0 | `0.001` | Adam learning rate. |
+| `layers` | list of ints | all layers | Layers to train boundary MLPs on. Null = all layers. |
+
+The trained boundary model can be referenced by `[steer]`, `[cast]`, and `[sic]` via their `direction_source = "svf"` and `svf_boundary_path` fields.
+
+## `[compose_optimize]` — Composition weight optimization
+
+Bayesian optimization over linear composition weights for Steer2Adapt composed steering. Given a subspace bank (`.safetensors` file with named basis vectors), searches for the weight combination that optimizes refusal rate and perplexity trade-off.
+
+Reference: Han et al. (2026) -- arxiv.org/abs/2602.07276
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `bank_path` | path | *(required)* | Path to a `.safetensors` subspace bank file. Each key is a named subspace with shape `(k, d_model)`. |
+| `n_trials` | int >= 1 | `50` | Number of Optuna trials. |
+| `max_tokens` | int >= 1 | `100` | Max tokens per evaluation generation. |
+| `timeout` | float (seconds) | — | Wall-clock timeout. Null = no timeout. |
+| `seed` | int | — | Reproducibility seed. Null = non-deterministic. |
+
+The bank file is produced by the `[measure]` stage when `measure.bank` entries are configured. Each entry in the bank contains the SVD basis vectors for a named behavioral subspace. The optimizer searches for weights `w_i` such that the composed direction `sum(w_i * basis_i[0])` (L2-normalized) achieves the best refusal/quality balance.
 
 ## `[output]` — Output directory
 

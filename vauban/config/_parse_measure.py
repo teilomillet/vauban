@@ -1,5 +1,7 @@
 """Parse the [measure] section of a TOML config."""
 
+from typing import cast
+
 from vauban.config._types import TomlDict
 from vauban.types import MeasureConfig, SubspaceBankEntry
 
@@ -98,21 +100,22 @@ def _parse_measure(raw: TomlDict) -> MeasureConfig:
                 f" got {type(entry).__name__}"
             )
             raise TypeError(msg)
-        name = entry.get("name")
+        entry_dict = cast("dict[str, object]", entry)
+        name = entry_dict.get("name")
         if not isinstance(name, str):
             msg = (
                 f"[measure].bank[{i}].name must be a string,"
                 f" got {type(name).__name__}"
             )
             raise TypeError(msg)
-        harmful_src = entry.get("harmful", "default")
+        harmful_src = entry_dict.get("harmful", "default")
         if not isinstance(harmful_src, str):
             msg = (
                 f"[measure].bank[{i}].harmful must be a string,"
                 f" got {type(harmful_src).__name__}"
             )
             raise TypeError(msg)
-        harmless_src = entry.get("harmless", "default")
+        harmless_src = entry_dict.get("harmless", "default")
         if not isinstance(harmless_src, str):
             msg = (
                 f"[measure].bank[{i}].harmless must be a string,"
