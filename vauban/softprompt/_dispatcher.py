@@ -30,6 +30,7 @@ def _run_single_attack(
     direction: Array | None,
     ref_model: CausalLM | None = None,
     transfer_models: list[tuple[str, CausalLM, Tokenizer]] | None = None,
+    environment_config: EnvironmentConfig | None = None,
 ) -> SoftPromptResult:
     """Dispatch to the appropriate attack mode.
 
@@ -44,6 +45,7 @@ def _run_single_attack(
         ref_model: Optional reference model for KL collision loss.
         transfer_models: Optional list of (name, model, tokenizer) for
             multi-model candidate re-ranking during GCG.
+        environment_config: Optional environment config for rollout scoring.
     """
     # Expand prompts with paraphrase strategies
     if config.paraphrase_strategies:
@@ -69,6 +71,7 @@ def _run_single_attack(
             all_prompt_ids_override=injection_ids,
             transfer_models=transfer_models,
             infix_map=infix_map,
+            environment_config=environment_config,
         )
     if config.mode == "egd":
         return _egd_attack(
@@ -76,6 +79,7 @@ def _run_single_attack(
             all_prompt_ids_override=injection_ids,
             transfer_models=transfer_models,
             infix_map=infix_map,
+            environment_config=environment_config,
         )
     msg = (
         f"Unknown soft prompt mode: {config.mode!r},"
@@ -136,10 +140,16 @@ def softprompt_attack(
     result = _run_single_attack(
         model, tokenizer, prompts, config, direction, ref_model,
         transfer_models=transfer_models,
+        environment_config=environment_config,
     )
 
-    # Post-attack environment rollout evaluation
-    if environment_config is not None and result.token_text:
+    # Post-attack environment rollout evaluation (continuous mode only —
+    # GCG and EGD handle rollout internally during/after optimisation)
+    if (
+        environment_config is not None
+        and result.token_text
+        and config.mode == "continuous"
+    ):
         from vauban.environment import run_agent_loop
 
         env_result = run_agent_loop(

@@ -25,7 +25,13 @@ from vauban.softprompt._utils import (
     _select_worst_k_prompt_ids,
     _split_into_batches,
 )
-from vauban.types import CausalLM, SoftPromptConfig, SoftPromptResult, Tokenizer
+from vauban.types import (
+    CausalLM,
+    EnvironmentConfig,
+    SoftPromptConfig,
+    SoftPromptResult,
+    Tokenizer,
+)
 
 
 def _gcg_attack(
@@ -38,6 +44,7 @@ def _gcg_attack(
     all_prompt_ids_override: list[Array] | None = None,
     transfer_models: list[tuple[str, CausalLM, Tokenizer]] | None = None,
     infix_map: dict[int, int] | None = None,
+    environment_config: EnvironmentConfig | None = None,
 ) -> SoftPromptResult:
     """GCG (Greedy Coordinate Gradient) discrete token search.
 
@@ -206,6 +213,28 @@ def _gcg_attack(
             candidate_losses[idx] += (
                 config.transfer_loss_weight * t_loss
             )
+
+    def _apply_rollout_reranking(
+        candidates: list[list[int]],
+        candidate_losses: list[float],
+    ) -> None:
+        """Re-rank top candidates using environment rollout (in-place)."""
+        if environment_config is None:
+            return
+        from vauban.environment import score_candidates_via_rollout
+
+        top_n = min(environment_config.rollout_top_n, len(candidates))
+        ranked = sorted(
+            range(len(candidate_losses)),
+            key=lambda i: candidate_losses[i],
+        )[:top_n]
+        texts = [tokenizer.decode(candidates[idx]) for idx in ranked]
+        losses = [candidate_losses[idx] for idx in ranked]
+        adjusted, _env_results = score_candidates_via_rollout(
+            model, tokenizer, environment_config, texts, losses,
+        )
+        for i, idx in enumerate(ranked):
+            candidate_losses[idx] = adjusted[i]
 
     for _restart in range(config.n_restarts):
         # Initialize: warm-start from init_tokens or random
@@ -405,6 +434,7 @@ def _gcg_attack(
                 ]
 
                 _apply_transfer_reranking(candidates, candidate_losses)
+                _apply_rollout_reranking(candidates, candidate_losses)
 
                 best_candidate_idx = candidate_losses.index(
                     min(candidate_losses),
@@ -433,6 +463,7 @@ def _gcg_attack(
                 ]
 
                 _apply_transfer_reranking(candidates, candidate_losses)
+                _apply_rollout_reranking(candidates, candidate_losses)
 
                 # Pool candidates + current beam, deduplicate,
                 # keep top beam_width

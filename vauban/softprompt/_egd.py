@@ -24,7 +24,13 @@ from vauban.softprompt._utils import (
     _select_worst_k_prompt_ids,
     _split_into_batches,
 )
-from vauban.types import CausalLM, SoftPromptConfig, SoftPromptResult, Tokenizer
+from vauban.types import (
+    CausalLM,
+    EnvironmentConfig,
+    SoftPromptConfig,
+    SoftPromptResult,
+    Tokenizer,
+)
 
 
 def _egd_attack(
@@ -37,6 +43,7 @@ def _egd_attack(
     all_prompt_ids_override: list[Array] | None = None,
     transfer_models: list[tuple[str, CausalLM, Tokenizer]] | None = None,
     infix_map: dict[int, int] | None = None,
+    environment_config: EnvironmentConfig | None = None,
 ) -> SoftPromptResult:
     """EGD (Exponentiated Gradient Descent) on the probability simplex.
 
@@ -326,22 +333,29 @@ def _egd_attack(
     )
     final_loss = best_loss
 
+    token_text = tokenizer.decode(token_ids)
+
     # Post-hoc transfer scoring: EGD optimises over the continuous simplex,
     # so transfer loss cannot steer gradient steps (unlike GCG re-ranking).
     # It is added here to surface transferability in the accessibility score.
     if transfer_data:
-        transfer_avg = _score_transfer_loss(
-            tokenizer.decode(token_ids), transfer_data,
-        )
+        transfer_avg = _score_transfer_loss(token_text, transfer_data)
         final_loss += config.transfer_loss_weight * transfer_avg
+
+    # Post-hoc environment rollout scoring (same pattern as transfer)
+    if environment_config is not None:
+        from vauban.environment import run_agent_loop
+
+        env_result = run_agent_loop(
+            model, tokenizer, environment_config, token_text,
+        )
+        final_loss -= env_result.reward * 10.0
 
     accessibility_score = _compute_accessibility_score(final_loss)
 
     success_rate, responses = _evaluate_attack(
         model, tokenizer, prompts, final_embeds, config,
     )
-
-    token_text = tokenizer.decode(token_ids)
 
     return SoftPromptResult(
         mode="egd",

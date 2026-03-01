@@ -53,6 +53,7 @@ def _dispatch_attack(
     direction: Array | None,
     ref_model: CausalLM | None,
     transfer_models: list[tuple[str, CausalLM, Tokenizer]] | None = None,
+    environment_config: EnvironmentConfig | None = None,
 ) -> SoftPromptResult:
     """Dispatch to the appropriate attack mode (no defense eval).
 
@@ -84,6 +85,7 @@ def _dispatch_attack(
             all_prompt_ids_override=injection_ids,
             transfer_models=transfer_models,
             infix_map=infix_map,
+            environment_config=environment_config,
         )
     if config.mode == "egd":
         return _egd_attack(
@@ -91,6 +93,7 @@ def _dispatch_attack(
             all_prompt_ids_override=injection_ids,
             transfer_models=transfer_models,
             infix_map=infix_map,
+            environment_config=environment_config,
         )
     msg = (
         f"Unknown soft prompt mode: {config.mode!r},"
@@ -108,6 +111,7 @@ def _dispatch_attack_multiturn(
     ref_model: CausalLM | None,
     history: list[dict[str, str]],
     transfer_models: list[tuple[str, CausalLM, Tokenizer]] | None = None,
+    environment_config: EnvironmentConfig | None = None,
 ) -> SoftPromptResult:
     """Dispatch attack with conversation history baked into prompt encoding.
 
@@ -139,12 +143,14 @@ def _dispatch_attack_multiturn(
             model, tokenizer, prompts, config, direction, ref_model,
             all_prompt_ids_override=all_prompt_ids,
             transfer_models=transfer_models,
+            environment_config=environment_config,
         )
     if config.mode == "egd":
         return _egd_attack(
             model, tokenizer, prompts, config, direction, ref_model,
             all_prompt_ids_override=all_prompt_ids,
             transfer_models=transfer_models,
+            environment_config=environment_config,
         )
     msg = (
         f"Multi-turn attack requires mode 'gcg' or 'egd',"
@@ -232,12 +238,14 @@ def gan_loop(
                 model, tokenizer, round_prompts, current_config,
                 direction, ref_model, history,
                 transfer_models=transfer_models,
+                environment_config=environment_config,
             )
         else:
             attack_result = _dispatch_attack(
                 model, tokenizer, round_prompts, current_config,
                 direction, ref_model,
                 transfer_models=transfer_models,
+                environment_config=environment_config,
             )
 
         # --- Defense phase ---
