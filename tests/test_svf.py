@@ -68,7 +68,7 @@ class TestSVFSaveLoad:
         save_svf_boundary(boundary, path)
         assert path.exists()
 
-        loaded = load_svf_boundary(path, D_MODEL, 8, 16, NUM_LAYERS)
+        loaded = load_svf_boundary(path)
         h = mx.random.normal((D_MODEL,))
         mx.eval(h)
 

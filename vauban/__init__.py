@@ -724,9 +724,6 @@ def _run_steer_mode(context: _EarlyModeContext) -> None:
 
         boundary = load_svf_boundary(
             Path(config.steer.svf_boundary_path),
-            d_model=_get_transformer(model).layers[0].self_attn.o_proj.weight.shape[0],
-            projection_dim=16, hidden_dim=64,
-            n_layers=n_layers,
         )
         steer_results = [
             _steer_svf(
@@ -817,9 +814,6 @@ def _run_cast_mode(context: _EarlyModeContext) -> None:
 
         boundary = load_svf_boundary(
             Path(config.cast.svf_boundary_path),
-            d_model=_get_transformer(model).layers[0].self_attn.o_proj.weight.shape[0],
-            projection_dim=16, hidden_dim=64,
-            n_layers=n_layers,
         )
         cast_results = [
             _cast_gen_svf(

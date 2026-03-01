@@ -314,7 +314,6 @@ def _svf_compare_layer(
         Evidence strings describing the comparison.
     """
     from vauban.svf import train_svf_boundary
-    from vauban.types import SVFConfig
 
     evidence: list[str] = []
 
@@ -331,16 +330,14 @@ def _svf_compare_layer(
         linear_acc = 0.5
 
     # SVF: quick-train with few epochs
-    svf_config = SVFConfig(
-        prompts_target=Path("_dummy_"),
-        prompts_opposite=Path("_dummy_"),
-        n_epochs=3,
-        learning_rate=1e-3,
-    )
+    transformer = get_transformer(model)
+    d_model = transformer.embed_tokens.weight.shape[1]
+    n_layers = len(transformer.layers)
     _boundary, svf_result = train_svf_boundary(
         model, tokenizer,
         harmful_prompts[:20], harmless_prompts[:20],
-        svf_config,
+        d_model, n_layers,
+        n_epochs=3, learning_rate=1e-3,
     )
     svf_acc = svf_result.final_accuracy
 

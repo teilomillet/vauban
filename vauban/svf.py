@@ -108,6 +108,25 @@ class SVFBoundary:
         score = ops.matmul(hidden, self.output_weight) + self.output_bias
         return score[0]  # scalar
 
+    def forward_batch(self, h: Array, layer_idx: int) -> Array:
+        """Compute boundary scores for a batch of hidden states.
+
+        Args:
+            h: Hidden states, shape (n, d_model).
+            layer_idx: Transformer layer index for FiLM conditioning.
+
+        Returns:
+            Scores, shape (n,). Positive = target class, negative = opposite.
+        """
+        projected = ops.matmul(h, self.projection)  # (n, projection_dim)
+        conditioned = (
+            self.film_scale[layer_idx] * projected + self.film_shift[layer_idx]
+        )
+        hidden = ops.matmul(conditioned, self.hidden_weight) + self.hidden_bias
+        hidden = ops.maximum(hidden, ops.array(0.0))
+        scores = ops.matmul(hidden, self.output_weight) + self.output_bias
+        return scores[:, 0]  # (n,)
+
     def parameters(self) -> list[Array]:
         """Return all trainable parameters as a flat list."""
         return [
@@ -147,6 +166,8 @@ def _svf_loss(
 ) -> Array:
     """Compute binary cross-entropy loss for SVF boundary training.
 
+    Uses batched forward passes per layer for efficiency.
+
     Args:
         params: Flat parameter list (for value_and_grad).
         boundary: SVFBoundary instance (parameters replaced from params).
@@ -164,20 +185,20 @@ def _svf_loss(
 
     for layer_idx in layers:
         # Target class (label=1): want f(h) > 0 → sigmoid(f(h)) → 1
-        for i in range(target_acts[layer_idx].shape[0]):
-            h = target_acts[layer_idx][i]
-            score = boundary.forward(h, layer_idx)
-            sigmoid_score = 1.0 / (1.0 + ops.exp(-score))
-            total_loss = total_loss - ops.log(sigmoid_score + eps)
-            count += 1
+        n_target = target_acts[layer_idx].shape[0]
+        if n_target > 0:
+            scores = boundary.forward_batch(target_acts[layer_idx], layer_idx)
+            sigmoid_scores = 1.0 / (1.0 + ops.exp(-scores))
+            total_loss = total_loss - ops.sum(ops.log(sigmoid_scores + eps))
+            count += n_target
 
         # Opposite class (label=0): want f(h) < 0 → sigmoid(f(h)) → 0
-        for i in range(opposite_acts[layer_idx].shape[0]):
-            h = opposite_acts[layer_idx][i]
-            score = boundary.forward(h, layer_idx)
-            sigmoid_score = 1.0 / (1.0 + ops.exp(-score))
-            total_loss = total_loss - ops.log(1.0 - sigmoid_score + eps)
-            count += 1
+        n_opposite = opposite_acts[layer_idx].shape[0]
+        if n_opposite > 0:
+            scores = boundary.forward_batch(opposite_acts[layer_idx], layer_idx)
+            sigmoid_scores = 1.0 / (1.0 + ops.exp(-scores))
+            total_loss = total_loss - ops.sum(ops.log(1.0 - sigmoid_scores + eps))
+            count += n_opposite
 
     if count > 0:
         total_loss = total_loss / count
@@ -218,8 +239,6 @@ def train_svf_boundary(
     Returns:
         Tuple of (trained SVFBoundary, SVFResult).
     """
-    from vauban.types import SVFResult
-
     train_layers = layers if layers is not None else list(range(n_layers))
 
     # Collect per-prompt activations
@@ -337,28 +356,27 @@ def save_svf_boundary(boundary: SVFBoundary, path: str | Path) -> None:
     ops.save_safetensors(str(path), tensors)
 
 
-def load_svf_boundary(
-    path: str | Path,
-    d_model: int,
-    projection_dim: int,
-    hidden_dim: int,
-    n_layers: int,
-) -> SVFBoundary:
+def load_svf_boundary(path: str | Path) -> SVFBoundary:
     """Load SVF boundary parameters from safetensors format.
+
+    Dimensions are inferred from stored tensor shapes — no hardcoded
+    hyperparameters needed.
 
     Args:
         path: Input file path (.safetensors).
-        d_model: Model hidden dimension.
-        projection_dim: Shared projection dimension.
-        hidden_dim: Hidden layer dimension.
-        n_layers: Number of transformer layers.
 
     Returns:
         SVFBoundary with loaded parameters.
     """
     tensors = ops.load(str(path))
+    projection = tensors["projection"]
+    d_model = projection.shape[0]
+    projection_dim = projection.shape[1]
+    hidden_dim = tensors["hidden_weight"].shape[1]
+    n_layers = tensors["film_scale"].shape[0]
+
     boundary = SVFBoundary(d_model, projection_dim, hidden_dim, n_layers)
-    boundary.projection = tensors["projection"]
+    boundary.projection = projection
     boundary.film_scale = tensors["film_scale"]
     boundary.film_shift = tensors["film_shift"]
     boundary.hidden_weight = tensors["hidden_weight"]

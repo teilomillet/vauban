@@ -331,14 +331,10 @@ def _detect_adversarial_svf(
         msg = "SIC mode='svf' requires svf_boundary_path"
         raise ValueError(msg)
 
+    boundary = load_svf_boundary(config.svf_boundary_path)
+
     transformer = model.model
-    d_model = transformer.embed_tokens.weight.shape[1]
     n_layers = len(transformer.layers)
-    boundary = load_svf_boundary(
-        config.svf_boundary_path, d_model,
-        projection_dim=16, hidden_dim=64,
-        n_layers=n_layers,
-    )
 
     messages = [{"role": "user", "content": prompt}]
     text = tokenizer.apply_chat_template(messages, tokenize=False)
