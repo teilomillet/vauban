@@ -1365,6 +1365,7 @@ class DefenseStackResult:
     blocked: bool
     layer_that_blocked: Literal["scan", "sic", "cast", "policy", "intent"] | None
     scan_result: ScanResult | None = None
+    sic_result: SICPromptResult | None = None
     policy_decision: PolicyDecision | None = None
     intent_check: IntentCheckResult | None = None
     reasons: list[str] = field(default_factory=list)

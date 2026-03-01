@@ -893,24 +893,14 @@ class TestAgentEnvironmentStack:
             config=config,
             layer_index=real_direction.layer_index,
         )
-        # Scan layer executed
+        # Both layers should have executed
         assert result.scan_result is not None
+        assert result.sic_result is not None
+        assert result.sic_result.iterations >= 1
+        assert isinstance(result.sic_result.initial_score, float)
+        assert isinstance(result.sic_result.final_score, float)
         assert isinstance(result.blocked, bool)
         assert isinstance(result.reasons, list)
-
-        # SIC layer executed — call sic_single directly to prove it runs,
-        # since DefenseStackResult doesn't expose the SICPromptResult when
-        # SIC doesn't block.
-        from vauban.sic import sic_single
-
-        sic_result = sic_single(
-            model, tokenizer, content, config.sic,
-            direction=real_direction.direction,
-            layer_index=real_direction.layer_index,
-        )
-        assert sic_result.iterations >= 1
-        assert isinstance(sic_result.initial_score, float)
-        assert isinstance(sic_result.final_score, float)
 
     def test_rollout_scoring_returns_adjusted_scores(
         self,

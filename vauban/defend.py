@@ -17,6 +17,7 @@ from vauban.types import (
     IntentState,
     PolicyDecision,
     ScanResult,
+    SICPromptResult,
     Tokenizer,
 )
 
@@ -47,6 +48,7 @@ def defend_content(
     """
     reasons: list[str] = []
     scan_result: ScanResult | None = None
+    sic_result: SICPromptResult | None = None
 
     # Layer 0: Injection scanner
     if config.scan is not None and direction is not None:
@@ -83,6 +85,7 @@ def defend_content(
                     blocked=True,
                     layer_that_blocked="sic",
                     scan_result=scan_result,
+                    sic_result=sic_result,
                     reasons=reasons,
                 )
 
@@ -98,6 +101,7 @@ def defend_content(
         blocked=blocked,
         layer_that_blocked=blocker,
         scan_result=scan_result,
+        sic_result=sic_result,
         reasons=reasons,
     )
 

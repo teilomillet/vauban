@@ -5,6 +5,7 @@ import pytest
 from vauban.types import (
     DefenseStackConfig,
     DefenseStackResult,
+    SICPromptResult,
 )
 
 
@@ -39,6 +40,26 @@ class TestDefenseStackResult:
         )
         assert result.blocked is True
         assert result.layer_that_blocked == "scan"
+        assert result.sic_result is None
+
+    def test_blocked_by_sic(self) -> None:
+        sic = SICPromptResult(
+            clean_prompt="safe content",
+            blocked=True,
+            iterations=3,
+            initial_score=-0.5,
+            final_score=-0.3,
+        )
+        result = DefenseStackResult(
+            blocked=True,
+            layer_that_blocked="sic",
+            sic_result=sic,
+            reasons=["SIC: content blocked after sanitization failed"],
+        )
+        assert result.blocked is True
+        assert result.layer_that_blocked == "sic"
+        assert result.sic_result is sic
+        assert result.sic_result.iterations == 3
 
 
 class TestDefendConfigParsing:
