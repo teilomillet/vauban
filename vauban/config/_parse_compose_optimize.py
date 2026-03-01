@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from vauban.config._parse_helpers import SectionReader
 from vauban.config._types import TomlDict
 from vauban.types import ComposeOptimizeConfig
 
@@ -23,71 +24,34 @@ def _parse_compose_optimize(
         )
         raise TypeError(msg)
 
+    reader = SectionReader("[compose_optimize]", sec)
+
     # -- bank_path (required) --
-    bank_path_raw = sec.get("bank_path")  # type: ignore[arg-type]
-    if bank_path_raw is None:
-        msg = "[compose_optimize].bank_path is required"
-        raise ValueError(msg)
-    if not isinstance(bank_path_raw, str):
-        msg = (
-            "[compose_optimize].bank_path must be a string,"
-            f" got {type(bank_path_raw).__name__}"
-        )
-        raise TypeError(msg)
-    bank_path = str((base_dir / bank_path_raw).resolve())
+    bank_path_str = reader.string("bank_path")
+    bank_path = str((base_dir / bank_path_str).resolve())
 
     # -- n_trials --
-    n_trials_raw = sec.get("n_trials", 50)  # type: ignore[arg-type]
-    if not isinstance(n_trials_raw, int):
-        msg = (
-            "[compose_optimize].n_trials must be an integer,"
-            f" got {type(n_trials_raw).__name__}"
-        )
-        raise TypeError(msg)
-    if n_trials_raw < 1:
+    n_trials = reader.integer("n_trials", default=50)
+    if n_trials < 1:
         msg = (
             f"[compose_optimize].n_trials must be >= 1,"
-            f" got {n_trials_raw}"
+            f" got {n_trials}"
         )
         raise ValueError(msg)
 
     # -- max_tokens --
-    max_tokens_raw = sec.get("max_tokens", 100)  # type: ignore[arg-type]
-    if not isinstance(max_tokens_raw, int):
-        msg = (
-            "[compose_optimize].max_tokens must be an integer,"
-            f" got {type(max_tokens_raw).__name__}"
-        )
-        raise TypeError(msg)
+    max_tokens = reader.integer("max_tokens", default=100)
 
     # -- timeout --
-    timeout_raw = sec.get("timeout")  # type: ignore[arg-type]
-    timeout: float | None = None
-    if timeout_raw is not None:
-        if not isinstance(timeout_raw, int | float):
-            msg = (
-                "[compose_optimize].timeout must be a number,"
-                f" got {type(timeout_raw).__name__}"
-            )
-            raise TypeError(msg)
-        timeout = float(timeout_raw)
+    timeout = reader.optional_number("timeout")
 
     # -- seed --
-    seed_raw = sec.get("seed")  # type: ignore[arg-type]
-    seed: int | None = None
-    if seed_raw is not None:
-        if not isinstance(seed_raw, int):
-            msg = (
-                "[compose_optimize].seed must be an integer,"
-                f" got {type(seed_raw).__name__}"
-            )
-            raise TypeError(msg)
-        seed = seed_raw
+    seed = reader.optional_integer("seed")
 
     return ComposeOptimizeConfig(
         bank_path=bank_path,
-        n_trials=n_trials_raw,
-        max_tokens=max_tokens_raw,
+        n_trials=n_trials,
+        max_tokens=max_tokens,
         timeout=timeout,
         seed=seed,
     )

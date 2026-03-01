@@ -3,12 +3,13 @@
 import datetime
 from pathlib import Path
 
+from vauban.config._parse_helpers import SectionReader
 from vauban.config._types import TomlDict
 from vauban.types import MetaConfig, MetaDocRef
 
-_VALID_STATUSES: frozenset[str] = frozenset({
-    "wip", "promising", "dead_end", "baseline", "superseded", "archived",
-})
+_VALID_STATUSES: tuple[str, ...] = (
+    "archived", "baseline", "dead_end", "promising", "superseded", "wip",
+)
 
 
 def parse_meta(raw: TomlDict, config_path: Path) -> MetaConfig | None:
@@ -24,15 +25,11 @@ def parse_meta(raw: TomlDict, config_path: Path) -> MetaConfig | None:
         msg = f"[meta] must be a table, got {type(sec).__name__}"
         raise TypeError(msg)
 
+    reader = SectionReader("[meta]", sec)
+
     # -- id (optional, defaults to filename stem) --
-    id_raw = sec.get("id")  # type: ignore[arg-type]
+    id_raw = reader.optional_string("id")
     if id_raw is not None:
-        if not isinstance(id_raw, str):
-            msg = (
-                f"[meta].id must be a string,"
-                f" got {type(id_raw).__name__}"
-            )
-            raise TypeError(msg)
         if not id_raw:
             msg = "[meta].id must be non-empty"
             raise ValueError(msg)
@@ -41,85 +38,36 @@ def parse_meta(raw: TomlDict, config_path: Path) -> MetaConfig | None:
         meta_id = config_path.stem
 
     # -- title (optional) --
-    title_raw = sec.get("title", "")  # type: ignore[arg-type]
-    if not isinstance(title_raw, str):
-        msg = (
-            f"[meta].title must be a string,"
-            f" got {type(title_raw).__name__}"
-        )
-        raise TypeError(msg)
+    title = reader.string("title", default="")
 
     # -- status (optional, default "wip") --
-    status_raw = sec.get("status", "wip")  # type: ignore[arg-type]
-    if not isinstance(status_raw, str):
-        msg = (
-            f"[meta].status must be a string,"
-            f" got {type(status_raw).__name__}"
-        )
-        raise TypeError(msg)
-    if status_raw not in _VALID_STATUSES:
-        msg = (
-            f"[meta].status must be one of"
-            f" {', '.join(sorted(_VALID_STATUSES))},"
-            f" got {status_raw!r}"
-        )
-        raise ValueError(msg)
+    status = reader.literal("status", _VALID_STATUSES, default="wip")
 
     # -- parents (optional) --
-    parents_raw = sec.get("parents")  # type: ignore[arg-type]
-    parents: list[str] = []
-    if parents_raw is not None:
-        if not isinstance(parents_raw, list):
-            msg = (
-                f"[meta].parents must be a list of strings,"
-                f" got {type(parents_raw).__name__}"
-            )
-            raise TypeError(msg)
-        for i, item in enumerate(parents_raw):
-            if not isinstance(item, str):
-                msg = (
-                    f"[meta].parents[{i}] must be a string,"
-                    f" got {type(item).__name__}"
-                )
-                raise TypeError(msg)
+    parents = reader.optional_string_list("parents")
+    if parents is not None:
+        for i, item in enumerate(parents):
             if not item:
                 msg = f"[meta].parents[{i}] must be non-empty"
                 raise ValueError(msg)
-        parents = list(parents_raw)
+    else:
+        parents = []
 
     # -- tags (optional) --
-    tags_raw = sec.get("tags")  # type: ignore[arg-type]
-    tags: list[str] = []
-    if tags_raw is not None:
-        if not isinstance(tags_raw, list):
-            msg = (
-                f"[meta].tags must be a list of strings,"
-                f" got {type(tags_raw).__name__}"
-            )
-            raise TypeError(msg)
-        for i, item in enumerate(tags_raw):
-            if not isinstance(item, str):
-                msg = (
-                    f"[meta].tags[{i}] must be a string,"
-                    f" got {type(item).__name__}"
-                )
-                raise TypeError(msg)
+    tags = reader.optional_string_list("tags")
+    if tags is not None:
+        for i, item in enumerate(tags):
             if not item:
                 msg = f"[meta].tags[{i}] must be non-empty"
                 raise ValueError(msg)
-        tags = list(tags_raw)
+    else:
+        tags = []
 
     # -- notes (optional) --
-    notes_raw = sec.get("notes", "")  # type: ignore[arg-type]
-    if not isinstance(notes_raw, str):
-        msg = (
-            f"[meta].notes must be a string,"
-            f" got {type(notes_raw).__name__}"
-        )
-        raise TypeError(msg)
+    notes = reader.string("notes", default="")
 
     # -- date (optional, TOML native date or string) --
-    date_raw = sec.get("date")  # type: ignore[arg-type]
+    date_raw = reader.data.get("date")
     date_str = ""
     if date_raw is not None:
         if isinstance(date_raw, datetime.date):
@@ -134,7 +82,7 @@ def parse_meta(raw: TomlDict, config_path: Path) -> MetaConfig | None:
             raise TypeError(msg)
 
     # -- docs (optional, array of tables) --
-    docs_raw = sec.get("docs")  # type: ignore[arg-type]
+    docs_raw = reader.data.get("docs")
     docs: list[MetaDocRef] = []
     if docs_raw is not None:
         if not isinstance(docs_raw, list):
@@ -171,11 +119,11 @@ def parse_meta(raw: TomlDict, config_path: Path) -> MetaConfig | None:
 
     return MetaConfig(
         id=meta_id,
-        title=title_raw,
-        status=status_raw,
+        title=title,
+        status=status,
         parents=parents,
         tags=tags,
-        notes=notes_raw,
+        notes=notes,
         docs=docs,
         date=date_str,
     )

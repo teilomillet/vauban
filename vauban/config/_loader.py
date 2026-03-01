@@ -79,6 +79,9 @@ def load_config(path: str | Path) -> PipelineConfig:
     defend_config = parsed_sections.defend
     circuit_config = parsed_sections.circuit
     features_config = parsed_sections.features
+    linear_probe_config = parsed_sections.linear_probe
+    fusion_config = parsed_sections.fusion
+    repbend_config = parsed_sections.repbend
 
     output_section = raw.get("output")
     output_dir_str = "output"
@@ -157,6 +160,9 @@ def load_config(path: str | Path) -> PipelineConfig:
         defend=defend_config,
         circuit=circuit_config,
         features=features_config,
+        linear_probe=linear_probe_config,
+        fusion=fusion_config,
+        repbend=repbend_config,
         eval=eval_config,
         api_eval=api_eval_config,
         meta=meta_config,
@@ -189,8 +195,9 @@ def _resolve_data_paths(
         )
         raise ValueError(msg)
 
-    harmful_raw = sec.get("harmful")  # type: ignore[arg-type]
-    harmless_raw = sec.get("harmless")  # type: ignore[arg-type]
+    sec_typed = cast("TomlDict", sec)
+    harmful_raw = sec_typed.get("harmful")
+    harmless_raw = sec_typed.get("harmless")
 
     harmful = _resolve_single_data(base_dir, harmful_raw, "harmful")
     harmless = _resolve_single_data(base_dir, harmless_raw, "harmless")
@@ -208,7 +215,8 @@ def _resolve_borderline_path(
     sec = raw.get("data")
     if not isinstance(sec, dict):
         return None
-    borderline_raw = sec.get("borderline")  # type: ignore[arg-type]
+    sec_typed = cast("TomlDict", sec)
+    borderline_raw = sec_typed.get("borderline")
     if borderline_raw is None:
         return None
     return _resolve_single_data(base_dir, borderline_raw, "borderline")
@@ -231,6 +239,18 @@ def _resolve_single_data(
         if value == "default":
             harmful, harmless = default_prompt_paths()
             return harmful if name == "harmful" else harmless
+
+        from vauban.benchmarks import KNOWN_BENCHMARKS, resolve_benchmark
+
+        if value in KNOWN_BENCHMARKS:
+            return resolve_benchmark(value)
+        if value.endswith("_infix"):
+            base_name = value[:-6]
+            if base_name in KNOWN_BENCHMARKS:
+                from vauban.benchmarks import generate_infix_prompts
+
+                return generate_infix_prompts(base_name)
+
         if value.startswith("hf:"):
             repo_id = value[3:]
             if not repo_id:
@@ -240,27 +260,20 @@ def _resolve_single_data(
         return base_dir / value
 
     if isinstance(value, dict):
-        hf_repo = value.get("hf")  # type: ignore[arg-type]
-        if not isinstance(hf_repo, str):
-            msg = (
-                f"[data.{name}] table must have"
-                " 'hf' key with a string value"
-            )
-            raise TypeError(msg)
-        split_raw = value.get("split", "train")  # type: ignore[arg-type]
-        column_raw = value.get("column", "prompt")  # type: ignore[arg-type]
-        config_raw = value.get("config")  # type: ignore[arg-type]
-        limit_raw = value.get("limit")  # type: ignore[arg-type]
+        from vauban.config._parse_helpers import SectionReader
+
+        reader = SectionReader(f"[data.{name}]", cast("TomlDict", value))
+        hf_repo = reader.string("hf")
+        split = reader.string("split", default="train")
+        column = reader.string("column", default="prompt")
+        config_val = reader.optional_string("config")
+        limit = reader.optional_integer("limit")
         return DatasetRef(
             repo_id=hf_repo,
-            split=str(split_raw),
-            column=str(column_raw),
-            config=str(config_raw) if config_raw is not None else None,
-            limit=(
-                int(limit_raw)
-                if isinstance(limit_raw, int | float)
-                else None
-            ),
+            split=split,
+            column=column,
+            config=config_val,
+            limit=limit,
         )
 
     msg = (
@@ -281,10 +294,11 @@ def _resolve_path(
     if not isinstance(sec, dict):
         msg = f"Config must have [{section}] section with '{key}' key"
         raise ValueError(msg)
-    if key not in sec:
+    sec_typed = cast("TomlDict", sec)
+    if key not in sec_typed:
         msg = f"Config must have [{section}] section with '{key}' key"
         raise ValueError(msg)
-    value = sec[key]  # type: ignore[index]
+    value = sec_typed[key]
     if not isinstance(value, str):
         msg = (
             f"[{section}].{key} must be a string,"

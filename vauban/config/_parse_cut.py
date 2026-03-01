@@ -1,11 +1,14 @@
 """Parse the [cut] section of a TOML config."""
 
+from vauban.config._parse_helpers import SectionReader
 from vauban.config._types import TomlDict
 from vauban.types import CutConfig
 
 
 def _parse_cut(raw: TomlDict) -> CutConfig:
     """Parse the [cut] section into a CutConfig."""
+    reader = SectionReader("[cut]", raw)
+
     layers_raw = raw.get("layers")
     layers: list[int] | None
     if layers_raw is None or layers_raw == "auto":
@@ -44,19 +47,7 @@ def _parse_cut(raw: TomlDict) -> CutConfig:
         )
         raise TypeError(msg)
 
-    layer_weights_raw = raw.get("layer_weights")
-    layer_weights: list[float] | None = None
-    if layer_weights_raw is not None:
-        if not isinstance(layer_weights_raw, list):
-            msg = (
-                f"[cut].layer_weights must be a list of numbers,"
-                f" got {type(layer_weights_raw).__name__}"
-            )
-            raise TypeError(msg)
-        layer_weights = [
-            float(x)  # type: ignore[arg-type]
-            for x in layer_weights_raw
-        ]
+    layer_weights = reader.optional_number_list("layer_weights")
 
     sparsity_raw = raw.get("sparsity", 0.0)
     if not isinstance(sparsity_raw, int | float):

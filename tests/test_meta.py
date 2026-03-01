@@ -101,7 +101,7 @@ class TestParseMeta:
 
     def test_parse_meta_bad_parent_item(self) -> None:
         raw: TomlDict = {"meta": {"parents": [123]}}
-        with pytest.raises(TypeError, match=r"parents\[0\] must be a string"):
+        with pytest.raises(TypeError, match=r"parents.*must be strings"):
             parse_meta(raw, self._path())
 
     def test_parse_meta_empty_parent_string(self) -> None:
