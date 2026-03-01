@@ -71,15 +71,11 @@ def surface_gate_failures(
 
 def load_refusal_phrases(path: Path) -> list[str]:
     """Load refusal phrases from a text file (one per line)."""
-    phrases: list[str] = []
-    for line in path.read_text().splitlines():
-        stripped = line.strip()
-        if stripped and not stripped.startswith("#"):
-            phrases.append(stripped)
-    if not phrases:
-        msg = f"Refusal phrases file is empty: {path}"
-        raise ValueError(msg)
-    return phrases
+    from vauban.config._validation import (
+        _load_refusal_phrases,
+    )
+
+    return _load_refusal_phrases(path)
 
 
 def is_default_data(config: PipelineConfig) -> bool:

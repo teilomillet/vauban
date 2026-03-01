@@ -795,6 +795,14 @@ def _run_compose_optimize_mode(context: EarlyModeContext) -> None:
         verbose=v,
         elapsed=time.monotonic() - context.t0,
     )
+    write_experiment_log(
+        context.config_path,
+        config,
+        "compose_optimize",
+        ["compose_optimize_report.json"],
+        {"n_trials": float(config.compose_optimize.n_trials)},
+        time.monotonic() - context.t0,
+    )
 
 
 def _run_softprompt_mode(context: EarlyModeContext) -> None:

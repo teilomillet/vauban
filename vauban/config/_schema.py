@@ -6,7 +6,15 @@ import json
 from dataclasses import MISSING, Field, dataclass, fields, is_dataclass
 from pathlib import Path
 from types import NoneType, UnionType
-from typing import Literal, Union, cast, get_args, get_origin, get_type_hints
+from typing import (
+    TYPE_CHECKING,
+    Literal,
+    Union,
+    cast,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 from vauban._backend import SUPPORTED_BACKENDS
 from vauban.types import (
@@ -34,6 +42,9 @@ from vauban.types import (
     SurfaceConfig,
     SVFConfig,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 type JsonSchema = dict[str, object]
 
@@ -360,9 +371,8 @@ def _default_for_field(field: Field[object]) -> object | None:
     if field.default is not MISSING:
         return _json_compatible_default(field.default)
     if field.default_factory is not MISSING:
-        default_factory = cast("object", field.default_factory)
-        if callable(default_factory):
-            return _json_compatible_default(default_factory())
+        default_factory = cast("Callable[[], object]", field.default_factory)
+        return _json_compatible_default(default_factory())
     return None
 
 

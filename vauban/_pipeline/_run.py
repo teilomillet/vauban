@@ -542,6 +542,7 @@ def run(config_path: str | Path) -> None:
             raise RuntimeError(msg)
 
     # Evaluate if eval prompts are provided
+    eval_refusal_rate: float | None = None
     if config.eval.prompts_path is not None and modified_model is not None:
         log(
             "Evaluating modified model",
@@ -555,6 +556,7 @@ def run(config_path: str | Path) -> None:
             max_tokens=config.eval.max_tokens,
             refusal_mode=config.eval.refusal_mode,
         )
+        eval_refusal_rate = result.refusal_rate_modified
 
         report_path = config.output_dir / "eval_report.json"
         eval_report: dict[str, object] = {
@@ -572,9 +574,9 @@ def run(config_path: str | Path) -> None:
     normal_metrics: dict[str, float] = {}
     if surface_before is not None:
         normal_reports.append("surface_report.json")
-    if config.eval.prompts_path is not None and modified_model is not None:
+    if eval_refusal_rate is not None:
         normal_reports.append("eval_report.json")
-        normal_metrics["refusal_rate_modified"] = result.refusal_rate_modified
+        normal_metrics["refusal_rate_modified"] = eval_refusal_rate
 
     log(
         f"Done — output written to {config.output_dir}",
