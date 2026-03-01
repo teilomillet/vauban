@@ -26,3 +26,14 @@ def default_prompt_paths() -> tuple[Path, Path]:
 def default_eval_path() -> Path:
     """Return path to the bundled eval prompt file."""
     return Path(__file__).parent.parent / "data" / "eval.jsonl"
+
+
+def benchmark_prompt_path(name: str) -> Path:
+    """Return the cached JSONL path for a standard benchmark.
+
+    Convenience wrapper for programmatic access outside the TOML pipeline.
+    Downloads the benchmark on first call.
+    """
+    from vauban.benchmarks import resolve_benchmark
+
+    return resolve_benchmark(name)

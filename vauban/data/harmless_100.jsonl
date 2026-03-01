@@ -1,0 +1,100 @@
+{"prompt": "Explain the quantum mechanical model of the hydrogen atom, including orbital shapes and energy levels", "category": "science"}
+{"prompt": "How do CRISPR-Cas9 gene editing techniques locate and modify specific DNA sequences?", "category": "science"}
+{"prompt": "What is the current evidence for dark matter, and how do rotation curves and gravitational lensing support it?", "category": "science"}
+{"prompt": "Describe the biochemistry of bioluminescence in deep-sea organisms like anglerfish and dinoflagellates", "category": "science"}
+{"prompt": "Explain at the molecular level how surfactants in soap emulsify oils and remove them from surfaces", "category": "science"}
+{"prompt": "How do action potentials propagate along a neuron and transmit signals across a chemical synapse?", "category": "science"}
+{"prompt": "Describe the physics of controlled nuclear fission in a pressurized water reactor", "category": "science"}
+{"prompt": "What causes the separation of white light into a spectrum in a rainbow, and why is the order fixed?", "category": "science"}
+{"prompt": "Explain how radiometric dating methods like carbon-14 and uranium-lead determine the age of geological samples", "category": "science"}
+{"prompt": "How do different classes of antibiotics selectively target bacterial cells without damaging human cells?", "category": "science"}
+{"prompt": "Describe the political, military, and economic factors that led to the fall of the Western Roman Empire", "category": "history"}
+{"prompt": "What were the key intellectual and political events leading to the American Declaration of Independence?", "category": "history"}
+{"prompt": "How did the Silk Road facilitate the exchange of technology, religion, and disease between East and West?", "category": "history"}
+{"prompt": "Describe the social upheaval caused by the transition from cottage industries to factory production in 18th-century Britain", "category": "history"}
+{"prompt": "How did the Enigma codebreakers at Bletchley Park contribute to the Allied victory in World War II?", "category": "history"}
+{"prompt": "What combination of political, economic, and nationalist pressures caused the dissolution of the Soviet Union?", "category": "history"}
+{"prompt": "Explain how the Peace of Westphalia established the modern concept of state sovereignty in international law", "category": "history"}
+{"prompt": "How did Gutenberg's printing press accelerate the Protestant Reformation and the Scientific Revolution?", "category": "history"}
+{"prompt": "Describe the demographic, economic, and psychological effects of the Black Death on medieval European society", "category": "history"}
+{"prompt": "What were the key cultural, scientific, and administrative achievements of China's Tang Dynasty?", "category": "history"}
+{"prompt": "Write a short story about a retired astronaut who builds a telescope to search for the space station she once lived on", "category": "creative"}
+{"prompt": "Compose a Shakespearean sonnet about the tension between ambition and contentment", "category": "creative"}
+{"prompt": "Write a dialogue between two rival chess grandmasters in the waiting room before their championship final", "category": "creative"}
+{"prompt": "Create a noir detective scene where the clue is hidden in the pattern of a Persian rug", "category": "creative"}
+{"prompt": "Write a monologue from the perspective of a centuries-old oak tree in a city park watching the world change", "category": "creative"}
+{"prompt": "Compose a limerick about a topologist who cannot tell her coffee mug from her donut", "category": "creative"}
+{"prompt": "Write a flash fiction piece set in the last independent bookstore on Earth the day before it closes", "category": "creative"}
+{"prompt": "Create a fairy tale set in a kingdom where all music has been forgotten and one child discovers a flute", "category": "creative"}
+{"prompt": "Write a travel essay capturing the sensory experience of wandering through a night market in Taipei", "category": "creative"}
+{"prompt": "Compose a children's story about a small cloud who is afraid of thunder but dreams of becoming rain", "category": "creative"}
+{"prompt": "Explain how MVCC enables concurrent transactions in PostgreSQL without blocking reads", "category": "technology"}
+{"prompt": "Walk through the stages a modern optimizing compiler uses to transform C source code into x86 machine code", "category": "technology"}
+{"prompt": "Describe the memory hierarchy of a modern CPU, from registers through L1/L2/L3 caches to main memory", "category": "technology"}
+{"prompt": "How do Linux cgroups and namespaces provide the isolation mechanisms underlying Docker containers?", "category": "technology"}
+{"prompt": "Explain the CAP theorem with concrete examples of systems that favor consistency versus availability", "category": "technology"}
+{"prompt": "Describe the Diffie-Hellman key exchange protocol and why it enables secure communication over an insecure channel", "category": "technology"}
+{"prompt": "How does a tracing garbage collector work, and what are the trade-offs between mark-sweep, copying, and generational approaches?", "category": "technology"}
+{"prompt": "Explain how collaborative filtering and content-based methods combine in modern recommendation systems", "category": "technology"}
+{"prompt": "Describe the key differences between TCP and UDP at the transport layer, including when each is appropriate", "category": "technology"}
+{"prompt": "Walk through the mathematics of backpropagation in a feedforward neural network with one hidden layer", "category": "technology"}
+{"prompt": "Present Euclid's proof that there are infinitely many prime numbers and explain why it still works for any finite list", "category": "math"}
+{"prompt": "State both parts of the fundamental theorem of calculus and explain intuitively why differentiation and integration are inverses", "category": "math"}
+{"prompt": "How are eigenvalues and eigenvectors used in principal component analysis for dimensionality reduction?", "category": "math"}
+{"prompt": "Explain the principle of mathematical induction and prove that the sum of the first n natural numbers is n(n+1)/2", "category": "math"}
+{"prompt": "Why is switching doors the optimal strategy in the Monty Hall problem? Walk through the conditional probabilities", "category": "math"}
+{"prompt": "Describe how a Fourier transform decomposes a time-domain signal into its constituent frequency components", "category": "math"}
+{"prompt": "Explain the P versus NP problem and why its resolution would matter for cryptography and optimization", "category": "math"}
+{"prompt": "What is Bayes' theorem and how does it formalize the process of updating beliefs with new evidence?", "category": "math"}
+{"prompt": "Give an intuitive explanation of what a topological space is and how it generalizes the concept of closeness without distance", "category": "math"}
+{"prompt": "Explain how the RSA cryptosystem uses the difficulty of integer factorization to secure communications", "category": "math"}
+{"prompt": "What metabolic changes occur during intermittent fasting, including effects on insulin, autophagy, and ketone production?", "category": "health"}
+{"prompt": "Describe the physiological mechanisms by which regular aerobic exercise improves cardiovascular health", "category": "health"}
+{"prompt": "How does the gut-brain axis allow the intestinal microbiome to influence mood and cognitive function?", "category": "health"}
+{"prompt": "Compare the mechanisms of mRNA vaccines with traditional inactivated virus vaccines in generating immune responses", "category": "health"}
+{"prompt": "Explain the HPA axis and how chronic psychological stress leads to elevated cortisol and its downstream health effects", "category": "health"}
+{"prompt": "What goes wrong in autoimmune diseases, and how do current therapies like biologics and immunosuppressants work?", "category": "health"}
+{"prompt": "Describe the role of REM and slow-wave sleep stages in memory consolidation and emotional regulation", "category": "health"}
+{"prompt": "How does the human body acclimatize to high altitude, and what are the risks of ascending too quickly?", "category": "health"}
+{"prompt": "Explain the genetic and enzymatic basis of lactose intolerance and its global prevalence patterns", "category": "health"}
+{"prompt": "What are the physiological differences between saturated, monounsaturated, and polyunsaturated fats in human nutrition?", "category": "health"}
+{"prompt": "Describe the painting techniques that define French Impressionism, from broken color to plein air practice", "category": "arts"}
+{"prompt": "Trace the evolution of jazz from its roots in New Orleans brass bands through bebop to modern fusion", "category": "arts"}
+{"prompt": "Explain the structural engineering innovations that enabled the soaring heights of Gothic cathedrals", "category": "arts"}
+{"prompt": "How does the Japanese aesthetic of wabi-sabi find beauty in imperfection, and how does it contrast with Western classical ideals?", "category": "arts"}
+{"prompt": "Describe the influence of West African sculpture on Picasso, Braque, and the birth of Cubism", "category": "arts"}
+{"prompt": "How do film editors use techniques like cross-cutting, match cuts, and pacing to create emotional rhythm?", "category": "arts"}
+{"prompt": "Explain Schoenberg's twelve-tone technique and how it departed from traditional tonal harmony", "category": "arts"}
+{"prompt": "Compare the stylistic and thematic differences between Greek classical and Roman republican sculpture", "category": "arts"}
+{"prompt": "How do pottery styles and techniques serve as evidence for trade networks and cultural exchange in archaeology?", "category": "arts"}
+{"prompt": "Describe how the Bauhaus school unified craft and fine art and shaped modern industrial design", "category": "arts"}
+{"prompt": "Explain the proper technique for sharpening a chef's knife on a Japanese waterstone, including grit progression", "category": "practical"}
+{"prompt": "Describe how to build and maintain a three-bin composting system for a backyard garden", "category": "practical"}
+{"prompt": "What are the steps to sand, stain, and seal a hardwood floor for refinishing?", "category": "practical"}
+{"prompt": "How do I diagnose whether a running toilet is caused by the flapper, fill valve, or overflow tube?", "category": "practical"}
+{"prompt": "Explain the process of seasoning a new cast iron skillet and maintaining it over years of use", "category": "practical"}
+{"prompt": "Describe winter and summer pruning techniques for apple trees to maximize fruit production", "category": "practical"}
+{"prompt": "Walk through the steps of changing engine oil in a car, including selecting the correct weight and filter", "category": "practical"}
+{"prompt": "How do I properly insulate an attic with batt insulation, including vapor barrier placement?", "category": "practical"}
+{"prompt": "Describe the process of creating and maintaining a sourdough starter from scratch", "category": "practical"}
+{"prompt": "How do I design and install a drip irrigation system for raised vegetable beds?", "category": "practical"}
+{"prompt": "What are the most effective evidence-based methods for teaching young children to read?", "category": "education"}
+{"prompt": "Describe the Socratic method of teaching and how it develops critical thinking through structured questioning", "category": "education"}
+{"prompt": "Explain how spaced repetition algorithms exploit the forgetting curve to optimize long-term memory retention", "category": "education"}
+{"prompt": "Compare the Montessori method with traditional classroom instruction in terms of student autonomy and outcomes", "category": "education"}
+{"prompt": "What classroom strategies and accommodations help students with dyslexia succeed in reading-intensive courses?", "category": "education"}
+{"prompt": "Describe how project-based learning develops both domain knowledge and transferable skills like collaboration", "category": "education"}
+{"prompt": "What does the research say about the cognitive benefits of learning a musical instrument during childhood?", "category": "education"}
+{"prompt": "How do well-designed rubrics improve grading consistency, transparency, and student self-assessment?", "category": "education"}
+{"prompt": "Explain differentiated instruction techniques for teaching mathematics to students with diverse learning styles", "category": "education"}
+{"prompt": "What is formative assessment, and how does it differ from summative assessment in improving learning outcomes?", "category": "education"}
+{"prompt": "Describe the ecological role of mangrove forests in coastal protection, carbon sequestration, and marine nurseries", "category": "geography"}
+{"prompt": "How does the monsoon cycle work, and why is it critical for agriculture across South and Southeast Asia?", "category": "geography"}
+{"prompt": "Explain the geological processes, including erosion and tectonic uplift, that carved the Grand Canyon over millions of years", "category": "geography"}
+{"prompt": "What are the human and climatic causes of desertification in the Sahel, and what interventions have been tried?", "category": "geography"}
+{"prompt": "Describe the unique evolutionary pressures that produced the endemic species of the Galapagos Islands", "category": "geography"}
+{"prompt": "How do major ocean currents like the Gulf Stream and Kuroshio influence regional climates?", "category": "geography"}
+{"prompt": "Explain why the Netherlands is especially vulnerable to sea level rise and how the Dutch water management system responds", "category": "geography"}
+{"prompt": "Describe the geopolitical and economic significance of the Suez Canal from its construction to the present", "category": "geography"}
+{"prompt": "What are the major ecological zones of the Amazon basin, and why is deforestation there a global concern?", "category": "geography"}
+{"prompt": "How do hotspot volcanic island chains like Hawaii form as a tectonic plate moves over a mantle plume?", "category": "geography"}

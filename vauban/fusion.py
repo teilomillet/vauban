@@ -174,7 +174,7 @@ def _generate_from_hidden(
         # Project to vocabulary
         logits = model(last_h)  # type: ignore[operator]
         if hasattr(logits, "logits"):
-            logits = logits.logits  # type: ignore[union-attr]
+            logits = logits.logits
         logits = logits[:, -1, :]  # (1, vocab_size)
 
         if temperature <= 0:
@@ -183,7 +183,9 @@ def _generate_from_hidden(
             scaled = logits / temperature
             probs = ops.softmax(scaled, axis=-1)
             force_eval(probs)
-            token_id = int(ops.argmax(probs, axis=-1).item())
+            token_id = int(
+                ops.random.categorical(ops.log(probs + 1e-10)).item(),
+            )
 
         tokens.append(token_id)
 

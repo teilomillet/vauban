@@ -8,10 +8,13 @@ from vauban._array import Array
 from vauban.softprompt._continuous import _continuous_attack
 from vauban.softprompt._defense_eval import evaluate_against_defenses
 from vauban.softprompt._egd import _egd_attack
+from vauban.softprompt._encoding import (
+    _resolve_infix_overrides,
+    _resolve_injection_ids,
+)
 from vauban.softprompt._gan import gan_loop
 from vauban.softprompt._gcg import _gcg_attack
 from vauban.softprompt._paraphrase import paraphrase_prompts
-from vauban.softprompt._utils import _resolve_infix_overrides, _resolve_injection_ids
 from vauban.types import (
     ApiEvalConfig,
     CausalLM,

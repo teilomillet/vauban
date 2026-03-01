@@ -1,6 +1,7 @@
 """Soft prompt attack: continuous embedding optimization, GCG, and EGD."""
 
 from vauban._forward import make_cache as _make_cache
+from vauban.softprompt._constraints import _build_vocab_mask
 from vauban.softprompt._continuous import _continuous_attack
 from vauban.softprompt._defense_eval import (
     evaluate_against_defenses,
@@ -8,6 +9,15 @@ from vauban.softprompt._defense_eval import (
 )
 from vauban.softprompt._dispatcher import softprompt_attack
 from vauban.softprompt._egd import _egd_attack
+from vauban.softprompt._encoding import (
+    _compute_infix_split,
+    _pre_encode_prompts,
+    _pre_encode_prompts_with_history,
+    _pre_encode_prompts_with_injection_context,
+    _pre_encode_prompts_with_injection_template,
+    _resolve_infix_overrides,
+    _resolve_injection_ids,
+)
 from vauban.softprompt._gan import gan_loop
 from vauban.softprompt._gcg import _gcg_attack
 from vauban.softprompt._generation import (
@@ -21,28 +31,23 @@ from vauban.softprompt._loss import (
     _compute_defense_aware_penalty,
     _compute_defensive_loss,
     _compute_eos_loss,
+    _compute_externality_loss,
     _compute_kl_collision_loss,
     _compute_loss,
     _compute_perplexity_loss,
     _compute_untargeted_loss,
 )
 from vauban.softprompt._paraphrase import paraphrase_prompts
-from vauban.softprompt._utils import (
-    _build_vocab_mask,
+from vauban.softprompt._runtime import (
     _compute_accessibility_score,
     _compute_embed_regularization,
-    _compute_infix_split,
     _compute_learning_rate,
     _encode_refusal_tokens,
     _encode_targets,
     _forward_with_prefix,
-    _pre_encode_prompts,
-    _pre_encode_prompts_with_history,
-    _pre_encode_prompts_with_injection_context,
-    _pre_encode_prompts_with_injection_template,
     _project_to_tokens,
-    _resolve_infix_overrides,
-    _resolve_injection_ids,
+)
+from vauban.softprompt._search import (
     _sample_prompt_ids,
     _select_prompt_ids,
     _select_worst_k_prompt_ids,
@@ -57,6 +62,7 @@ __all__ = [
     "_compute_defensive_loss",
     "_compute_embed_regularization",
     "_compute_eos_loss",
+    "_compute_externality_loss",
     "_compute_infix_split",
     "_compute_kl_collision_loss",
     "_compute_learning_rate",

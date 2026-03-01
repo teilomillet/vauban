@@ -46,8 +46,8 @@ def test_validate_warns_surface_schema_with_fix_hint(tmp_path: Path) -> None:
 
     warnings = validate(toml_file)
     assert any(
-        "[surface].prompts line 1" in w
-        and "label, category" in w
+        "surface prompts line 1" in w
+        and "'category'" in w
         and "fix:" in w
         for w in warnings
     )
@@ -77,7 +77,7 @@ def test_validate_warns_surface_optional_turn_depth_type(
 
     warnings = validate(toml_file)
     assert any(
-        "[surface].prompts line 1" in w
+        "surface prompts line 1" in w
         and "'turn_depth'" in w
         and "fix:" in w
         for w in warnings
@@ -137,7 +137,7 @@ def test_validate_warns_surface_messages_schema_with_fix(
 
     warnings = validate(toml_file)
     assert any(
-        "[surface].prompts line 1" in w
+        "surface prompts line 1" in w
         and "messages[0]" in w
         and "fix:" in w
         for w in warnings

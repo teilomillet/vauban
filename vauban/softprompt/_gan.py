@@ -23,16 +23,16 @@ from vauban.softprompt._defense_eval import (
     evaluate_against_defenses_multiturn,
 )
 from vauban.softprompt._egd import _egd_attack
-from vauban.softprompt._gcg import _gcg_attack
-from vauban.softprompt._generation import _evaluate_attack
-from vauban.softprompt._paraphrase import paraphrase_prompts
-from vauban.softprompt._utils import (
+from vauban.softprompt._encoding import (
     _pre_encode_prompts_with_history,
-    _project_to_tokens,
     _resolve_infix_overrides,
     _resolve_infix_overrides_with_history,
     _resolve_injection_ids,
 )
+from vauban.softprompt._gcg import _gcg_attack
+from vauban.softprompt._generation import _evaluate_attack
+from vauban.softprompt._paraphrase import paraphrase_prompts
+from vauban.softprompt._runtime import _project_to_tokens
 from vauban.types import (
     ApiEvalConfig,
     CausalLM,

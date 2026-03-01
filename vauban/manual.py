@@ -291,7 +291,11 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 description="Source for harmful prompts.",
                 constraints=(
                     'required; one of: "default", local path string,'
-                    ' "hf:<repo_id>", or [data.harmful] HF table.'
+                    ' "hf:<repo_id>", [data.harmful] HF table,'
+                    ' or benchmark name: "harmbench", "advbench",'
+                    ' "jailbreakbench", "strongreject".'
+                    ' Append "_infix" for infix-wrapped variant'
+                    ' (e.g. "harmbench_infix").'
                 ),
                 required=True,
             ),
@@ -315,6 +319,11 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
         ),
         notes=(
             "HF table form accepts keys: hf, split, column, config, limit.",
+            (
+                "Benchmark sentinels auto-download and cache standard"
+                " datasets: harmbench (632), advbench (500),"
+                " jailbreakbench (100), strongreject (350+)."
+            ),
         ),
     ),
     SectionSpec(

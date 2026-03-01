@@ -6,12 +6,15 @@ Pushes harmful and safe activation centroids apart via cosine separation loss.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from vauban import _ops as ops
 from vauban._forward import force_eval
 from vauban.measure._activations import _collect_per_prompt_activations
 from vauban.types import RepBendConfig, RepBendResult
+
+log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from vauban._array import Array
@@ -95,6 +98,11 @@ def _compute_separation(
 
     for layer_idx in target_layers:
         if layer_idx >= len(per_layer):
+            log.warning(
+                "Layer %d out of range (model has %d layers) — skipping",
+                layer_idx,
+                len(per_layer),
+            )
             continue
         acts = per_layer[layer_idx]  # (n_total, d_model)
         harmful_centroid = ops.mean(acts[:n_harmful], axis=0)
@@ -149,6 +157,11 @@ def _train_repbend(
 
         for layer_idx in config.layers:
             if layer_idx >= len(per_layer):
+                log.warning(
+                    "Layer %d out of range (model has %d layers) — skipping",
+                    layer_idx,
+                    len(per_layer),
+                )
                 continue
 
             acts = per_layer[layer_idx]  # (n_total, d_model)
@@ -175,18 +188,30 @@ def _train_repbend(
 
             # Update the layer's output projection weight
             layer = transformer.layers[layer_idx]
-            if hasattr(layer, "self_attn") and hasattr(layer.self_attn, "o_proj"):
-                o_proj = layer.self_attn.o_proj
-                if hasattr(o_proj, "weight"):
-                    w = o_proj.weight  # (out, in)
-                    # Project weight update: amplify the separation direction
-                    update = config.learning_rate * config.separation_coeff * ops.outer(
-                        direction, direction,
-                    )
-                    force_eval(update)
-                    new_w = w + update
-                    force_eval(new_w)
-                    o_proj.weight = new_w
+            if not hasattr(layer, "self_attn") or not hasattr(
+                layer.self_attn, "o_proj",
+            ):
+                log.warning(
+                    "Layer %d has no self_attn.o_proj — skipping weight update",
+                    layer_idx,
+                )
+                continue
+            o_proj = layer.self_attn.o_proj
+            if not hasattr(o_proj, "weight"):
+                log.warning(
+                    "Layer %d o_proj has no weight attribute — skipping",
+                    layer_idx,
+                )
+                continue
+            w = o_proj.weight  # (out, in)
+            # Project weight update: amplify the separation direction
+            update = config.learning_rate * config.separation_coeff * ops.outer(
+                direction, direction,
+            )
+            force_eval(update)
+            new_w = w + update
+            force_eval(new_w)
+            o_proj.weight = new_w
 
         avg_loss = epoch_loss / max(n_updates, 1)
         loss_history.append(avg_loss)

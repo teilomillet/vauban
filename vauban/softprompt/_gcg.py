@@ -5,6 +5,8 @@ import random
 from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import force_eval
+from vauban.softprompt._constraints import _build_vocab_mask
+from vauban.softprompt._encoding import _pre_encode_prompts
 from vauban.softprompt._generation import _evaluate_attack
 from vauban.softprompt._loss import (
     _compute_defensive_loss,
@@ -12,16 +14,16 @@ from vauban.softprompt._loss import (
     _compute_loss,
     _compute_untargeted_loss,
 )
-from vauban.softprompt._utils import (
-    _build_vocab_mask,
+from vauban.softprompt._runtime import (
     _compute_accessibility_score,
-    _compute_per_prompt_losses,
     _encode_refusal_tokens,
     _encode_targets,
-    _pre_encode_prompts,
     _prepare_transfer_data,
-    _sample_prompt_ids,
     _score_transfer_loss,
+)
+from vauban.softprompt._search import (
+    _compute_per_prompt_losses,
+    _sample_prompt_ids,
     _select_prompt_ids,
     _select_worst_k_prompt_ids,
     _split_into_batches,

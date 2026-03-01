@@ -42,6 +42,13 @@ def train_probe(
     Returns:
         LinearProbeResult with per-layer accuracy and loss curves.
     """
+    if not harmful_prompts:
+        msg = "harmful_prompts must be non-empty"
+        raise ValueError(msg)
+    if not harmless_prompts:
+        msg = "harmless_prompts must be non-empty"
+        raise ValueError(msg)
+
     # Collect per-prompt activations
     all_prompts = harmful_prompts + harmless_prompts
     per_layer = _collect_per_prompt_activations(
@@ -188,7 +195,8 @@ def _train_single_probe(
     # Compute final accuracy
     all_logits = ops.matmul(activations, w) + b
     preds = (all_logits > 0.0).astype(ops.float32)
-    correct = ops.sum((preds == labels).astype(ops.float32))
+    match = ops.array(preds == labels)
+    correct = ops.sum(match.astype(ops.float32))
     force_eval(correct)
     accuracy = float(correct.item()) / n_samples
 
