@@ -10,6 +10,7 @@ from vauban._forward import embed_and_mask_with_prefix, force_eval, lm_head_forw
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES
 from vauban.softprompt._loss import (
     _compute_defensive_loss,
+    _compute_externality_loss,
     _compute_loss,
     _compute_untargeted_loss,
 )
@@ -658,7 +659,7 @@ def _compute_per_prompt_losses(
         eos_loss_weight: Weight for EOS auxiliary loss.
         ref_model: Reference model for KL collision loss.
         kl_ref_weight: Weight for KL collision loss.
-        loss_mode: "targeted", "untargeted", or "defensive".
+        loss_mode: "targeted", "untargeted", "defensive", or "externality".
         refusal_ids: Refusal token IDs (required for untargeted/defensive).
 
     Returns:
@@ -687,6 +688,12 @@ def _compute_per_prompt_losses(
                 ref_model, kl_ref_weight,
                 defense_aware_weight, sic_layer, sic_threshold,
                 cast_layers, cast_threshold,
+            )
+        elif loss_mode == "externality":
+            loss = _compute_externality_loss(
+                model, soft_embeds, prompt_ids,
+                n_tokens, direction,
+                direction_weight,
             )
         else:
             loss = _compute_loss(
@@ -748,7 +755,7 @@ def _select_worst_k_prompt_ids(
         eos_loss_weight: Weight for EOS auxiliary loss.
         ref_model: Reference model for KL collision loss.
         kl_ref_weight: Weight for KL collision loss.
-        loss_mode: Loss mode ("targeted", "untargeted", or "defensive").
+        loss_mode: Loss mode ("targeted", "untargeted", "defensive", or "externality").
         refusal_ids: Refusal token IDs.
 
     Returns:

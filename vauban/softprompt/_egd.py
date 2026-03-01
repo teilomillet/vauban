@@ -6,6 +6,7 @@ from vauban._forward import force_eval
 from vauban.softprompt._generation import _evaluate_attack
 from vauban.softprompt._loss import (
     _compute_defensive_loss,
+    _compute_externality_loss,
     _compute_loss,
     _compute_untargeted_loss,
 )
@@ -233,6 +234,16 @@ def _egd_attack(
                             da_weight, da_sic_layer, da_sic_threshold,
                             da_cast_layers, da_cast_threshold,
                             perplexity_weight=ppl_weight,
+                            suffix_token_ids=_suf_ids,
+                            token_position=tok_pos,
+                            infix_split=_isplit,
+                        )
+                    elif config.loss_mode == "externality":
+                        total = total + _compute_externality_loss(
+                            model, soft_embeds, pid,
+                            config.n_tokens, direction,
+                            config.direction_weight,
+                            ppl_weight,
                             suffix_token_ids=_suf_ids,
                             token_position=tok_pos,
                             infix_split=_isplit,

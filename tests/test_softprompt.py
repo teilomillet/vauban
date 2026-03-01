@@ -4209,3 +4209,64 @@ class TestInfixMultiturnDispatch:
         assert result.mode == "gcg"
         assert result.token_ids is not None
         assert len(result.token_ids) == 4
+
+
+class TestExternalityLossMode:
+    """Tests for loss_mode='externality' in GCG and EGD."""
+
+    def test_gcg_externality_mode(self) -> None:
+        """GCG with loss_mode='externality' produces finite loss."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        direction = mx.random.normal((D_MODEL,))
+        mx.eval(direction)
+
+        config = SoftPromptConfig(
+            mode="gcg",
+            n_tokens=4,
+            n_steps=2,
+            batch_size=4,
+            top_k=8,
+            seed=42,
+            max_gen_tokens=2,
+            loss_mode="externality",
+            direction_weight=1.0,
+        )
+
+        result = _gcg_attack(
+            model, tokenizer, ["Test prompt"], config,
+            direction=direction,
+        )
+        assert result.mode == "gcg"
+        assert math.isfinite(result.final_loss)
+        assert result.token_ids is not None
+        assert len(result.token_ids) == 4
+
+    def test_egd_externality_mode(self) -> None:
+        """EGD with loss_mode='externality' produces finite loss."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        mx.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        direction = mx.random.normal((D_MODEL,))
+        mx.eval(direction)
+
+        config = SoftPromptConfig(
+            mode="egd",
+            n_tokens=4,
+            n_steps=3,
+            learning_rate=0.01,
+            seed=42,
+            max_gen_tokens=2,
+            loss_mode="externality",
+            direction_weight=1.0,
+        )
+
+        result = _egd_attack(
+            model, tokenizer, ["Test prompt"], config,
+            direction=direction,
+        )
+        assert result.mode == "egd"
+        assert math.isfinite(result.final_loss)
+        assert result.token_ids is not None
+        assert len(result.token_ids) == 4
