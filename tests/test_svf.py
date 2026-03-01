@@ -2,10 +2,10 @@
 
 from pathlib import Path
 
-import mlx.core as mx
 import pytest
 
 from tests.conftest import D_MODEL, NUM_LAYERS, MockCausalLM, MockTokenizer
+from vauban import _ops as ops
 from vauban.svf import (
     SVFBoundary,
     load_svf_boundary,
@@ -18,21 +18,21 @@ from vauban.svf import (
 class TestSVFBoundary:
     def test_forward_returns_scalar(self) -> None:
         boundary = SVFBoundary(D_MODEL, 8, 16, NUM_LAYERS)
-        h = mx.random.normal((D_MODEL,))
-        mx.eval(h)
+        h = ops.random.normal((D_MODEL,))
+        ops.eval(h)
         score = boundary.forward(h, 0)
-        mx.eval(score)
+        ops.eval(score)
         assert score.shape == ()
         assert isinstance(float(score.item()), float)
 
     def test_forward_different_layers(self) -> None:
         boundary = SVFBoundary(D_MODEL, 8, 16, NUM_LAYERS)
-        h = mx.random.normal((D_MODEL,))
-        mx.eval(h)
+        h = ops.random.normal((D_MODEL,))
+        ops.eval(h)
         scores = []
         for i in range(NUM_LAYERS):
             score = boundary.forward(h, i)
-            mx.eval(score)
+            ops.eval(score)
             scores.append(float(score.item()))
         # Different layers should give different scores
         # (FiLM conditioning differs)
@@ -45,19 +45,19 @@ class TestSVFBoundary:
         boundary.set_parameters(params)
         params2 = boundary.parameters()
         for p1, p2 in zip(params, params2, strict=True):
-            assert mx.array_equal(p1, p2)
+            assert ops.array_equal(p1, p2)
 
 
 class TestSVFGradient:
     def test_returns_score_and_gradient(self) -> None:
         boundary = SVFBoundary(D_MODEL, 8, 16, NUM_LAYERS)
-        h = mx.random.normal((D_MODEL,))
-        mx.eval(h)
+        h = ops.random.normal((D_MODEL,))
+        ops.eval(h)
         score, grad = svf_gradient(boundary, h, 0)
         assert isinstance(score, float)
         assert grad.shape == (D_MODEL,)
         # Gradient should be approximately unit norm
-        grad_norm = float(mx.linalg.norm(grad).item())
+        grad_norm = float(ops.linalg.norm(grad).item())
         assert grad_norm == pytest.approx(1.0, abs=0.01) or grad_norm == 0.0
 
 
@@ -69,12 +69,12 @@ class TestSVFSaveLoad:
         assert path.exists()
 
         loaded = load_svf_boundary(path)
-        h = mx.random.normal((D_MODEL,))
-        mx.eval(h)
+        h = ops.random.normal((D_MODEL,))
+        ops.eval(h)
 
         score_orig = boundary.forward(h, 0)
         score_loaded = loaded.forward(h, 0)
-        mx.eval(score_orig, score_loaded)
+        ops.eval(score_orig, score_loaded)
         assert float(score_orig.item()) == pytest.approx(
             float(score_loaded.item()), abs=1e-5,
         )

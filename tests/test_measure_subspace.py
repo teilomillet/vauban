@@ -2,9 +2,8 @@
 
 from pathlib import Path
 
-import mlx.core as mx
-
 from tests.conftest import NUM_LAYERS, MockCausalLM, MockTokenizer
+from vauban import _ops as ops
 from vauban.measure import measure_subspace, measure_subspace_bank
 
 
@@ -39,9 +38,9 @@ class TestMeasureSubspace:
         )
 
         gram = result.basis @ result.basis.T
-        mx.eval(gram)
-        identity = mx.eye(2)
-        diff = float(mx.linalg.norm(gram - identity).item())
+        ops.eval(gram)
+        identity = ops.eye(2)
+        diff = float(ops.linalg.norm(gram - identity).item())
         assert diff < 1e-3
 
     def test_singular_values_decreasing(

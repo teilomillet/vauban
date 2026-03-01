@@ -15,6 +15,11 @@ zeros_like = _mx.zeros_like
 ones = _mx.ones
 arange = _mx.arange
 full = _mx.full
+eye = _mx.eye
+
+# Comparison
+allclose = _mx.allclose
+array_equal = _mx.array_equal
 
 # Reductions
 sum = _mx.sum

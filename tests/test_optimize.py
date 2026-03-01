@@ -6,7 +6,6 @@ from types import ModuleType
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
-import mlx.core as mx
 import pytest
 from conftest import (
     D_MODEL,
@@ -17,6 +16,7 @@ from conftest import (
     MockTokenizer,
 )
 
+from vauban import _ops as ops
 from vauban.optimize import _pick_balanced
 from vauban.types import (
     DirectionResult,
@@ -283,11 +283,11 @@ class TestOptimizeImportError:
         from vauban.optimize import optimize as opt_fn
 
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
-        direction = mx.random.normal((D_MODEL,))
-        direction = direction / mx.linalg.norm(direction)
-        mx.eval(direction)
+        direction = ops.random.normal((D_MODEL,))
+        direction = direction / ops.linalg.norm(direction)
+        ops.eval(direction)
 
         dr = DirectionResult(
             direction=direction,
@@ -319,12 +319,12 @@ class TestOptimizeIntegration:
             from vauban.optimize import optimize as opt_fn
 
             model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-            mx.eval(model.parameters())
+            ops.eval(model.parameters())
             tokenizer = MockTokenizer(VOCAB_SIZE)
 
-            direction = mx.random.normal((D_MODEL,))
-            direction = direction / mx.linalg.norm(direction)
-            mx.eval(direction)
+            direction = ops.random.normal((D_MODEL,))
+            direction = direction / ops.linalg.norm(direction)
+            ops.eval(direction)
 
             dr = DirectionResult(
                 direction=direction,

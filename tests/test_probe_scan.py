@@ -1,9 +1,9 @@
 """Tests for scan() injection detection and related utility functions."""
 
-import mlx.core as mx
 import pytest
 
 from tests.conftest import VOCAB_SIZE, MockCausalLM, MockTokenizer
+from vauban._array import Array
 from vauban.scan import _detect_spans, _sigmoid, scan
 from vauban.types import ScanConfig
 
@@ -17,7 +17,7 @@ class TestScanWithModel:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         config = ScanConfig(threshold=0.0)
         result = scan(
@@ -34,7 +34,7 @@ class TestScanWithModel:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         config = ScanConfig(threshold=1e9)
         result = scan(
@@ -48,7 +48,7 @@ class TestScanWithModel:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         config = ScanConfig(threshold=-1e9)
         result = scan(
@@ -62,7 +62,7 @@ class TestScanWithModel:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         config = ScanConfig(threshold=0.0, target_layer=1)
         result = scan(
@@ -76,7 +76,7 @@ class TestScanWithModel:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         config = ScanConfig(threshold=0.0, target_layer=None)
         result = scan(
@@ -89,7 +89,7 @@ class TestScanWithModel:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         config = ScanConfig(threshold=0.0, span_threshold=1e9)
         result = scan(
@@ -104,7 +104,7 @@ class TestScanWithModel:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         config = ScanConfig(threshold=0.0)
         text = "hello world"
@@ -126,7 +126,7 @@ class TestCalibrateScanThreshold:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         from vauban.scan import calibrate_scan_threshold
 
@@ -142,7 +142,7 @@ class TestCalibrateScanThreshold:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         from vauban.scan import calibrate_scan_threshold
 

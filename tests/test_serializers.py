@@ -1,7 +1,6 @@
 """Tests for vauban._serializers: JSON serialization helpers."""
 
-import mlx.core as mx
-
+from vauban import _ops as ops
 from vauban._serializers import (
     _cast_to_dict,
     _defend_to_dict,
@@ -95,8 +94,8 @@ class TestDepthToDict:
 
 class TestDepthDirectionToDict:
     def test_round_trip(self) -> None:
-        direction = mx.ones((16,))
-        mx.eval(direction)
+        direction = ops.ones((16,))
+        ops.eval(direction)
         result = DepthDirectionResult(
             direction=direction,
             layer_index=1,
@@ -117,8 +116,8 @@ class TestDepthDirectionToDict:
         assert d["median_dtr"] == 0.55
 
     def test_refusal_cosine_none(self) -> None:
-        direction = mx.zeros((8,))
-        mx.eval(direction)
+        direction = ops.zeros((8,))
+        ops.eval(direction)
         result = DepthDirectionResult(
             direction=direction,
             layer_index=0,
@@ -270,10 +269,10 @@ class TestDefendToDict:
 
 class TestDiffResultToDict:
     def test_round_trip(self) -> None:
-        basis = mx.ones((2, 16))
-        mx.eval(basis)
-        per_layer_bases = [mx.ones((2, 16)), mx.ones((2, 16))]
-        mx.eval(*per_layer_bases)
+        basis = ops.ones((2, 16))
+        ops.eval(basis)
+        per_layer_bases = [ops.ones((2, 16)), ops.ones((2, 16))]
+        ops.eval(*per_layer_bases)
         result = DiffResult(
             basis=basis,
             singular_values=[0.9, 0.5],

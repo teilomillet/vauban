@@ -18,25 +18,33 @@ Run with: uv run python tests/integration_test.py [model_id]
 import gc
 import sys
 
-import mlx.core as mx
-import mlx_lm
-from mlx.utils import tree_flatten
+import pytest
 
-from vauban.cut import cut, target_weight_keys
-from vauban.dequantize import dequantize_model, is_quantized
-from vauban.evaluate import (
+from vauban._backend import get_backend
+
+pytestmark = pytest.mark.skipif(
+    get_backend() != "mlx", reason="MLX-only integration test",
+)
+
+import mlx.core as mx  # noqa: E402
+import mlx_lm  # noqa: E402
+from mlx.utils import tree_flatten  # noqa: E402
+
+from vauban.cut import cut, target_weight_keys  # noqa: E402
+from vauban.dequantize import dequantize_model, is_quantized  # noqa: E402
+from vauban.evaluate import (  # noqa: E402
     DEFAULT_REFUSAL_PHRASES,
     _perplexity,
     _refusal_rate,
 )
-from vauban.measure import (
+from vauban.measure import (  # noqa: E402
     default_eval_path,
     default_prompt_paths,
     load_prompts,
     measure,
     select_target_layers,
 )
-from vauban.probe import probe
+from vauban.probe import probe  # noqa: E402
 
 DEFAULT_MODEL = "mlx-community/Qwen2.5-0.5B-Instruct-bf16"
 ALPHA = 0.8

@@ -92,6 +92,32 @@ def test_linalg_svd(backend_ops: object) -> None:
     assert s.shape[0] == 2
 
 
+def test_eye(backend_ops: object) -> None:
+    """Identity matrix creation."""
+    e = backend_ops.eye(3)  # type: ignore[attr-defined]
+    assert e.shape == (3, 3)
+    assert float(e[0, 0].item()) == pytest.approx(1.0)
+    assert float(e[0, 1].item()) == pytest.approx(0.0)
+
+
+def test_allclose(backend_ops: object) -> None:
+    """Approximate equality check."""
+    a = backend_ops.array([1.0, 2.0, 3.0])  # type: ignore[attr-defined]
+    b = backend_ops.array([1.0, 2.0, 3.0 + 1e-9])  # type: ignore[attr-defined]
+    assert backend_ops.allclose(a, b)  # type: ignore[attr-defined]
+    c = backend_ops.array([1.0, 2.0, 4.0])  # type: ignore[attr-defined]
+    assert not backend_ops.allclose(a, c)  # type: ignore[attr-defined]
+
+
+def test_array_equal(backend_ops: object) -> None:
+    """Exact equality check."""
+    a = backend_ops.array([1.0, 2.0, 3.0])  # type: ignore[attr-defined]
+    b = backend_ops.array([1.0, 2.0, 3.0])  # type: ignore[attr-defined]
+    assert backend_ops.array_equal(a, b)  # type: ignore[attr-defined]
+    c = backend_ops.array([1.0, 2.0, 4.0])  # type: ignore[attr-defined]
+    assert not backend_ops.array_equal(a, c)  # type: ignore[attr-defined]
+
+
 def test_tree_flatten(backend_ops: object) -> None:
     """tree_flatten produces (key, leaf) pairs."""
     tree = {"a": 1, "b": {"c": 2, "d": 3}}

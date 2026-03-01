@@ -1,8 +1,7 @@
 """Tests for vauban.measure._diff: weight-diff direction extraction."""
 
-import mlx.core as mx
-
 from tests.conftest import D_MODEL, NUM_HEADS, NUM_LAYERS, VOCAB_SIZE, MockCausalLM
+from vauban import _ops as ops
 from vauban._forward import svd_stable
 from vauban.measure._diff import measure_diff
 from vauban.types import DiffResult, DirectionResult
@@ -13,8 +12,8 @@ class TestMeasureDiff:
         """Two different models produce a valid DiffResult."""
         model_a = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
         model_b = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model_a.parameters())
-        mx.eval(model_b.parameters())
+        ops.eval(model_a.parameters())
+        ops.eval(model_b.parameters())
 
         result = measure_diff(
             model_a, model_b, top_k=3,
@@ -35,8 +34,8 @@ class TestMeasureDiff:
         """`.best_direction()` returns a valid DirectionResult."""
         model_a = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
         model_b = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model_a.parameters())
-        mx.eval(model_b.parameters())
+        ops.eval(model_a.parameters())
+        ops.eval(model_b.parameters())
 
         result = measure_diff(
             model_a, model_b, top_k=2,
@@ -51,9 +50,9 @@ class TestMeasureDiff:
         assert dr.direction.shape[-1] == result.d_model
 
     def test_identical_models_near_zero(self) -> None:
-        """Same model diffed against itself → near-zero singular values."""
+        """Same model diffed against itself -> near-zero singular values."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
 
         result = measure_diff(
             model, model, top_k=2,
@@ -65,10 +64,10 @@ class TestMeasureDiff:
 
     def test_svd_stable_restores_vector_dtype(self) -> None:
         """MLX SVD should not leak float32 vectors back into model math."""
-        matrix = mx.ones((4, 4), dtype=mx.float16)
+        matrix = ops.ones((4, 4), dtype=ops.float16)
         u, s, vt = svd_stable(matrix)
-        mx.eval(u, s, vt)
+        ops.eval(u, s, vt)
 
         assert u.dtype == matrix.dtype
         assert vt.dtype == matrix.dtype
-        assert s.dtype == mx.float32
+        assert s.dtype == ops.float32

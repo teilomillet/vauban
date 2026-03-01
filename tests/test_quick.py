@@ -1,9 +1,9 @@
 """Tests for vauban.quick — REPL convenience API."""
 
-import json
-from pathlib import Path
+from __future__ import annotations
 
-import mlx.core as mx
+import json
+from typing import TYPE_CHECKING
 
 from tests.conftest import D_MODEL, NUM_LAYERS, MockCausalLM, MockTokenizer
 from vauban.quick import (
@@ -16,6 +16,11 @@ from vauban.quick import (
     steer_prompt,
 )
 from vauban.types import DirectionResult, EvalResult
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from vauban._array import Array
 
 
 class TestMeasureDirection:
@@ -58,7 +63,7 @@ class TestProbePrompt:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         result = probe_prompt(mock_model, mock_tokenizer, "test", direction)
         assert result.layer_count == NUM_LAYERS
@@ -70,7 +75,7 @@ class TestSteerPrompt:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         result = steer_prompt(
             mock_model, mock_tokenizer, "test", direction,
@@ -217,9 +222,9 @@ class TestScan:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
-        """scan() should accept raw mx.array direction."""
+        """scan() should accept raw Array direction."""
         from unittest.mock import patch
 
         from vauban.types import SurfaceResult

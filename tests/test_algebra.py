@@ -2,9 +2,10 @@
 
 import json
 
-import mlx.core as mx
 import pytest
 
+from vauban import _ops as ops
+from vauban._array import Array
 from vauban.algebra import (
     add,
     compose,
@@ -38,39 +39,45 @@ D_MODEL = 32  # small for fast tests
 
 def _random_space(rank: int, label: str = "test", seed: int = 0) -> DirectionSpace:
     """Create a random DirectionSpace for testing."""
-    mx.random.seed(seed)
-    raw = mx.random.normal((rank, D_MODEL))
-    mx.eval(raw)
+    ops.random.seed(seed)
+    raw = ops.random.normal((rank, D_MODEL))
+    ops.eval(raw)
     return from_array(raw, label=label)
 
 
 def _rank0_space(label: str = "empty") -> DirectionSpace:
     """Create a rank-0 DirectionSpace."""
-    basis = mx.zeros((0, D_MODEL))
-    mx.eval(basis)
+    basis = ops.zeros((0, D_MODEL))
+    ops.eval(basis)
     return DirectionSpace(basis=basis, d_model=D_MODEL, rank=0, label=label)
 
 
 def _orthogonal_spaces() -> tuple[DirectionSpace, DirectionSpace]:
     """Create two orthogonal rank-2 subspaces in R^D_MODEL."""
-    a_raw = mx.zeros((2, D_MODEL))
-    a_raw = a_raw.at[0, 0].add(1.0)
-    a_raw = a_raw.at[1, 1].add(1.0)
-    b_raw = mx.zeros((2, D_MODEL))
-    b_raw = b_raw.at[0, 2].add(1.0)
-    b_raw = b_raw.at[1, 3].add(1.0)
-    mx.eval(a_raw, b_raw)
+    row_a0 = [0.0] * D_MODEL
+    row_a0[0] = 1.0
+    row_a1 = [0.0] * D_MODEL
+    row_a1[1] = 1.0
+    a_raw = ops.array([row_a0, row_a1])
+
+    row_b0 = [0.0] * D_MODEL
+    row_b0[2] = 1.0
+    row_b1 = [0.0] * D_MODEL
+    row_b1[3] = 1.0
+    b_raw = ops.array([row_b0, row_b1])
+
+    ops.eval(a_raw, b_raw)
     return from_array(a_raw, label="A"), from_array(b_raw, label="B")
 
 
-def _is_orthonormal(basis: mx.array, tol: float = 1e-4) -> bool:
+def _is_orthonormal(basis: Array, tol: float = 1e-4) -> bool:
     """Check if basis rows are orthonormal."""
     if basis.shape[0] == 0:
         return True
     gram = basis @ basis.T
-    mx.eval(gram)
-    identity = mx.eye(basis.shape[0])
-    diff = float(mx.linalg.norm(gram - identity).item())
+    ops.eval(gram)
+    identity = ops.eye(basis.shape[0])
+    diff = float(ops.linalg.norm(gram - identity).item())
     return diff < tol
 
 
@@ -147,8 +154,8 @@ class TestAlgebraicProperties:
         double_neg = negate(negate(a))
         # basis of negate(negate(a)) should equal a.basis
         diff = a.basis - double_neg.basis
-        mx.eval(diff)
-        assert float(mx.linalg.norm(diff).item()) < 1e-5
+        ops.eval(diff)
+        assert float(ops.linalg.norm(diff).item()) < 1e-5
 
     def test_intersect_subset_of_both(self) -> None:
         a = _random_space(3, "a", seed=10)
@@ -187,12 +194,12 @@ class TestAlgebraicProperties:
 
 class TestConverters:
     def test_from_direction_result_roundtrip(self) -> None:
-        mx.random.seed(42)
-        vec = mx.random.normal((D_MODEL,))
-        mx.eval(vec)
-        norm = mx.linalg.norm(vec)
+        ops.random.seed(42)
+        vec = ops.random.normal((D_MODEL,))
+        ops.eval(vec)
+        norm = ops.linalg.norm(vec)
         vec = vec / norm
-        mx.eval(vec)
+        ops.eval(vec)
 
         result = DirectionResult(
             direction=vec,
@@ -207,16 +214,16 @@ class TestConverters:
         assert space.layer_index == 5
 
         extracted = to_direction(space)
-        mx.eval(extracted)
+        ops.eval(extracted)
         # Should match original direction (possibly flipped sign)
-        cos_sim = abs(float(mx.sum(extracted * vec).item()))
+        cos_sim = abs(float(ops.sum(extracted * vec).item()))
         assert cos_sim > 0.99
 
     def test_from_subspace_result_roundtrip(self) -> None:
-        mx.random.seed(42)
-        raw = mx.random.normal((3, D_MODEL))
+        ops.random.seed(42)
+        raw = ops.random.normal((3, D_MODEL))
         basis = orthonormalize(raw)
-        mx.eval(basis)
+        ops.eval(basis)
 
         result = SubspaceResult(
             basis=basis,
@@ -232,14 +239,14 @@ class TestConverters:
         assert space.singular_values == [3.0, 2.0, 1.0]
 
         extracted_basis = to_basis(space)
-        diff = float(mx.linalg.norm(extracted_basis - basis).item())
+        diff = float(ops.linalg.norm(extracted_basis - basis).item())
         assert diff < 1e-5
 
     def test_from_diff_result(self) -> None:
-        mx.random.seed(42)
-        raw = mx.random.normal((2, D_MODEL))
+        ops.random.seed(42)
+        raw = ops.random.normal((2, D_MODEL))
         basis = orthonormalize(raw)
-        mx.eval(basis)
+        ops.eval(basis)
 
         result = DiffResult(
             basis=basis,
@@ -257,10 +264,10 @@ class TestConverters:
         assert space.layer_index == 10
 
     def test_from_dbdi_result_produces_rank2(self) -> None:
-        mx.random.seed(42)
-        hdd = mx.random.normal((D_MODEL,))
-        red = mx.random.normal((D_MODEL,))
-        mx.eval(hdd, red)
+        ops.random.seed(42)
+        hdd = ops.random.normal((D_MODEL,))
+        red = ops.random.normal((D_MODEL,))
+        ops.eval(hdd, red)
 
         result = DBDIResult(
             hdd=hdd,
@@ -277,26 +284,26 @@ class TestConverters:
         assert _is_orthonormal(space.basis)
 
     def test_from_array_1d(self) -> None:
-        vec = mx.array([1.0, 0.0, 0.0] + [0.0] * (D_MODEL - 3))
-        mx.eval(vec)
+        vec = ops.array([1.0, 0.0, 0.0] + [0.0] * (D_MODEL - 3))
+        ops.eval(vec)
         space = from_array(vec, label="unit_x")
         assert space.rank == 1
         assert space.d_model == D_MODEL
         # Should be normalized
-        norm = float(mx.linalg.norm(space.basis[0]).item())
+        norm = float(ops.linalg.norm(space.basis[0]).item())
         assert abs(norm - 1.0) < 1e-5
 
     def test_from_array_2d(self) -> None:
-        mx.random.seed(42)
-        raw = mx.random.normal((3, D_MODEL))
-        mx.eval(raw)
+        ops.random.seed(42)
+        raw = ops.random.normal((3, D_MODEL))
+        ops.eval(raw)
         space = from_array(raw, label="random_3d")
         assert space.rank == 3
         assert _is_orthonormal(space.basis)
 
     def test_from_array_zero_vector(self) -> None:
-        vec = mx.zeros((D_MODEL,))
-        mx.eval(vec)
+        vec = ops.zeros((D_MODEL,))
+        ops.eval(vec)
         space = from_array(vec, label="zero")
         assert space.rank == 0
 
@@ -367,7 +374,7 @@ class TestProvenance:
         assert result.provenance.parents == ("alpha", "beta")
 
     def test_deep_provenance_chain(self) -> None:
-        """Depth-3 provenance: add → subtract → intersect."""
+        """Depth-3 provenance: add -> subtract -> intersect."""
         a = _random_space(3, "alpha", seed=1)
         b = _random_space(3, "beta", seed=2)
         c = _random_space(2, "gamma", seed=3)
@@ -453,8 +460,8 @@ class TestEdgeCases:
         assert result.rank == 0
 
     def test_dimension_mismatch_raises(self) -> None:
-        a = from_array(mx.random.normal((8,)), label="small")
-        b = from_array(mx.random.normal((16,)), label="big")
+        a = from_array(ops.random.normal((8,)), label="small")
+        b = from_array(ops.random.normal((16,)), label="big")
         with pytest.raises(ValueError, match="Dimension mismatch"):
             add(a, b)
         with pytest.raises(ValueError, match="Dimension mismatch"):
@@ -495,22 +502,22 @@ class TestEdgeCases:
         assert similarity(a, b) == 0.0
 
     def test_from_array_invalid_ndim(self) -> None:
-        arr = mx.random.normal((2, 3, 4))
-        mx.eval(arr)
+        arr = ops.random.normal((2, 3, 4))
+        ops.eval(arr)
         with pytest.raises(ValueError, match="ndim"):
             from_array(arr)
 
     def test_from_array_empty_2d(self) -> None:
-        arr = mx.zeros((0, D_MODEL))
-        mx.eval(arr)
+        arr = ops.zeros((0, D_MODEL))
+        ops.eval(arr)
         space = from_array(arr, label="empty_2d")
         assert space.rank == 0
 
     def test_compose_partial_singular_values(self) -> None:
         """compose() with empty singular_values (from_array) falls back to sv=1.0."""
-        mx.random.seed(51)
-        raw = mx.random.normal((3, D_MODEL))
-        mx.eval(raw)
+        ops.random.seed(51)
+        raw = ops.random.normal((3, D_MODEL))
+        ops.eval(raw)
         a = from_array(raw, label="no_sv")
         # from_array produces empty singular_values
         assert a.singular_values == []
@@ -522,10 +529,10 @@ class TestEdgeCases:
 
     def test_compose_mixed_singular_values(self) -> None:
         """compose() with singular_values shorter than rank uses sv=1.0 fallback."""
-        mx.random.seed(50)
-        raw = mx.random.normal((3, D_MODEL))
+        ops.random.seed(50)
+        raw = ops.random.normal((3, D_MODEL))
         basis = orthonormalize(raw)
-        mx.eval(basis)
+        ops.eval(basis)
         # Construct space with only 1 singular value but rank=3
         space = DirectionSpace(
             basis=basis,
@@ -543,9 +550,9 @@ class TestEdgeCases:
 
     def test_intersect_non_orthonormal_diverges(self) -> None:
         """intersect() with non-orthonormal input diverges from orthonormal version."""
-        mx.random.seed(60)
-        raw = mx.random.normal((3, D_MODEL))
-        mx.eval(raw)
+        ops.random.seed(60)
+        raw = ops.random.normal((3, D_MODEL))
+        ops.eval(raw)
 
         # "Good" space: orthonormalized
         good = from_array(raw, label="good")
@@ -568,10 +575,10 @@ class TestEdgeCases:
 
     def test_subtract_non_orthonormal_residual(self) -> None:
         """subtract() with non-orthonormal input still produces orthonormal output."""
-        mx.random.seed(70)
-        raw_a = mx.random.normal((3, D_MODEL))
-        raw_b = mx.random.normal((1, D_MODEL))
-        mx.eval(raw_a, raw_b)
+        ops.random.seed(70)
+        raw_a = ops.random.normal((3, D_MODEL))
+        raw_b = ops.random.normal((1, D_MODEL))
+        ops.eval(raw_a, raw_b)
 
         bad_a = DirectionSpace(
             basis=raw_a, d_model=D_MODEL, rank=3, label="bad_a",
@@ -598,10 +605,10 @@ class TestIntegration:
         from vauban._compose import compose_subspaces
 
         bank = {
-            "safety": mx.random.normal((3, D_MODEL)),
-            "format": mx.random.normal((2, D_MODEL)),
+            "safety": ops.random.normal((3, D_MODEL)),
+            "format": ops.random.normal((2, D_MODEL)),
         }
-        mx.eval(bank["safety"], bank["format"])
+        ops.eval(bank["safety"], bank["format"])
 
         result = compose_subspaces(bank, {"safety": 1.0, "format": 0.5})
         assert isinstance(result, DirectionSpace)
@@ -613,10 +620,10 @@ class TestIntegration:
         from vauban._compose import compose_subspaces
 
         bank = {
-            "a": mx.random.normal((3, D_MODEL)),
-            "b": mx.random.normal((3, D_MODEL)),
+            "a": ops.random.normal((3, D_MODEL)),
+            "b": ops.random.normal((3, D_MODEL)),
         }
-        mx.eval(bank["a"], bank["b"])
+        ops.eval(bank["a"], bank["b"])
 
         result = compose_subspaces(
             bank, {"a": 1.0, "b": 1.0}, max_rank=2,
@@ -626,16 +633,16 @@ class TestIntegration:
     def test_compose_subspaces_missing_key_raises(self) -> None:
         from vauban._compose import compose_subspaces
 
-        bank = {"a": mx.random.normal((2, D_MODEL))}
-        mx.eval(bank["a"])
+        bank = {"a": ops.random.normal((2, D_MODEL))}
+        ops.eval(bank["a"])
         with pytest.raises(KeyError, match="missing"):
             compose_subspaces(bank, {"missing": 1.0})
 
     def test_compose_subspaces_empty_raises(self) -> None:
         from vauban._compose import compose_subspaces
 
-        bank = {"a": mx.random.normal((2, D_MODEL))}
-        mx.eval(bank["a"])
+        bank = {"a": ops.random.normal((2, D_MODEL))}
+        ops.eval(bank["a"])
         with pytest.raises(ValueError, match="empty"):
             compose_subspaces(bank, {})
 
@@ -643,52 +650,52 @@ class TestIntegration:
         """cut_space() with rank-1 produces same result as cut()."""
         from vauban.cut import cut, cut_space
 
-        mx.random.seed(42)
-        direction = mx.random.normal((D_MODEL,))
-        direction = direction / mx.linalg.norm(direction)
-        mx.eval(direction)
+        ops.random.seed(42)
+        direction = ops.random.normal((D_MODEL,))
+        direction = direction / ops.linalg.norm(direction)
+        ops.eval(direction)
 
         space = from_array(direction, label="test_cut")
 
         o_key = "model.layers.0.self_attn.o_proj.weight"
         d_key = "model.layers.0.mlp.down_proj.weight"
         weights = {
-            o_key: mx.random.normal((D_MODEL, D_MODEL)),
-            d_key: mx.random.normal((D_MODEL, D_MODEL)),
+            o_key: ops.random.normal((D_MODEL, D_MODEL)),
+            d_key: ops.random.normal((D_MODEL, D_MODEL)),
         }
-        mx.eval(weights[o_key], weights[d_key])
+        ops.eval(weights[o_key], weights[d_key])
 
         result_cut = cut(weights, direction, [0], alpha=1.0)
         result_space = cut_space(weights, space, [0], alpha=1.0)
 
         for key in result_cut:
-            diff = float(mx.linalg.norm(result_cut[key] - result_space[key]).item())
+            diff = float(ops.linalg.norm(result_cut[key] - result_space[key]).item())
             assert diff < 1e-4, f"Mismatch on {key}: {diff}"
 
     def test_cut_space_rank_k_matches_cut_subspace(self) -> None:
         """cut_space() with rank-k produces same result as cut_subspace()."""
         from vauban.cut import cut_space, cut_subspace
 
-        mx.random.seed(42)
-        raw = mx.random.normal((3, D_MODEL))
+        ops.random.seed(42)
+        raw = ops.random.normal((3, D_MODEL))
         basis = orthonormalize(raw)
-        mx.eval(basis)
+        ops.eval(basis)
 
         space = from_array(basis, label="test_sub_cut")
 
         o_key = "model.layers.0.self_attn.o_proj.weight"
         d_key = "model.layers.0.mlp.down_proj.weight"
         weights = {
-            o_key: mx.random.normal((D_MODEL, D_MODEL)),
-            d_key: mx.random.normal((D_MODEL, D_MODEL)),
+            o_key: ops.random.normal((D_MODEL, D_MODEL)),
+            d_key: ops.random.normal((D_MODEL, D_MODEL)),
         }
-        mx.eval(weights[o_key], weights[d_key])
+        ops.eval(weights[o_key], weights[d_key])
 
         result_sub = cut_subspace(weights, basis, [0], alpha=0.8)
         result_space = cut_space(weights, space, [0], alpha=0.8)
 
         for key in result_sub:
-            diff = float(mx.linalg.norm(result_sub[key] - result_space[key]).item())
+            diff = float(ops.linalg.norm(result_sub[key] - result_space[key]).item())
             assert diff < 1e-4, f"Mismatch on {key}: {diff}"
 
     def test_cut_space_rank0_noop(self) -> None:
@@ -698,12 +705,12 @@ class TestIntegration:
         space = _rank0_space()
         key = "model.layers.0.self_attn.o_proj.weight"
         weights = {
-            key: mx.random.normal((D_MODEL, D_MODEL)),
+            key: ops.random.normal((D_MODEL, D_MODEL)),
         }
-        mx.eval(weights[key])
+        ops.eval(weights[key])
 
         result = cut_space(weights, space, [0])
-        diff = float(mx.linalg.norm(result[key] - weights[key]).item())
+        diff = float(ops.linalg.norm(result[key] - weights[key]).item())
         assert diff < 1e-6
 
 

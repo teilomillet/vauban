@@ -1,8 +1,8 @@
 """Tests for vauban.cast: conditional runtime activation steering."""
 
-import mlx.core as mx
-
 from tests.conftest import MockCausalLM, MockTokenizer
+from vauban import _ops as ops
+from vauban._array import Array
 from vauban.cast import _resolve_alpha, cast_generate
 from vauban.types import AlphaTier
 
@@ -12,7 +12,7 @@ class TestCastGenerate:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         result = cast_generate(
             mock_model,
@@ -35,7 +35,7 @@ class TestCastGenerate:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         result = cast_generate(
             mock_model,
@@ -100,12 +100,12 @@ class TestCastDualDirection:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         """When condition_direction is provided, it gates steering."""
         # Use a zero condition direction — should never trigger
-        cond_dir = mx.zeros_like(direction)
-        mx.eval(cond_dir)
+        cond_dir = ops.zeros_like(direction)
+        ops.eval(cond_dir)
 
         result = cast_generate(
             mock_model,
@@ -125,13 +125,13 @@ class TestCastDualDirection:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         """Primary direction is always used for the actual correction."""
         # Condition direction that always triggers (large values)
-        cond_dir = mx.ones_like(direction)
-        cond_dir = cond_dir / mx.linalg.norm(cond_dir)
-        mx.eval(cond_dir)
+        cond_dir = ops.ones(direction.shape)
+        cond_dir = cond_dir / ops.linalg.norm(cond_dir)
+        ops.eval(cond_dir)
 
         result = cast_generate(
             mock_model,
@@ -154,7 +154,7 @@ class TestCastAlphaTiers:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         """Alpha tiers are passed through and affect generation."""
         tiers = [

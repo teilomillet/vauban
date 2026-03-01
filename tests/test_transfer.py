@@ -1,9 +1,10 @@
 """Tests for vauban.transfer: direction transfer testing."""
 
-import mlx.core as mx
 import pytest
 
 from tests.conftest import D_MODEL, MockCausalLM, MockTokenizer
+from vauban import _ops as ops
+from vauban._array import Array
 from vauban.transfer import check_direction_transfer
 
 
@@ -12,7 +13,7 @@ class TestDirectionTransfer:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         """Direction tested on the same model should have positive separation."""
         result = check_direction_transfer(
@@ -33,7 +34,7 @@ class TestDirectionTransfer:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         result = check_direction_transfer(
             mock_model,
@@ -57,8 +58,8 @@ class TestDirectionTransfer:
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
     ) -> None:
-        wrong_dim = mx.random.normal((D_MODEL + 8,))
-        mx.eval(wrong_dim)
+        wrong_dim = ops.random.normal((D_MODEL + 8,))
+        ops.eval(wrong_dim)
         with pytest.raises(ValueError, match="dimension mismatch"):
             check_direction_transfer(
                 mock_model,

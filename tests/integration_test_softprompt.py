@@ -12,16 +12,24 @@ Run with: uv run python tests/integration_test_softprompt.py [model_id]
 
 import sys
 
-import mlx.core as mx
-import mlx.nn as nn
-import mlx_lm
-from mlx_lm.tokenizer_utils import TokenizerWrapper
-from transformers import PreTrainedTokenizer
+import pytest
 
-from vauban.dequantize import dequantize_model, is_quantized
-from vauban.evaluate import DEFAULT_REFUSAL_PHRASES
-from vauban.measure import measure
-from vauban.softprompt import (
+from vauban._backend import get_backend
+
+pytestmark = pytest.mark.skipif(
+    get_backend() != "mlx", reason="MLX-only integration test",
+)
+
+import mlx.core as mx  # noqa: E402
+import mlx.nn as nn  # noqa: E402
+import mlx_lm  # noqa: E402
+from mlx_lm.tokenizer_utils import TokenizerWrapper  # noqa: E402
+from transformers import PreTrainedTokenizer  # noqa: E402
+
+from vauban.dequantize import dequantize_model, is_quantized  # noqa: E402
+from vauban.evaluate import DEFAULT_REFUSAL_PHRASES  # noqa: E402
+from vauban.measure import measure  # noqa: E402
+from vauban.softprompt import (  # noqa: E402
     _compute_loss,
     _decode_step,
     _encode_targets,
@@ -30,7 +38,7 @@ from vauban.softprompt import (
     _prefill_with_cache,
     softprompt_attack,
 )
-from vauban.types import SoftPromptConfig
+from vauban.types import SoftPromptConfig  # noqa: E402
 
 DEFAULT_MODEL = "mlx-community/Qwen2.5-0.5B-Instruct-bf16"
 

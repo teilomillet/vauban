@@ -1,9 +1,11 @@
 """Tests for vauban.sic: SIC iterative input sanitization."""
 
-import mlx.core as mx
+import math
+
 import pytest
 
 from tests.conftest import MockCausalLM, MockTokenizer
+from vauban._array import Array
 from vauban.sic import (
     _detect_adversarial_direction,
     _detect_adversarial_generation,
@@ -20,17 +22,17 @@ from vauban.types import SICConfig, SICPromptResult, SICResult
 class TestDetectAdversarialDirection:
     def test_returns_finite_float(
         self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         score = _detect_adversarial_direction(
             mock_model, mock_tokenizer, "Hello world", direction, 0,
         )
         assert isinstance(score, float)
-        assert mx.isfinite(mx.array(score)).item()
+        assert math.isfinite(score)
 
     def test_different_prompts_different_scores(
         self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         score1 = _detect_adversarial_direction(
             mock_model, mock_tokenizer, "Hello", direction, 0,
@@ -45,7 +47,7 @@ class TestDetectAdversarialDirection:
 
     def test_target_layer_beyond_count_uses_last(
         self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         score = _detect_adversarial_direction(
             mock_model, mock_tokenizer, "Hello", direction, 999,
@@ -101,7 +103,7 @@ class TestGenerateWithMessages:
 class TestSanitizePrompt:
     def test_clean_prompt_passes_through(
         self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         # Use a very low threshold so everything is "clean"
         config = SICConfig(mode="direction", threshold=-1e6)
@@ -115,7 +117,7 @@ class TestSanitizePrompt:
 
     def test_adversarial_triggers_rewrite(
         self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         # Use a very high threshold so everything is "adversarial"
         config = SICConfig(
@@ -130,7 +132,7 @@ class TestSanitizePrompt:
 
     def test_max_iterations_respected(
         self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         config = SICConfig(
             mode="direction", threshold=1e6,
@@ -144,7 +146,7 @@ class TestSanitizePrompt:
 
     def test_block_on_failure_true(
         self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         config = SICConfig(
             mode="direction", threshold=1e6,
@@ -159,7 +161,7 @@ class TestSanitizePrompt:
 
     def test_block_on_failure_false(
         self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         config = SICConfig(
             mode="direction", threshold=1e6,
@@ -176,7 +178,7 @@ class TestSanitizePrompt:
 class TestSic:
     def test_returns_sic_result(
         self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         config = SICConfig(mode="direction", threshold=-1e6)
         result = sic(
@@ -192,7 +194,7 @@ class TestSic:
 
     def test_empty_prompts(
         self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         config = SICConfig(mode="direction")
         result = sic(
@@ -222,7 +224,7 @@ class TestSic:
 
     def test_aggregates_sum_correctly(
         self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         # Low threshold = everything clean
         config = SICConfig(mode="direction", threshold=-1e6)
@@ -235,7 +237,7 @@ class TestSic:
 
     def test_all_blocked_when_threshold_extreme(
         self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         config = SICConfig(
             mode="direction", threshold=1e6,
@@ -251,7 +253,7 @@ class TestSic:
 class TestSicSingle:
     def test_returns_prompt_result(
         self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         config = SICConfig(mode="direction", threshold=-1e6)
         result = sic_single(
@@ -264,7 +266,7 @@ class TestSicSingle:
 
     def test_uses_target_layer_from_config(
         self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         config = SICConfig(
             mode="direction", threshold=-1e6, target_layer=1,
@@ -278,7 +280,7 @@ class TestSicSingle:
 class TestCalibrateThreshold:
     def test_returns_finite_float(
         self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         config = SICConfig(mode="direction")
         threshold = calibrate_threshold(
@@ -287,11 +289,11 @@ class TestCalibrateThreshold:
             config, direction, 0,
         )
         assert isinstance(threshold, float)
-        assert mx.isfinite(mx.array(threshold)).item()
+        assert math.isfinite(threshold)
 
     def test_threshold_below_mean(
         self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         config = SICConfig(mode="direction")
         prompts = ["Hello", "World", "Test", "Foo", "Bar"]
@@ -310,7 +312,7 @@ class TestCalibrateThreshold:
 
     def test_empty_prompts_returns_default(
         self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         config = SICConfig(mode="direction", threshold=0.5)
         threshold = calibrate_threshold(
@@ -323,7 +325,7 @@ class TestCalibrateThreshold:
 class TestSicCalibration:
     def test_calibrated_threshold_set(
         self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         config = SICConfig(mode="direction", calibrate=True)
         result = sic(
@@ -337,7 +339,7 @@ class TestSicCalibration:
 
     def test_no_calibration_threshold_is_none(
         self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         config = SICConfig(mode="direction", threshold=-1e6)
         result = sic(
@@ -348,7 +350,7 @@ class TestSicCalibration:
 
     def test_calibrate_without_prompts_no_calibration(
         self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         config = SICConfig(mode="direction", calibrate=True, threshold=-1e6)
         result = sic(

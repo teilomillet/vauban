@@ -1,9 +1,9 @@
 """Tests for vauban.depth: deep-thinking token analysis."""
 
-import mlx.core as mx
 import pytest
 
 from tests.conftest import D_MODEL, NUM_LAYERS, MockCausalLM, MockTokenizer
+from vauban import _ops as ops
 from vauban.depth import (
     _jsd,
     _settling_depth,
@@ -41,30 +41,30 @@ def gen_config() -> DepthConfig:
 class TestJSD:
     def test_identical_distributions(self) -> None:
         """JSD(p, p) should be approximately 0."""
-        p = mx.softmax(mx.random.normal((32,)))
-        mx.eval(p)
+        p = ops.softmax(ops.random.normal((32,)))
+        ops.eval(p)
         result = _jsd(p, p)
         assert result == pytest.approx(0.0, abs=1e-5)
 
     def test_non_negative(self) -> None:
         """JSD should always be non-negative."""
-        p = mx.softmax(mx.random.normal((32,)))
-        q = mx.softmax(mx.random.normal((32,)))
-        mx.eval(p, q)
+        p = ops.softmax(ops.random.normal((32,)))
+        q = ops.softmax(ops.random.normal((32,)))
+        ops.eval(p, q)
         result = _jsd(p, q)
         assert result >= 0.0
 
     def test_symmetric(self) -> None:
         """JSD(p, q) should equal JSD(q, p)."""
-        p = mx.softmax(mx.random.normal((32,)))
-        q = mx.softmax(mx.random.normal((32,)))
-        mx.eval(p, q)
+        p = ops.softmax(ops.random.normal((32,)))
+        q = ops.softmax(ops.random.normal((32,)))
+        ops.eval(p, q)
         assert _jsd(p, q) == pytest.approx(_jsd(q, p), abs=1e-5)
 
     def test_different_distributions_positive(self) -> None:
         """JSD of different distributions should be positive."""
-        p = mx.array([0.9, 0.05, 0.05])
-        q = mx.array([0.05, 0.9, 0.05])
+        p = ops.array([0.9, 0.05, 0.05])
+        q = ops.array([0.05, 0.9, 0.05])
         result = _jsd(p, q)
         assert result > 0.0
 
@@ -332,7 +332,7 @@ class TestDepthDirection:
             _make_depth_result("b", 0.9),
         ]
         refusal_dir = DirectionResult(
-            direction=mx.ones((D_MODEL,)) / (D_MODEL ** 0.5),
+            direction=ops.ones((D_MODEL,)) / (D_MODEL ** 0.5),
             layer_index=0,
             cosine_scores=[0.5] * NUM_LAYERS,
             d_model=D_MODEL,

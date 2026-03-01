@@ -3,7 +3,6 @@
 import json
 from pathlib import Path
 
-import mlx.core as mx
 import pytest
 
 import vauban
@@ -15,6 +14,7 @@ from tests.conftest import (
     MockCausalLM,
     MockTokenizer,
 )
+from vauban import _ops as ops
 
 
 class TestRunMeasureOnly:
@@ -26,8 +26,8 @@ class TestRunMeasureOnly:
         """Diff measure-only runs should write reports and return early."""
         aligned_model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
         base_model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(aligned_model.parameters())
-        mx.eval(base_model.parameters())
+        ops.eval(aligned_model.parameters())
+        ops.eval(base_model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         models = {

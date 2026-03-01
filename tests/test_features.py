@@ -5,9 +5,14 @@ from __future__ import annotations
 import tempfile
 import tomllib
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import mlx.core as mx
 import pytest
+
+from vauban import _ops as ops
+
+if TYPE_CHECKING:
+    from vauban._array import Array
 
 D_MODEL = 16
 D_SAE = 32
@@ -26,10 +31,10 @@ class TestSparseAutoencoder:
         from vauban.features import SparseAutoencoder
 
         sae = SparseAutoencoder(D_MODEL, D_SAE)
-        x = mx.random.normal((4, D_MODEL))
-        mx.eval(x)
+        x = ops.random.normal((4, D_MODEL))
+        ops.eval(x)
         codes = sae.encode(x)
-        mx.eval(codes)
+        ops.eval(codes)
         assert codes.shape == (4, D_SAE)
 
     def test_encode_nonnegative(self) -> None:
@@ -37,21 +42,24 @@ class TestSparseAutoencoder:
         from vauban.features import SparseAutoencoder
 
         sae = SparseAutoencoder(D_MODEL, D_SAE)
-        x = mx.random.normal((8, D_MODEL))
-        mx.eval(x)
+        x = ops.random.normal((8, D_MODEL))
+        ops.eval(x)
         codes = sae.encode(x)
-        mx.eval(codes)
-        assert float(mx.min(codes).item()) >= 0.0
+        ops.eval(codes)
+        # Verify all values non-negative (ReLU output)
+        flat = codes.reshape(-1)
+        min_val = float(flat[ops.argmax(-flat)].item())
+        assert min_val >= 0.0
 
     def test_decode_shape(self) -> None:
         """Decode should produce (..., d_model) from (..., d_sae)."""
         from vauban.features import SparseAutoencoder
 
         sae = SparseAutoencoder(D_MODEL, D_SAE)
-        codes = mx.random.normal((4, D_SAE))
-        mx.eval(codes)
+        codes = ops.random.normal((4, D_SAE))
+        ops.eval(codes)
         reconstructed = sae.decode(codes)
-        mx.eval(reconstructed)
+        ops.eval(reconstructed)
         assert reconstructed.shape == (4, D_MODEL)
 
     def test_forward_roundtrip(self) -> None:
@@ -59,10 +67,10 @@ class TestSparseAutoencoder:
         from vauban.features import SparseAutoencoder
 
         sae = SparseAutoencoder(D_MODEL, D_SAE)
-        x = mx.random.normal((4, D_MODEL))
-        mx.eval(x)
+        x = ops.random.normal((4, D_MODEL))
+        ops.eval(x)
         reconstructed, codes = sae.forward(x)
-        mx.eval(reconstructed, codes)
+        ops.eval(reconstructed, codes)
         assert reconstructed.shape == x.shape
         assert codes.shape == (4, D_SAE)
 
@@ -77,8 +85,8 @@ class TestSparseAutoencoder:
         sae.set_parameters(params)
         new_params = sae.parameters()
         for p, np_ in zip(params, new_params, strict=True):
-            mx.eval(p, np_)
-            assert mx.array_equal(p, np_)
+            ops.eval(p, np_)
+            assert ops.array_equal(p, np_)
 
 
 # ---------------------------------------------------------------------------
@@ -94,8 +102,8 @@ class TestSAETraining:
         from vauban.features import SparseAutoencoder, train_sae
 
         sae = SparseAutoencoder(D_MODEL, D_SAE)
-        activations = mx.random.normal((32, D_MODEL))
-        mx.eval(activations)
+        activations = ops.random.normal((32, D_MODEL))
+        ops.eval(activations)
 
         result = train_sae(
             sae,
@@ -119,8 +127,8 @@ class TestSAETraining:
         from vauban.features import SparseAutoencoder, train_sae
 
         sae = SparseAutoencoder(D_MODEL, D_SAE)
-        activations = mx.random.normal((16, D_MODEL))
-        mx.eval(activations)
+        activations = ops.random.normal((16, D_MODEL))
+        ops.eval(activations)
 
         result = train_sae(
             sae,
@@ -146,10 +154,10 @@ class TestSAESaveLoad:
         from vauban.features import SparseAutoencoder, load_sae, save_sae
 
         sae = SparseAutoencoder(D_MODEL, D_SAE)
-        x = mx.random.normal((4, D_MODEL))
-        mx.eval(x)
+        x = ops.random.normal((4, D_MODEL))
+        ops.eval(x)
         orig_codes = sae.encode(x)
-        mx.eval(orig_codes)
+        ops.eval(orig_codes)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "test_sae.safetensors"
@@ -158,14 +166,14 @@ class TestSAESaveLoad:
 
             loaded = load_sae(path, D_MODEL, D_SAE)
             loaded_codes = loaded.encode(x)
-            mx.eval(loaded_codes)
+            ops.eval(loaded_codes)
 
             # Parameters should match
             for p_orig, p_loaded in zip(
                 sae.parameters(), loaded.parameters(), strict=True,
             ):
-                mx.eval(p_orig, p_loaded)
-                assert mx.allclose(p_orig, p_loaded), (
+                ops.eval(p_orig, p_loaded)
+                assert ops.allclose(p_orig, p_loaded), (
                     "Loaded parameters should match original"
                 )
 
@@ -183,9 +191,9 @@ class TestDirectionAlignment:
         from vauban.features import SparseAutoencoder, feature_direction_alignment
 
         sae = SparseAutoencoder(D_MODEL, D_SAE)
-        direction = mx.random.normal((D_MODEL,))
-        direction = direction / mx.linalg.norm(direction)
-        mx.eval(direction)
+        direction = ops.random.normal((D_MODEL,))
+        direction = direction / ops.linalg.norm(direction)
+        ops.eval(direction)
 
         alignment = feature_direction_alignment(sae, direction)
         assert len(alignment) == D_SAE
@@ -195,9 +203,9 @@ class TestDirectionAlignment:
         from vauban.features import SparseAutoencoder, feature_direction_alignment
 
         sae = SparseAutoencoder(D_MODEL, D_SAE)
-        direction = mx.random.normal((D_MODEL,))
-        direction = direction / mx.linalg.norm(direction)
-        mx.eval(direction)
+        direction = ops.random.normal((D_MODEL,))
+        direction = direction / ops.linalg.norm(direction)
+        ops.eval(direction)
 
         alignment = feature_direction_alignment(sae, direction)
         for cos_sim in alignment:
@@ -210,20 +218,20 @@ class TestDirectionAlignment:
         from vauban.features import SparseAutoencoder, feature_direction_alignment
 
         sae = SparseAutoencoder(D_MODEL, D_SAE)
-        direction = mx.random.normal((D_MODEL,))
-        direction = direction / mx.linalg.norm(direction)
-        mx.eval(direction)
+        direction = ops.random.normal((D_MODEL,))
+        direction = direction / ops.linalg.norm(direction)
+        ops.eval(direction)
 
         # Force first decoder row to match direction
         new_w_dec = sae.w_dec
         # Overwrite row 0
         row_0 = direction * 2.0  # scaled version
-        mx.eval(row_0)
-        rows: list[mx.array] = [row_0]
+        ops.eval(row_0)
+        rows: list[Array] = [row_0]
         for i in range(1, D_SAE):
             rows.append(new_w_dec[i])
-        sae.w_dec = mx.stack(rows)
-        mx.eval(sae.w_dec)
+        sae.w_dec = ops.stack(rows)
+        ops.eval(sae.w_dec)
 
         alignment = feature_direction_alignment(sae, direction)
         assert alignment[0] == pytest.approx(1.0, abs=0.05), (

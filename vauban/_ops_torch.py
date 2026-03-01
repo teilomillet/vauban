@@ -80,6 +80,24 @@ cos = _torch.cos
 matmul = _torch.matmul
 reshape = _torch.reshape
 where = _torch.where
+eye = _torch.eye
+
+
+# ====================================================================
+# Comparison
+# ====================================================================
+
+
+def allclose(
+    a: _Array, b: _Array, rtol: float = 1e-5, atol: float = 1e-8,
+) -> bool:
+    """Element-wise approximate equality, matching MLX ``allclose`` semantics."""
+    return bool(_torch.allclose(a, b, rtol=rtol, atol=atol))
+
+
+def array_equal(a: _Array, b: _Array) -> bool:
+    """Element-wise exact equality, matching MLX ``array_equal`` semantics."""
+    return bool(_torch.equal(a, b))
 
 
 # ====================================================================

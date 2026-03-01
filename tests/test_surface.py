@@ -2,10 +2,10 @@
 
 from pathlib import Path
 
-import mlx.core as mx
 import pytest
 
 from tests.conftest import FIXTURES_DIR, MockCausalLM, MockTokenizer
+from vauban._array import Array
 from vauban.surface import (
     aggregate,
     compare_surfaces,
@@ -129,7 +129,7 @@ class TestScan:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         prompts = load_surface_prompts(FIXTURES_DIR / "surface.jsonl")
         points = scan(
@@ -153,7 +153,7 @@ class TestScan:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         prompts = load_surface_prompts(FIXTURES_DIR / "surface.jsonl")
         points = scan(
@@ -175,7 +175,7 @@ class TestScan:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         prompts = load_surface_prompts(FIXTURES_DIR / "surface.jsonl")
         points = scan(
@@ -196,7 +196,7 @@ class TestScan:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         prompts = [
             SurfacePrompt(
@@ -228,7 +228,7 @@ class TestScan:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         prompts = [
             SurfacePrompt(
@@ -337,7 +337,7 @@ class TestMapSurface:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         prompts = load_surface_prompts(FIXTURES_DIR / "surface.jsonl")
         result = map_surface(
@@ -361,7 +361,7 @@ class TestMapSurface:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         prompts = load_surface_prompts(FIXTURES_DIR / "surface.jsonl")
         result = map_surface(
@@ -383,7 +383,7 @@ class TestMapSurface:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         prompts = [
             SurfacePrompt(

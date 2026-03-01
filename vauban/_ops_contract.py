@@ -43,6 +43,10 @@ OPS_CONTRACT: list[str] = [
     "ones",
     "arange",
     "full",
+    "eye",
+    # Comparison
+    "allclose",
+    "array_equal",
     # Reductions
     "sum",
     "mean",

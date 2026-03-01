@@ -11,12 +11,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import mlx.core as mx
 import pytest
 
 from tests.conftest import HARMFUL_PROMPTS, HARMLESS_PROMPTS
+from vauban import _ops as ops
 
 if TYPE_CHECKING:
+    from vauban._array import Array
     from vauban.types import CausalLM, DirectionResult, EnvironmentConfig, Tokenizer
 
 
@@ -68,7 +69,7 @@ class TestCorePipeline:
         layer = real_direction.layer_index
         target_layers = [layer]
 
-        weights: dict[str, mx.array] = dict(
+        weights: dict[str, Array] = dict(
             tree_flatten(model.parameters()),  # type: ignore[attr-defined]
         )
         all_keys = list(weights.keys())
@@ -77,7 +78,7 @@ class TestCorePipeline:
         modified = cut(weights, direction, target_layers, alpha=1.0)
 
         for key in target_keys:
-            diff = float(mx.sum(mx.abs(modified[key] - weights[key])).item())
+            diff = float(ops.sum(ops.abs(modified[key] - weights[key])).item())
             assert diff > 0.0, f"Weight {key} was not modified"
 
     def test_evaluate_refusal_rate_decreases(
@@ -95,7 +96,7 @@ class TestCorePipeline:
         layer = real_direction.layer_index
 
         # Save original weights for restoration
-        original_weights: dict[str, mx.array] = dict(
+        original_weights: dict[str, Array] = dict(
             tree_flatten(model.parameters()),  # type: ignore[attr-defined]
         )
 
@@ -104,7 +105,7 @@ class TestCorePipeline:
 
         # Load modified weights
         model.load_weights(list(modified.items()))  # type: ignore[attr-defined]
-        mx.eval(model.parameters())  # type: ignore[attr-defined]
+        ops.eval(model.parameters())  # type: ignore[attr-defined]
 
         try:
             # Create a second "original" view by restoring weights temporarily
@@ -121,7 +122,7 @@ class TestCorePipeline:
         finally:
             # Restore original weights
             model.load_weights(list(original_weights.items()))  # type: ignore[attr-defined]
-            mx.eval(model.parameters())  # type: ignore[attr-defined]
+            ops.eval(model.parameters())  # type: ignore[attr-defined]
 
     def test_probe_projection_decreases_after_cut(
         self,
@@ -141,12 +142,12 @@ class TestCorePipeline:
         before = probe(model, tokenizer, prompt, direction)
         proj_before = before.projections[layer]
 
-        original_weights: dict[str, mx.array] = dict(
+        original_weights: dict[str, Array] = dict(
             tree_flatten(model.parameters()),  # type: ignore[attr-defined]
         )
         modified = cut(dict(original_weights), direction, [layer], alpha=1.0)
         model.load_weights(list(modified.items()))  # type: ignore[attr-defined]
-        mx.eval(model.parameters())  # type: ignore[attr-defined]
+        ops.eval(model.parameters())  # type: ignore[attr-defined]
 
         try:
             after = probe(model, tokenizer, prompt, direction)
@@ -154,7 +155,7 @@ class TestCorePipeline:
             assert abs(proj_after) < abs(proj_before)
         finally:
             model.load_weights(list(original_weights.items()))  # type: ignore[attr-defined]
-            mx.eval(model.parameters())  # type: ignore[attr-defined]
+            ops.eval(model.parameters())  # type: ignore[attr-defined]
 
     def test_perplexity_bounded_after_cut(
         self,
@@ -170,7 +171,7 @@ class TestCorePipeline:
         direction = real_direction.direction
         layer = real_direction.layer_index
 
-        original_weights: dict[str, mx.array] = dict(
+        original_weights: dict[str, Array] = dict(
             tree_flatten(model.parameters()),  # type: ignore[attr-defined]
         )
 
@@ -185,7 +186,7 @@ class TestCorePipeline:
         # Apply cut
         modified = cut(dict(original_weights), direction, [layer], alpha=1.0)
         model.load_weights(list(modified.items()))  # type: ignore[attr-defined]
-        mx.eval(model.parameters())  # type: ignore[attr-defined]
+        ops.eval(model.parameters())  # type: ignore[attr-defined]
 
         try:
             result_mod = evaluate(
@@ -199,7 +200,7 @@ class TestCorePipeline:
             )
         finally:
             model.load_weights(list(original_weights.items()))  # type: ignore[attr-defined]
-            mx.eval(model.parameters())  # type: ignore[attr-defined]
+            ops.eval(model.parameters())  # type: ignore[attr-defined]
 
 
 @pytest.mark.integration
@@ -589,7 +590,7 @@ class TestGeipingTaxonomy:
         repeated_ids = _encode_targets(
             tokenizer, ["Hello There "], repeat_count=10,
         )
-        mx.eval(base_ids, repeated_ids)
+        ops.eval(base_ids, repeated_ids)
         assert repeated_ids.shape[0] == base_ids.shape[0] * 10
 
     def test_system_prompt_extraction(

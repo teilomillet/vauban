@@ -1,8 +1,8 @@
 """Tests for vauban.probe: probing and steering on tiny model."""
 
-import mlx.core as mx
-
 from tests.conftest import D_MODEL, NUM_LAYERS, MockCausalLM, MockTokenizer
+from vauban import _ops as ops
+from vauban._array import Array
 from vauban.probe import multi_probe, probe, steer
 
 
@@ -11,7 +11,7 @@ class TestProbe:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         result = probe(mock_model, mock_tokenizer, "test prompt", direction)
         assert result.layer_count == NUM_LAYERS
@@ -22,7 +22,7 @@ class TestProbe:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         result = probe(mock_model, mock_tokenizer, "hello", direction)
         for p in result.projections:
@@ -36,11 +36,11 @@ class TestMultiProbe:
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
     ) -> None:
-        d1 = mx.random.normal((D_MODEL,))
-        d1 = d1 / mx.linalg.norm(d1)
-        d2 = mx.random.normal((D_MODEL,))
-        d2 = d2 / mx.linalg.norm(d2)
-        mx.eval(d1, d2)
+        d1 = ops.random.normal((D_MODEL,))
+        d1 = d1 / ops.linalg.norm(d1)
+        d2 = ops.random.normal((D_MODEL,))
+        d2 = d2 / ops.linalg.norm(d2)
+        ops.eval(d1, d2)
 
         results = multi_probe(
             mock_model, mock_tokenizer, "test",
@@ -56,7 +56,7 @@ class TestSteer:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         result = steer(
             mock_model, mock_tokenizer, "test",
@@ -70,7 +70,7 @@ class TestSteer:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         result = steer(
             mock_model, mock_tokenizer, "test",

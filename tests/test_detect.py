@@ -2,9 +2,8 @@
 
 from pathlib import Path
 
-import mlx.core as mx
-
 from tests.conftest import D_MODEL, MockCausalLM, MockTokenizer
+from vauban import _ops as ops
 from vauban.detect import (
     _compute_verdict,
     _dbdi_layer,
@@ -188,10 +187,10 @@ class TestMarginLayer:
         tmp_path: Path,
     ) -> None:
         # Save a fake direction
-        direction = mx.random.normal((D_MODEL,))
-        mx.eval(direction)
+        direction = ops.random.normal((D_MODEL,))
+        ops.eval(direction)
         dir_path = tmp_path / "test_dir.safetensors"
-        mx.save_safetensors(str(dir_path), {"direction": direction})
+        ops.save_safetensors(str(dir_path), {"direction": direction})
 
         config = DetectConfig(
             mode="margin",
@@ -212,10 +211,10 @@ class TestMarginLayer:
         mock_tokenizer: MockTokenizer,
         tmp_path: Path,
     ) -> None:
-        direction = mx.random.normal((D_MODEL,))
-        mx.eval(direction)
+        direction = ops.random.normal((D_MODEL,))
+        ops.eval(direction)
         dir_path = tmp_path / "safety.safetensors"
-        mx.save_safetensors(str(dir_path), {"direction": direction})
+        ops.save_safetensors(str(dir_path), {"direction": direction})
 
         config = DetectConfig(
             mode="margin",

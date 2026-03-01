@@ -8,8 +8,9 @@ from typing import TYPE_CHECKING
 import pytest
 
 if TYPE_CHECKING:
-    import mlx.core as mx
     from conftest import MockCausalLM, MockTokenizer
+
+    from vauban._array import Array
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +171,7 @@ class TestDirectionAttribution:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         """With attribute_direction=True, attributions are present."""
         from vauban.circuit import trace_circuit
@@ -192,7 +193,7 @@ class TestDirectionAttribution:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         """Without attribute_direction=True, attributions should be None."""
         from vauban.circuit import trace_circuit

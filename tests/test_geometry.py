@@ -1,15 +1,15 @@
 """Tests for vauban.geometry: direction composition analysis."""
 
-import mlx.core as mx
 import pytest
 
+from vauban import _ops as ops
 from vauban.geometry import analyze_directions
 
 
 class TestAnalyzeDirections:
     def test_identical_directions(self) -> None:
-        d = mx.array([1.0, 0.0, 0.0])
-        mx.eval(d)
+        d = ops.array([1.0, 0.0, 0.0])
+        ops.eval(d)
         result = analyze_directions({"a": d, "b": d})
         assert len(result.pairwise) == 1
         assert result.pairwise[0].cosine_similarity == pytest.approx(1.0, abs=1e-4)
@@ -17,9 +17,9 @@ class TestAnalyzeDirections:
         assert result.pairwise[0].independent is False
 
     def test_orthogonal_directions(self) -> None:
-        a = mx.array([1.0, 0.0, 0.0])
-        b = mx.array([0.0, 1.0, 0.0])
-        mx.eval(a, b)
+        a = ops.array([1.0, 0.0, 0.0])
+        b = ops.array([0.0, 1.0, 0.0])
+        ops.eval(a, b)
         result = analyze_directions({"a": a, "b": b})
         assert len(result.pairwise) == 1
         assert result.pairwise[0].cosine_similarity == pytest.approx(0.0, abs=1e-4)
@@ -27,10 +27,10 @@ class TestAnalyzeDirections:
         assert result.pairwise[0].independent is True
 
     def test_three_directions_three_pairs(self) -> None:
-        a = mx.array([1.0, 0.0, 0.0])
-        b = mx.array([0.0, 1.0, 0.0])
-        c = mx.array([0.0, 0.0, 1.0])
-        mx.eval(a, b, c)
+        a = ops.array([1.0, 0.0, 0.0])
+        b = ops.array([0.0, 1.0, 0.0])
+        c = ops.array([0.0, 0.0, 1.0])
+        ops.eval(a, b, c)
         result = analyze_directions({"a": a, "b": b, "c": c})
         assert len(result.pairwise) == 3
         assert len(result.direction_names) == 3
@@ -38,8 +38,8 @@ class TestAnalyzeDirections:
         assert result.mean_independence == 1.0
 
     def test_single_direction_zero_pairs(self) -> None:
-        d = mx.array([1.0, 0.0, 0.0])
-        mx.eval(d)
+        d = ops.array([1.0, 0.0, 0.0])
+        ops.eval(d)
         result = analyze_directions({"only": d})
         assert len(result.pairwise) == 0
         assert result.most_aligned_pair is None
@@ -47,9 +47,9 @@ class TestAnalyzeDirections:
         assert result.mean_independence == 0.0
 
     def test_cosine_matrix_shape(self) -> None:
-        a = mx.array([1.0, 0.0])
-        b = mx.array([0.0, 1.0])
-        mx.eval(a, b)
+        a = ops.array([1.0, 0.0])
+        b = ops.array([0.0, 1.0])
+        ops.eval(a, b)
         result = analyze_directions({"a": a, "b": b})
         assert len(result.cosine_matrix) == 2
         assert len(result.cosine_matrix[0]) == 2
@@ -58,10 +58,10 @@ class TestAnalyzeDirections:
         assert result.cosine_matrix[1][1] == pytest.approx(1.0)
 
     def test_most_aligned_and_orthogonal(self) -> None:
-        a = mx.array([1.0, 0.0, 0.0])
-        b = mx.array([0.9, 0.436, 0.0])  # close to a
-        c = mx.array([0.0, 0.0, 1.0])  # orthogonal to both
-        mx.eval(a, b, c)
+        a = ops.array([1.0, 0.0, 0.0])
+        b = ops.array([0.9, 0.436, 0.0])  # close to a
+        c = ops.array([0.0, 0.0, 1.0])  # orthogonal to both
+        ops.eval(a, b, c)
         result = analyze_directions({"a": a, "b": b, "c": c})
         assert result.most_aligned_pair is not None
         assert {"a", "b"} == {
@@ -76,9 +76,9 @@ class TestAnalyzeDirections:
         }
 
     def test_to_dict_output(self) -> None:
-        a = mx.array([1.0, 0.0])
-        b = mx.array([0.0, 1.0])
-        mx.eval(a, b)
+        a = ops.array([1.0, 0.0])
+        b = ops.array([0.0, 1.0])
+        ops.eval(a, b)
         result = analyze_directions({"a": a, "b": b})
         d = result.to_dict()
         assert isinstance(d, dict)

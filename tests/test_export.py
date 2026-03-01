@@ -4,8 +4,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-import mlx.core as mx
-
+from vauban import _ops as ops
 from vauban.export import export_model
 
 
@@ -19,11 +18,11 @@ class TestExportModel:
         (source_dir / "tokenizer.json").write_text(json.dumps({"version": "1.0"}))
         (source_dir / "generation_config.json").write_text(json.dumps({}))
         # Write a dummy safetensors file that should NOT be copied
-        dummy_weights = {"dummy.weight": mx.zeros((4, 4))}
-        mx.save_safetensors(str(source_dir / "model.safetensors"), dummy_weights)
+        dummy_weights = {"dummy.weight": ops.zeros((4, 4))}
+        ops.save_safetensors(str(source_dir / "model.safetensors"), dummy_weights)
 
         output_dir = tmp_path / "output"
-        test_weights = {"test.weight": mx.ones((4, 4))}
+        test_weights = {"test.weight": ops.ones((4, 4))}
 
         with patch(
             "vauban.export._resolve_source_dir", return_value=source_dir,
@@ -41,7 +40,7 @@ class TestExportModel:
         assert (output_dir / "model.safetensors").exists()
 
         # Verify the weights are our new ones, not the originals
-        loaded = mx.load(str(output_dir / "model.safetensors"))
+        loaded = ops.load(str(output_dir / "model.safetensors"))
         assert "test.weight" in loaded
         assert "dummy.weight" not in loaded
 
@@ -51,13 +50,13 @@ class TestExportModel:
         source_dir.mkdir()
         (source_dir / "config.json").write_text("{}")
         # Multiple safetensors shards
-        mx.save_safetensors(
+        ops.save_safetensors(
             str(source_dir / "model-00001-of-00002.safetensors"),
-            {"a": mx.zeros((2, 2))},
+            {"a": ops.zeros((2, 2))},
         )
-        mx.save_safetensors(
+        ops.save_safetensors(
             str(source_dir / "model-00002-of-00002.safetensors"),
-            {"b": mx.zeros((2, 2))},
+            {"b": ops.zeros((2, 2))},
         )
 
         output_dir = tmp_path / "output"
@@ -65,7 +64,7 @@ class TestExportModel:
         with patch(
             "vauban.export._resolve_source_dir", return_value=source_dir,
         ):
-            export_model("fake-model", {"w": mx.ones((2, 2))}, output_dir)
+            export_model("fake-model", {"w": ops.ones((2, 2))}, output_dir)
 
         # Only our model.safetensors should exist, not the shards
         assert (output_dir / "model.safetensors").exists()

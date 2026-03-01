@@ -1,8 +1,8 @@
 """Tests for intent alignment functional layer and defense stack composition."""
 
-import mlx.core as mx
-
 from tests.conftest import D_MODEL, MockCausalLM, MockTokenizer
+from vauban import _ops as ops
+from vauban._array import Array
 from vauban.intent import (
     _extract_activation_at_layer,
     capture_intent,
@@ -30,7 +30,7 @@ class TestExtractActivation:
         act = _extract_activation_at_layer(
             mock_model, mock_tokenizer, "test text", target_layer=0,
         )
-        mx.eval(act)
+        ops.eval(act)
         assert act.shape == (D_MODEL,)
 
     def test_different_layers_may_differ(
@@ -44,9 +44,9 @@ class TestExtractActivation:
         act1 = _extract_activation_at_layer(
             mock_model, mock_tokenizer, "test", target_layer=1,
         )
-        mx.eval(act0, act1)
+        ops.eval(act0, act1)
         # Activations at different layers should generally differ
-        diff = float(mx.sum(mx.abs(act0 - act1)).item())
+        diff = float(ops.sum(ops.abs(act0 - act1)).item())
         assert diff >= 0  # non-deterministic, just ensure no crash
 
     def test_target_layer_beyond_model(
@@ -58,7 +58,7 @@ class TestExtractActivation:
         act = _extract_activation_at_layer(
             mock_model, mock_tokenizer, "test", target_layer=999,
         )
-        mx.eval(act)
+        ops.eval(act)
         assert act.shape == (D_MODEL,)
 
 
@@ -79,7 +79,7 @@ class TestCaptureIntent:
         )
         assert state.user_request == "Send summary"
         assert state.activation is not None
-        mx.eval(state.activation)
+        ops.eval(state.activation)
         assert state.activation.shape == (D_MODEL,)
 
     def test_judge_mode_returns_none_activation(
@@ -205,7 +205,7 @@ class TestDefendContent:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         from vauban.defend import defend_content
         from vauban.types import ScanConfig
@@ -226,7 +226,7 @@ class TestDefendContent:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         from vauban.defend import defend_content
         from vauban.types import ScanConfig

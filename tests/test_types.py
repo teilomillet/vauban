@@ -3,10 +3,10 @@
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 
-import mlx.core as mx
 import pytest
 
 from tests.conftest import MockCausalLM, MockTokenizer
+from vauban import _ops as ops
 from vauban.types import (
     CastConfig,
     CastResult,
@@ -54,7 +54,7 @@ class TestProtocols:
 
 class TestDirectionResult:
     def test_construction(self) -> None:
-        d = mx.zeros((16,))
+        d = ops.zeros((16,))
         result = DirectionResult(
             direction=d,
             layer_index=5,
@@ -66,7 +66,7 @@ class TestDirectionResult:
         assert result.d_model == 16
 
     def test_frozen(self) -> None:
-        d = mx.zeros((16,))
+        d = ops.zeros((16,))
         result = DirectionResult(
             direction=d, layer_index=0, cosine_scores=[], d_model=16, model_path="",
         )
@@ -76,7 +76,7 @@ class TestDirectionResult:
 
 class TestDirectionResultSummary:
     def test_summary_returns_str(self) -> None:
-        d = mx.zeros((16,))
+        d = ops.zeros((16,))
         result = DirectionResult(
             direction=d, layer_index=5, cosine_scores=[0.1, 0.5, 0.3],
             d_model=16, model_path="test-model",
@@ -89,7 +89,7 @@ class TestDirectionResultSummary:
         assert "test-model" in s
 
     def test_summary_empty_cosine(self) -> None:
-        d = mx.zeros((16,))
+        d = ops.zeros((16,))
         result = DirectionResult(
             direction=d, layer_index=0, cosine_scores=[],
             d_model=16, model_path="x",
@@ -201,7 +201,7 @@ class TestSteerResult:
 
 class TestSubspaceResult:
     def test_construction(self) -> None:
-        basis = mx.zeros((3, 16))
+        basis = ops.zeros((3, 16))
         result = SubspaceResult(
             basis=basis,
             singular_values=[3.0, 2.0, 1.0],
@@ -215,7 +215,7 @@ class TestSubspaceResult:
         assert len(result.singular_values) == 3
 
     def test_best_direction(self) -> None:
-        basis = mx.eye(3, 16)
+        basis = ops.eye(3, 16)
         result = SubspaceResult(
             basis=basis,
             singular_values=[3.0, 2.0, 1.0],
@@ -247,7 +247,7 @@ class TestMeasureConfig:
 
 class TestToDict:
     def test_direction_result_to_dict(self) -> None:
-        d = mx.zeros((16,))
+        d = ops.zeros((16,))
         result = DirectionResult(
             direction=d, layer_index=5, cosine_scores=[0.1, 0.5],
             d_model=16, model_path="test", layer_types=["global", "sliding"],
@@ -307,7 +307,7 @@ class TestToDict:
         result = SoftPromptResult(
             mode="gcg", success_rate=0.5, final_loss=1.2,
             loss_history=[2.0, 1.5, 1.2], n_steps=100, n_tokens=16,
-            embeddings=mx.zeros((1, 16, 32)),  # should be excluded
+            embeddings=ops.zeros((1, 16, 32)),  # should be excluded
             token_ids=[1, 2, 3], token_text="abc",
             eval_responses=["ok"], early_stopped=True,
         )

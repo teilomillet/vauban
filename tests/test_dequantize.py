@@ -2,9 +2,16 @@
 
 import mlx.core as mx
 import mlx.nn as nn
+import pytest
 
 from tests.conftest import MockCausalLM
+from vauban._backend import get_backend
 from vauban.dequantize import dequantize_model, is_quantized
+
+pytestmark = pytest.mark.skipif(
+    get_backend() != "mlx",
+    reason="MLX-only: tests mlx.nn.QuantizedLinear",
+)
 
 # QuantizedLinear needs input_dims divisible by group_size (min 32).
 # Create a slightly larger model for quantization tests.

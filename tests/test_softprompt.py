@@ -5,7 +5,6 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
-import mlx.core as mx
 import pytest
 from conftest import (
     D_MODEL,
@@ -16,6 +15,7 @@ from conftest import (
     MockTokenizer,
 )
 
+from vauban import _ops as ops
 from vauban.softprompt import (
     _build_vocab_mask,
     _compute_accessibility_score,
@@ -58,6 +58,8 @@ from vauban.types import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from vauban._array import Array
 
 # ---------------------------------------------------------------------------
 # Type tests
@@ -117,7 +119,7 @@ class TestSoftPromptResult:
             loss_history=[3.0, 2.0, 1.5],
             n_steps=3,
             n_tokens=16,
-            embeddings=mx.zeros((1, 16, 8)),
+            embeddings=ops.zeros((1, 16, 8)),
             token_ids=None,
             token_text=None,
             eval_responses=["response1"],
@@ -158,35 +160,35 @@ class TestSoftPromptResult:
 class TestForwardWithPrefix:
     def test_output_shape(self) -> None:
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
 
         n_tokens = 4
         seq_len = 6
-        soft_embeds = mx.random.normal((1, n_tokens, D_MODEL))
-        prompt_ids = mx.array([[0, 1, 2, 3, 4, 5]])
-        mx.eval(soft_embeds)
+        soft_embeds = ops.random.normal((1, n_tokens, D_MODEL))
+        prompt_ids = ops.array([[0, 1, 2, 3, 4, 5]])
+        ops.eval(soft_embeds)
 
         logits = _forward_with_prefix(model, soft_embeds, prompt_ids)
-        mx.eval(logits)
+        ops.eval(logits)
 
         assert logits.shape == (1, n_tokens + seq_len, VOCAB_SIZE)
 
     def test_prefix_affects_logits(self) -> None:
         """Verify that different prefixes produce different output logits."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
 
-        prompt_ids = mx.array([[0, 1, 2]])
-        zero_embeds = mx.zeros((1, 4, D_MODEL))
-        rand_embeds = mx.random.normal((1, 4, D_MODEL))
-        mx.eval(zero_embeds, rand_embeds)
+        prompt_ids = ops.array([[0, 1, 2]])
+        zero_embeds = ops.zeros((1, 4, D_MODEL))
+        rand_embeds = ops.random.normal((1, 4, D_MODEL))
+        ops.eval(zero_embeds, rand_embeds)
 
         logits_zero = _forward_with_prefix(model, zero_embeds, prompt_ids)
         logits_rand = _forward_with_prefix(model, rand_embeds, prompt_ids)
-        mx.eval(logits_zero, logits_rand)
+        ops.eval(logits_zero, logits_rand)
 
         diff = float(
-            mx.mean(mx.abs(logits_zero[:, -1, :] - logits_rand[:, -1, :])).item(),
+            ops.mean(ops.abs(logits_zero[:, -1, :] - logits_rand[:, -1, :])).item(),
         )
         assert diff > 0.001, (
             f"Different prefixes produce nearly identical logits (diff={diff})"
@@ -194,15 +196,15 @@ class TestForwardWithPrefix:
 
     def test_different_prefix_sizes(self) -> None:
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
 
-        prompt_ids = mx.array([[0, 1, 2]])
+        prompt_ids = ops.array([[0, 1, 2]])
 
         for n_tokens in [1, 8, 16]:
-            soft_embeds = mx.random.normal((1, n_tokens, D_MODEL))
-            mx.eval(soft_embeds)
+            soft_embeds = ops.random.normal((1, n_tokens, D_MODEL))
+            ops.eval(soft_embeds)
             logits = _forward_with_prefix(model, soft_embeds, prompt_ids)
-            mx.eval(logits)
+            ops.eval(logits)
             assert logits.shape[1] == n_tokens + 3
 
 
@@ -215,14 +217,14 @@ class TestEncodeTargets:
     def test_encodes_prefixes(self) -> None:
         tokenizer = MockTokenizer(VOCAB_SIZE)
         ids = _encode_targets(tokenizer, ["Sure", "Here"])
-        mx.eval(ids)
+        ops.eval(ids)
         assert ids.ndim == 1
         assert ids.shape[0] > 0
 
     def test_single_prefix(self) -> None:
         tokenizer = MockTokenizer(VOCAB_SIZE)
         ids = _encode_targets(tokenizer, ["OK"])
-        mx.eval(ids)
+        ops.eval(ids)
         expected = tokenizer.encode("OK")
         assert ids.shape[0] == len(expected)
 
@@ -235,7 +237,7 @@ class TestEncodeTargets:
 class TestContinuousAttack:
     def test_basic_run(self) -> None:
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -264,7 +266,7 @@ class TestContinuousAttack:
 
     def test_loss_is_finite(self) -> None:
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -284,7 +286,7 @@ class TestContinuousAttack:
     def test_loss_decreases(self) -> None:
         """Verify that optimization actually reduces loss (gradient flow works)."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -310,33 +312,33 @@ class TestContinuousAttack:
     def test_gradient_nonzero(self) -> None:
         """Verify gradient w.r.t. soft embeds is nonzero."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
-        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
-        mx.eval(soft_embeds)
+        soft_embeds = ops.random.normal((1, 4, D_MODEL)) * 0.1
+        ops.eval(soft_embeds)
 
         target_ids = _encode_targets(tokenizer, ["Sure"])
-        mx.eval(target_ids)
+        ops.eval(target_ids)
 
         messages = [{"role": "user", "content": "test"}]
         text = tokenizer.apply_chat_template(messages, tokenize=False)
         assert isinstance(text, str)
-        prompt_ids = mx.array(tokenizer.encode(text))[None, :]
+        prompt_ids = ops.array(tokenizer.encode(text))[None, :]
 
-        def loss_fn(embeds: mx.array) -> mx.array:
+        def loss_fn(embeds: Array) -> Array:
             return _compute_loss(model, embeds, prompt_ids, target_ids, 4, None, 0.0)
 
-        loss_and_grad = mx.value_and_grad(loss_fn)
+        loss_and_grad = ops.value_and_grad(loss_fn)
         loss_val, grad = loss_and_grad(soft_embeds)
-        mx.eval(loss_val, grad)
+        ops.eval(loss_val, grad)
 
-        grad_norm = float(mx.linalg.norm(grad.reshape(-1)).item())
+        grad_norm = float(ops.linalg.norm(grad.reshape(-1)).item())
         assert grad_norm > 0, "Gradient is zero — no learning signal"
 
     def test_dispatch_via_public_api(self) -> None:
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -361,7 +363,7 @@ class TestContinuousAttack:
 class TestGCGAttack:
     def test_basic_run(self) -> None:
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -390,7 +392,7 @@ class TestGCGAttack:
 
     def test_token_ids_in_vocab_range(self) -> None:
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -414,7 +416,7 @@ class TestGCGAttack:
     def test_gcg_improves_loss(self) -> None:
         """Verify GCG finds at least one candidate better than random init."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -439,7 +441,7 @@ class TestGCGAttack:
 
     def test_dispatch_via_public_api(self) -> None:
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -466,12 +468,12 @@ class TestGCGAttack:
 class TestDirectionGuided:
     def test_continuous_with_direction(self) -> None:
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
-        direction = mx.random.normal((D_MODEL,))
-        direction = direction / mx.linalg.norm(direction)
-        mx.eval(direction)
+        direction = ops.random.normal((D_MODEL,))
+        direction = direction / ops.linalg.norm(direction)
+        ops.eval(direction)
 
         config = SoftPromptConfig(
             mode="continuous",
@@ -491,12 +493,12 @@ class TestDirectionGuided:
 
     def test_gcg_with_direction(self) -> None:
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
-        direction = mx.random.normal((D_MODEL,))
-        direction = direction / mx.linalg.norm(direction)
-        mx.eval(direction)
+        direction = ops.random.normal((D_MODEL,))
+        direction = direction / ops.linalg.norm(direction)
+        ops.eval(direction)
 
         config = SoftPromptConfig(
             mode="gcg",
@@ -525,11 +527,11 @@ class TestDirectionGuided:
 class TestEvaluateAttack:
     def test_success_rate_range(self) -> None:
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
-        soft_embeds = mx.random.normal((1, 4, D_MODEL))
-        mx.eval(soft_embeds)
+        soft_embeds = ops.random.normal((1, 4, D_MODEL))
+        ops.eval(soft_embeds)
 
         config = SoftPromptConfig(max_gen_tokens=3)
 
@@ -542,11 +544,11 @@ class TestEvaluateAttack:
 
     def test_empty_prompts(self) -> None:
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
-        soft_embeds = mx.random.normal((1, 4, D_MODEL))
-        mx.eval(soft_embeds)
+        soft_embeds = ops.random.normal((1, 4, D_MODEL))
+        ops.eval(soft_embeds)
 
         config = SoftPromptConfig(max_gen_tokens=2)
 
@@ -566,7 +568,7 @@ class TestEvaluateAttack:
 class TestInvalidMode:
     def test_invalid_mode_raises(self) -> None:
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         # Bypass frozen by constructing manually
@@ -617,35 +619,35 @@ class TestComputeLearningRate:
 
 class TestComputeEmbedRegularization:
     def test_zero_weight_returns_zero(self) -> None:
-        soft = mx.random.normal((1, 4, 16))
-        embed = mx.random.normal((32, 16))
-        mx.eval(soft, embed)
+        soft = ops.random.normal((1, 4, 16))
+        embed = ops.random.normal((32, 16))
+        ops.eval(soft, embed)
         result = _compute_embed_regularization(soft, embed, 0.0)
-        mx.eval(result)
+        ops.eval(result)
         assert float(result.item()) == 0.0
 
     def test_matching_norms_near_zero(self) -> None:
         """When soft embeds have same mean norm as real embeds, reg is ~0."""
-        embed = mx.random.normal((32, 16))
-        mx.eval(embed)
-        mean_real = float(mx.mean(mx.linalg.norm(embed, axis=-1)).item())
+        embed = ops.random.normal((32, 16))
+        ops.eval(embed)
+        mean_real = float(ops.mean(ops.linalg.norm(embed, axis=-1)).item())
         # Create soft embeds normalized to match
-        soft = mx.random.normal((1, 4, 16))
-        mx.eval(soft)
-        norms = mx.linalg.norm(soft[0], axis=-1, keepdims=True)
+        soft = ops.random.normal((1, 4, 16))
+        ops.eval(soft)
+        norms = ops.linalg.norm(soft[0], axis=-1, keepdims=True)
         soft_normalized = soft / norms * mean_real
         soft_normalized = soft_normalized[None, :] if soft_normalized.ndim == 2 else soft_normalized  # noqa: E501
-        mx.eval(soft_normalized)
+        ops.eval(soft_normalized)
         result = _compute_embed_regularization(soft_normalized, embed, 1.0)
-        mx.eval(result)
+        ops.eval(result)
         assert float(result.item()) < 0.01
 
     def test_large_gap_gives_large_penalty(self) -> None:
-        soft = mx.ones((1, 4, 16)) * 100.0  # very large norm
-        embed = mx.ones((32, 16)) * 0.01  # very small norm
-        mx.eval(soft, embed)
+        soft = ops.ones((1, 4, 16)) * 100.0  # very large norm
+        embed = ops.ones((32, 16)) * 0.01  # very small norm
+        ops.eval(soft, embed)
         result = _compute_embed_regularization(soft, embed, 1.0)
-        mx.eval(result)
+        ops.eval(result)
         assert float(result.item()) > 1.0
 
 
@@ -683,7 +685,7 @@ class TestPreEncodePrompts:
 
 class TestSelectPromptIds:
     def test_first_strategy(self) -> None:
-        ids = [mx.array([[1]]), mx.array([[2]]), mx.array([[3]])]
+        ids = [ops.array([[1]]), ops.array([[2]]), ops.array([[3]])]
         selected = _select_prompt_ids(ids, 0, "first")
         assert len(selected) == 1
         assert int(selected[0].item()) == 1
@@ -693,14 +695,14 @@ class TestSelectPromptIds:
         assert int(selected2[0].item()) == 1
 
     def test_cycle_strategy(self) -> None:
-        ids = [mx.array([[1]]), mx.array([[2]]), mx.array([[3]])]
+        ids = [ops.array([[1]]), ops.array([[2]]), ops.array([[3]])]
         assert int(_select_prompt_ids(ids, 0, "cycle")[0].item()) == 1
         assert int(_select_prompt_ids(ids, 1, "cycle")[0].item()) == 2
         assert int(_select_prompt_ids(ids, 2, "cycle")[0].item()) == 3
         assert int(_select_prompt_ids(ids, 3, "cycle")[0].item()) == 1
 
     def test_all_strategy(self) -> None:
-        ids = [mx.array([[1]]), mx.array([[2]]), mx.array([[3]])]
+        ids = [ops.array([[1]]), ops.array([[2]]), ops.array([[3]])]
         selected = _select_prompt_ids(ids, 0, "all")
         assert len(selected) == 3
 
@@ -713,7 +715,7 @@ class TestSelectPromptIds:
 class TestMultiPromptContinuous:
     def test_all_strategy(self) -> None:
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -735,7 +737,7 @@ class TestMultiPromptContinuous:
 
     def test_cycle_strategy(self) -> None:
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -764,7 +766,7 @@ class TestEarlyStopping:
     def test_fires_with_patience(self) -> None:
         """Early stopping should fire with tiny LR and small patience."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -785,7 +787,7 @@ class TestEarlyStopping:
 
     def test_disabled_with_patience_zero(self) -> None:
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -812,7 +814,7 @@ class TestEarlyStopping:
 class TestCosineSchedule:
     def test_runs_without_nan(self) -> None:
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -840,7 +842,7 @@ class TestCosineSchedule:
 class TestEmbedRegularizationIntegration:
     def test_runs_without_error(self) -> None:
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -868,7 +870,7 @@ class TestEmbedRegularizationIntegration:
 class TestGCGMultiRestart:
     def test_correct_loss_history_length(self) -> None:
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -892,7 +894,7 @@ class TestGCGMultiRestart:
 
     def test_token_ids_correct_length(self) -> None:
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -995,12 +997,12 @@ class TestRAIDDirectionMode:
     def test_raid_runs(self) -> None:
         """RAID mode with direction_weight=0.1 produces finite loss."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
-        direction = mx.random.normal((D_MODEL,))
-        direction = direction / mx.linalg.norm(direction)
-        mx.eval(direction)
+        direction = ops.random.normal((D_MODEL,))
+        direction = direction / ops.linalg.norm(direction)
+        ops.eval(direction)
 
         config = SoftPromptConfig(
             mode="continuous",
@@ -1023,12 +1025,12 @@ class TestRAIDDirectionMode:
     def test_raid_differs_from_last(self) -> None:
         """Same seed, RAID vs 'last' produce different final losses."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
-        direction = mx.random.normal((D_MODEL,))
-        direction = direction / mx.linalg.norm(direction)
-        mx.eval(direction)
+        direction = ops.random.normal((D_MODEL,))
+        direction = direction / ops.linalg.norm(direction)
+        ops.eval(direction)
 
         config_last = SoftPromptConfig(
             mode="continuous",
@@ -1064,12 +1066,12 @@ class TestRAIDDirectionMode:
     def test_all_positions_runs(self) -> None:
         """direction_mode='all_positions' runs without error."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
-        direction = mx.random.normal((D_MODEL,))
-        direction = direction / mx.linalg.norm(direction)
-        mx.eval(direction)
+        direction = ops.random.normal((D_MODEL,))
+        direction = direction / ops.linalg.norm(direction)
+        ops.eval(direction)
 
         config = SoftPromptConfig(
             mode="continuous",
@@ -1092,12 +1094,12 @@ class TestRAIDDirectionMode:
     def test_direction_layers_subset(self) -> None:
         """direction_layers=[0] accepted, runs."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
-        direction = mx.random.normal((D_MODEL,))
-        direction = direction / mx.linalg.norm(direction)
-        mx.eval(direction)
+        direction = ops.random.normal((D_MODEL,))
+        direction = direction / ops.linalg.norm(direction)
+        ops.eval(direction)
 
         config = SoftPromptConfig(
             mode="continuous",
@@ -1127,7 +1129,7 @@ class TestUntargetedLoss:
     def test_untargeted_runs(self) -> None:
         """loss_mode='untargeted' produces finite loss."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -1151,42 +1153,42 @@ class TestUntargetedLoss:
     def test_untargeted_gradient_nonzero(self) -> None:
         """Gradient through untargeted loss is nonzero."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
-        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
-        mx.eval(soft_embeds)
+        soft_embeds = ops.random.normal((1, 4, D_MODEL)) * 0.1
+        ops.eval(soft_embeds)
 
         refusal_ids = _encode_refusal_tokens(tokenizer)
-        mx.eval(refusal_ids)
+        ops.eval(refusal_ids)
 
         messages = [{"role": "user", "content": "test"}]
         text = tokenizer.apply_chat_template(messages, tokenize=False)
         assert isinstance(text, str)
-        prompt_ids = mx.array(tokenizer.encode(text))[None, :]
+        prompt_ids = ops.array(tokenizer.encode(text))[None, :]
 
-        def loss_fn(embeds: mx.array) -> mx.array:
+        def loss_fn(embeds: Array) -> Array:
             return _compute_untargeted_loss(
                 model, embeds, prompt_ids, 4, refusal_ids,
                 None, 0.0,
             )
 
-        loss_and_grad = mx.value_and_grad(loss_fn)
+        loss_and_grad = ops.value_and_grad(loss_fn)
         loss_val, grad = loss_and_grad(soft_embeds)
-        mx.eval(loss_val, grad)
+        ops.eval(loss_val, grad)
 
-        grad_norm = float(mx.linalg.norm(grad.reshape(-1)).item())
+        grad_norm = float(ops.linalg.norm(grad.reshape(-1)).item())
         assert grad_norm > 0, "Untargeted gradient is zero"
 
     def test_untargeted_with_direction(self) -> None:
         """Untargeted + RAID direction combined."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
-        direction = mx.random.normal((D_MODEL,))
-        direction = direction / mx.linalg.norm(direction)
-        mx.eval(direction)
+        direction = ops.random.normal((D_MODEL,))
+        direction = direction / ops.linalg.norm(direction)
+        ops.eval(direction)
 
         config = SoftPromptConfig(
             mode="continuous",
@@ -1210,7 +1212,7 @@ class TestUntargetedLoss:
         """Produces non-empty array of valid token IDs."""
         tokenizer = MockTokenizer(VOCAB_SIZE)
         ids = _encode_refusal_tokens(tokenizer)
-        mx.eval(ids)
+        ops.eval(ids)
         assert ids.ndim == 1
         assert ids.shape[0] > 0
         for i in range(ids.shape[0]):
@@ -1226,7 +1228,7 @@ class TestEGDAttack:
     def test_basic_run(self) -> None:
         """mode='egd' returns valid SoftPromptResult with token_ids."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -1254,7 +1256,7 @@ class TestEGDAttack:
     def test_egd_improves_loss(self) -> None:
         """Loss decreases over steps."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -1279,7 +1281,7 @@ class TestEGDAttack:
     def test_egd_token_ids_in_range(self) -> None:
         """All token IDs in [0, vocab_size)."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -1302,7 +1304,7 @@ class TestEGDAttack:
     def test_egd_dispatch(self) -> None:
         """softprompt_attack dispatches correctly to EGD."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -1331,9 +1333,9 @@ class TestTokenConstraint:
         tokenizer = MockTokenizer(VOCAB_SIZE)
         mask = _build_vocab_mask(tokenizer, VOCAB_SIZE, "ascii")
         assert mask is not None
-        mx.eval(mask)
+        ops.eval(mask)
         assert mask.shape == (VOCAB_SIZE,)
-        n_allowed = int(mx.sum(mask).item())
+        n_allowed = int(ops.sum(mask).item())
         assert n_allowed > 0
         assert n_allowed <= VOCAB_SIZE
 
@@ -1346,7 +1348,7 @@ class TestTokenConstraint:
     def test_gcg_with_constraint(self) -> None:
         """GCG + token_constraint='ascii' runs, all token IDs map to ASCII."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -1372,7 +1374,7 @@ class TestTokenConstraint:
     def test_egd_with_constraint(self) -> None:
         """EGD + token_constraint='ascii' runs, all token IDs map to ASCII."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -1404,7 +1406,7 @@ class TestEOSLoss:
     def test_eos_force_runs(self) -> None:
         """Continuous + eos_loss_mode='force' produces finite loss."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -1427,7 +1429,7 @@ class TestEOSLoss:
     def test_eos_suppress_runs(self) -> None:
         """Continuous + eos_loss_mode='suppress' produces finite loss."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -1454,17 +1456,17 @@ class TestEOSLoss:
         eos_id = 7
 
         # Low P(EOS): uniform logits
-        logits_low = mx.zeros((1, 2, vocab_size))
-        mx.eval(logits_low)
+        logits_low = ops.zeros((1, 2, vocab_size))
+        ops.eval(logits_low)
         loss_low = _compute_eos_loss(logits_low, 0, eos_id, "force")
-        mx.eval(loss_low)
+        ops.eval(loss_low)
 
         # High P(EOS): boost EOS logit
-        logits_high = mx.zeros((1, 2, vocab_size))
-        logits_high = logits_high.at[:, 0, eos_id].add(mx.array(10.0))
-        mx.eval(logits_high)
+        logits_high = ops.zeros((1, 2, vocab_size))
+        logits_high[:, 0, eos_id] = logits_high[:, 0, eos_id] + 10.0
+        ops.eval(logits_high)
         loss_high = _compute_eos_loss(logits_high, 0, eos_id, "force")
-        mx.eval(loss_high)
+        ops.eval(loss_high)
 
         assert float(loss_high.item()) < float(loss_low.item())
 
@@ -1474,17 +1476,17 @@ class TestEOSLoss:
         eos_id = 7
 
         # High P(EOS): boost EOS logit
-        logits_high = mx.zeros((1, 2, vocab_size))
-        logits_high = logits_high.at[:, 0, eos_id].add(mx.array(10.0))
-        mx.eval(logits_high)
+        logits_high = ops.zeros((1, 2, vocab_size))
+        logits_high[:, 0, eos_id] = logits_high[:, 0, eos_id] + 10.0
+        ops.eval(logits_high)
         loss_high = _compute_eos_loss(logits_high, 0, eos_id, "suppress")
-        mx.eval(loss_high)
+        ops.eval(loss_high)
 
         # Low P(EOS): uniform logits
-        logits_low = mx.zeros((1, 2, vocab_size))
-        mx.eval(logits_low)
+        logits_low = ops.zeros((1, 2, vocab_size))
+        ops.eval(logits_low)
         loss_low = _compute_eos_loss(logits_low, 0, eos_id, "suppress")
-        mx.eval(loss_low)
+        ops.eval(loss_low)
 
         assert float(loss_low.item()) < float(loss_high.item())
 
@@ -1498,9 +1500,9 @@ class TestKLCollisionLoss:
     def test_kl_collision_runs(self) -> None:
         """Continuous + kl_ref_weight=0.1 with ref model runs."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         ref_model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(ref_model.parameters())
+        ops.eval(ref_model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -1523,47 +1525,47 @@ class TestKLCollisionLoss:
     def test_kl_collision_same_model_low(self) -> None:
         """Same model as reference produces near-zero KL."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
-        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
-        mx.eval(soft_embeds)
+        soft_embeds = ops.random.normal((1, 4, D_MODEL)) * 0.1
+        ops.eval(soft_embeds)
 
         messages = [{"role": "user", "content": "test"}]
         text = tokenizer.apply_chat_template(messages, tokenize=False)
         assert isinstance(text, str)
-        prompt_ids = mx.array(tokenizer.encode(text))[None, :]
+        prompt_ids = ops.array(tokenizer.encode(text))[None, :]
 
         kl = _compute_kl_collision_loss(model, model, soft_embeds, prompt_ids, 4)
-        mx.eval(kl)
+        ops.eval(kl)
         assert float(kl.item()) < 0.01
 
     def test_kl_collision_gradient_nonzero(self) -> None:
         """Gradient through KL loss is nonzero."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         ref_model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(ref_model.parameters())
+        ops.eval(ref_model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
-        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
-        mx.eval(soft_embeds)
+        soft_embeds = ops.random.normal((1, 4, D_MODEL)) * 0.1
+        ops.eval(soft_embeds)
 
         messages = [{"role": "user", "content": "test"}]
         text = tokenizer.apply_chat_template(messages, tokenize=False)
         assert isinstance(text, str)
-        prompt_ids = mx.array(tokenizer.encode(text))[None, :]
+        prompt_ids = ops.array(tokenizer.encode(text))[None, :]
 
-        def loss_fn(embeds: mx.array) -> mx.array:
+        def loss_fn(embeds: Array) -> Array:
             return _compute_kl_collision_loss(
                 model, ref_model, embeds, prompt_ids, 4,
             )
 
-        loss_and_grad = mx.value_and_grad(loss_fn)
+        loss_and_grad = ops.value_and_grad(loss_fn)
         loss_val, grad = loss_and_grad(soft_embeds)
-        mx.eval(loss_val, grad)
+        ops.eval(loss_val, grad)
 
-        grad_norm = float(mx.linalg.norm(grad.reshape(-1)).item())
+        grad_norm = float(ops.linalg.norm(grad.reshape(-1)).item())
         assert grad_norm > 0, "KL collision gradient is zero"
 
 
@@ -1596,15 +1598,15 @@ class TestSelectWorstKPromptIds:
     def test_returns_correct_count(self) -> None:
         """Returns exactly k prompts when k < len(all_ids)."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         all_ids = _pre_encode_prompts(tokenizer, ["a", "b", "c", "d"])
         target_ids = _encode_targets(tokenizer, ["Sure"])
-        mx.eval(target_ids)
+        ops.eval(target_ids)
 
-        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
-        mx.eval(soft_embeds)
+        soft_embeds = ops.random.normal((1, 4, D_MODEL)) * 0.1
+        ops.eval(soft_embeds)
 
         selected = _select_worst_k_prompt_ids(
             model, soft_embeds, all_ids, target_ids,
@@ -1620,15 +1622,15 @@ class TestSelectWorstKPromptIds:
     def test_k_greater_than_len(self) -> None:
         """Returns all prompts when k >= len(all_ids)."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         all_ids = _pre_encode_prompts(tokenizer, ["a", "b"])
         target_ids = _encode_targets(tokenizer, ["Sure"])
-        mx.eval(target_ids)
+        ops.eval(target_ids)
 
-        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
-        mx.eval(soft_embeds)
+        soft_embeds = ops.random.normal((1, 4, D_MODEL)) * 0.1
+        ops.eval(soft_embeds)
 
         selected = _select_worst_k_prompt_ids(
             model, soft_embeds, all_ids, target_ids,
@@ -1644,15 +1646,15 @@ class TestSelectWorstKPromptIds:
     def test_returns_highest_loss(self) -> None:
         """Selected prompts should be the ones with highest loss."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         all_ids = _pre_encode_prompts(tokenizer, ["a", "b", "c"])
         target_ids = _encode_targets(tokenizer, ["Sure"])
-        mx.eval(target_ids)
+        ops.eval(target_ids)
 
-        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
-        mx.eval(soft_embeds)
+        soft_embeds = ops.random.normal((1, 4, D_MODEL)) * 0.1
+        ops.eval(soft_embeds)
 
         selected = _select_worst_k_prompt_ids(
             model, soft_embeds, all_ids, target_ids,
@@ -1672,7 +1674,7 @@ class TestWorstKIntegration:
     def test_continuous_worst_k(self) -> None:
         """Continuous mode with worst_k strategy runs."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -1696,7 +1698,7 @@ class TestWorstKIntegration:
     def test_gcg_worst_k(self) -> None:
         """GCG mode with worst_k strategy runs."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -1721,7 +1723,7 @@ class TestWorstKIntegration:
     def test_egd_worst_k(self) -> None:
         """EGD mode with worst_k strategy runs."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -1751,19 +1753,19 @@ class TestWorstKIntegration:
 
 class TestSplitIntoBatches:
     def test_single_batch(self) -> None:
-        items = [mx.array([[1]]), mx.array([[2]]), mx.array([[3]])]
+        items = [ops.array([[1]]), ops.array([[2]]), ops.array([[3]])]
         batches = _split_into_batches(items, 1)
         assert len(batches) == 1
         assert len(batches[0]) == 3
 
     def test_correct_batch_count(self) -> None:
-        items = [mx.array([[i]]) for i in range(6)]
+        items = [ops.array([[i]]) for i in range(6)]
         batches = _split_into_batches(items, 3)
         assert len(batches) == 3
         assert sum(len(b) for b in batches) == 6
 
     def test_n_greater_than_len(self) -> None:
-        items = [mx.array([[1]]), mx.array([[2]])]
+        items = [ops.array([[1]]), ops.array([[2]])]
         batches = _split_into_batches(items, 10)
         assert len(batches) == 2
         assert sum(len(b) for b in batches) == 2
@@ -1774,7 +1776,7 @@ class TestSplitIntoBatches:
         assert len(batches[0]) == 0
 
     def test_uneven_split(self) -> None:
-        items = [mx.array([[i]]) for i in range(5)]
+        items = [ops.array([[i]]) for i in range(5)]
         batches = _split_into_batches(items, 3)
         assert len(batches) == 3
         assert sum(len(b) for b in batches) == 5
@@ -1784,7 +1786,7 @@ class TestGradAccumIntegration:
     def test_continuous_grad_accum(self) -> None:
         """Continuous mode with grad_accum_steps=2 runs and produces finite loss."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -1808,7 +1810,7 @@ class TestGradAccumIntegration:
     def test_gcg_grad_accum(self) -> None:
         """GCG mode with grad_accum_steps=2 runs."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -1834,7 +1836,7 @@ class TestGradAccumIntegration:
     def test_egd_grad_accum(self) -> None:
         """EGD mode with grad_accum_steps=2 runs."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -1866,9 +1868,9 @@ class TestProjectToTokens:
     def test_returns_valid_token_ids(self) -> None:
         """Returns correct count of token IDs in vocab range."""
         n_tokens = 4
-        soft_embeds = mx.random.normal((1, n_tokens, D_MODEL))
-        embed_matrix = mx.random.normal((VOCAB_SIZE, D_MODEL))
-        mx.eval(soft_embeds, embed_matrix)
+        soft_embeds = ops.random.normal((1, n_tokens, D_MODEL))
+        embed_matrix = ops.random.normal((VOCAB_SIZE, D_MODEL))
+        ops.eval(soft_embeds, embed_matrix)
 
         token_ids = _project_to_tokens(soft_embeds, embed_matrix)
         assert len(token_ids) == n_tokens
@@ -1876,20 +1878,20 @@ class TestProjectToTokens:
             assert 0 <= tid < VOCAB_SIZE
 
     def test_single_token(self) -> None:
-        soft_embeds = mx.random.normal((1, 1, D_MODEL))
-        embed_matrix = mx.random.normal((VOCAB_SIZE, D_MODEL))
-        mx.eval(soft_embeds, embed_matrix)
+        soft_embeds = ops.random.normal((1, 1, D_MODEL))
+        embed_matrix = ops.random.normal((VOCAB_SIZE, D_MODEL))
+        ops.eval(soft_embeds, embed_matrix)
 
         token_ids = _project_to_tokens(soft_embeds, embed_matrix)
         assert len(token_ids) == 1
 
     def test_nearest_neighbor_correctness(self) -> None:
         """Embedding of token i should project back to token i."""
-        embed_matrix = mx.random.normal((VOCAB_SIZE, D_MODEL))
-        mx.eval(embed_matrix)
+        embed_matrix = ops.random.normal((VOCAB_SIZE, D_MODEL))
+        ops.eval(embed_matrix)
         # Use exact embedding for token 3
         soft_embeds = embed_matrix[3:4][None, :]  # shape (1, 1, D_MODEL)
-        mx.eval(soft_embeds)
+        ops.eval(soft_embeds)
         token_ids = _project_to_tokens(soft_embeds, embed_matrix)
         assert token_ids[0] == 3
 
@@ -2088,7 +2090,7 @@ class TestNewTokenConstraints:
         tok = _UnicodeTokenizer()
         mask = _build_vocab_mask(tok, tok.VOCAB_SIZE, "non_latin")
         assert mask is not None
-        mx.eval(mask)
+        ops.eval(mask)
         # IDs 4-10 have ord > 127 (CJK, extended Latin, Cyrillic, zero-width)
         # IDs 0-3, 11-12, 15 are ASCII
         for tid in [0, 1, 2, 3, 11, 12, 15]:
@@ -2101,7 +2103,7 @@ class TestNewTokenConstraints:
         tok = _UnicodeTokenizer()
         mask = _build_vocab_mask(tok, tok.VOCAB_SIZE, "chinese")
         assert mask is not None
-        mx.eval(mask)
+        ops.eval(mask)
         # Only IDs 4, 5 are CJK
         for tid in [4, 5]:
             assert bool(mask[tid].item()), f"CJK token {tid} should be allowed"
@@ -2113,7 +2115,7 @@ class TestNewTokenConstraints:
         tok = _UnicodeTokenizer()
         mask = _build_vocab_mask(tok, tok.VOCAB_SIZE, "non_alphabetic")
         assert mask is not None
-        mx.eval(mask)
+        ops.eval(mask)
         # Alpha tokens: 0 (A), 1 (Z), 6 (e-acute), 7 (Cyrillic A), 15 (b)
         for tid in [0, 1, 6, 7, 15]:
             assert not bool(mask[tid].item()), f"Alpha token {tid} should be excluded"
@@ -2126,7 +2128,7 @@ class TestNewTokenConstraints:
         tok = _UnicodeTokenizer()
         mask = _build_vocab_mask(tok, tok.VOCAB_SIZE, "invisible")
         assert mask is not None
-        mx.eval(mask)
+        ops.eval(mask)
         # IDs 8 (ZWSP, Cf), 9 (ZWJ, Cf), 10 (soft hyphen, Cf) are invisible
         for tid in [8, 9, 10]:
             assert bool(mask[tid].item()), f"Invisible token {tid} should be allowed"
@@ -2139,7 +2141,7 @@ class TestNewTokenConstraints:
         tok = _UnicodeTokenizer()
         mask = _build_vocab_mask(tok, tok.VOCAB_SIZE, "emoji")
         assert mask is not None
-        mx.eval(mask)
+        ops.eval(mask)
         # IDs 13 (sun, So), 14 (heart, So) are emoji/symbols
         for tid in [13, 14]:
             assert bool(mask[tid].item()), f"Emoji token {tid} should be allowed"
@@ -2172,7 +2174,7 @@ class TestNewTokenConstraints:
         tok = _ZalgoTokenizer()
         mask = _build_vocab_mask(tok, tok.VOCAB_SIZE, "zalgo")  # type: ignore[arg-type]
         assert mask is not None
-        mx.eval(mask)
+        ops.eval(mask)
         # ID 0: "a" + combining grave → has alpha + combining mark → zalgo
         assert bool(mask[0].item()), "Token with combining mark should be allowed"
         # ID 2: "hello" has no combining marks → not zalgo
@@ -2195,7 +2197,7 @@ class TestEncodeTargetsRepeat:
         tokenizer = MockTokenizer(VOCAB_SIZE)
         ids_no_repeat = _encode_targets(tokenizer, ["Sure"])
         ids_zero = _encode_targets(tokenizer, ["Sure"], repeat_count=0)
-        mx.eval(ids_no_repeat, ids_zero)
+        ops.eval(ids_no_repeat, ids_zero)
         assert ids_no_repeat.shape == ids_zero.shape
 
     def test_repeat_multiplies_tokens(self) -> None:
@@ -2203,7 +2205,7 @@ class TestEncodeTargetsRepeat:
         tokenizer = MockTokenizer(VOCAB_SIZE)
         ids_base = _encode_targets(tokenizer, ["Hi"])
         ids_repeated = _encode_targets(tokenizer, ["Hi"], repeat_count=3)
-        mx.eval(ids_base, ids_repeated)
+        ops.eval(ids_base, ids_repeated)
         assert ids_repeated.shape[0] == ids_base.shape[0] * 3
 
     def test_repeat_preserves_pattern(self) -> None:
@@ -2211,7 +2213,7 @@ class TestEncodeTargetsRepeat:
         tokenizer = MockTokenizer(VOCAB_SIZE)
         ids_base = _encode_targets(tokenizer, ["AB"])
         ids_repeated = _encode_targets(tokenizer, ["AB"], repeat_count=2)
-        mx.eval(ids_base, ids_repeated)
+        ops.eval(ids_base, ids_repeated)
         raw_base = ids_base.tolist()
         raw_repeated = ids_repeated.tolist()
         base_list: list[int] = (
@@ -2235,7 +2237,7 @@ class TestPreEncodePromptsSystemPrompt:
         tokenizer = MockTokenizer(VOCAB_SIZE)
         encoded_default = _pre_encode_prompts(tokenizer, ["hello"])
         encoded_none = _pre_encode_prompts(tokenizer, ["hello"], system_prompt=None)
-        mx.eval(encoded_default[0], encoded_none[0])
+        ops.eval(encoded_default[0], encoded_none[0])
         assert encoded_default[0].shape == encoded_none[0].shape
 
     def test_system_prompt_increases_length(self) -> None:
@@ -2245,7 +2247,7 @@ class TestPreEncodePromptsSystemPrompt:
         encoded_with_sys = _pre_encode_prompts(
             tokenizer, ["hello"], system_prompt="You are a helpful assistant.",
         )
-        mx.eval(encoded_no_sys[0], encoded_with_sys[0])
+        ops.eval(encoded_no_sys[0], encoded_with_sys[0])
         assert encoded_with_sys[0].shape[1] > encoded_no_sys[0].shape[1]
 
     def test_system_prompt_content_appears(self) -> None:
@@ -2304,7 +2306,7 @@ class TestMultiConstraint:
         mask_list = _build_vocab_mask(tok, VOCAB_SIZE, ["ascii"])
         assert mask_str is not None
         assert mask_list is not None
-        mx.eval(mask_str, mask_list)
+        ops.eval(mask_str, mask_list)
         for tid in range(VOCAB_SIZE):
             assert bool(mask_str[tid].item()) == bool(
                 mask_list[tid].item()
@@ -2321,7 +2323,7 @@ class TestMultiConstraint:
         )
         assert mask_chinese is not None
         assert mask_multi is not None
-        mx.eval(mask_chinese, mask_multi)
+        ops.eval(mask_chinese, mask_multi)
         for tid in range(tok.VOCAB_SIZE):
             assert bool(mask_chinese[tid].item()) == bool(
                 mask_multi[tid].item()
@@ -2334,8 +2336,8 @@ class TestMultiConstraint:
             tok, tok.VOCAB_SIZE, ["ascii", "non_latin"],
         )
         assert mask is not None
-        mx.eval(mask)
-        n_allowed = int(mx.sum(mask).item())
+        ops.eval(mask)
+        n_allowed = int(ops.sum(mask).item())
         assert n_allowed == 0
 
 
@@ -2797,7 +2799,7 @@ class TestEvaluateAttackWithHistory:
         model = MockCausalLM(D_MODEL, VOCAB_SIZE, NUM_LAYERS, NUM_HEADS)
         tok = MockTokenizer(VOCAB_SIZE)
         config = SoftPromptConfig(n_tokens=2, max_gen_tokens=5)
-        soft_embeds = mx.random.normal((1, 2, D_MODEL))
+        soft_embeds = ops.random.normal((1, 2, D_MODEL))
         history = [
             {"role": "user", "content": "Hello"},
             {"role": "assistant", "content": "Hi there"},
@@ -2812,7 +2814,7 @@ class TestEvaluateAttackWithHistory:
         model = MockCausalLM(D_MODEL, VOCAB_SIZE, NUM_LAYERS, NUM_HEADS)
         tok = MockTokenizer(VOCAB_SIZE)
         config = SoftPromptConfig(n_tokens=2, max_gen_tokens=3)
-        soft_embeds = mx.random.normal((1, 2, D_MODEL))
+        soft_embeds = ops.random.normal((1, 2, D_MODEL))
         _success_rate, responses = _evaluate_attack_with_history(
             model, tok, ["Hello"], soft_embeds, config, history=[],
         )
@@ -2859,17 +2861,17 @@ class TestBuildSicPromptsWithHistory:
 
 class TestSamplePromptIds:
     def test_returns_all_when_k_ge_pool(self) -> None:
-        pool = [mx.array([1, 2]), mx.array([3, 4]), mx.array([5, 6])]
+        pool = [ops.array([1, 2]), ops.array([3, 4]), ops.array([5, 6])]
         result = _sample_prompt_ids(pool, 5)
         assert result is pool
 
     def test_returns_all_when_k_eq_pool(self) -> None:
-        pool = [mx.array([1, 2]), mx.array([3, 4])]
+        pool = [ops.array([1, 2]), ops.array([3, 4])]
         result = _sample_prompt_ids(pool, 2)
         assert result is pool
 
     def test_returns_k_elements(self) -> None:
-        pool = [mx.array([i]) for i in range(10)]
+        pool = [ops.array([i]) for i in range(10)]
         result = _sample_prompt_ids(pool, 3)
         assert len(result) == 3
         # All returned items come from the pool
@@ -2879,7 +2881,7 @@ class TestSamplePromptIds:
             )
 
     def test_no_duplicates(self) -> None:
-        pool = [mx.array([i]) for i in range(10)]
+        pool = [ops.array([i]) for i in range(10)]
         result = _sample_prompt_ids(pool, 5)
         ids = [
             tuple(v) if isinstance(v := r.tolist(), list) else (v,)
@@ -2962,8 +2964,8 @@ class TestDefenseAwarePenalty:
         """defense_aware_weight=0 means no penalty contribution."""
         from vauban.softprompt._loss import _compute_defense_aware_penalty
 
-        h = mx.ones((1, 4, D_MODEL))
-        direction = mx.ones((D_MODEL,))
+        h = ops.ones((1, 4, D_MODEL))
+        direction = ops.ones((D_MODEL,))
         result = _compute_defense_aware_penalty(
             h, layer_idx=2, direction=direction,
             sic_layer=2, sic_threshold=0.5,
@@ -2976,7 +2978,7 @@ class TestDefenseAwarePenalty:
         """No direction → zero penalty."""
         from vauban.softprompt._loss import _compute_defense_aware_penalty
 
-        h = mx.ones((1, 4, D_MODEL))
+        h = ops.ones((1, 4, D_MODEL))
         result = _compute_defense_aware_penalty(
             h, layer_idx=2, direction=None,
             sic_layer=2, sic_threshold=0.5,
@@ -2988,8 +2990,8 @@ class TestDefenseAwarePenalty:
         """Wrong layer → no SIC penalty."""
         from vauban.softprompt._loss import _compute_defense_aware_penalty
 
-        h = mx.ones((1, 4, D_MODEL))
-        direction = mx.ones((D_MODEL,))
+        h = ops.ones((1, 4, D_MODEL))
+        direction = ops.ones((D_MODEL,))
         result = _compute_defense_aware_penalty(
             h, layer_idx=5, direction=direction,
             sic_layer=2, sic_threshold=0.5,
@@ -3128,8 +3130,8 @@ class TestDefenseAwarePenaltyDirections:
         from vauban.softprompt._loss import _compute_defense_aware_penalty
 
         # Small hidden state → small projection → below threshold
-        h = mx.ones((1, 4, D_MODEL)) * 0.01
-        direction = mx.ones((D_MODEL,)) / (D_MODEL ** 0.5)
+        h = ops.ones((1, 4, D_MODEL)) * 0.01
+        direction = ops.ones((D_MODEL,)) / (D_MODEL ** 0.5)
         result = _compute_defense_aware_penalty(
             h, layer_idx=2, direction=direction,
             sic_layer=2, sic_threshold=10.0,
@@ -3142,8 +3144,8 @@ class TestDefenseAwarePenaltyDirections:
         from vauban.softprompt._loss import _compute_defense_aware_penalty
 
         # Large hidden state → large projection → above threshold
-        h = mx.ones((1, 4, D_MODEL)) * 10.0
-        direction = mx.ones((D_MODEL,)) / (D_MODEL ** 0.5)
+        h = ops.ones((1, 4, D_MODEL)) * 10.0
+        direction = ops.ones((D_MODEL,)) / (D_MODEL ** 0.5)
         result = _compute_defense_aware_penalty(
             h, layer_idx=2, direction=direction,
             sic_layer=2, sic_threshold=0.01,
@@ -3156,8 +3158,8 @@ class TestDefenseAwarePenaltyDirections:
         from vauban.softprompt._loss import _compute_defense_aware_penalty
 
         # Large hidden state → large projection → above threshold
-        h = mx.ones((1, 4, D_MODEL)) * 10.0
-        direction = mx.ones((D_MODEL,)) / (D_MODEL ** 0.5)
+        h = ops.ones((1, 4, D_MODEL)) * 10.0
+        direction = ops.ones((D_MODEL,)) / (D_MODEL ** 0.5)
         result = _compute_defense_aware_penalty(
             h, layer_idx=3, direction=direction,
             sic_layer=None, sic_threshold=0.0,
@@ -3170,8 +3172,8 @@ class TestDefenseAwarePenaltyDirections:
         from vauban.softprompt._loss import _compute_defense_aware_penalty
 
         # Small hidden state → small projection → below threshold
-        h = mx.ones((1, 4, D_MODEL)) * 0.01
-        direction = mx.ones((D_MODEL,)) / (D_MODEL ** 0.5)
+        h = ops.ones((1, 4, D_MODEL)) * 0.01
+        direction = ops.ones((D_MODEL,)) / (D_MODEL ** 0.5)
         result = _compute_defense_aware_penalty(
             h, layer_idx=3, direction=direction,
             sic_layer=None, sic_threshold=0.0,
@@ -3185,8 +3187,8 @@ class TestDefenseAwarePenaltyDirections:
 
         # Use a moderate projection so it's below SIC threshold AND above CAST
         # threshold — both penalties should fire
-        h = mx.ones((1, 4, D_MODEL))
-        direction = mx.ones((D_MODEL,)) / (D_MODEL ** 0.5)
+        h = ops.ones((1, 4, D_MODEL))
+        direction = ops.ones((D_MODEL,)) / (D_MODEL ** 0.5)
         # Projection = sum(1 * 1/sqrt(D)) = sqrt(D) ≈ 5.66 for D=32
         sic_threshold = 100.0  # proj << threshold → SIC penalty
         cast_threshold = 0.01  # proj >> threshold → CAST penalty
@@ -3221,11 +3223,11 @@ class TestGcgTransferScoring:
         """transfer_loss_weight=0 should skip re-ranking entirely."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
         tokenizer = MockTokenizer(VOCAB_SIZE)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
 
         # Second model as "transfer" target
         t_model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(t_model.parameters())
+        ops.eval(t_model.parameters())
         t_tok = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -3246,10 +3248,10 @@ class TestGcgTransferScoring:
         """transfer_loss_weight>0 with transfer models should run."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
         tokenizer = MockTokenizer(VOCAB_SIZE)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
 
         t_model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(t_model.parameters())
+        ops.eval(t_model.parameters())
         t_tok = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -3270,7 +3272,7 @@ class TestGcgTransferScoring:
         """No transfer models means no re-ranking, even with weight > 0."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
         tokenizer = MockTokenizer(VOCAB_SIZE)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
 
         config = SoftPromptConfig(
             mode="gcg", n_tokens=4, n_steps=2,
@@ -3303,10 +3305,10 @@ class TestGcgTransferScoring:
         """Custom rerank count should be respected during GCG."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
         tokenizer = MockTokenizer(VOCAB_SIZE)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
 
         t_model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(t_model.parameters())
+        ops.eval(t_model.parameters())
         t_tok = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -3328,10 +3330,10 @@ class TestEgdTransferScoring:
         """EGD with transfer_loss_weight=0 should not change behavior."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
         tokenizer = MockTokenizer(VOCAB_SIZE)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
 
         t_model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(t_model.parameters())
+        ops.eval(t_model.parameters())
         t_tok = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -3350,10 +3352,10 @@ class TestEgdTransferScoring:
         """EGD with transfer_loss_weight>0 should include transfer loss."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
         tokenizer = MockTokenizer(VOCAB_SIZE)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
 
         t_model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(t_model.parameters())
+        ops.eval(t_model.parameters())
         t_tok = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -3372,7 +3374,7 @@ class TestEgdTransferScoring:
         """EGD without transfer models should work normally."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
         tokenizer = MockTokenizer(VOCAB_SIZE)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
 
         config = SoftPromptConfig(
             mode="egd", n_tokens=4, n_steps=3,
@@ -3622,7 +3624,7 @@ class TestInjectionContextDispatch:
     def test_gcg_with_injection_context(self) -> None:
         """GCG attack with injection_context produces valid result."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
         config = SoftPromptConfig(
             mode="gcg",
@@ -3642,7 +3644,7 @@ class TestInjectionContextDispatch:
     def test_egd_with_injection_template(self) -> None:
         """EGD attack with injection_context_template works."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
         config = SoftPromptConfig(
             mode="egd",
@@ -3695,35 +3697,35 @@ class TestPerplexityLoss:
         from vauban.softprompt import _compute_perplexity_loss
 
         # logits: (1, 4, 32), suffix_token_ids: (1, 4)
-        logits = mx.random.normal((1, 4, VOCAB_SIZE))
-        suffix_ids = mx.array([[1, 2, 3, 4]])
+        logits = ops.random.normal((1, 4, VOCAB_SIZE))
+        suffix_ids = ops.array([[1, 2, 3, 4]])
         loss = _compute_perplexity_loss(
             logits, suffix_ids, n_tokens=4, soft_token_offset=0,
         )
-        mx.eval(loss)
+        ops.eval(loss)
         assert loss.shape == ()
         assert float(loss.item()) > 0.0
 
     def test_perplexity_loss_single_token_returns_zero(self) -> None:
         from vauban.softprompt import _compute_perplexity_loss
 
-        logits = mx.random.normal((1, 2, VOCAB_SIZE))
-        suffix_ids = mx.array([[1]])
+        logits = ops.random.normal((1, 2, VOCAB_SIZE))
+        suffix_ids = ops.array([[1]])
         loss = _compute_perplexity_loss(
             logits, suffix_ids, n_tokens=1, soft_token_offset=0,
         )
-        mx.eval(loss)
+        ops.eval(loss)
         assert float(loss.item()) == 0.0
 
     def test_compute_loss_with_perplexity(self) -> None:
         from vauban.softprompt import _compute_loss
 
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
-        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
-        prompt_ids = mx.array([[1, 2, 3]])
-        target_ids = mx.array([5, 6])
-        suffix_ids = mx.array([[1, 2, 3, 4]])
+        ops.eval(model.parameters())
+        soft_embeds = ops.random.normal((1, 4, D_MODEL)) * 0.1
+        prompt_ids = ops.array([[1, 2, 3]])
+        target_ids = ops.array([5, 6])
+        suffix_ids = ops.array([[1, 2, 3, 4]])
 
         loss_no_ppl = _compute_loss(
             model, soft_embeds, prompt_ids, target_ids,
@@ -3734,7 +3736,7 @@ class TestPerplexityLoss:
             n_tokens=4, direction=None, direction_weight=0.0,
             perplexity_weight=0.1, suffix_token_ids=suffix_ids,
         )
-        mx.eval(loss_no_ppl, loss_with_ppl)
+        ops.eval(loss_no_ppl, loss_with_ppl)
         # Perplexity adds a non-negative term
         assert float(loss_with_ppl.item()) >= float(loss_no_ppl.item()) - 1e-6
 
@@ -3761,44 +3763,44 @@ class TestTokenPosition:
         from vauban.softprompt import _compute_loss
 
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
-        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
-        prompt_ids = mx.array([[1, 2, 3]])
-        target_ids = mx.array([5, 6])
+        ops.eval(model.parameters())
+        soft_embeds = ops.random.normal((1, 4, D_MODEL)) * 0.1
+        prompt_ids = ops.array([[1, 2, 3]])
+        target_ids = ops.array([5, 6])
 
         loss = _compute_loss(
             model, soft_embeds, prompt_ids, target_ids,
             n_tokens=4, direction=None, direction_weight=0.0,
             token_position="suffix",
         )
-        mx.eval(loss)
+        ops.eval(loss)
         assert loss.shape == ()
 
     def test_compute_loss_infix_position(self) -> None:
         from vauban.softprompt import _compute_loss
 
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
-        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
-        prompt_ids = mx.array([[1, 2, 3, 4, 5]])
-        target_ids = mx.array([5, 6])
+        ops.eval(model.parameters())
+        soft_embeds = ops.random.normal((1, 4, D_MODEL)) * 0.1
+        prompt_ids = ops.array([[1, 2, 3, 4, 5]])
+        target_ids = ops.array([5, 6])
 
         loss = _compute_loss(
             model, soft_embeds, prompt_ids, target_ids,
             n_tokens=4, direction=None, direction_weight=0.0,
             token_position="infix", infix_split=2,
         )
-        mx.eval(loss)
+        ops.eval(loss)
         assert loss.shape == ()
 
     def test_embed_and_mask_with_prefix_suffix(self) -> None:
         from vauban._forward import embed_and_mask_with_prefix
 
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         transformer = model.model
-        soft_embeds = mx.random.normal((1, 3, D_MODEL))
-        token_ids = mx.array([[1, 2]])
+        soft_embeds = ops.random.normal((1, 3, D_MODEL))
+        token_ids = ops.array([[1, 2]])
 
         h_prefix, _ = embed_and_mask_with_prefix(
             transformer, soft_embeds, token_ids, token_position="prefix",
@@ -3806,7 +3808,7 @@ class TestTokenPosition:
         h_suffix, _ = embed_and_mask_with_prefix(
             transformer, soft_embeds, token_ids, token_position="suffix",
         )
-        mx.eval(h_prefix, h_suffix)
+        ops.eval(h_prefix, h_suffix)
         # Both should have same total length
         assert h_prefix.shape[1] == h_suffix.shape[1] == 5
 
@@ -3814,16 +3816,16 @@ class TestTokenPosition:
         from vauban._forward import embed_and_mask_with_prefix
 
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         transformer = model.model
-        soft_embeds = mx.random.normal((1, 3, D_MODEL))
-        token_ids = mx.array([[1, 2, 3, 4]])
+        soft_embeds = ops.random.normal((1, 3, D_MODEL))
+        token_ids = ops.array([[1, 2, 3, 4]])
 
         h_infix, _ = embed_and_mask_with_prefix(
             transformer, soft_embeds, token_ids,
             token_position="infix", infix_split=2,
         )
-        mx.eval(h_infix)
+        ops.eval(h_infix)
         # 4 prompt + 3 soft = 7
         assert h_infix.shape[1] == 7
 
@@ -3889,12 +3891,12 @@ class TestPerplexityWithOffset:
         from vauban.softprompt import _compute_perplexity_loss
 
         # 3 prompt tokens + 4 soft tokens = logits at positions 3..5
-        logits = mx.random.normal((1, 10, VOCAB_SIZE))
-        suffix_ids = mx.array([[1, 2, 3, 4]])
+        logits = ops.random.normal((1, 10, VOCAB_SIZE))
+        suffix_ids = ops.array([[1, 2, 3, 4]])
         loss = _compute_perplexity_loss(
             logits, suffix_ids, n_tokens=4, soft_token_offset=3,
         )
-        mx.eval(loss)
+        ops.eval(loss)
         assert loss.shape == ()
         assert float(loss.item()) > 0.0
 
@@ -3902,68 +3904,68 @@ class TestPerplexityWithOffset:
         from vauban.softprompt import _compute_perplexity_loss
 
         # infix_split=2: soft tokens start at position 2
-        logits = mx.random.normal((1, 12, VOCAB_SIZE))
-        suffix_ids = mx.array([[1, 2, 3, 4]])
+        logits = ops.random.normal((1, 12, VOCAB_SIZE))
+        suffix_ids = ops.array([[1, 2, 3, 4]])
         loss = _compute_perplexity_loss(
             logits, suffix_ids, n_tokens=4, soft_token_offset=2,
         )
-        mx.eval(loss)
+        ops.eval(loss)
         assert loss.shape == ()
         assert float(loss.item()) > 0.0
 
     def test_add_perplexity_term_disabled(self) -> None:
         from vauban.softprompt import _add_perplexity_term
 
-        logits = mx.random.normal((1, 8, VOCAB_SIZE))
-        base_loss = mx.array(1.5)
+        logits = ops.random.normal((1, 8, VOCAB_SIZE))
+        base_loss = ops.array(1.5)
         result = _add_perplexity_term(
             base_loss, logits,
             perplexity_weight=0.0, suffix_token_ids=None,
             n_tokens=4, n_prompt=3,
             token_position="prefix", infix_split=None,
         )
-        mx.eval(result)
+        ops.eval(result)
         assert float(result.item()) == float(base_loss.item())
 
     def test_add_perplexity_term_suffix(self) -> None:
         from vauban.softprompt import _add_perplexity_term
 
-        logits = mx.random.normal((1, 10, VOCAB_SIZE))
-        base_loss = mx.array(1.0)
-        suffix_ids = mx.array([[1, 2, 3, 4]])
+        logits = ops.random.normal((1, 10, VOCAB_SIZE))
+        base_loss = ops.array(1.0)
+        suffix_ids = ops.array([[1, 2, 3, 4]])
         result = _add_perplexity_term(
             base_loss, logits,
             perplexity_weight=0.1, suffix_token_ids=suffix_ids,
             n_tokens=4, n_prompt=3,
             token_position="suffix", infix_split=None,
         )
-        mx.eval(result)
+        ops.eval(result)
         assert float(result.item()) >= float(base_loss.item()) - 1e-6
 
     def test_add_perplexity_term_infix(self) -> None:
         from vauban.softprompt import _add_perplexity_term
 
-        logits = mx.random.normal((1, 12, VOCAB_SIZE))
-        base_loss = mx.array(1.0)
-        suffix_ids = mx.array([[1, 2, 3, 4]])
+        logits = ops.random.normal((1, 12, VOCAB_SIZE))
+        base_loss = ops.array(1.0)
+        suffix_ids = ops.array([[1, 2, 3, 4]])
         result = _add_perplexity_term(
             base_loss, logits,
             perplexity_weight=0.1, suffix_token_ids=suffix_ids,
             n_tokens=4, n_prompt=5,
             token_position="infix", infix_split=2,
         )
-        mx.eval(result)
+        ops.eval(result)
         assert float(result.item()) >= float(base_loss.item()) - 1e-6
 
     def test_loss_with_perplexity_suffix_position(self) -> None:
         from vauban.softprompt import _compute_loss
 
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
-        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
-        prompt_ids = mx.array([[1, 2, 3]])
-        target_ids = mx.array([5, 6])
-        suffix_ids = mx.array([[1, 2, 3, 4]])
+        ops.eval(model.parameters())
+        soft_embeds = ops.random.normal((1, 4, D_MODEL)) * 0.1
+        prompt_ids = ops.array([[1, 2, 3]])
+        target_ids = ops.array([5, 6])
+        suffix_ids = ops.array([[1, 2, 3, 4]])
 
         loss = _compute_loss(
             model, soft_embeds, prompt_ids, target_ids,
@@ -3971,18 +3973,18 @@ class TestPerplexityWithOffset:
             perplexity_weight=0.1, suffix_token_ids=suffix_ids,
             token_position="suffix",
         )
-        mx.eval(loss)
+        ops.eval(loss)
         assert loss.shape == ()
 
     def test_loss_with_perplexity_infix_position(self) -> None:
         from vauban.softprompt import _compute_loss
 
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
-        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
-        prompt_ids = mx.array([[1, 2, 3, 4, 5]])
-        target_ids = mx.array([5, 6])
-        suffix_ids = mx.array([[1, 2, 3, 4]])
+        ops.eval(model.parameters())
+        soft_embeds = ops.random.normal((1, 4, D_MODEL)) * 0.1
+        prompt_ids = ops.array([[1, 2, 3, 4, 5]])
+        target_ids = ops.array([5, 6])
+        suffix_ids = ops.array([[1, 2, 3, 4]])
 
         loss = _compute_loss(
             model, soft_embeds, prompt_ids, target_ids,
@@ -3990,7 +3992,7 @@ class TestPerplexityWithOffset:
             perplexity_weight=0.1, suffix_token_ids=suffix_ids,
             token_position="infix", infix_split=2,
         )
-        mx.eval(loss)
+        ops.eval(loss)
         assert loss.shape == ()
 
 
@@ -4048,7 +4050,7 @@ class TestThreeFeaturesIntegration:
         from vauban.softprompt import _compute_loss, paraphrase_prompts
 
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
 
         # Paraphrase
         prompts = ["do something dangerous"]
@@ -4056,10 +4058,10 @@ class TestThreeFeaturesIntegration:
         assert len(expanded) == 3  # 1 original + 2 paraphrased
 
         # Infix position with perplexity
-        soft_embeds = mx.random.normal((1, 4, D_MODEL)) * 0.1
-        prompt_ids = mx.array([[1, 2, 3, 4, 5]])
-        target_ids = mx.array([5, 6])
-        suffix_ids = mx.array([[1, 2, 3, 4]])
+        soft_embeds = ops.random.normal((1, 4, D_MODEL)) * 0.1
+        prompt_ids = ops.array([[1, 2, 3, 4, 5]])
+        target_ids = ops.array([5, 6])
+        suffix_ids = ops.array([[1, 2, 3, 4]])
 
         loss = _compute_loss(
             model, soft_embeds, prompt_ids, target_ids,
@@ -4067,7 +4069,7 @@ class TestThreeFeaturesIntegration:
             perplexity_weight=0.1, suffix_token_ids=suffix_ids,
             token_position="infix", infix_split=2,
         )
-        mx.eval(loss)
+        ops.eval(loss)
         assert loss.shape == ()
         assert float(loss.item()) > 0.0
 
@@ -4126,7 +4128,7 @@ class TestGcgRolloutWiring:
         from unittest.mock import patch
 
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -4158,7 +4160,7 @@ class TestGcgRolloutWiring:
         from unittest.mock import patch
 
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -4194,7 +4196,7 @@ class TestInfixMultiturnDispatch:
         from vauban.softprompt._gan import _dispatch_attack_multiturn
 
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
 
         config = SoftPromptConfig(
@@ -4230,10 +4232,10 @@ class TestExternalityLossMode:
     def test_gcg_externality_mode(self) -> None:
         """GCG with loss_mode='externality' produces finite loss."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
-        direction = mx.random.normal((D_MODEL,))
-        mx.eval(direction)
+        direction = ops.random.normal((D_MODEL,))
+        ops.eval(direction)
 
         config = SoftPromptConfig(
             mode="gcg",
@@ -4259,10 +4261,10 @@ class TestExternalityLossMode:
     def test_egd_externality_mode(self) -> None:
         """EGD with loss_mode='externality' produces finite loss."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
-        mx.eval(model.parameters())
+        ops.eval(model.parameters())
         tokenizer = MockTokenizer(VOCAB_SIZE)
-        direction = mx.random.normal((D_MODEL,))
-        mx.eval(direction)
+        direction = ops.random.normal((D_MODEL,))
+        ops.eval(direction)
 
         config = SoftPromptConfig(
             mode="egd",

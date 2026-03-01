@@ -1,9 +1,10 @@
 """Tests for CAST entry points, forward pass steering, and SVF-aware CAST."""
 
-import mlx.core as mx
 import pytest
 
 from tests.conftest import D_MODEL, MockCausalLM, MockTokenizer
+from vauban import _ops as ops
+from vauban._array import Array
 from vauban.cast import (
     _cast_forward,
     cast_generate,
@@ -19,7 +20,7 @@ class TestCastGenerateWithMessages:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         messages = [{"role": "user", "content": "test prompt"}]
         result = cast_generate_with_messages(
@@ -34,7 +35,7 @@ class TestCastGenerateWithMessages:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         messages = [
             {"role": "user", "content": "first question"},
@@ -51,7 +52,7 @@ class TestCastGenerateWithMessages:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         messages = [{"role": "assistant", "content": "hello"}]
         result = cast_generate_with_messages(
@@ -67,9 +68,9 @@ class TestCastForward:
     def test_no_intervention_at_high_threshold(
         self,
         mock_model: MockCausalLM,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
-        token_ids = mx.array([[1, 2, 3]])
+        token_ids = ops.array([[1, 2, 3]])
         cache = mock_model.make_cache()
 
         logits, proj_before, _proj_after, interventions, considered, _, _ = (
@@ -79,7 +80,7 @@ class TestCastForward:
                 cache=cache,
             )
         )
-        mx.eval(logits)
+        ops.eval(logits)
         assert interventions == 0
         assert considered == 1
         assert len(proj_before) == 1
@@ -87,9 +88,9 @@ class TestCastForward:
     def test_intervention_at_low_threshold(
         self,
         mock_model: MockCausalLM,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
-        token_ids = mx.array([[1, 2, 3]])
+        token_ids = ops.array([[1, 2, 3]])
         cache = mock_model.make_cache()
 
         logits, proj_before, proj_after, interventions, considered, _, _ = (
@@ -99,7 +100,7 @@ class TestCastForward:
                 cache=cache,
             )
         )
-        mx.eval(logits)
+        ops.eval(logits)
         assert interventions == 2
         assert considered == 2
         assert len(proj_before) == 2
@@ -108,9 +109,9 @@ class TestCastForward:
     def test_non_cast_layers_skipped(
         self,
         mock_model: MockCausalLM,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
-        token_ids = mx.array([[1, 2, 3]])
+        token_ids = ops.array([[1, 2, 3]])
         cache = mock_model.make_cache()
 
         _, _, _, _, considered, _, _ = _cast_forward(
@@ -123,15 +124,15 @@ class TestCastForward:
     def test_dual_direction_gating(
         self,
         mock_model: MockCausalLM,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         """Condition direction gates, primary direction steers."""
-        token_ids = mx.array([[1, 2]])
+        token_ids = ops.array([[1, 2]])
         cache = mock_model.make_cache()
 
         # Zero condition = never triggers
-        zero_cond = mx.zeros((D_MODEL,))
-        mx.eval(zero_cond)
+        zero_cond = ops.zeros((D_MODEL,))
+        ops.eval(zero_cond)
 
         _, _, _, interventions, _, _, _ = _cast_forward(
             mock_model, token_ids, direction,
@@ -144,9 +145,9 @@ class TestCastForward:
     def test_alpha_tiers_applied(
         self,
         mock_model: MockCausalLM,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
-        token_ids = mx.array([[1, 2]])
+        token_ids = ops.array([[1, 2]])
         cache = mock_model.make_cache()
         tiers = [
             AlphaTier(threshold=0.0, alpha=0.1),
@@ -159,21 +160,21 @@ class TestCastForward:
             cache=cache,
             alpha_tiers=tiers,
         )
-        mx.eval(logits)
+        ops.eval(logits)
         # Should have intervened with the first tier alpha (0.1)
         assert interventions == 1
 
     def test_displacement_monitoring(
         self,
         mock_model: MockCausalLM,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
-        token_ids = mx.array([[1, 2, 3]])
+        token_ids = ops.array([[1, 2, 3]])
         cache = mock_model.make_cache()
 
         # Create baseline activations (zeros → any activation will displace)
-        baseline = {0: mx.zeros((D_MODEL,))}
-        mx.eval(baseline[0])
+        baseline = {0: ops.zeros((D_MODEL,))}
+        ops.eval(baseline[0])
 
         _, _, _, _, _, disp_interventions, max_disp = _cast_forward(
             mock_model, token_ids, direction,
@@ -189,9 +190,9 @@ class TestCastForward:
     def test_logits_shape(
         self,
         mock_model: MockCausalLM,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
-        token_ids = mx.array([[1, 2, 3]])
+        token_ids = ops.array([[1, 2, 3]])
         cache = mock_model.make_cache()
 
         logits, _, _, _, _, _, _ = _cast_forward(
@@ -199,7 +200,7 @@ class TestCastForward:
             cast_layers=[0], alpha=1.0, threshold=0.0,
             cache=cache,
         )
-        mx.eval(logits)
+        ops.eval(logits)
         assert logits.ndim == 3  # (batch, seq, vocab)
         assert logits.shape[0] == 1
 
@@ -211,7 +212,7 @@ class TestCastExternalities:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
         result = cast_generate(
             mock_model, mock_tokenizer, "test",
@@ -224,10 +225,10 @@ class TestCastExternalities:
         self,
         mock_model: MockCausalLM,
         mock_tokenizer: MockTokenizer,
-        direction: mx.array,
+        direction: Array,
     ) -> None:
-        baseline = {0: mx.zeros((D_MODEL,))}
-        mx.eval(baseline[0])
+        baseline = {0: ops.zeros((D_MODEL,))}
+        ops.eval(baseline[0])
 
         result = cast_generate(
             mock_model, mock_tokenizer, "test",

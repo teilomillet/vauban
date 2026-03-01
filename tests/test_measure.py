@@ -2,9 +2,8 @@
 
 from pathlib import Path
 
-import mlx.core as mx
-
 from tests.conftest import D_MODEL, NUM_LAYERS, MockCausalLM, MockTokenizer
+from vauban import _ops as ops
 from vauban.measure import (
     _forward_collect,
     _match_suffix,
@@ -35,7 +34,7 @@ class TestForwardCollect:
     def test_returns_per_layer_activations(
         self, mock_model: MockCausalLM,
     ) -> None:
-        token_ids = mx.array([[1, 2, 3]])
+        token_ids = ops.array([[1, 2, 3]])
         residuals = _forward_collect(mock_model, token_ids)
         assert len(residuals) == NUM_LAYERS
         d_model = mock_model.model.layers[0].self_attn.o_proj.weight.shape[0]
@@ -67,7 +66,7 @@ class TestMeasure:
             mock_model, mock_tokenizer,
             ["harmful"], ["harmless"],
         )
-        norm = float(mx.linalg.norm(result.direction).item())
+        norm = float(ops.linalg.norm(result.direction).item())
         assert abs(norm - 1.0) < 1e-4
 
 
@@ -118,22 +117,22 @@ class TestForwardCollectWithPosition:
     def test_default_matches_explicit_last(
         self, mock_model: MockCausalLM,
     ) -> None:
-        token_ids = mx.array([[1, 2, 3, 4]])
+        token_ids = ops.array([[1, 2, 3, 4]])
         default = _forward_collect(mock_model, token_ids)
         explicit = _forward_collect(mock_model, token_ids, token_position=-1)
         for d, e in zip(default, explicit, strict=True):
-            assert mx.allclose(d, e)
+            assert ops.allclose(d, e)
 
     def test_position_2_differs_from_last(
         self, mock_model: MockCausalLM,
     ) -> None:
-        token_ids = mx.array([[1, 2, 3, 4, 5]])
+        token_ids = ops.array([[1, 2, 3, 4, 5]])
         pos2 = _forward_collect(mock_model, token_ids, token_position=2)
         last = _forward_collect(mock_model, token_ids, token_position=-1)
         # At least one layer should differ
         any_differ = False
         for p2, lst in zip(pos2, last, strict=True):
-            if not mx.allclose(p2, lst):
+            if not ops.allclose(p2, lst):
                 any_differ = True
                 break
         assert any_differ
@@ -167,8 +166,8 @@ class TestMeasureDBDI:
             ["harmful one", "harmful two"],
             ["harmless one", "harmless two"],
         )
-        hdd_norm = float(mx.linalg.norm(result.hdd).item())
-        red_norm = float(mx.linalg.norm(result.red).item())
+        hdd_norm = float(ops.linalg.norm(result.hdd).item())
+        red_norm = float(ops.linalg.norm(result.red).item())
         assert abs(hdd_norm - 1.0) < 1e-4
         assert abs(red_norm - 1.0) < 1e-4
 
