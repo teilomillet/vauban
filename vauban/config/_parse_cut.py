@@ -9,6 +9,7 @@ def _parse_cut(raw: TomlDict) -> CutConfig:
     """Parse the [cut] section into a CutConfig."""
     reader = SectionReader("[cut]", raw)
 
+    # layers accepts "auto" (string) or a list of ints — special case
     layers_raw = raw.get("layers")
     layers: list[int] | None
     if layers_raw is None or layers_raw == "auto":
@@ -19,99 +20,38 @@ def _parse_cut(raw: TomlDict) -> CutConfig:
         msg = f"[cut].layers must be 'auto' or a list of ints, got {layers_raw!r}"
         raise TypeError(msg)
 
-    alpha_raw = raw.get("alpha", 1.0)
-    if not isinstance(alpha_raw, int | float):
-        msg = f"[cut].alpha must be a number, got {type(alpha_raw).__name__}"
-        raise TypeError(msg)
-
-    layer_strategy_raw = raw.get("layer_strategy", "all")
-    if not isinstance(layer_strategy_raw, str):
-        msg = (
-            f"[cut].layer_strategy must be a string,"
-            f" got {type(layer_strategy_raw).__name__}"
-        )
-        raise TypeError(msg)
-    valid_strategies = ("all", "above_median", "top_k")
-    if layer_strategy_raw not in valid_strategies:
-        msg = (
-            f"[cut].layer_strategy must be one of {valid_strategies!r},"
-            f" got {layer_strategy_raw!r}"
-        )
-        raise ValueError(msg)
-
-    layer_top_k_raw = raw.get("layer_top_k", 10)
-    if not isinstance(layer_top_k_raw, int | float):
-        msg = (
-            f"[cut].layer_top_k must be an integer,"
-            f" got {type(layer_top_k_raw).__name__}"
-        )
-        raise TypeError(msg)
-
+    alpha = reader.number("alpha", default=1.0)
+    layer_strategy = reader.literal(
+        "layer_strategy", ("all", "above_median", "top_k"), default="all",
+    )
+    layer_top_k = reader.integer("layer_top_k", default=10)
     layer_weights = reader.optional_number_list("layer_weights")
 
-    sparsity_raw = raw.get("sparsity", 0.0)
-    if not isinstance(sparsity_raw, int | float):
-        msg = (
-            f"[cut].sparsity must be a number,"
-            f" got {type(sparsity_raw).__name__}"
-        )
-        raise TypeError(msg)
-    sparsity = float(sparsity_raw)
+    sparsity = reader.number("sparsity", default=0.0)
     if not 0.0 <= sparsity < 1.0:
         msg = f"[cut].sparsity must be in [0.0, 1.0), got {sparsity}"
         raise ValueError(msg)
 
-    dbdi_target_raw = raw.get("dbdi_target", "red")
-    if not isinstance(dbdi_target_raw, str):
-        msg = (
-            f"[cut].dbdi_target must be a string,"
-            f" got {type(dbdi_target_raw).__name__}"
-        )
-        raise TypeError(msg)
-    valid_dbdi_targets = ("red", "hdd", "both")
-    if dbdi_target_raw not in valid_dbdi_targets:
-        msg = (
-            f"[cut].dbdi_target must be one of {valid_dbdi_targets!r},"
-            f" got {dbdi_target_raw!r}"
-        )
-        raise ValueError(msg)
-
-    false_refusal_ortho_raw = raw.get("false_refusal_ortho", False)
-    if not isinstance(false_refusal_ortho_raw, bool):
-        msg = (
-            f"[cut].false_refusal_ortho must be a boolean,"
-            f" got {type(false_refusal_ortho_raw).__name__}"
-        )
-        raise TypeError(msg)
-
-    layer_type_filter_raw = raw.get("layer_type_filter")
-    layer_type_filter: str | None = None
-    if layer_type_filter_raw is not None:
-        if not isinstance(layer_type_filter_raw, str):
-            msg = (
-                f"[cut].layer_type_filter must be a string,"
-                f" got {type(layer_type_filter_raw).__name__}"
-            )
-            raise TypeError(msg)
-        valid_type_filters = ("global", "sliding")
-        if layer_type_filter_raw not in valid_type_filters:
-            msg = (
-                f"[cut].layer_type_filter must be one of"
-                f" {valid_type_filters!r}, got {layer_type_filter_raw!r}"
-            )
-            raise ValueError(msg)
-        layer_type_filter = layer_type_filter_raw
+    dbdi_target = reader.literal(
+        "dbdi_target", ("red", "hdd", "both"), default="red",
+    )
+    false_refusal_ortho = reader.boolean("false_refusal_ortho", default=False)
+    norm_preserve = reader.boolean("norm_preserve", default=False)
+    biprojected = reader.boolean("biprojected", default=False)
+    layer_type_filter = reader.optional_literal(
+        "layer_type_filter", ("global", "sliding"),
+    )
 
     return CutConfig(
-        alpha=float(alpha_raw),
+        alpha=alpha,
         layers=layers,
-        norm_preserve=bool(raw.get("norm_preserve", False)),
-        biprojected=bool(raw.get("biprojected", False)),
-        layer_strategy=layer_strategy_raw,
-        layer_top_k=int(layer_top_k_raw),
+        norm_preserve=norm_preserve,
+        biprojected=biprojected,
+        layer_strategy=layer_strategy,
+        layer_top_k=layer_top_k,
         layer_weights=layer_weights,
         sparsity=sparsity,
-        dbdi_target=dbdi_target_raw,
-        false_refusal_ortho=false_refusal_ortho_raw,
+        dbdi_target=dbdi_target,
+        false_refusal_ortho=false_refusal_ortho,
         layer_type_filter=layer_type_filter,
     )

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 
 if TYPE_CHECKING:
     from vauban.config._types import TomlDict
@@ -41,10 +41,7 @@ class SectionReader:
                 f" got {raw!r}"
             )
             raise ValueError(msg)
-        if isinstance(raw, str):
-            return raw
-        msg = f"{self._field(key)} must be a string, got {type(raw).__name__}"
-        raise TypeError(msg)
+        return raw
 
     def optional_literal(
         self,
@@ -63,10 +60,7 @@ class SectionReader:
                 f" got {raw!r}"
             )
             raise ValueError(msg)
-        if isinstance(raw, str):
-            return raw
-        msg = f"{self._field(key)} must be a string, got {type(raw).__name__}"
-        raise TypeError(msg)
+        return raw
 
     def string(
         self,
@@ -78,10 +72,7 @@ class SectionReader:
         raw = self._raw(key, default)
         if not isinstance(raw, str):
             self._raise_type_error(key, "a string", raw)
-        if isinstance(raw, str):
-            return raw
-        msg = f"{self._field(key)} must be a string, got {type(raw).__name__}"
-        raise TypeError(msg)
+        return raw
 
     def optional_string(self, key: str) -> str | None:
         """Read an optional string."""
@@ -90,10 +81,7 @@ class SectionReader:
             return None
         if not isinstance(raw, str):
             self._raise_type_error(key, "a string", raw)
-        if isinstance(raw, str):
-            return raw
-        msg = f"{self._field(key)} must be a string, got {type(raw).__name__}"
-        raise TypeError(msg)
+        return raw
 
     def integer(
         self,
@@ -383,7 +371,7 @@ class SectionReader:
         """Read an optional field."""
         return self.data.get(key)
 
-    def _raise_type_error(self, key: str, expected: str, value: object) -> None:
+    def _raise_type_error(self, key: str, expected: str, value: object) -> NoReturn:
         """Raise a field-specific type error."""
         msg = (
             f"{self._field(key)} must be {expected},"

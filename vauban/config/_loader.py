@@ -79,9 +79,6 @@ def load_config(path: str | Path) -> PipelineConfig:
     defend_config = parsed_sections.defend
     circuit_config = parsed_sections.circuit
     features_config = parsed_sections.features
-    linear_probe_config = parsed_sections.linear_probe
-    fusion_config = parsed_sections.fusion
-    repbend_config = parsed_sections.repbend
 
     output_section = raw.get("output")
     output_dir_str = "output"
@@ -160,9 +157,6 @@ def load_config(path: str | Path) -> PipelineConfig:
         defend=defend_config,
         circuit=circuit_config,
         features=features_config,
-        linear_probe=linear_probe_config,
-        fusion=fusion_config,
-        repbend=repbend_config,
         eval=eval_config,
         api_eval=api_eval_config,
         meta=meta_config,
@@ -240,15 +234,24 @@ def _resolve_single_data(
             harmful, harmless = default_prompt_paths()
             return harmful if name == "harmful" else harmless
 
-        from vauban.benchmarks import KNOWN_BENCHMARKS, resolve_benchmark
+        from vauban.benchmarks import (
+            KNOWN_BENCHMARKS,
+            generate_infix_prompts,
+            resolve_benchmark,
+        )
 
         if value in KNOWN_BENCHMARKS:
             return resolve_benchmark(value)
-        if value.endswith("_infix"):
+        # Only treat as infix sentinel for bare names (no path
+        # separators or file extensions) to avoid hijacking
+        # filenames like "harmbench_infix.jsonl".
+        if (
+            value.endswith("_infix")
+            and "/" not in value
+            and "." not in value
+        ):
             base_name = value[:-6]
             if base_name in KNOWN_BENCHMARKS:
-                from vauban.benchmarks import generate_infix_prompts
-
                 return generate_infix_prompts(base_name)
 
         if value.startswith("hf:"):
