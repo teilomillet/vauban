@@ -35,7 +35,6 @@ def _print_summary(
         "[linear_probe]": "linear probe training",
         "[fusion]": "fusion training",
         "[repbend]": "RepBend fine-tuning",
-        "[grpo]": "GRPO alignment inversion",
     }
     first_mode = early_modes[0] if early_modes else None
     match first_mode:

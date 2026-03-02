@@ -107,11 +107,13 @@ def largo_loop(
     best_score = -1.0
     current_config = config
     all_loss_history: list[float] = []
+    prev_embeddings: Array | None = None
 
     for _round_idx in range(config.largo_reflection_rounds):
-        # Run continuous optimization
+        # Run continuous optimization with optional warm-start
         result = _continuous_attack(
             model, tokenizer, prompts, current_config, direction, ref_model,
+            init_embeddings=prev_embeddings,
         )
         all_loss_history.extend(result.loss_history)
 
@@ -142,7 +144,8 @@ def largo_loop(
 
         # Warm-start next round from current embeddings
         if config.largo_embed_warmstart and result.embeddings is not None:
-            # Adjust config: reduce steps for subsequent rounds (diminishing)
+            prev_embeddings = result.embeddings
+            # Reduce steps for subsequent rounds (diminishing returns)
             new_steps = max(current_config.n_steps // 2, 10)
             current_config = replace(
                 current_config,

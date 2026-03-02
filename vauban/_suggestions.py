@@ -155,11 +155,6 @@ _VALUE_CONSTRAINT_KEYS: dict[str, frozenset[str]] = {
         "layers", "n_epochs", "learning_rate", "batch_size",
         "separation_coeff", "token_position",
     }),
-    "grpo": frozenset({
-        "n_steps", "group_size", "learning_rate", "max_gen_tokens",
-        "kl_weight", "clip_range", "reward_mode", "batch_size",
-        "prompt_pool_size",
-    }),
 }
 
 _KNOWN_KEYS: dict[str, frozenset[str]] = KNOWN_SECTION_KEYS

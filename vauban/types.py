@@ -1708,51 +1708,6 @@ class RepBendResult:
 
 
 @dataclass(frozen=True, slots=True)
-class GRPOConfig:
-    """Configuration for [grpo] mode.
-
-    Group Relative Policy Optimization for safety alignment inversion.
-    Uses keyword-based reward (non-refusal = high reward) without an
-    external judge model.
-
-    Reference: arxiv.org/pdf/2602.06258
-    """
-
-    n_steps: int = 50
-    group_size: int = 4  # completions per prompt per step
-    learning_rate: float = 1e-4
-    max_gen_tokens: int = 100  # max tokens per completion
-    kl_weight: float = 0.01  # KL penalty coefficient (DeepSeek estimator)
-    clip_range: float = 0.2  # PPO-style clipping range
-    reward_mode: str = "keyword"  # "keyword" (non-refusal = reward)
-    batch_size: int = 4  # prompts per step
-    prompt_pool_size: int | None = None  # override for prompt pool size
-
-
-@dataclass(frozen=True, slots=True)
-class GRPOResult:
-    """Output of GRPO fine-tuning."""
-
-    loss_history: list[float]
-    reward_history: list[float]
-    n_steps: int
-    initial_refusal_rate: float
-    final_refusal_rate: float
-    model_path: str
-
-    def to_dict(self) -> dict[str, object]:
-        """Serialize to a JSON-compatible dict."""
-        return {
-            "loss_history": self.loss_history,
-            "reward_history": self.reward_history,
-            "n_steps": self.n_steps,
-            "initial_refusal_rate": self.initial_refusal_rate,
-            "final_refusal_rate": self.final_refusal_rate,
-            "model_path": self.model_path,
-        }
-
-
-@dataclass(frozen=True, slots=True)
 class PipelineConfig:
     """Full pipeline configuration loaded from TOML."""
 
@@ -1783,7 +1738,6 @@ class PipelineConfig:
     linear_probe: LinearProbeConfig | None = None
     fusion: FusionConfig | None = None
     repbend: RepBendConfig | None = None
-    grpo: GRPOConfig | None = None
     eval: EvalConfig = field(default_factory=EvalConfig)
     api_eval: ApiEvalConfig | None = None
     meta: MetaConfig | None = None

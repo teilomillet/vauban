@@ -82,7 +82,6 @@ def load_config(path: str | Path) -> PipelineConfig:
     linear_probe_config = parsed_sections.linear_probe
     fusion_config = parsed_sections.fusion
     repbend_config = parsed_sections.repbend
-    grpo_config = parsed_sections.grpo
     output_section = raw.get("output")
     output_dir_str = "output"
     if isinstance(output_section, dict):
@@ -163,7 +162,6 @@ def load_config(path: str | Path) -> PipelineConfig:
         linear_probe=linear_probe_config,
         fusion=fusion_config,
         repbend=repbend_config,
-        grpo=grpo_config,
         eval=eval_config,
         api_eval=api_eval_config,
         meta=meta_config,

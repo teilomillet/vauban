@@ -185,12 +185,6 @@ _PIPELINE_MODES: tuple[PipelineModeDoc, ...] = (
         output="repbend_report.json + modified weights.",
         early_return=True,
     ),
-    PipelineModeDoc(
-        mode="grpo",
-        trigger="[grpo] section present.",
-        output="grpo_report.json.",
-        early_return=True,
-    ),
 )
 
 _FORMAT_NOTES: tuple[str, ...] = (
@@ -1575,85 +1569,6 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 "The defense dual of abliteration. Pushes harmful activations"
                 " apart from safe ones via contrastive loss, hardening the"
                 " model against direction-removal attacks."
-            ),
-        ),
-    ),
-    SectionSpec(
-        name="grpo",
-        description=(
-            "Group Relative Policy Optimization for"
-            " safety alignment inversion."
-        ),
-        early_return=True,
-        config_class="GRPOConfig",
-        fields=(
-            FieldSpec(
-                key="n_steps",
-                description="Number of GRPO training steps.",
-                constraints="integer >= 1.",
-                default_override="50",
-            ),
-            FieldSpec(
-                key="group_size",
-                description="Completions per prompt per step.",
-                constraints="integer >= 1.",
-                default_override="4",
-            ),
-            FieldSpec(
-                key="learning_rate",
-                description="Optimizer learning rate.",
-                constraints="number > 0.",
-                default_override="1e-4",
-            ),
-            FieldSpec(
-                key="max_gen_tokens",
-                description="Max tokens per completion.",
-                constraints="integer >= 1.",
-                default_override="100",
-            ),
-            FieldSpec(
-                key="kl_weight",
-                description=(
-                    "KL penalty coefficient"
-                    " (DeepSeek estimator)."
-                ),
-                constraints="number >= 0.",
-                default_override="0.01",
-            ),
-            FieldSpec(
-                key="clip_range",
-                description="PPO-style clipping range.",
-                constraints="number > 0.",
-                default_override="0.2",
-            ),
-            FieldSpec(
-                key="reward_mode",
-                description=(
-                    "Reward function"
-                    " (keyword = non-refusal reward)."
-                ),
-                constraints='one of: "keyword".',
-                default_override='"keyword"',
-            ),
-            FieldSpec(
-                key="batch_size",
-                description="Prompts per training step.",
-                constraints="integer >= 1.",
-                default_override="4",
-            ),
-            FieldSpec(
-                key="prompt_pool_size",
-                description="Override for prompt pool size.",
-                constraints="integer >= 1 or null.",
-            ),
-        ),
-        notes=(
-            (
-                "Implements GRP-Obliteration: uses group relative"
-                " policy optimization to invert safety alignment."
-                " Generates multiple completions per prompt, ranks"
-                " by keyword-based reward, and updates the policy"
-                " toward non-refusing completions."
             ),
         ),
     ),

@@ -134,12 +134,6 @@ layers = [0, 1]
 n_epochs = 3
 separation_coeff = 1.0
 """,
-    "grpo": """\
-
-[grpo]
-n_steps = 50
-group_size = 4
-""",
 }
 
 KNOWN_MODES: frozenset[str] = frozenset(_MODE_TEMPLATES)

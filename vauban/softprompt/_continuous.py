@@ -33,6 +33,7 @@ def _continuous_attack(
     direction: Array | None,
     ref_model: CausalLM | None = None,
     all_prompt_ids_override: list[Array] | None = None,
+    init_embeddings: Array | None = None,
 ) -> SoftPromptResult:
     """Continuous soft prompt optimization via Adam.
 
@@ -40,14 +41,25 @@ def _continuous_attack(
     to minimize cross-entropy loss on target prefix tokens.
     Supports multi-prompt optimization, cosine LR schedule,
     embedding norm regularization, and early stopping.
+
+    Args:
+        init_embeddings: Optional warm-start embeddings from a previous
+            optimization round (e.g. LARGO reflection). When provided,
+            these are used instead of random initialization, with small
+            Gaussian perturbation scaled by ``config.init_scale``.
     """
     transformer = get_transformer(model)
     d_model = transformer.embed_tokens.weight.shape[1]
     embed_matrix = transformer.embed_tokens.weight
 
-    soft_embeds = (
-        ops.random.normal((1, config.n_tokens, d_model)) * config.init_scale
-    )
+    if init_embeddings is not None:
+        # Warm-start: perturb previous embeddings slightly
+        noise = ops.random.normal(init_embeddings.shape) * config.init_scale
+        soft_embeds = init_embeddings + noise
+    else:
+        soft_embeds = (
+            ops.random.normal((1, config.n_tokens, d_model)) * config.init_scale
+        )
     force_eval(soft_embeds)
 
     target_ids = _encode_targets(

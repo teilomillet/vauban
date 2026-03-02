@@ -69,22 +69,30 @@ class AmpleGCGGenerator:
             if temperature <= 0.0:
                 token_ids = ops.argmax(logits, axis=-1)
             else:
-                probs = ops.softmax(logits / temperature, axis=-1)
-                token_ids_list: list[int] = []
-                for pos in range(self.n_tokens):
-                    # Categorical sampling via uniform + cumulative sum
-                    u = ops.random.uniform(shape=(1,))
-                    cumprobs = ops.cumsum(probs[pos], axis=-1)
-                    token_id = int(
-                        ops.sum(cumprobs < u[0]).item(),
-                    )
-                    token_id = min(token_id, self.vocab_size - 1)
-                    token_ids_list.append(token_id)
+                # Gumbel-max trick for categorical sampling
+                gumbel_noise = -ops.log(
+                    -ops.log(
+                        ops.random.uniform(logits.shape) + 1e-10,
+                    ) + 1e-10,
+                )
+                token_ids = ops.argmax(
+                    logits / temperature + gumbel_noise, axis=-1,
+                )
+                force_eval(token_ids)
+                raw = token_ids.tolist()
+                token_ids_list: list[int] = (
+                    [int(raw)]
+                    if not isinstance(raw, list)
+                    else [int(t) for t in raw]
+                )
                 candidates.append(token_ids_list)
                 continue
             force_eval(token_ids)
+            raw_argmax = token_ids.tolist()
             candidates.append(
-                [int(t) for t in token_ids.tolist()],
+                [int(raw_argmax)]
+                if not isinstance(raw_argmax, list)
+                else [int(t) for t in raw_argmax],
             )
         return candidates
 

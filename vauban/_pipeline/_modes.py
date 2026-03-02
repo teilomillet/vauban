@@ -12,7 +12,6 @@ from vauban._pipeline._mode_defend import _run_defend_mode
 from vauban._pipeline._mode_depth import _run_depth_mode
 from vauban._pipeline._mode_features import _run_features_mode
 from vauban._pipeline._mode_fusion import _run_fusion_mode
-from vauban._pipeline._mode_grpo import _run_grpo_mode
 from vauban._pipeline._mode_linear_probe import _run_linear_probe_mode
 from vauban._pipeline._mode_optimize import _run_optimize_mode
 from vauban._pipeline._mode_probe import _run_probe_mode
@@ -44,7 +43,6 @@ EARLY_MODE_RUNNERS: dict[str, EarlyModeRunner] = {
     "linear_probe": _run_linear_probe_mode,
     "fusion": _run_fusion_mode,
     "repbend": _run_repbend_mode,
-    "grpo": _run_grpo_mode,
 }
 
 
