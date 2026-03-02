@@ -93,6 +93,9 @@ EARLY_RETURN_PRECEDENCE: tuple[str, ...] = (
     "softprompt",
     "defend",
     "circuit",
+    "linear_probe",
+    "fusion",
+    "repbend",
 )
 
 _PIPELINE_MODES: tuple[PipelineModeDoc, ...] = (
@@ -172,6 +175,24 @@ _PIPELINE_MODES: tuple[PipelineModeDoc, ...] = (
         mode="features",
         trigger="[features] section present.",
         output="features_report.json + sae_layer_*.safetensors.",
+        early_return=True,
+    ),
+    PipelineModeDoc(
+        mode="linear_probe",
+        trigger="[linear_probe] section present.",
+        output="linear_probe_report.json.",
+        early_return=True,
+    ),
+    PipelineModeDoc(
+        mode="fusion",
+        trigger="[fusion] section present.",
+        output="fusion_report.json.",
+        early_return=True,
+    ),
+    PipelineModeDoc(
+        mode="repbend",
+        trigger="[repbend] section present.",
+        output="repbend_report.json + modified weights.",
         early_return=True,
     ),
 )
@@ -1398,6 +1419,224 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 " activations. If a refusal direction is available from"
                 " [measure], computes cross-lens direction alignment"
                 " for each decoder feature."
+            ),
+        ),
+    ),
+    SectionSpec(
+        name="linear_probe",
+        description="Train linear probes to measure refusal encoding per layer.",
+        early_return=True,
+        config_class="LinearProbeConfig",
+        fields=(
+            FieldSpec(
+                key="layers",
+                description="Layer indices to train probes on.",
+                constraints="required non-empty list of non-negative integers.",
+                required=True,
+            ),
+            FieldSpec(
+                key="n_epochs",
+                description="Training epochs per probe.",
+                constraints="integer >= 1.",
+                default_override="20",
+            ),
+            FieldSpec(
+                key="learning_rate",
+                description="Learning rate for probe training.",
+                constraints="number > 0.",
+                default_override="0.01",
+            ),
+            FieldSpec(
+                key="batch_size",
+                description="Mini-batch size.",
+                constraints="integer >= 1.",
+                default_override="32",
+            ),
+            FieldSpec(
+                key="token_position",
+                description="Token index for activation extraction.",
+                constraints="integer.",
+                default_override="-1",
+            ),
+            FieldSpec(
+                key="regularization",
+                description="L2 regularization coefficient.",
+                constraints="number >= 0.",
+                default_override="0.0001",
+            ),
+        ),
+        notes=(
+            (
+                "Trains a binary linear classifier at each layer to predict"
+                " harmful vs. harmless. High accuracy layers are where refusal"
+                " is most linearly separable."
+            ),
+        ),
+    ),
+    SectionSpec(
+        name="fusion",
+        description=(
+            "Latent fusion jailbreak via blending harmful"
+            " and benign hidden states."
+        ),
+        early_return=True,
+        config_class="FusionConfig",
+        fields=(
+            FieldSpec(
+                key="harmful_prompts",
+                description="Harmful prompts whose hidden states are fused.",
+                constraints="required non-empty list of strings.",
+                required=True,
+            ),
+            FieldSpec(
+                key="benign_prompts",
+                description="Benign prompts whose hidden states are blended in.",
+                constraints="required non-empty list of strings.",
+                required=True,
+            ),
+            FieldSpec(
+                key="layer",
+                description="Layer at which to fuse hidden states (-1 = last).",
+                constraints="integer.",
+                default_override="-1",
+            ),
+            FieldSpec(
+                key="alpha",
+                description="Interpolation weight (0 = pure benign, 1 = pure harmful).",
+                constraints="number in [0.0, 1.0].",
+                default_override="0.5",
+            ),
+            FieldSpec(
+                key="n_tokens",
+                description="Max tokens to generate after fusion.",
+                constraints="integer >= 1.",
+                default_override="128",
+            ),
+            FieldSpec(
+                key="temperature",
+                description="Sampling temperature.",
+                constraints="number >= 0.",
+                default_override="0.7",
+            ),
+        ),
+        notes=(
+            (
+                "Implements the latent fusion attack: blends hidden states of"
+                " harmful and benign prompts in continuous latent space, then"
+                " generates from the fused representation. The prompt-side"
+                " dual of abliteration."
+            ),
+        ),
+    ),
+    SectionSpec(
+        name="repbend",
+        description="RepBend contrastive fine-tuning for safety hardening.",
+        early_return=True,
+        config_class="RepBendConfig",
+        fields=(
+            FieldSpec(
+                key="layers",
+                description="Layer indices for contrastive separation.",
+                constraints="required non-empty list of non-negative integers.",
+                required=True,
+            ),
+            FieldSpec(
+                key="n_epochs",
+                description="Training epochs.",
+                constraints="integer >= 1.",
+                default_override="3",
+            ),
+            FieldSpec(
+                key="learning_rate",
+                description="Learning rate.",
+                constraints="number > 0.",
+                default_override="1e-5",
+            ),
+            FieldSpec(
+                key="batch_size",
+                description="Mini-batch size.",
+                constraints="integer >= 1.",
+                default_override="8",
+            ),
+            FieldSpec(
+                key="separation_coeff",
+                description="Contrastive separation loss coefficient.",
+                constraints="number >= 0.",
+                default_override="1.0",
+            ),
+            FieldSpec(
+                key="token_position",
+                description="Token index for activation extraction.",
+                constraints="integer.",
+                default_override="-1",
+            ),
+        ),
+        notes=(
+            (
+                "The defense dual of abliteration. Pushes harmful activations"
+                " apart from safe ones via contrastive loss, hardening the"
+                " model against direction-removal attacks."
+            ),
+        ),
+    ),
+    SectionSpec(
+        name="api_eval",
+        description=(
+            "Test optimized suffixes against remote"
+            " OpenAI-compatible endpoints."
+        ),
+        config_class="ApiEvalConfig",
+        fields=(
+            FieldSpec(
+                key="endpoints",
+                description="List of API endpoints to evaluate against.",
+                constraints="required non-empty list of endpoint tables.",
+                required=True,
+            ),
+            FieldSpec(
+                key="max_tokens",
+                description="Max tokens for API response.",
+                constraints="integer >= 1.",
+                default_override="100",
+            ),
+            FieldSpec(
+                key="timeout",
+                description="HTTP request timeout in seconds.",
+                constraints="integer >= 1.",
+                default_override="30",
+            ),
+            FieldSpec(
+                key="system_prompt",
+                description=(
+                    "Shared system prompt for all endpoints"
+                    " (per-endpoint overrides take precedence)."
+                ),
+                constraints="string or null.",
+            ),
+            FieldSpec(
+                key="multiturn",
+                description="Enable multi-turn conversation evaluation.",
+                constraints="boolean.",
+                default_override="false",
+            ),
+            FieldSpec(
+                key="multiturn_max_turns",
+                description="Total conversation turns including initial.",
+                constraints="integer >= 1.",
+                default_override="3",
+            ),
+            FieldSpec(
+                key="follow_up_prompts",
+                description="Follow-up prompts for multi-turn mode.",
+                constraints="list of strings.",
+                default_override="[]",
+            ),
+        ),
+        notes=(
+            (
+                "Runs after [softprompt] to test optimized suffixes against"
+                " remote API endpoints. Each endpoint requires name, base_url,"
+                " model, and api_key_env (environment variable holding the key)."
             ),
         ),
     ),
