@@ -24,16 +24,44 @@ _DEFAULT_FOLLOW_UP_PROMPTS: list[str] = [
 ]
 
 
+_SUFFIX_MARKER = "{suffix}"
+
+
+def _build_api_prompt(
+    prompt: str,
+    suffix_text: str,
+    token_position: str,
+) -> str:
+    """Assemble a prompt with suffix at the correct position.
+
+    For infix: replaces ``{suffix}`` marker in the prompt with suffix_text.
+    For prefix/suffix: appends suffix_text after the prompt.
+
+    Args:
+        prompt: Original prompt (may contain ``{suffix}`` for infix mode).
+        suffix_text: The optimized adversarial token text.
+        token_position: One of ``"prefix"``, ``"suffix"``, or ``"infix"``.
+
+    Returns:
+        The assembled prompt string.
+    """
+    if token_position == "infix" and _SUFFIX_MARKER in prompt:
+        return prompt.replace(_SUFFIX_MARKER, suffix_text)
+    return f"{prompt} {suffix_text}"
+
+
 def evaluate_suffix_via_api(
     suffix_text: str,
     prompts: list[str],
     config: ApiEvalConfig,
     fallback_system_prompt: str | None = None,
     history: list[dict[str, str]] | None = None,
+    token_position: str = "suffix",
 ) -> list[TransferEvalResult]:
     """Evaluate an adversarial suffix against API endpoints.
 
-    For each endpoint and each prompt, sends ``prompt + " " + suffix_text``
+    For each endpoint and each prompt, sends the suffix at the configured
+    position (prefix/suffix append, infix replaces ``{suffix}`` marker)
     to the endpoint's ``/chat/completions`` API and checks whether the
     response contains refusal phrases or a violation finish reason.
 
@@ -48,6 +76,8 @@ def evaluate_suffix_via_api(
             config-level system_prompt is set.
         history: Optional conversation history (list of role/content dicts)
             to prepend before the attack prompt.
+        token_position: Suffix placement — ``"prefix"``, ``"suffix"``,
+            or ``"infix"`` (replaces ``{suffix}`` marker in prompts).
 
     Returns:
         One ``TransferEvalResult`` per endpoint.
@@ -56,7 +86,7 @@ def evaluate_suffix_via_api(
     for endpoint in config.endpoints:
         result = _evaluate_endpoint(
             endpoint, suffix_text, prompts, config,
-            fallback_system_prompt, history,
+            fallback_system_prompt, history, token_position,
         )
         results.append(result)
     return results
@@ -69,6 +99,7 @@ def _evaluate_endpoint(
     config: ApiEvalConfig,
     fallback_system_prompt: str | None,
     history: list[dict[str, str]] | None,
+    token_position: str = "suffix",
 ) -> TransferEvalResult:
     """Evaluate a suffix against a single API endpoint."""
     # Resolve system prompt: endpoint > config > fallback
@@ -96,6 +127,7 @@ def _evaluate_endpoint(
     responses: list[str] = []
 
     for prompt in prompts:
+        adv_prompt = _build_api_prompt(prompt, suffix_text, token_position)
         if config.multiturn:
             passed, turn_responses = _evaluate_endpoint_multiturn(
                 endpoint=endpoint,
@@ -105,6 +137,7 @@ def _evaluate_endpoint(
                 config=config,
                 system_prompt=system_prompt,
                 history=history,
+                token_position=token_position,
             )
             responses.extend(turn_responses)
             if passed:
@@ -112,7 +145,7 @@ def _evaluate_endpoint(
         else:
             # Build messages for single-turn
             messages = _build_messages(
-                prompt=f"{prompt} {suffix_text}",
+                prompt=adv_prompt,
                 system_prompt=system_prompt,
                 history=history,
             )
@@ -143,6 +176,7 @@ def _evaluate_endpoint_multiturn(
     config: ApiEvalConfig,
     system_prompt: str | None,
     history: list[dict[str, str]] | None,
+    token_position: str = "suffix",
 ) -> tuple[bool, list[str]]:
     """Evaluate a single prompt with multi-turn follow-ups.
 
@@ -160,6 +194,7 @@ def _evaluate_endpoint_multiturn(
         config: API eval configuration.
         system_prompt: System prompt to use.
         history: Optional prior conversation history.
+        token_position: Suffix placement (prefix/suffix/infix).
 
     Returns:
         Tuple of (all_turns_passed, list_of_response_texts).
@@ -168,8 +203,9 @@ def _evaluate_endpoint_multiturn(
     max_follow_ups = config.multiturn_max_turns - 1  # first turn is the initial
 
     # Build initial messages
+    adv_prompt = _build_api_prompt(prompt, suffix_text, token_position)
     messages = _build_messages(
-        prompt=f"{prompt} {suffix_text}",
+        prompt=adv_prompt,
         system_prompt=system_prompt,
         history=history,
     )
@@ -250,7 +286,10 @@ def _build_auth_headers(
     Returns:
         Dict of HTTP headers.
     """
-    headers: dict[str, str] = {"Content-Type": "application/json"}
+    headers: dict[str, str] = {
+        "Content-Type": "application/json",
+        "User-Agent": "vauban/1.0",
+    }
     if endpoint.auth_header:
         headers[endpoint.auth_header] = api_key
     else:
@@ -366,6 +405,10 @@ def _call_chat_api(
 def _extract_content(data: dict[str, object]) -> str:
     """Extract the assistant message content from an API response.
 
+    Falls back to the ``reasoning`` field when ``content`` is empty,
+    which handles thinking models (e.g. Nemotron, Qwen-thinking) that
+    put their output in ``reasoning`` before generating ``content``.
+
     Args:
         data: Parsed JSON response.
 
@@ -381,7 +424,14 @@ def _extract_content(data: dict[str, object]) -> str:
     message = first.get("message", {})
     if not _is_str_dict(message):
         return ""
-    return str(message.get("content", ""))
+    content = message.get("content")
+    if content:
+        return str(content)
+    # Fallback: thinking models may put output in reasoning
+    reasoning = message.get("reasoning")
+    if reasoning:
+        return str(reasoning)
+    return ""
 
 
 def _is_refusal(text: str) -> bool:

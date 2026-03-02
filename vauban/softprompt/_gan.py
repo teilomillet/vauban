@@ -403,16 +403,36 @@ def gan_loop(
             )
 
         # API-based transfer evaluation (remote endpoints)
+        proxy_result = None
         if api_eval_config and attack_result.token_text:
-            from vauban.api_eval import evaluate_suffix_via_api
+            if (
+                api_eval_config.defense_proxy is not None
+                and direction is not None
+            ):
+                from vauban.api_eval_proxy import evaluate_with_defense_proxy
 
-            api_results = evaluate_suffix_via_api(
-                attack_result.token_text,
-                round_prompts,
-                api_eval_config,
-                config.system_prompt,
-                history=history if config.gan_multiturn else None,
-            )
+                api_results, proxy_result = evaluate_with_defense_proxy(
+                    attack_result.token_text,
+                    round_prompts,
+                    api_eval_config,
+                    model,
+                    tokenizer,
+                    direction,
+                    layer_index,
+                    fallback_system_prompt=config.system_prompt,
+                    history=history if config.gan_multiturn else None,
+                    token_position=config.token_position,
+                )
+            else:
+                from vauban.api_eval import evaluate_suffix_via_api
+
+                api_results = evaluate_suffix_via_api(
+                    attack_result.token_text,
+                    round_prompts,
+                    api_eval_config,
+                    config.system_prompt,
+                    history=history if config.gan_multiturn else None,
+                )
             round_transfer_results.extend(api_results)
             if round_transfer_results and not transfer_models:
                 mean_transfer = (
@@ -450,6 +470,7 @@ def gan_loop(
             config_snapshot=snapshot,
             transfer_results=round_transfer_results,
             environment_result=env_result,
+            defense_proxy_result=proxy_result,
         )
         rounds.append(round_result)
 

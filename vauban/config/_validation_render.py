@@ -20,6 +20,7 @@ def _print_summary(
     early_modes = active_early_modes(config)
 
     mode_labels: dict[str, str] = {
+        "[api_eval]": "standalone API eval",
         "[depth]": "depth analysis",
         "[svf]": "SVF training",
         "[features]": "SAE feature decomposition",
@@ -53,8 +54,9 @@ def _print_summary(
     if extras:
         mode_str += f" + {', '.join(extras)}"
 
+    model_display = config.model_path or "(none — standalone mode)"
     print(f"Config:   {context.config_path}", file=stderr)
-    print(f"Model:    {config.model_path}", file=stderr)
+    print(f"Model:    {model_display}", file=stderr)
     print(f"Pipeline: {mode_str}", file=stderr)
     print(f"Output:   {config.output_dir}", file=stderr)
 

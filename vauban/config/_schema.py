@@ -166,7 +166,10 @@ def generate_config_schema() -> JsonSchema:
         "title": "Vauban Config",
         "description": (
             "Schema for Vauban TOML pipeline configs. "
-            "TOML tables map to object-valued sections in this JSON representation."
+            "TOML tables map to object-valued sections in this JSON representation. "
+            "Note: [model] is optional for standalone api_eval "
+            "(token_text set) but JSON Schema cannot express conditional "
+            "requirements, so it is listed as required here."
         ),
         "type": "object",
         "properties": properties,

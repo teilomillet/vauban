@@ -23,11 +23,24 @@ if TYPE_CHECKING:
 def run(config_path: str | Path) -> None:
     """Run the full measure -> cut -> evaluate pipeline from a TOML config."""
     from vauban._model_io import load_model
+    from vauban._pipeline._context import EarlyModeContext as _EarlyModeContext
     from vauban.config import load_config
     from vauban.dequantize import dequantize_model, is_quantized
 
     config = load_config(config_path)
     t0 = time.monotonic()
+
+    # Standalone modes: no local model needed.
+    standalone_ctx = _EarlyModeContext(
+        config_path=config_path,
+        config=config,
+        model=None,
+        tokenizer=None,
+        t0=t0,
+    )
+    if dispatch_early_mode("standalone", standalone_ctx):
+        return
+
     log(
         f"Loading model {config.model_path}",
         verbose=config.verbose,

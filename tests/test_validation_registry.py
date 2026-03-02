@@ -13,6 +13,8 @@ from vauban.config._mode_registry import (
 )
 from vauban.config._validation import VALIDATION_RULE_SPECS, validate_config
 from vauban.types import (
+    ApiEvalConfig,
+    ApiEvalEndpoint,
     CastConfig,
     CircuitConfig,
     ComposeOptimizeConfig,
@@ -45,6 +47,7 @@ _EXPECTED_RULE_ORDER: list[str] = [
 ]
 
 _EXPECTED_EARLY_MODE_ORDER: list[str] = [
+    "[api_eval]",
     "[depth]",
     "[svf]",
     "[features]",
@@ -144,7 +147,8 @@ def test_validation_warning_content_and_order_for_conflict_fixture(
     assert warnings == [
         (
             "[HIGH] Multiple early-return modes active: [depth], [probe]"
-            " — only the first will run (precedence: depth > svf > features"
+            " — only the first will run (precedence: api_eval > depth"
+            " > svf > features"
             " > probe > steer > cast > sic > optimize > compose_optimize"
             " > softprompt > defend > circuit > linear_probe > fusion"
             " > repbend)"
@@ -188,6 +192,14 @@ def test_active_early_modes_precedence_matches_legacy_behavior() -> None:
         model_path="test-model",
         harmful_path=Path("harmful.jsonl"),
         harmless_path=Path("harmless.jsonl"),
+        api_eval=ApiEvalConfig(
+            endpoints=[ApiEvalEndpoint(
+                name="ep", base_url="https://api.example.com/v1",
+                model="m", api_key_env="K",
+            )],
+            token_text="tokens",
+            prompts=["prompt"],
+        ),
         depth=DepthConfig(prompts=["a", "b"]),
         svf=SVFConfig(
             prompts_target=Path("target.jsonl"),
@@ -219,9 +231,12 @@ def test_active_early_modes_precedence_matches_legacy_behavior() -> None:
 
     assert active_early_modes(config) == _EXPECTED_EARLY_MODE_ORDER
 
+    standalone = active_early_mode_for_phase(config, "standalone")
     before_prompts = active_early_mode_for_phase(config, "before_prompts")
     after_measure = active_early_mode_for_phase(config, "after_measure")
 
+    assert standalone is not None
+    assert standalone.mode == "api_eval"
     assert before_prompts is not None
     assert before_prompts.mode == "depth"
     assert after_measure is not None

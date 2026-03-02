@@ -96,6 +96,12 @@ _PIPELINE_MODES: tuple[PipelineModeDoc, ...] = (
         early_return=False,
     ),
     PipelineModeDoc(
+        mode="api_eval",
+        trigger="[api_eval] with token_text set (standalone).",
+        output="api_eval_report.json.",
+        early_return=True,
+    ),
+    PipelineModeDoc(
         mode="depth",
         trigger="[depth] section present.",
         output="depth_report.json (+ optional depth_direction.npy).",

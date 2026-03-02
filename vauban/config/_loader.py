@@ -30,19 +30,29 @@ def load_config(path: str | Path) -> PipelineConfig:
     with path.open("rb") as f:
         raw: TomlDict = tomllib.load(f)
 
-    model_section = raw.get("model")
-    if not isinstance(model_section, dict) or "path" not in model_section:
-        msg = f"Config must have [model] section with 'path' key: {path}"
-        raise ValueError(msg)
+    # Detect standalone api_eval: [api_eval] present with token_text set.
+    # Standalone mode needs no local model, so [model] and [data] are optional.
+    _standalone = _is_standalone_api_eval(raw)
 
-    model_path_raw = model_section["path"]
-    if not isinstance(model_path_raw, str):
-        msg = (
-            f"[model].path must be a string,"
-            f" got {type(model_path_raw).__name__}"
-        )
-        raise TypeError(msg)
-    model_path: str = model_path_raw
+    model_section = raw.get("model")
+    if _standalone:
+        model_path = ""
+        if isinstance(model_section, dict):
+            _mp = model_section.get("path")
+            if isinstance(_mp, str):
+                model_path = _mp
+    else:
+        if not isinstance(model_section, dict) or "path" not in model_section:
+            msg = f"Config must have [model] section with 'path' key: {path}"
+            raise ValueError(msg)
+        model_path_raw = model_section["path"]
+        if not isinstance(model_path_raw, str):
+            msg = (
+                f"[model].path must be a string,"
+                f" got {type(model_path_raw).__name__}"
+            )
+            raise TypeError(msg)
+        model_path = model_path_raw
 
     parse_context = ConfigParseContext(base_dir=base_dir, raw=raw)
     depth_config = cast(
@@ -50,7 +60,7 @@ def load_config(path: str | Path) -> PipelineConfig:
         parse_registered_section(parse_context, "depth"),
     )
     harmful_path, harmless_path = _resolve_data_paths(
-        base_dir, raw, depth_only=depth_config is not None,
+        base_dir, raw, depth_only=depth_config is not None or _standalone,
     )
 
     parsed_sections = parse_registered_sections(
@@ -291,3 +301,13 @@ def _resolve_single_data(
     raise TypeError(msg)
 
 
+def _is_standalone_api_eval(raw: TomlDict) -> bool:
+    """Check whether the raw TOML represents a standalone api_eval config.
+
+    Returns True when ``[api_eval]`` is present and ``token_text`` is set,
+    meaning the pipeline can run without a local model.
+    """
+    sec = raw.get("api_eval")
+    if not isinstance(sec, dict):
+        return False
+    return isinstance(sec.get("token_text"), str) and bool(sec["token_text"])

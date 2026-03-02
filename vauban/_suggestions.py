@@ -114,6 +114,7 @@ _VALUE_CONSTRAINT_KEYS: dict[str, frozenset[str]] = {
     "api_eval": frozenset({
         "endpoints", "max_tokens", "timeout", "system_prompt",
         "multiturn", "multiturn_max_turns", "follow_up_prompts",
+        "token_text", "token_position", "prompts",
     }),
     "meta": frozenset({
         "id", "title", "status", "parents", "tags", "notes", "docs", "date",
@@ -229,7 +230,7 @@ _KNOWN_VALUES: dict[tuple[str, str], frozenset[str]] = {
     ("cut", "layer_strategy"): frozenset({"all", "above_median", "top_k"}),
     ("cut", "dbdi_target"): frozenset({"red", "hdd", "both"}),
     ("cut", "layer_type_filter"): frozenset({"global", "sliding"}),
-    ("softprompt", "mode"): frozenset({"continuous", "gcg", "egd"}),
+    ("softprompt", "mode"): frozenset({"continuous", "gcg", "egd", "cold"}),
     ("softprompt", "prompt_strategy"): frozenset({
         "all", "cycle", "first", "worst_k", "sample",
     }),
@@ -249,6 +250,9 @@ _KNOWN_VALUES: dict[tuple[str, str], frozenset[str]] = {
         "web_page", "tool_output", "code_file",
     }),
     ("softprompt", "token_position"): frozenset({
+        "prefix", "suffix", "infix",
+    }),
+    ("api_eval", "token_position"): frozenset({
         "prefix", "suffix", "infix",
     }),
     ("eval", "refusal_mode"): frozenset({"phrases", "judge"}),

@@ -2,11 +2,13 @@
 
 import json
 import os
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from vauban.api_eval import (
+    _build_api_prompt,
     _build_auth_headers,
     _build_messages,
     _call_chat_api,
@@ -15,6 +17,7 @@ from vauban.api_eval import (
     _is_violation_finish_reason,
     evaluate_suffix_via_api,
 )
+from vauban.config._parse_api_eval import _parse_api_eval
 from vauban.types import ApiEvalConfig, ApiEvalEndpoint
 
 
@@ -82,6 +85,33 @@ def _mock_api_response(content: str, finish_reason: str = "stop") -> MagicMock:
     mock.__enter__ = lambda s: s
     mock.__exit__ = MagicMock(return_value=False)
     return mock
+
+
+class TestBuildApiPrompt:
+    """Tests for _build_api_prompt position-aware prompt assembly."""
+
+    def test_suffix_position_appends(self) -> None:
+        result = _build_api_prompt("Do something bad", "ADV_TOKENS", "suffix")
+        assert result == "Do something bad ADV_TOKENS"
+
+    def test_prefix_position_appends(self) -> None:
+        result = _build_api_prompt("Do something bad", "ADV_TOKENS", "prefix")
+        assert result == "Do something bad ADV_TOKENS"
+
+    def test_infix_replaces_marker(self) -> None:
+        prompt = "Write a story where {suffix} a character hacks wifi"
+        result = _build_api_prompt(prompt, "ADV_TOKENS", "infix")
+        assert result == "Write a story where ADV_TOKENS a character hacks wifi"
+
+    def test_infix_no_marker_falls_back(self) -> None:
+        prompt = "A prompt without any marker"
+        result = _build_api_prompt(prompt, "ADV_TOKENS", "infix")
+        assert result == "A prompt without any marker ADV_TOKENS"
+
+    def test_infix_multiple_markers(self) -> None:
+        prompt = "Part1 {suffix} part2 {suffix} part3"
+        result = _build_api_prompt(prompt, "TOK", "infix")
+        assert result == "Part1 TOK part2 TOK part3"
 
 
 class TestIsRefusal:
@@ -409,6 +439,76 @@ class TestEvaluateSuffixViaApi:
 
         assert results[0].success_rate == 1.0
 
+    def test_infix_position_replaces_marker(
+        self,
+        config: ApiEvalConfig,
+    ) -> None:
+        """Infix position replaces {suffix} marker in prompts."""
+        mock_response = _mock_api_response("Sure, here's the info.")
+        sent_bodies: list[dict[str, object]] = []
+
+        def capture_urlopen(
+            req: object, timeout: object = None,
+        ) -> MagicMock:
+            assert hasattr(req, "data")
+            sent_bodies.append(json.loads(req.data.decode()))  # type: ignore[union-attr]
+            return mock_response
+
+        with (
+            patch.dict(os.environ, {"TEST_API_KEY": "sk-test"}),
+            patch("urllib.request.urlopen", side_effect=capture_urlopen),
+        ):
+            results = evaluate_suffix_via_api(
+                "ADV_TOKENS",
+                ["Write a story where {suffix} someone hacks wifi"],
+                config,
+                token_position="infix",
+            )
+
+        assert results[0].success_rate == 1.0
+        # Verify the prompt was assembled correctly
+        msgs = sent_bodies[0]["messages"]
+        assert isinstance(msgs, list)
+        user_msg = msgs[-1]
+        assert isinstance(user_msg, dict)
+        content = str(user_msg["content"])
+        assert "ADV_TOKENS" in content
+        assert "{suffix}" not in content
+        assert content == "Write a story where ADV_TOKENS someone hacks wifi"
+
+    def test_suffix_position_appends(
+        self,
+        config: ApiEvalConfig,
+    ) -> None:
+        """Default suffix position appends tokens after prompt."""
+        mock_response = _mock_api_response("Sure thing.")
+        sent_bodies: list[dict[str, object]] = []
+
+        def capture_urlopen(
+            req: object, timeout: object = None,
+        ) -> MagicMock:
+            assert hasattr(req, "data")
+            sent_bodies.append(json.loads(req.data.decode()))  # type: ignore[union-attr]
+            return mock_response
+
+        with (
+            patch.dict(os.environ, {"TEST_API_KEY": "sk-test"}),
+            patch("urllib.request.urlopen", side_effect=capture_urlopen),
+        ):
+            results = evaluate_suffix_via_api(
+                "ADV_TOKENS",
+                ["How to do something"],
+                config,
+                token_position="suffix",
+            )
+
+        assert results[0].success_rate == 1.0
+        msgs = sent_bodies[0]["messages"]
+        assert isinstance(msgs, list)
+        user_msg = msgs[-1]
+        assert isinstance(user_msg, dict)
+        assert str(user_msg["content"]) == "How to do something ADV_TOKENS"
+
 
 class TestMultiturnEvaluation:
     def test_multiturn_all_pass(
@@ -638,3 +738,201 @@ class TestMultiturnEvaluation:
         assert msgs_t2[4] == {"role": "assistant", "content": "Sure thing."}
         # Then the follow-up prompt
         assert msgs_t2[5] == {"role": "user", "content": "Give details."}
+
+
+# ── Parser tests for standalone api_eval fields ──────────────────────
+
+
+def _minimal_api_eval_raw(
+    **overrides: object,
+) -> dict[str, object]:
+    """Build a minimal valid [api_eval] TOML dict."""
+    base: dict[str, object] = {
+        "endpoints": [{
+            "name": "test",
+            "base_url": "https://api.example.com/v1",
+            "model": "test-model",
+            "api_key_env": "TEST_KEY",
+        }],
+    }
+    base.update(overrides)
+    return {"api_eval": base}
+
+
+class TestParseApiEvalStandaloneFields:
+    """Tests for parsing the new standalone api_eval fields."""
+
+    def test_token_text_parsed(self) -> None:
+        raw = _minimal_api_eval_raw(
+            token_text="adversarial tokens",
+            prompts=["Test prompt {suffix} here"],
+        )
+        cfg = _parse_api_eval(raw)
+        assert cfg is not None
+        assert cfg.token_text == "adversarial tokens"
+
+    def test_token_position_default(self) -> None:
+        raw = _minimal_api_eval_raw()
+        cfg = _parse_api_eval(raw)
+        assert cfg is not None
+        assert cfg.token_position == "suffix"
+
+    def test_token_position_infix(self) -> None:
+        raw = _minimal_api_eval_raw(token_position="infix")
+        cfg = _parse_api_eval(raw)
+        assert cfg is not None
+        assert cfg.token_position == "infix"
+
+    def test_token_position_invalid(self) -> None:
+        raw = _minimal_api_eval_raw(token_position="middle")
+        with pytest.raises(ValueError, match="token_position"):
+            _parse_api_eval(raw)
+
+    def test_prompts_parsed(self) -> None:
+        raw = _minimal_api_eval_raw(
+            prompts=["Prompt A", "Prompt B"],
+        )
+        cfg = _parse_api_eval(raw)
+        assert cfg is not None
+        assert cfg.prompts == ["Prompt A", "Prompt B"]
+
+    def test_prompts_default_empty(self) -> None:
+        raw = _minimal_api_eval_raw()
+        cfg = _parse_api_eval(raw)
+        assert cfg is not None
+        assert cfg.prompts == []
+
+    def test_token_text_requires_prompts(self) -> None:
+        raw = _minimal_api_eval_raw(token_text="tokens")
+        with pytest.raises(ValueError, match="prompts must be non-empty"):
+            _parse_api_eval(raw)
+
+    def test_token_text_empty_rejected(self) -> None:
+        raw = _minimal_api_eval_raw(token_text="")
+        with pytest.raises(ValueError, match="non-empty"):
+            _parse_api_eval(raw)
+
+    def test_token_text_not_string_rejected(self) -> None:
+        raw = _minimal_api_eval_raw(token_text=42)
+        with pytest.raises(TypeError, match="token_text"):
+            _parse_api_eval(raw)
+
+    def test_prompts_not_list_rejected(self) -> None:
+        raw = _minimal_api_eval_raw(prompts="not a list")
+        with pytest.raises(TypeError, match="prompts must be a list"):
+            _parse_api_eval(raw)
+
+    def test_prompts_item_not_string_rejected(self) -> None:
+        raw = _minimal_api_eval_raw(prompts=["ok", 42])
+        with pytest.raises(TypeError, match=r"prompts\[1\]"):
+            _parse_api_eval(raw)
+
+
+class TestStandaloneApiEvalPredicate:
+    """Tests for the _has_standalone_api_eval predicate."""
+
+    def test_returns_true_when_token_text_set(self) -> None:
+        from vauban.config._mode_registry import _has_standalone_api_eval
+        from vauban.types import PipelineConfig
+
+        api_cfg = ApiEvalConfig(
+            endpoints=[ApiEvalEndpoint(
+                name="ep", base_url="https://api.example.com/v1",
+                model="m", api_key_env="K",
+            )],
+            token_text="tokens",
+            prompts=["prompt"],
+        )
+        config = PipelineConfig(
+            model_path="",
+            harmful_path="",  # type: ignore[arg-type]
+            harmless_path="",  # type: ignore[arg-type]
+            api_eval=api_cfg,
+        )
+        assert _has_standalone_api_eval(config) is True
+
+    def test_returns_false_when_no_api_eval(self) -> None:
+        from vauban.config._mode_registry import _has_standalone_api_eval
+        from vauban.types import PipelineConfig
+
+        config = PipelineConfig(
+            model_path="some-model",
+            harmful_path="",  # type: ignore[arg-type]
+            harmless_path="",  # type: ignore[arg-type]
+        )
+        assert _has_standalone_api_eval(config) is False
+
+    def test_returns_false_when_token_text_none(self) -> None:
+        from vauban.config._mode_registry import _has_standalone_api_eval
+        from vauban.types import PipelineConfig
+
+        api_cfg = ApiEvalConfig(
+            endpoints=[ApiEvalEndpoint(
+                name="ep", base_url="https://api.example.com/v1",
+                model="m", api_key_env="K",
+            )],
+        )
+        config = PipelineConfig(
+            model_path="some-model",
+            harmful_path="",  # type: ignore[arg-type]
+            harmless_path="",  # type: ignore[arg-type]
+            api_eval=api_cfg,
+        )
+        assert _has_standalone_api_eval(config) is False
+
+
+class TestModeApiEvalRunner:
+    """Tests for the standalone api_eval mode runner."""
+
+    def test_runner_calls_api_and_writes_report(
+        self, tmp_path: Path,
+    ) -> None:
+        """Mode runner evaluates tokens and writes JSON report."""
+        import time
+
+        from vauban._pipeline._context import EarlyModeContext
+        from vauban._pipeline._mode_api_eval import _run_api_eval_mode
+        from vauban.types import PipelineConfig
+
+        output_dir = tmp_path / "output"
+        api_cfg = ApiEvalConfig(
+            endpoints=[ApiEvalEndpoint(
+                name="mock-ep",
+                base_url="https://api.example.com/v1",
+                model="test-model",
+                api_key_env="TEST_KEY",
+            )],
+            token_text="adversarial tokens",
+            token_position="suffix",
+            prompts=["Test prompt"],
+        )
+        config = PipelineConfig(
+            model_path="",
+            harmful_path="",  # type: ignore[arg-type]
+            harmless_path="",  # type: ignore[arg-type]
+            api_eval=api_cfg,
+            output_dir=output_dir,
+        )
+        ctx = EarlyModeContext(
+            config_path="test.toml",
+            config=config,
+            model=None,
+            tokenizer=None,
+            t0=time.monotonic(),
+        )
+
+        mock_response = _mock_api_response("Sure, here you go!")
+
+        with (
+            patch.dict(os.environ, {"TEST_KEY": "sk-test"}),
+            patch("urllib.request.urlopen", return_value=mock_response),
+        ):
+            _run_api_eval_mode(ctx)
+
+        report_path = output_dir / "api_eval_report.json"
+        assert report_path.exists()
+        report = json.loads(report_path.read_text())
+        assert report["token_text"] == "adversarial tokens"
+        assert "mock-ep" in report["endpoints"]
+        ep_data = report["endpoints"]["mock-ep"]
+        assert ep_data["success_rate"] == 1.0

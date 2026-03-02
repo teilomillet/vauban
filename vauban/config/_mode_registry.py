@@ -6,7 +6,7 @@ from typing import Literal
 
 from vauban.types import PipelineConfig
 
-type EarlyModePhase = Literal["before_prompts", "after_measure"]
+type EarlyModePhase = Literal["standalone", "before_prompts", "after_measure"]
 type EarlyModePredicate = Callable[[PipelineConfig], bool]
 
 
@@ -96,7 +96,23 @@ def _has_repbend(config: PipelineConfig) -> bool:
     return config.repbend is not None
 
 
+def _has_standalone_api_eval(config: PipelineConfig) -> bool:
+    """Return whether standalone [api_eval] mode is active.
+
+    True when [api_eval] is present AND token_text is set, meaning the
+    user wants to evaluate pre-optimized tokens without a local model.
+    """
+    return config.api_eval is not None and config.api_eval.token_text is not None
+
+
 EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
+    EarlyModeSpec(
+        "[api_eval]",
+        "api_eval",
+        "standalone",
+        False,
+        _has_standalone_api_eval,
+    ),
     EarlyModeSpec("[depth]", "depth", "before_prompts", False, _has_depth),
     EarlyModeSpec("[svf]", "svf", "before_prompts", False, _has_svf),
     EarlyModeSpec("[features]", "features", "before_prompts", False, _has_features),

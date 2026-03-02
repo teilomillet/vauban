@@ -123,6 +123,191 @@ def _parse_api_eval(raw: TomlDict) -> ApiEvalConfig | None:
             raise TypeError(msg)
         follow_up_prompts.append(item)
 
+    # -- token_text (standalone mode) --
+    token_text: str | None = None
+    token_text_raw = sec.get("token_text")
+    if token_text_raw is not None:
+        if not isinstance(token_text_raw, str):
+            msg = (
+                f"[api_eval].token_text must be a string,"
+                f" got {type(token_text_raw).__name__}"
+            )
+            raise TypeError(msg)
+        if not token_text_raw:
+            msg = "[api_eval].token_text must be non-empty"
+            raise ValueError(msg)
+        token_text = token_text_raw
+
+    # -- token_position --
+    _valid_positions = {"prefix", "suffix", "infix"}
+    token_position_raw = sec.get("token_position", "suffix")
+    if not isinstance(token_position_raw, str):
+        msg = (
+            f"[api_eval].token_position must be a string,"
+            f" got {type(token_position_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if token_position_raw not in _valid_positions:
+        msg = (
+            f"[api_eval].token_position must be one of"
+            f" {sorted(_valid_positions)}, got {token_position_raw!r}"
+        )
+        raise ValueError(msg)
+
+    # -- prompts --
+    prompts_raw = sec.get("prompts", [])
+    if not isinstance(prompts_raw, list):
+        msg = (
+            f"[api_eval].prompts must be a list,"
+            f" got {type(prompts_raw).__name__}"
+        )
+        raise TypeError(msg)
+    prompts: list[str] = []
+    for i, item in enumerate(prompts_raw):
+        if not isinstance(item, str):
+            msg = (
+                f"[api_eval].prompts[{i}] must be a string,"
+                f" got {type(item).__name__}"
+            )
+            raise TypeError(msg)
+        prompts.append(item)
+
+    # Validate: standalone mode requires prompts
+    if token_text is not None and not prompts:
+        msg = (
+            "[api_eval].prompts must be non-empty"
+            " when token_text is set (standalone mode)"
+        )
+        raise ValueError(msg)
+
+    # -- defense_proxy --
+    _valid_proxy = {"sic", "cast", "both"}
+    defense_proxy: str | None = None
+    defense_proxy_raw = sec.get("defense_proxy")
+    if defense_proxy_raw is not None:
+        if not isinstance(defense_proxy_raw, str):
+            msg = (
+                f"[api_eval].defense_proxy must be a string,"
+                f" got {type(defense_proxy_raw).__name__}"
+            )
+            raise TypeError(msg)
+        if defense_proxy_raw not in _valid_proxy:
+            msg = (
+                f"[api_eval].defense_proxy must be one of"
+                f" {sorted(_valid_proxy)}, got {defense_proxy_raw!r}"
+            )
+            raise ValueError(msg)
+        defense_proxy = defense_proxy_raw
+
+    # -- defense_proxy_sic_mode --
+    _valid_sic_modes = {"direction", "generation", "svf"}
+    dp_sic_mode_raw = sec.get("defense_proxy_sic_mode", "direction")
+    if not isinstance(dp_sic_mode_raw, str):
+        msg = (
+            f"[api_eval].defense_proxy_sic_mode must be a string,"
+            f" got {type(dp_sic_mode_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if dp_sic_mode_raw not in _valid_sic_modes:
+        msg = (
+            f"[api_eval].defense_proxy_sic_mode must be one of"
+            f" {sorted(_valid_sic_modes)}, got {dp_sic_mode_raw!r}"
+        )
+        raise ValueError(msg)
+
+    # -- defense_proxy_sic_threshold --
+    dp_sic_threshold_raw = sec.get("defense_proxy_sic_threshold", 0.0)
+    if not isinstance(dp_sic_threshold_raw, (int, float)):
+        msg = (
+            f"[api_eval].defense_proxy_sic_threshold must be a number,"
+            f" got {type(dp_sic_threshold_raw).__name__}"
+        )
+        raise TypeError(msg)
+
+    # -- defense_proxy_sic_max_iterations --
+    dp_sic_max_iter_raw = sec.get("defense_proxy_sic_max_iterations", 3)
+    if not isinstance(dp_sic_max_iter_raw, int):
+        msg = (
+            f"[api_eval].defense_proxy_sic_max_iterations must be an integer,"
+            f" got {type(dp_sic_max_iter_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if dp_sic_max_iter_raw < 1:
+        msg = (
+            f"[api_eval].defense_proxy_sic_max_iterations must be >= 1,"
+            f" got {dp_sic_max_iter_raw}"
+        )
+        raise ValueError(msg)
+
+    # -- defense_proxy_cast_mode --
+    _valid_cast_modes = {"gate", "full"}
+    dp_cast_mode_raw = sec.get("defense_proxy_cast_mode", "gate")
+    if not isinstance(dp_cast_mode_raw, str):
+        msg = (
+            f"[api_eval].defense_proxy_cast_mode must be a string,"
+            f" got {type(dp_cast_mode_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if dp_cast_mode_raw not in _valid_cast_modes:
+        msg = (
+            f"[api_eval].defense_proxy_cast_mode must be one of"
+            f" {sorted(_valid_cast_modes)}, got {dp_cast_mode_raw!r}"
+        )
+        raise ValueError(msg)
+
+    # -- defense_proxy_cast_threshold --
+    dp_cast_threshold_raw = sec.get("defense_proxy_cast_threshold", 0.0)
+    if not isinstance(dp_cast_threshold_raw, (int, float)):
+        msg = (
+            f"[api_eval].defense_proxy_cast_threshold must be a number,"
+            f" got {type(dp_cast_threshold_raw).__name__}"
+        )
+        raise TypeError(msg)
+
+    # -- defense_proxy_cast_layers --
+    dp_cast_layers: list[int] | None = None
+    dp_cast_layers_raw = sec.get("defense_proxy_cast_layers")
+    if dp_cast_layers_raw is not None:
+        if not isinstance(dp_cast_layers_raw, list):
+            msg = (
+                f"[api_eval].defense_proxy_cast_layers must be a list,"
+                f" got {type(dp_cast_layers_raw).__name__}"
+            )
+            raise TypeError(msg)
+        dp_cast_layers = []
+        for i, item in enumerate(dp_cast_layers_raw):
+            if not isinstance(item, int):
+                msg = (
+                    f"[api_eval].defense_proxy_cast_layers[{i}]"
+                    f" must be an integer, got {type(item).__name__}"
+                )
+                raise TypeError(msg)
+            dp_cast_layers.append(item)
+
+    # -- defense_proxy_cast_alpha --
+    dp_cast_alpha_raw = sec.get("defense_proxy_cast_alpha", 1.0)
+    if not isinstance(dp_cast_alpha_raw, (int, float)):
+        msg = (
+            f"[api_eval].defense_proxy_cast_alpha must be a number,"
+            f" got {type(dp_cast_alpha_raw).__name__}"
+        )
+        raise TypeError(msg)
+
+    # -- defense_proxy_cast_max_tokens --
+    dp_cast_max_tokens_raw = sec.get("defense_proxy_cast_max_tokens", 100)
+    if not isinstance(dp_cast_max_tokens_raw, int):
+        msg = (
+            f"[api_eval].defense_proxy_cast_max_tokens must be an integer,"
+            f" got {type(dp_cast_max_tokens_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if dp_cast_max_tokens_raw < 1:
+        msg = (
+            f"[api_eval].defense_proxy_cast_max_tokens must be >= 1,"
+            f" got {dp_cast_max_tokens_raw}"
+        )
+        raise ValueError(msg)
+
     return ApiEvalConfig(
         endpoints=endpoints,
         max_tokens=max_tokens_raw,
@@ -131,6 +316,18 @@ def _parse_api_eval(raw: TomlDict) -> ApiEvalConfig | None:
         multiturn=multiturn_raw,
         multiturn_max_turns=multiturn_max_turns_raw,
         follow_up_prompts=follow_up_prompts,
+        token_text=token_text,
+        token_position=token_position_raw,
+        prompts=prompts,
+        defense_proxy=defense_proxy,
+        defense_proxy_sic_mode=dp_sic_mode_raw,
+        defense_proxy_sic_threshold=float(dp_sic_threshold_raw),
+        defense_proxy_sic_max_iterations=dp_sic_max_iter_raw,
+        defense_proxy_cast_mode=dp_cast_mode_raw,
+        defense_proxy_cast_threshold=float(dp_cast_threshold_raw),
+        defense_proxy_cast_layers=dp_cast_layers,
+        defense_proxy_cast_alpha=float(dp_cast_alpha_raw),
+        defense_proxy_cast_max_tokens=dp_cast_max_tokens_raw,
     )
 
 

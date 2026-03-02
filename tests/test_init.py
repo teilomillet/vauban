@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from vauban._init import KNOWN_MODES, init_config
+from vauban._init import _STANDALONE_TEMPLATES, KNOWN_MODES, init_config
 
 
 class TestInitConfig:
@@ -27,8 +27,12 @@ class TestInitConfig:
 
         content = init_config(mode)
         parsed = tomllib.loads(content)
-        assert "model" in parsed
-        assert "data" in parsed
+        if mode in _STANDALONE_TEMPLATES:
+            # Standalone modes don't require [model] or [data]
+            assert isinstance(parsed, dict)
+        else:
+            assert "model" in parsed
+            assert "data" in parsed
 
     def test_custom_model_in_output(self) -> None:
         content = init_config(model="./my-local-model")
@@ -81,7 +85,11 @@ class TestInitRoundtrip:
         out = tmp_path / f"{mode}.toml"
         init_config(mode, output_path=out)
         config = load_config(out)
-        assert config.model_path == "mlx-community/Llama-3.2-3B-Instruct-4bit"
+        if mode in _STANDALONE_TEMPLATES:
+            # Standalone modes may have empty model_path
+            assert isinstance(config.model_path, str)
+        else:
+            assert config.model_path == "mlx-community/Llama-3.2-3B-Instruct-4bit"
 
 
 class TestInitCli:

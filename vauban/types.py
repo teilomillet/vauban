@@ -559,6 +559,20 @@ class ApiEvalConfig:
     multiturn: bool = False
     multiturn_max_turns: int = 3  # total turns including initial
     follow_up_prompts: list[str] = field(default_factory=list)  # empty = defaults
+    # Standalone mode fields — set token_text to run without a local model
+    token_text: str | None = None  # pre-optimized adversarial text
+    token_position: str = "suffix"  # "prefix", "suffix", or "infix"
+    prompts: list[str] = field(default_factory=list)  # test prompts
+    # Defense proxy — local SIC/CAST filter before API calls
+    defense_proxy: str | None = None  # "sic", "cast", or "both"
+    defense_proxy_sic_mode: str = "direction"  # "direction", "generation", "svf"
+    defense_proxy_sic_threshold: float = 0.0
+    defense_proxy_sic_max_iterations: int = 3
+    defense_proxy_cast_mode: str = "gate"  # "gate" (detection only) or "full"
+    defense_proxy_cast_threshold: float = 0.0
+    defense_proxy_cast_layers: list[int] | None = None
+    defense_proxy_cast_alpha: float = 1.0
+    defense_proxy_cast_max_tokens: int = 100
 
 
 @dataclass(frozen=True, slots=True)
@@ -690,6 +704,31 @@ class DefenseEvalResult:
 
 
 @dataclass(frozen=True, slots=True)
+class DefenseProxyResult:
+    """Result of running local defense proxy before API eval."""
+
+    total_prompts: int
+    sic_blocked: int
+    sic_sanitized: int
+    cast_gated: int  # blocked by CAST (gate or full mode)
+    prompts_sent: int  # survived to reach API
+    proxy_mode: str  # "sic", "cast_gate", "cast_full", "both_gate", "both_full"
+    cast_responses: list[str] = field(default_factory=list)  # only in "full" mode
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to dict."""
+        return {
+            "total_prompts": self.total_prompts,
+            "sic_blocked": self.sic_blocked,
+            "sic_sanitized": self.sic_sanitized,
+            "cast_gated": self.cast_gated,
+            "prompts_sent": self.prompts_sent,
+            "proxy_mode": self.proxy_mode,
+            "cast_responses": self.cast_responses,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class GanRoundResult:
     """Result of a single GAN attack-defense round."""
 
@@ -700,6 +739,7 @@ class GanRoundResult:
     config_snapshot: dict[str, object]  # key params used this round
     transfer_results: list[TransferEvalResult] = field(default_factory=list)
     environment_result: "EnvironmentResult | None" = None
+    defense_proxy_result: "DefenseProxyResult | None" = None
 
     def to_dict(self) -> dict[str, object]:
         """Serialize to dict."""
@@ -733,6 +773,10 @@ class GanRoundResult:
                     for tc in self.environment_result.tool_calls_made
                 ],
             }
+        if self.defense_proxy_result is not None:
+            result["defense_proxy_result"] = (
+                self.defense_proxy_result.to_dict()
+            )
         return result
 
 

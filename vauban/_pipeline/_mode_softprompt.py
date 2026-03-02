@@ -175,6 +175,9 @@ def _run_softprompt_mode(context: EarlyModeContext) -> None:
             sp_prompts,
             config.api_eval,
             config.softprompt.system_prompt if config.softprompt else None,
+            token_position=(
+                config.softprompt.token_position if config.softprompt else "suffix"
+            ),
         )
         all_transfer = [*sp_result.transfer_results, *api_results]
         sp_result = SoftPromptResult(
