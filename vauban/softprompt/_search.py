@@ -7,11 +7,10 @@ from typing import TYPE_CHECKING
 
 from vauban import _ops as ops
 from vauban._forward import force_eval
-from vauban.softprompt._loss import (
-    _compute_defensive_loss,
-    _compute_externality_loss,
-    _compute_loss,
-    _compute_untargeted_loss,
+from vauban.softprompt._gcg_objective import (
+    GCGDefenseConfig,
+    GCGSharedState,
+    _compute_prompt_objective_loss,
 )
 
 if TYPE_CHECKING:
@@ -71,87 +70,45 @@ def _compute_per_prompt_losses(
     infix_split: int | None = None,
 ) -> list[float]:
     """Compute final loss for each prompt individually."""
+    resolved_infix_map = (
+        {id(prompt_ids): infix_split for prompt_ids in all_ids}
+        if infix_split is not None
+        else None
+    )
+    state = GCGSharedState(
+        model=model,
+        target_ids=target_ids,
+        n_tokens=n_tokens,
+        loss_mode=loss_mode,
+        direction=direction,
+        direction_weight=direction_weight,
+        direction_mode=direction_mode,
+        direction_layers=direction_layers,
+        eos_token_id=eos_token_id,
+        eos_loss_mode=eos_loss_mode,
+        eos_loss_weight=eos_loss_weight,
+        ref_model=ref_model,
+        kl_ref_weight=kl_ref_weight,
+        refusal_ids=refusal_ids,
+        defense=GCGDefenseConfig(
+            weight=defense_aware_weight,
+            sic_layer=sic_layer,
+            sic_threshold=sic_threshold,
+            cast_layers=cast_layers,
+            cast_threshold=cast_threshold,
+        ),
+        perplexity_weight=perplexity_weight,
+        token_position=token_position,
+        infix_map=resolved_infix_map,
+    )
     losses: list[float] = []
     for prompt_ids in all_ids:
-        if loss_mode == "defensive" and refusal_ids is not None:
-            loss = _compute_defensive_loss(
-                model,
-                soft_embeds,
-                prompt_ids,
-                n_tokens,
-                refusal_ids,
-                direction,
-                direction_weight,
-                direction_mode,
-                direction_layers,
-                eos_token_id,
-                eos_loss_mode,
-                eos_loss_weight,
-                ref_model,
-                kl_ref_weight,
-                defense_aware_weight,
-                sic_layer,
-                sic_threshold,
-                cast_layers,
-                cast_threshold,
-            )
-        elif loss_mode == "untargeted" and refusal_ids is not None:
-            loss = _compute_untargeted_loss(
-                model,
-                soft_embeds,
-                prompt_ids,
-                n_tokens,
-                refusal_ids,
-                direction,
-                direction_weight,
-                direction_mode,
-                direction_layers,
-                eos_token_id,
-                eos_loss_mode,
-                eos_loss_weight,
-                ref_model,
-                kl_ref_weight,
-                defense_aware_weight,
-                sic_layer,
-                sic_threshold,
-                cast_layers,
-                cast_threshold,
-            )
-        elif loss_mode == "externality":
-            loss = _compute_externality_loss(
-                model,
-                soft_embeds,
-                prompt_ids,
-                n_tokens,
-                direction,
-                direction_weight,
-                perplexity_weight,
-                suffix_token_ids=suffix_token_ids,
-                token_position=token_position,
-                infix_split=infix_split,
-            )
-        else:
-            loss = _compute_loss(
-                model,
-                soft_embeds,
-                prompt_ids,
-                target_ids,
-                n_tokens,
-                direction,
-                direction_weight,
-                direction_mode,
-                direction_layers,
-                eos_token_id,
-                eos_loss_mode,
-                eos_loss_weight,
-                ref_model,
-                kl_ref_weight,
-                defense_aware_weight,
-                sic_layer,
-                sic_threshold,
-                cast_layers,
-                cast_threshold,
-            )
+        loss = _compute_prompt_objective_loss(
+            state,
+            soft_embeds,
+            prompt_ids,
+            suffix_token_ids=suffix_token_ids,
+        )
         force_eval(loss)
         losses.append(float(loss.item()))
     return losses
