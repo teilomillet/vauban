@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from vauban import _ops as ops
-from vauban._forward import force_eval
+from vauban._forward import force_eval, get_transformer
 from vauban.softprompt._constraints import _build_vocab_mask
 from vauban.softprompt._encoding import _pre_encode_prompts
 from vauban.softprompt._gcg_candidates import (
@@ -61,7 +61,7 @@ def _gcg_attack(
     environment_config: EnvironmentConfig | None = None,
 ) -> SoftPromptResult:
     """Run GCG discrete token search for the configured soft prompt objective."""
-    transformer = model.model
+    transformer = get_transformer(model)
     vocab_size = transformer.embed_tokens.weight.shape[0]
     embed_matrix = transformer.embed_tokens.weight
 

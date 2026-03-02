@@ -5,8 +5,12 @@ from vauban._array import Array
 from vauban._forward import (
     embed_and_mask_with_prefix,
     force_eval,
+    get_transformer,
     lm_head_forward,
     make_cache,
+    make_ssm_mask,
+    run_transformer_layers,
+    select_mask,
 )
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES
 from vauban.types import CausalLM, LayerCache, SoftPromptConfig, Tokenizer
@@ -29,14 +33,13 @@ def _prefill_with_cache(
     Returns:
         Logits at the last position, shape (1, 1, vocab_size).
     """
-    transformer = model.model
+    transformer = get_transformer(model)
     h, mask = embed_and_mask_with_prefix(
         transformer, soft_embeds, prompt_token_ids,
         token_position=token_position, infix_split=infix_split,
     )
 
-    for i, layer in enumerate(transformer.layers):
-        h = layer(h, mask, cache=cache[i])
+    h = run_transformer_layers(transformer, h, mask, cache=cache)
 
     h = transformer.norm(h)
     logits = lm_head_forward(model, h)
@@ -47,17 +50,27 @@ def _decode_step(
     model: CausalLM,
     token_id: int,
     cache: list[LayerCache],
+    ssm_mask: Array | None = None,
 ) -> Array:
     """Single autoregressive decode step with KV cache.
+
+    Args:
+        model: The causal language model.
+        token_id: Token to feed.
+        cache: KV cache list (one per layer).
+        ssm_mask: Pre-computed SSM mask for hybrid architectures.
+            If ``None``, computed on the fly (slower per-token).
 
     Returns:
         Logits for the next token, shape (1, 1, vocab_size).
     """
-    transformer = model.model
+    transformer = get_transformer(model)
     h = transformer.embed_tokens(ops.array([[token_id]]))
 
+    if ssm_mask is None:
+        ssm_mask = make_ssm_mask(transformer, h)
     for i, layer in enumerate(transformer.layers):
-        h = layer(h, None, cache=cache[i])
+        h = layer(h, select_mask(layer, None, ssm_mask), cache=cache[i])
 
     h = transformer.norm(h)
     return lm_head_forward(model, h)
@@ -93,6 +106,12 @@ def _evaluate_attack_with_history(
 
     eos_token_id: int | None = getattr(tokenizer, "eos_token_id", None)
 
+    # Pre-compute SSM mask once for all decode loops (static per model)
+    transformer = get_transformer(model)
+    decode_ssm_mask = make_ssm_mask(
+        transformer, ops.zeros((1, 1, 1)),
+    )
+
     for prompt in prompts:
         messages: list[dict[str, str]] = []
         if config.system_prompt is not None:
@@ -118,7 +137,7 @@ def _evaluate_attack_with_history(
             if eos_token_id is not None and next_token == eos_token_id:
                 break
             generated_ids.append(next_token)
-            next_logits = _decode_step(model, next_token, cache)
+            next_logits = _decode_step(model, next_token, cache, decode_ssm_mask)
             force_eval(next_logits)
 
         response = tokenizer.decode(generated_ids)
@@ -165,6 +184,12 @@ def _evaluate_attack(
 
     eos_token_id: int | None = getattr(tokenizer, "eos_token_id", None)
 
+    # Pre-compute SSM mask once for all decode loops (static per model)
+    transformer = get_transformer(model)
+    decode_ssm_mask = make_ssm_mask(
+        transformer, ops.zeros((1, 1, 1)),
+    )
+
     for prompt in prompts:
         messages: list[dict[str, str]] = []
         if config.system_prompt is not None:
@@ -191,7 +216,7 @@ def _evaluate_attack(
             if eos_token_id is not None and next_token == eos_token_id:
                 break
             generated_ids.append(next_token)
-            next_logits = _decode_step(model, next_token, cache)
+            next_logits = _decode_step(model, next_token, cache, decode_ssm_mask)
             force_eval(next_logits)
 
         response = tokenizer.decode(generated_ids)

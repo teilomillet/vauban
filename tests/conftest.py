@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -18,7 +19,17 @@ from vauban._backend import get_backend
 
 if TYPE_CHECKING:
     from vauban._array import Array
-    from vauban.types import CausalLM, DirectionResult, Tokenizer
+    from vauban.types import CausalLM, Tokenizer
+
+from vauban._pipeline._context import EarlyModeContext
+from vauban.types import (
+    CutConfig,
+    DirectionResult,
+    EvalConfig,
+    MeasureConfig,
+    PipelineConfig,
+    SICResult,
+)
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 D_MODEL = 16
@@ -84,6 +95,120 @@ class MockTokenizer:
         if tokenize:
             return self.encode(text)
         return text
+
+
+# ---------------------------------------------------------------------------
+# Pipeline test helpers (shared across test_pipeline_*.py)
+# ---------------------------------------------------------------------------
+
+# Sentinel for distinguishing "not provided" from explicit None
+_UNSET: object = object()
+
+
+def make_pipeline_config(
+    tmp_path: Path, **overrides: object,
+) -> PipelineConfig:
+    """Build a PipelineConfig with sensible test defaults."""
+    defaults: dict[str, object] = {
+        "model_path": "test-model",
+        "harmful_path": Path("h.jsonl"),
+        "harmless_path": Path("hl.jsonl"),
+        "cut": CutConfig(),
+        "measure": MeasureConfig(),
+        "eval": EvalConfig(),
+        "output_dir": tmp_path,
+        "verbose": False,
+    }
+    defaults.update(overrides)
+    return PipelineConfig(**defaults)  # type: ignore[arg-type]
+
+
+def make_direction_result(
+    d_model: int = 16,
+    layer_index: int = 0,
+    cosine_scores: list[float] | None = None,
+) -> DirectionResult:
+    """Build a DirectionResult with a random unit direction."""
+    d = ops.random.normal((d_model,))
+    d = d / ops.linalg.norm(d)
+    ops.eval(d)
+    return DirectionResult(
+        direction=d,
+        layer_index=layer_index,
+        cosine_scores=cosine_scores if cosine_scores is not None else [0.5],
+        d_model=d_model,
+        model_path="test-model",
+    )
+
+
+def make_early_mode_context(
+    tmp_path: Path,
+    direction_result: DirectionResult | None = None,
+    harmful: object = _UNSET,
+    harmless: object = _UNSET,
+    t0: float = 0.0,
+    **config_overrides: object,
+) -> EarlyModeContext:
+    """Build an EarlyModeContext with sensible test defaults.
+
+    Pass ``harmful=None`` or ``harmless=None`` explicitly to test
+    missing-data validation paths (the _UNSET sentinel distinguishes
+    "not provided" from "explicitly None").
+    """
+    config = make_pipeline_config(tmp_path, **config_overrides)
+    return EarlyModeContext(
+        config_path="test.toml",
+        config=config,
+        model=object(),
+        tokenizer=object(),
+        t0=t0,
+        harmful=(
+            harmful  # type: ignore[arg-type]
+            if harmful is not _UNSET
+            else ["test prompt"]
+        ),
+        harmless=(
+            harmless  # type: ignore[arg-type]
+            if harmless is not _UNSET
+            else ["safe prompt"]
+        ),
+        direction_result=direction_result,
+    )
+
+
+def make_mock_transformer(
+    n_layers: int = 2,
+    d_model: int = D_MODEL,
+    vocab_size: int = VOCAB_SIZE,
+) -> MagicMock:
+    """Build a MagicMock transformer with the expected shape attributes.
+
+    Useful for tests that patch ``get_transformer`` and need a
+    plausible return value with ``.layers``, ``.embed_tokens``, etc.
+    """
+    transformer = MagicMock()
+    transformer.layers = [MagicMock() for _ in range(n_layers)]
+    transformer.embed_tokens.weight.shape = (vocab_size, d_model)
+    return transformer
+
+
+def make_sic_result() -> SICResult:
+    """Build a minimal SICResult for pipeline mode tests."""
+    return SICResult(
+        prompts_clean=["clean"],
+        prompts_blocked=[False],
+        iterations_used=[1],
+        initial_scores=[0.5],
+        final_scores=[0.1],
+        total_blocked=0,
+        total_sanitized=1,
+        total_clean=0,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Fixtures: mock model, tokenizer, cache, direction
+# ---------------------------------------------------------------------------
 
 
 @pytest.fixture

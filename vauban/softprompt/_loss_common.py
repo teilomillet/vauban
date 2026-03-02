@@ -7,7 +7,14 @@ from typing import TYPE_CHECKING
 
 from vauban import _nn
 from vauban import _ops as ops
-from vauban._forward import embed_and_mask_with_prefix, lm_head_forward
+from vauban._forward import (
+    embed_and_mask_with_prefix,
+    get_transformer,
+    lm_head_forward,
+    make_ssm_mask,
+    run_transformer_layers,
+    ste_layer_forward,
+)
 
 if TYPE_CHECKING:
     from vauban._array import Array
@@ -132,21 +139,19 @@ def _compute_kl_collision_loss(
     n_tokens: int,
 ) -> Array:
     """Compute KL divergence between the attacked and reference model."""
-    transformer = model.model
+    transformer = get_transformer(model)
     h, mask = embed_and_mask_with_prefix(transformer, soft_embeds, prompt_token_ids)
-    for layer in transformer.layers:
-        h = layer(h, mask)
+    h = run_transformer_layers(transformer, h, mask, differentiable=True)
     h = transformer.norm(h)
     attack_logits = lm_head_forward(model, h)
 
-    ref_transformer = ref_model.model
+    ref_transformer = get_transformer(ref_model)
     h_ref, mask_ref = embed_and_mask_with_prefix(
         ref_transformer,
         ops.stop_gradient(soft_embeds),
         prompt_token_ids,
     )
-    for layer in ref_transformer.layers:
-        h_ref = layer(h_ref, mask_ref)
+    h_ref = run_transformer_layers(ref_transformer, h_ref, mask_ref)
     h_ref = ref_transformer.norm(h_ref)
     ref_logits = ops.stop_gradient(lm_head_forward(ref_model, h_ref))
 
@@ -254,7 +259,7 @@ def _run_transformer_with_penalties(
     aux_config: LossAuxConfig,
 ) -> ForwardTrace:
     """Run the transformer while collecting shared layer penalties."""
-    transformer = model.model
+    transformer = get_transformer(model)
     prompt_last_pos = placement.n_tokens + n_prompt - 1
     penalties = LayerPenaltyAccumulator(
         direction_penalty=ops.array(0.0),
@@ -262,9 +267,10 @@ def _run_transformer_with_penalties(
         n_penalty_layers=0,
     )
     h = hidden_states
+    ssm_mask = make_ssm_mask(transformer, h)
 
     for layer_idx, layer in enumerate(transformer.layers):
-        h = layer(h, mask)
+        h = ste_layer_forward(layer, h, mask, ssm_mask)
         if (
             aux_config.direction_weight > 0.0
             and aux_config.direction_mode != "last"
@@ -333,7 +339,7 @@ def _apply_shared_aux_terms(
             last_hidden = trace.hidden_states[:, trace.prompt_last_pos, :]
             if aux_config.svf_boundary is not None:
                 # SVF: use boundary score at the last layer as direction signal
-                n_layers = len(model.model.layers)
+                n_layers = len(get_transformer(model).layers)
                 proj = aux_config.svf_boundary.forward(  # type: ignore[union-attr]
                     last_hidden[0], n_layers - 1,
                 )

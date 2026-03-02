@@ -667,6 +667,9 @@ class SoftPromptConfig:
     amplecgc_train_steps: int = 200  # generator training steps
     amplecgc_train_lr: float = 0.001  # generator training learning rate
     amplecgc_sample_temperature: float = 1.0  # sampling temperature for generator
+    # --- Temperature annealing & entropy regularization (EGD/COLD) ---
+    temperature_schedule: str = "constant"  # "constant", "linear", or "cosine"
+    entropy_weight: float = 0.0  # entropy bonus for EGD/COLD (0 = off)
 
 
 @dataclass(frozen=True, slots=True)

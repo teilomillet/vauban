@@ -11,7 +11,15 @@ import math
 
 from vauban import _ops as ops
 from vauban._array import Array
-from vauban._forward import embed_and_mask, extract_logits, force_eval, make_cache
+from vauban._forward import (
+    embed_and_mask,
+    extract_logits,
+    force_eval,
+    get_transformer,
+    make_cache,
+    make_ssm_mask,
+    select_mask,
+)
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES
 from vauban.types import (
     CausalLM,
@@ -293,11 +301,12 @@ def _detect_adversarial_direction(
         raise TypeError(msg)
     token_ids = ops.array(tokenizer.encode(text))[None, :]
 
-    transformer = model.model
+    transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
+    ssm_mask = make_ssm_mask(transformer, h)
 
     for i, layer in enumerate(transformer.layers):
-        h = layer(h, mask)
+        h = layer(h, select_mask(layer, mask, ssm_mask))
         if i == target_layer:
             last_token = h[0, -1, :]
             proj = ops.sum(last_token * direction)
@@ -335,7 +344,7 @@ def _detect_adversarial_svf(
 
     boundary = load_svf_boundary(config.svf_boundary_path)
 
-    transformer = model.model
+    transformer = get_transformer(model)
     n_layers = len(transformer.layers)
 
     messages = [{"role": "user", "content": prompt}]
@@ -346,9 +355,10 @@ def _detect_adversarial_svf(
     token_ids = ops.array(tokenizer.encode(text))[None, :]
 
     h, mask = embed_and_mask(transformer, token_ids)
+    ssm_mask = make_ssm_mask(transformer, h)
 
     for i, layer in enumerate(transformer.layers):
-        h = layer(h, mask)
+        h = layer(h, select_mask(layer, mask, ssm_mask))
         if i == target_layer:
             last_token = h[0, -1, :]
             score = boundary.forward(last_token, i)

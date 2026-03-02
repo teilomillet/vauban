@@ -32,10 +32,8 @@ Commands:
   diff            Compare JSON reports from two output directories.
                   Use --threshold as a CI gate (exit 1 on large deltas).
   tree            Render the experiment lineage tree from TOML configs.
-  man             Show built-in manual (topics: quickstart, commands,
-                  validate, playbook, quick, examples, print, modes, formats,
-                  model, data, measure, cut, eval, surface, detect, optimize,
-                  softprompt, sic, depth, probe, steer, cast, output, verbose).
+  man             Show topic index. Run 'vauban man <topic>' for details.
+                  'vauban man all' prints the full manual.
 
 Options:
   --validate    Check config for errors without loading the model.
@@ -74,13 +72,24 @@ def _command_suggestion(token: str) -> str | None:
     return aliases.get(matches[0], matches[0])
 
 
+def _format_mode_list() -> str:
+    """Format mode names with descriptions for help output."""
+    from vauban._init import KNOWN_MODES, MODE_DESCRIPTIONS
+
+    lines: list[str] = []
+    for mode in sorted(KNOWN_MODES):
+        desc = MODE_DESCRIPTIONS.get(mode, "")
+        lines.append(f"  {mode:<20s} {desc}")
+    return "Modes:\n" + "\n".join(lines) + "\n"
+
+
 def _run_init(args: list[str]) -> None:
     """Handle `vauban init` subcommand."""
-    from vauban._init import KNOWN_MODES, init_config
+    from vauban._init import init_config
 
     if len(args) == 1 and args[0] in ("--help", "-h"):
         sys.stdout.write(_INIT_USAGE)
-        sys.stdout.write(f"Modes: {', '.join(sorted(KNOWN_MODES))}\n")
+        sys.stdout.write(_format_mode_list())
         return
 
     mode = "default"
@@ -92,7 +101,7 @@ def _run_init(args: list[str]) -> None:
     while i < len(args):
         if args[i] in ("--help", "-h"):
             sys.stdout.write(_INIT_USAGE)
-            sys.stdout.write(f"Modes: {', '.join(sorted(KNOWN_MODES))}\n")
+            sys.stdout.write(_format_mode_list())
             return
         if args[i] == "--mode" and i + 1 < len(args):
             mode = args[i + 1]
@@ -111,7 +120,7 @@ def _run_init(args: list[str]) -> None:
                 f"Error: unexpected argument {args[i]!r}\n\n",
             )
             sys.stderr.write(_INIT_USAGE)
-            sys.stderr.write(f"Modes: {', '.join(sorted(KNOWN_MODES))}\n")
+            sys.stderr.write(_format_mode_list())
             raise SystemExit(1)
 
     output_path = Path(output)

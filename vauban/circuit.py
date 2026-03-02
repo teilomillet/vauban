@@ -17,7 +17,14 @@ Metrics:
 from vauban import _ops as ops
 from vauban._arch import detect_layer_components
 from vauban._array import Array
-from vauban._forward import embed_and_mask, force_eval, lm_head_forward
+from vauban._forward import (
+    embed_and_mask,
+    force_eval,
+    get_transformer,
+    lm_head_forward,
+    make_ssm_mask,
+    select_mask,
+)
 from vauban.types import CausalLM, CircuitResult, ComponentEffect, Tokenizer
 
 # ---------------------------------------------------------------------------
@@ -77,12 +84,13 @@ def _forward_cache_residuals(
         Tuple of (logits, cached_residuals) where cached_residuals[i]
         is the residual stream after layer i, shape (1, seq_len, d_model).
     """
-    transformer = model.model
+    transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
 
     cached: list[Array] = []
+    ssm_mask = make_ssm_mask(transformer, h)
     for layer in transformer.layers:
-        h = layer(h, mask)
+        h = layer(h, select_mask(layer, mask, ssm_mask))
         cached.append(h)
 
     h = transformer.norm(h)
@@ -105,19 +113,28 @@ def _forward_cache_components(
         Tuple of (logits, component_outputs) where component_outputs[i]
         is (attn_output, mlp_output) for layer i.
     """
-    transformer = model.model
+    transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
 
     component_outputs: list[tuple[Array, Array]] = []
+    ssm_mask = make_ssm_mask(transformer, h)
     for layer in transformer.layers:
-        components = detect_layer_components(layer)
-        normed = components.input_norm(h)  # type: ignore[operator]
-        attn_out = components.self_attn(normed, mask)  # type: ignore[operator]
-        h_mid = h + attn_out
-        normed_mid = components.post_attn_norm(h_mid)  # type: ignore[operator]
-        mlp_out = components.mlp(normed_mid)  # type: ignore[operator]
-        h = h_mid + mlp_out
-        component_outputs.append((attn_out, mlp_out))
+        if getattr(layer, "is_linear", False):
+            # SSM/linear layers can't be decomposed into attn + mlp;
+            # record the full layer delta as (attn=delta, mlp=zeros).
+            h_before = h
+            h = layer(h, select_mask(layer, mask, ssm_mask))
+            delta = h - h_before
+            component_outputs.append((delta, ops.zeros_like(delta)))
+        else:
+            components = detect_layer_components(layer)
+            normed = components.input_norm(h)  # type: ignore[operator]
+            attn_out = components.self_attn(normed, mask)  # type: ignore[operator]
+            h_mid = h + attn_out
+            normed_mid = components.post_attn_norm(h_mid)  # type: ignore[operator]
+            mlp_out = components.mlp(normed_mid)  # type: ignore[operator]
+            h = h_mid + mlp_out
+            component_outputs.append((attn_out, mlp_out))
 
     h = transformer.norm(h)
     logits = lm_head_forward(model, h)
@@ -147,15 +164,17 @@ def _patched_forward_layer(
     Returns:
         Logits from the patched forward pass.
     """
-    transformer = model.model
+    transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
 
+    ssm_mask = make_ssm_mask(transformer, h)
     for i, layer in enumerate(transformer.layers):
         if i == patch_layer:
             h = patch_residual
             mask = _create_causal_mask(h)
+            ssm_mask = make_ssm_mask(transformer, h)
         else:
-            h = layer(h, mask)
+            h = layer(h, select_mask(layer, mask, ssm_mask))
 
     h = transformer.norm(h)
     logits = lm_head_forward(model, h)
@@ -182,25 +201,35 @@ def _patched_forward_component(
     Returns:
         Logits from the patched forward pass.
     """
-    transformer = model.model
+    transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
 
+    ssm_mask = make_ssm_mask(transformer, h)
     for i, layer in enumerate(transformer.layers):
         if i == patch_layer:
-            seq_len = h.shape[1]
-            components = detect_layer_components(layer)
-            normed = components.input_norm(h)  # type: ignore[operator]
-            attn_out = components.self_attn(normed, mask)  # type: ignore[operator]
-            if component_name == "attn":
-                attn_out = _match_seq_len(clean_component_output, seq_len)
-            h_mid = h + attn_out
-            normed_mid = components.post_attn_norm(h_mid)  # type: ignore[operator]
-            mlp_out = components.mlp(normed_mid)  # type: ignore[operator]
-            if component_name == "mlp":
-                mlp_out = _match_seq_len(clean_component_output, seq_len)
-            h = h_mid + mlp_out
+            if getattr(layer, "is_linear", False):
+                # SSM layer — can't decompose; patch full delta if "attn"
+                h_before = h
+                h = layer(h, select_mask(layer, mask, ssm_mask))
+                if component_name == "attn":
+                    seq_len = h.shape[1]
+                    patched = _match_seq_len(clean_component_output, seq_len)
+                    h = h_before + patched
+            else:
+                seq_len = h.shape[1]
+                components = detect_layer_components(layer)
+                normed = components.input_norm(h)  # type: ignore[operator]
+                attn_out = components.self_attn(normed, mask)  # type: ignore[operator]
+                if component_name == "attn":
+                    attn_out = _match_seq_len(clean_component_output, seq_len)
+                h_mid = h + attn_out
+                normed_mid = components.post_attn_norm(h_mid)  # type: ignore[operator]
+                mlp_out = components.mlp(normed_mid)  # type: ignore[operator]
+                if component_name == "mlp":
+                    mlp_out = _match_seq_len(clean_component_output, seq_len)
+                h = h_mid + mlp_out
         else:
-            h = layer(h, mask)
+            h = layer(h, select_mask(layer, mask, ssm_mask))
 
     h = transformer.norm(h)
     logits = lm_head_forward(model, h)
@@ -304,7 +333,7 @@ def trace_circuit(
         msg = "logit_diff metric requires logit_diff_tokens"
         raise ValueError(msg)
 
-    transformer = model.model
+    transformer = get_transformer(model)
     n_layers = len(transformer.layers)
     trace_layers = layers if layers is not None else list(range(n_layers))
 

@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from vauban import _ops as ops
-from vauban._forward import force_eval
+from vauban._forward import force_eval, get_transformer
 from vauban.softprompt._amplecgc_collect import collect_gcg_suffixes
 from vauban.softprompt._amplecgc_train import train_amplecgc_generator
 from vauban.softprompt._encoding import _pre_encode_prompts
@@ -72,7 +72,7 @@ def _amplecgc_attack(
         infix_map: Per-prompt infix split positions.
         environment_config: Optional environment config for rollout scoring.
     """
-    transformer = model.model
+    transformer = get_transformer(model)
     embed_dim = transformer.embed_tokens.weight.shape[1]
 
     # Phase 1: Collect suffixes via GCG

@@ -28,6 +28,96 @@ def get_transformer(model: CausalLM) -> TransformerModel:
     return normalize_transformer(inner)  # type: ignore[return-value]
 
 
+def make_ssm_mask(transformer: TransformerModel, h: Array) -> Array | None:
+    """Create a boolean SSM mask for hybrid architectures.
+
+    Returns ``None`` when all layers use standard attention.
+    For architectures like Qwen3.5 that mix GatedDeltaNet (SSM) and
+    standard attention layers, returns a ``(B, T)`` boolean mask where
+    all positions are valid (no cache).
+    """
+    from vauban import _ops as ops
+
+    if any(getattr(layer, "is_linear", False) for layer in transformer.layers):
+        return ops.ones((h.shape[0], h.shape[1]), dtype=ops.bool_)
+    return None
+
+
+def select_mask(
+    layer: object, attn_mask: Array | None, ssm_mask: Array | None,
+) -> Array | None:
+    """Pick the correct mask for a layer (attention vs SSM/linear)."""
+    if ssm_mask is not None and getattr(layer, "is_linear", False):
+        return ssm_mask
+    return attn_mask
+
+
+def run_transformer_layers(
+    transformer: TransformerModel,
+    h: Array,
+    mask: Array,
+    cache: list[LayerCache] | None = None,
+    *,
+    differentiable: bool = False,
+) -> Array:
+    """Run all transformer layers with hybrid mask support.
+
+    Handles architectures like Qwen3.5 that mix standard attention and
+    SSM/linear layers, each requiring a different mask format.
+
+    Args:
+        transformer: The transformer model with ``layers`` attribute.
+        h: Hidden states, shape ``(B, T, D)``.
+        mask: Causal attention mask for standard layers.
+        cache: Optional KV cache list (one per layer).
+        differentiable: If True, use straight-through estimator for SSM
+            layers to allow gradient flow. Required for GCG/EGD.
+
+    Returns:
+        Hidden states after all layers.
+    """
+    if differentiable and cache is not None:
+        msg = (
+            "Cannot use both differentiable=True and cache: "
+            "STE layers do not support KV cache"
+        )
+        raise ValueError(msg)
+
+    ssm_mask = make_ssm_mask(transformer, h)
+    for i, layer in enumerate(transformer.layers):
+        if differentiable:
+            h = ste_layer_forward(layer, h, mask, ssm_mask)
+        elif cache is not None:
+            h = layer(h, select_mask(layer, mask, ssm_mask), cache=cache[i])
+        else:
+            h = layer(h, select_mask(layer, mask, ssm_mask))
+    return h
+
+
+def ste_layer_forward(
+    layer: object,
+    h: Array,
+    mask: Array,
+    ssm_mask: Array | None,
+) -> Array:
+    """Forward through a layer with straight-through estimator for SSM layers.
+
+    SSM/linear layers (e.g. GatedDeltaNet in Qwen3.5) use custom kernels
+    that don't support backward differentiation (VJP). This function uses
+    a straight-through estimator: the forward pass computes the real SSM
+    output, but the backward pass treats the layer as identity, allowing
+    gradients to flow through for GCG/EGD optimization.
+
+    Standard attention layers are differentiated normally.
+    """
+    from vauban import _ops as ops
+
+    if ssm_mask is not None and getattr(layer, "is_linear", False):
+        h_ssm = layer(ops.stop_gradient(h), ssm_mask)
+        return h + ops.stop_gradient(h_ssm - h)
+    return layer(h, select_mask(layer, mask, ssm_mask))
+
+
 if TYPE_CHECKING or _BACKEND == "mlx":
     import mlx.core as mx
     import mlx.nn as nn

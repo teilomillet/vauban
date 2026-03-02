@@ -48,6 +48,8 @@ class _SoftPromptLossSection:
     amplecgc_train_steps: int
     amplecgc_train_lr: float
     amplecgc_sample_temperature: float
+    temperature_schedule: str
+    entropy_weight: float
 
 
 def _parse_softprompt_loss(
@@ -352,6 +354,21 @@ def _parse_softprompt_loss(
         )
         raise ValueError(msg)
 
+    # --- Temperature annealing & entropy regularization ---
+    temperature_schedule = reader.literal(
+        "temperature_schedule",
+        ("constant", "linear", "cosine"),
+        default="constant",
+    )
+
+    entropy_weight = reader.number("entropy_weight", default=0.0)
+    if entropy_weight < 0.0:
+        msg = (
+            "[softprompt].entropy_weight must be >= 0.0,"
+            f" got {entropy_weight}"
+        )
+        raise ValueError(msg)
+
     return _SoftPromptLossSection(
         direction_weight=direction_weight,
         embed_reg_weight=embed_reg_weight,
@@ -385,4 +402,6 @@ def _parse_softprompt_loss(
         amplecgc_train_steps=amplecgc_train_steps,
         amplecgc_train_lr=amplecgc_train_lr,
         amplecgc_sample_temperature=amplecgc_sample_temperature,
+        temperature_schedule=temperature_schedule,
+        entropy_weight=entropy_weight,
     )

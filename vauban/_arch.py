@@ -14,8 +14,8 @@ if TYPE_CHECKING:
     from vauban.types import LayerComponents
 
 # Ordered fallback lists — covers Llama/Mistral/Qwen/Gemma/
-# StarCoder/Phi/GPT-2/GPTNeoX/Cohere
-_INNER_ATTRS: tuple[str, ...] = ("model", "transformer", "gpt_neox")
+# StarCoder/Phi/GPT-2/GPTNeoX/Cohere/Qwen3.5-VL
+_INNER_ATTRS: tuple[str, ...] = ("model", "transformer", "gpt_neox", "language_model")
 _EMBED_ATTRS: tuple[str, ...] = (
     "embed_tokens", "wte", "embed", "embedding",
 )
@@ -45,16 +45,57 @@ def _find_attr(obj: object, candidates: tuple[str, ...]) -> object:
     raise AttributeError(msg)
 
 
-def get_inner_model(model: object) -> object:
-    """Find the inner transformer from a CausalLM wrapper.
+def _has_canonical_attrs(obj: object) -> bool:
+    """Check whether *obj* has the canonical transformer interface."""
+    return (
+        hasattr(obj, "embed_tokens")
+        and hasattr(obj, "layers")
+        and hasattr(obj, "norm")
+    )
 
-    Probes ``model.model``, ``model.transformer``, ``model.gpt_neox``
-    in order, returning the first that exists.
+
+def get_inner_model(model: object, *, _depth: int = 0) -> object:
+    """Find the innermost transformer from a CausalLM wrapper.
+
+    Recursively probes ``model``, ``transformer``, ``gpt_neox``,
+    ``language_model`` attributes up to 3 levels deep to reach the
+    canonical transformer (the one with ``embed_tokens``, ``layers``,
+    ``norm``).
+
+    Handles nested wrappers like Qwen3.5 VL where the path is
+    ``Model → language_model → TextModel → model → Qwen3_5TextModel``.
 
     Raises:
         AttributeError: If no inner transformer is found.
     """
-    return _find_attr(model, _INNER_ATTRS)
+    if _depth > 3:
+        msg = f"Recursion limit reached probing {type(model).__name__}"
+        raise AttributeError(msg)
+
+    fallback: object | None = None
+    for attr in _INNER_ATTRS:
+        val = getattr(model, attr, None)
+        if val is None:
+            continue
+        # Found a canonical transformer — return immediately
+        if _has_canonical_attrs(val):
+            return val
+        # Not canonical — try to go deeper
+        try:
+            return get_inner_model(val, _depth=_depth + 1)
+        except AttributeError:
+            # Couldn't go deeper — save as fallback, try remaining candidates
+            if fallback is None:
+                fallback = val
+
+    if fallback is not None:
+        return fallback
+
+    # Flat architecture: layers live directly on the model
+    if hasattr(model, "layers"):
+        return model
+    msg = f"Cannot find any of {_INNER_ATTRS} on {type(model).__name__}"
+    raise AttributeError(msg)
 
 
 def normalize_transformer(inner: object) -> object:

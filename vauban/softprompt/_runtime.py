@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import math
+import random
 from typing import TYPE_CHECKING
 
 from vauban import _ops as ops
-from vauban._forward import embed_and_mask_with_prefix, force_eval, lm_head_forward
+from vauban._forward import (
+    embed_and_mask_with_prefix,
+    force_eval,
+    get_transformer,
+    lm_head_forward,
+    run_transformer_layers,
+)
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES
 from vauban.softprompt._encoding import _pre_encode_prompts
 from vauban.softprompt._loss import _compute_loss
@@ -26,6 +33,100 @@ def _compute_learning_rate(
     if schedule == "cosine" and n_steps > 1:
         return base_lr * 0.5 * (1.0 + math.cos(math.pi * step / (n_steps - 1)))
     return base_lr
+
+
+def _compute_temperature(
+    base_temp: float,
+    step: int,
+    n_steps: int,
+    schedule: str,
+) -> float:
+    """Compute temperature for the given step.
+
+    Anneals from ``max(2.0, base_temp)`` down to ``base_temp`` so that
+    early steps explore broadly and later steps sharpen.  When
+    ``schedule="constant"`` the base temperature is returned unchanged.
+    """
+    if schedule == "constant" or n_steps <= 1:
+        return base_temp
+    high = max(2.0, base_temp)
+    progress = step / (n_steps - 1)
+    if schedule == "linear":
+        return high + (base_temp - high) * progress
+    # cosine
+    return base_temp + 0.5 * (high - base_temp) * (1.0 + math.cos(math.pi * progress))
+
+
+def _sample_random_init_ids(
+    n_tokens: int,
+    allowed_indices: list[int],
+) -> list[int]:
+    """Sample random token IDs from the allowed vocabulary.
+
+    Uses the same random-choice approach as GCG's restart initializer.
+
+    Raises:
+        ValueError: If *allowed_indices* is empty (e.g. a token constraint
+            that filters the entire vocabulary).
+    """
+    if not allowed_indices:
+        msg = (
+            "No allowed token indices — token_constraint may have"
+            " filtered the entire vocabulary"
+        )
+        raise ValueError(msg)
+    return [random.choice(allowed_indices) for _ in range(n_tokens)]
+
+
+def _resolve_init_ids(
+    config_init_tokens: tuple[int, ...] | None,
+    n_tokens: int,
+    vocab_mask: Array | None,
+    vocab_size: int,
+) -> list[int]:
+    """Return the token IDs to use for warm-start or random initialization.
+
+    When *config_init_tokens* is set, pads/truncates to *n_tokens*.
+    Otherwise samples random IDs from the allowed vocabulary.
+    """
+    if config_init_tokens is not None:
+        ids = list(config_init_tokens)
+        if len(ids) < n_tokens:
+            ids.extend([0] * (n_tokens - len(ids)))
+        return ids[:n_tokens]
+
+    from vauban.softprompt._gcg_candidates import _allowed_indices_from_mask
+
+    allowed = _allowed_indices_from_mask(vocab_mask, vocab_size)
+    return _sample_random_init_ids(n_tokens, allowed)
+
+
+def _build_one_hot(token_ids: list[int], vocab_size: int) -> Array:
+    """Build a float32 one-hot matrix ``(n_tokens, vocab_size)``."""
+    ids_arr = ops.array(token_ids)
+    raw = ops.arange(vocab_size)[None, :] == ids_arr[:, None]
+    if isinstance(raw, Array):
+        return raw.astype(ops.float32)
+    return ops.array(raw).astype(ops.float32)
+
+
+def _build_peaked_probs(
+    token_ids: list[int],
+    vocab_size: int,
+    peak_mass: float = 0.9,
+) -> Array:
+    """Build a peaked probability distribution on the simplex.
+
+    Each row puts *peak_mass* on the target token and distributes the
+    remainder uniformly over the other positions.
+    """
+    n_tokens = len(token_ids)
+    uniform_mass = (1.0 - peak_mass) / max(vocab_size - 1, 1)
+    one_hot = _build_one_hot(token_ids, vocab_size)
+    return (
+        ops.ones((n_tokens, vocab_size)) * uniform_mass
+        + (peak_mass - uniform_mass) * one_hot
+    )
 
 
 def _compute_embed_regularization(
@@ -76,10 +177,9 @@ def _forward_with_prefix(
     prompt_token_ids: Array,
 ) -> Array:
     """Forward pass with soft prefix prepended to prompt embeddings."""
-    transformer = model.model
+    transformer = get_transformer(model)
     h, mask = embed_and_mask_with_prefix(transformer, soft_embeds, prompt_token_ids)
-    for layer in transformer.layers:
-        h = layer(h, mask)
+    h = run_transformer_layers(transformer, h, mask)
     h = transformer.norm(h)
     return lm_head_forward(model, h)
 
@@ -134,7 +234,7 @@ def _score_transfer_loss(
     for model, tokenizer, prompts, targets in transfer_data:
         tokens = tokenizer.encode(token_text)
         n_tokens = len(tokens)
-        embeds = model.model.embed_tokens(ops.array(tokens)[None, :])
+        embeds = get_transformer(model).embed_tokens(ops.array(tokens)[None, :])
         loss = ops.array(0.0)
         for prompt_ids in prompts:
             loss = loss + _compute_loss(

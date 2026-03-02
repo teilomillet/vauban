@@ -2,8 +2,26 @@
 
 import numpy as np
 
+from tests.conftest import (
+    D_MODEL,
+    NUM_HEADS,
+    NUM_LAYERS,
+    VOCAB_SIZE,
+    MockCausalLM,
+)
 from vauban import _ops as ops
-from vauban._forward import force_eval, qr_stable, svd_stable
+from vauban._forward import (
+    embed_and_mask,
+    embed_and_mask_with_prefix,
+    extract_logits,
+    force_eval,
+    get_transformer,
+    lm_head_forward,
+    make_cache,
+    qr_stable,
+    run_transformer_layers,
+    svd_stable,
+)
 
 
 class TestForceEval:
@@ -112,3 +130,176 @@ class TestQrStable:
         ops.eval(m)
         q, _r = qr_stable(m)
         np.testing.assert_allclose(np.abs(np.array(q)), np.eye(2), atol=1e-5)
+
+
+# ===================================================================
+# get_transformer
+# ===================================================================
+
+
+class TestGetTransformer:
+    """get_transformer returns the inner model."""
+
+    def test_returns_inner_model(self) -> None:
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        ops.eval(model.parameters())
+        transformer = get_transformer(model)
+        assert hasattr(transformer, "layers")
+        assert hasattr(transformer, "embed_tokens")
+        assert len(transformer.layers) == NUM_LAYERS
+
+
+# ===================================================================
+# embed_and_mask
+# ===================================================================
+
+
+class TestEmbedAndMask:
+    """embed_and_mask produces correct shapes."""
+
+    def test_shape(self) -> None:
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        ops.eval(model.parameters())
+        transformer = get_transformer(model)
+        token_ids = ops.array([[1, 2, 3]])
+        ops.eval(token_ids)
+        h, _mask = embed_and_mask(transformer, token_ids)
+        force_eval(h)
+        assert h.shape == (1, 3, D_MODEL)
+
+    def test_single_token(self) -> None:
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        ops.eval(model.parameters())
+        transformer = get_transformer(model)
+        token_ids = ops.array([[5]])
+        ops.eval(token_ids)
+        h, _mask = embed_and_mask(transformer, token_ids)
+        force_eval(h)
+        assert h.shape == (1, 1, D_MODEL)
+
+
+# ===================================================================
+# embed_and_mask_with_prefix
+# ===================================================================
+
+
+class TestEmbedAndMaskWithPrefix:
+    """embed_and_mask_with_prefix supports prefix/suffix/infix positions."""
+
+    def _get_model_and_transformer(self) -> tuple[MockCausalLM, object]:
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        ops.eval(model.parameters())
+        return model, get_transformer(model)
+
+    def test_prefix_position(self) -> None:
+        _, transformer = self._get_model_and_transformer()
+        prefix = ops.random.normal((1, 2, D_MODEL))
+        token_ids = ops.array([[1, 2, 3]])
+        ops.eval(prefix, token_ids)
+        h, _mask = embed_and_mask_with_prefix(
+            transformer, prefix, token_ids, token_position="prefix",
+        )
+        force_eval(h)
+        # prefix (2) + prompt (3) = 5
+        assert h.shape == (1, 5, D_MODEL)
+
+    def test_suffix_position(self) -> None:
+        _, transformer = self._get_model_and_transformer()
+        suffix = ops.random.normal((1, 2, D_MODEL))
+        token_ids = ops.array([[1, 2, 3]])
+        ops.eval(suffix, token_ids)
+        h, _mask = embed_and_mask_with_prefix(
+            transformer, suffix, token_ids, token_position="suffix",
+        )
+        force_eval(h)
+        # prompt (3) + suffix (2) = 5
+        assert h.shape == (1, 5, D_MODEL)
+
+    def test_infix_position(self) -> None:
+        _, transformer = self._get_model_and_transformer()
+        infix = ops.random.normal((1, 2, D_MODEL))
+        token_ids = ops.array([[1, 2, 3, 4]])
+        ops.eval(infix, token_ids)
+        h, _mask = embed_and_mask_with_prefix(
+            transformer, infix, token_ids,
+            token_position="infix", infix_split=2,
+        )
+        force_eval(h)
+        # part1 (2) + infix (2) + part2 (2) = 6
+        assert h.shape == (1, 6, D_MODEL)
+
+
+# ===================================================================
+# make_cache
+# ===================================================================
+
+
+class TestMakeCache:
+    """make_cache returns correct-length cache list."""
+
+    def test_cache_length(self) -> None:
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        ops.eval(model.parameters())
+        cache = make_cache(model)
+        assert len(cache) == NUM_LAYERS
+
+
+# ===================================================================
+# lm_head_forward
+# ===================================================================
+
+
+class TestLmHeadForward:
+    """lm_head_forward output shape matches vocab size."""
+
+    def test_output_shape(self) -> None:
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        ops.eval(model.parameters())
+        h = ops.random.normal((1, 3, D_MODEL))
+        ops.eval(h)
+        logits = lm_head_forward(model, h)
+        force_eval(logits)
+        assert logits.shape == (1, 3, VOCAB_SIZE)
+
+
+# ===================================================================
+# extract_logits
+# ===================================================================
+
+
+class TestExtractLogits:
+    """extract_logits handles both tuple and bare array."""
+
+    def test_bare_array(self) -> None:
+        a = ops.ones((2, 3))
+        ops.eval(a)
+        result = extract_logits(a)
+        assert result.shape == (2, 3)
+
+    def test_tuple(self) -> None:
+        a = ops.ones((2, 3))
+        b = ops.zeros((2, 3))
+        ops.eval(a, b)
+        result = extract_logits((a, b))
+        np.testing.assert_allclose(np.array(result), 1.0)
+
+
+# ===================================================================
+# run_transformer_layers
+# ===================================================================
+
+
+class TestRunTransformerLayers:
+    """run_transformer_layers shape preservation."""
+
+    def test_shape_preserved(self) -> None:
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        ops.eval(model.parameters())
+        transformer = get_transformer(model)
+        token_ids = ops.array([[1, 2, 3]])
+        ops.eval(token_ids)
+        h, mask = embed_and_mask(transformer, token_ids)
+        force_eval(h)
+        out = run_transformer_layers(transformer, h, mask)
+        force_eval(out)
+        assert out.shape == h.shape

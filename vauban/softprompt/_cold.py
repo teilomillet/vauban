@@ -8,9 +8,11 @@ fluency energy constraints.
 Reference: arxiv.org/abs/2402.08679
 """
 
+import random
+
 from vauban import _ops as ops
 from vauban._array import Array
-from vauban._forward import force_eval
+from vauban._forward import force_eval, get_transformer
 from vauban.softprompt._constraints import _build_vocab_mask
 from vauban.softprompt._encoding import _pre_encode_prompts
 from vauban.softprompt._gcg_objective import (
@@ -19,10 +21,13 @@ from vauban.softprompt._gcg_objective import (
 )
 from vauban.softprompt._generation import _evaluate_attack
 from vauban.softprompt._runtime import (
+    _build_one_hot,
     _compute_accessibility_score,
     _compute_learning_rate,
+    _compute_temperature,
     _encode_targets,
     _prepare_transfer_data,
+    _resolve_init_ids,
     _score_transfer_loss,
 )
 from vauban.softprompt._search import (
@@ -77,7 +82,7 @@ def _cold_attack(
         infix_map: Per-prompt infix split positions.
         environment_config: Optional environment config for rollout scoring.
     """
-    transformer = model.model
+    transformer = get_transformer(model)
     vocab_size = transformer.embed_tokens.weight.shape[0]
     embed_matrix = transformer.embed_tokens.weight
 
@@ -121,26 +126,16 @@ def _cold_attack(
     temperature = config.cold_temperature
     noise_scale = config.cold_noise_scale
 
-    # Initialize logits z: warm-start or zeros (uniform softmax)
-    if config.init_tokens is not None:
-        # Warm-start: high logit mass on init tokens
-        init = list(config.init_tokens)
-        if len(init) < config.n_tokens:
-            init.extend([0] * (config.n_tokens - len(init)))
-        init = init[: config.n_tokens]
-        warm_ids = ops.array(init)
-        one_hot_raw = (
-            ops.arange(vocab_size)[None, :] == warm_ids[:, None]
-        )
-        one_hot: Array = (
-            one_hot_raw
-            if isinstance(one_hot_raw, Array)
-            else ops.array(one_hot_raw)
-        )
-        # Set warm-start tokens to high logit value
-        z = one_hot.astype(ops.float32) * 5.0
-    else:
-        z = ops.zeros((config.n_tokens, vocab_size))
+    # Seed RNG for reproducible random init
+    if config.seed is not None:
+        random.seed(config.seed)
+        ops.random.seed(config.seed)
+
+    # Initialize logits z: warm-start or random (uniform softmax is degenerate)
+    init_ids = _resolve_init_ids(
+        config.init_tokens, config.n_tokens, vocab_mask, vocab_size,
+    )
+    z = _build_one_hot(init_ids, vocab_size) * 5.0
 
     # Apply vocab mask in logit space: set masked positions to large negative
     mask_penalty: Array | None = None
@@ -163,8 +158,14 @@ def _cold_attack(
     for step in range(config.n_steps):
         actual_steps = step + 1
 
+        # Compute annealed temperature for this step
+        temp = _compute_temperature(
+            temperature, step, config.n_steps,
+            config.temperature_schedule,
+        )
+
         # Convert logits to probabilities via temperature-scaled softmax
-        p = ops.softmax(z / temperature, axis=-1)
+        p = ops.softmax(z / temp, axis=-1)
         current_soft_embeds = (p @ embed_matrix)[None, :]
 
         # Select prompts for this step
@@ -204,19 +205,27 @@ def _cold_attack(
             def loss_fn(
                 logits: Array,
                 _sel: list[Array] = batch,
+                _temp: float = temp,
+                _ew: float = config.entropy_weight,
             ) -> Array:
-                probs = ops.softmax(logits / temperature, axis=-1)
+                probs = ops.softmax(logits / _temp, axis=-1)
                 soft_embeds = (probs @ embed_matrix)[None, :]
                 # For perplexity: use argmax of probs as token IDs
                 _suf_ids: Array | None = None
                 if objective_state.perplexity_weight > 0.0:
                     _suf_ids = ops.argmax(probs, axis=-1)[None, :]
-                return _compute_average_objective_loss(
+                obj_loss = _compute_average_objective_loss(
                     objective_state,
                     soft_embeds,
                     _sel,
                     suffix_token_ids=_suf_ids,
                 )
+                if _ew > 0.0:
+                    entropy = -ops.sum(
+                        probs * ops.log(probs + 1e-30), axis=-1,
+                    )
+                    obj_loss = obj_loss - _ew * ops.mean(entropy)
+                return obj_loss
 
             batch_loss, batch_grad = ops.value_and_grad(loss_fn)(z)
             force_eval(batch_loss, batch_grad)

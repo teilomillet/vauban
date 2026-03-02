@@ -2,7 +2,13 @@
 
 from vauban import _ops as ops
 from vauban._array import Array
-from vauban._forward import embed_and_mask, force_eval
+from vauban._forward import (
+    embed_and_mask,
+    force_eval,
+    get_transformer,
+    make_ssm_mask,
+    select_mask,
+)
 from vauban.types import CausalLM, Tokenizer
 
 
@@ -128,18 +134,25 @@ def _forward_collect(
     Returns per-layer activations at the given token position.
     Each element has shape (d_model,).
 
+    Handles hybrid architectures (e.g. Qwen3.5) where some layers use
+    standard causal attention and others use SSM/linear attention, each
+    requiring a different mask format.
+
     Args:
         model: The causal language model.
         token_ids: Input token IDs of shape (1, seq_len).
         token_position: Token index to extract activations from.
             Defaults to -1 (last token).
     """
-    transformer = model.model
-    h, mask = embed_and_mask(transformer, token_ids)
+    transformer = get_transformer(model)
+    h, attn_mask = embed_and_mask(transformer, token_ids)
+
+    # Build SSM mask for hybrid architectures (Qwen3.5 GatedDeltaNet)
+    ssm_mask = make_ssm_mask(transformer, h)
 
     residuals: list[Array] = []
     for layer in transformer.layers:
-        h = layer(h, mask)
+        h = layer(h, select_mask(layer, attn_mask, ssm_mask))
         # Upcast to float32 for numerical stability (like Heretic)
         activation = h[0, token_position, :].astype(ops.float32)
         residuals.append(activation)

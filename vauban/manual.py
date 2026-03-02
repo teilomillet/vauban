@@ -800,6 +800,23 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 description="Model IDs used for transfer evaluation.",
                 constraints="list of strings.",
             ),
+            FieldSpec(
+                key="temperature_schedule",
+                description=(
+                    "Temperature annealing schedule for EGD/COLD."
+                    " Anneals from max(2.0, base_temp) down to base_temp."
+                ),
+                constraints="one of: constant, linear, cosine.",
+            ),
+            FieldSpec(
+                key="entropy_weight",
+                description=(
+                    "Entropy bonus weight for EGD/COLD."
+                    " Encourages exploration by penalizing peaked"
+                    " distributions (0 = off)."
+                ),
+                constraints="number >= 0.",
+            ),
         ),
     ),
     SectionSpec(
@@ -1745,20 +1762,84 @@ def _known_quick_functions() -> tuple[str, ...]:
     return tuple(sorted(names))
 
 
+_MODE_CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Core Pipeline", ("default", "optimize")),
+    ("Runtime Inspection", ("probe", "steer", "depth")),
+    ("Defense", ("cast", "sic", "defend", "repbend")),
+    ("Adversarial", ("softprompt", "fusion")),
+    ("Analysis", ("circuit", "features", "linear_probe", "svf", "compose_optimize")),
+    ("External", ("api_eval",)),
+)
+
+_GENERAL_TOPICS: tuple[tuple[str, str], ...] = (
+    ("quickstart", "Getting started with vauban."),
+    ("commands", "CLI commands and flags."),
+    ("validate", "Config validation workflow."),
+    ("playbook", "Experiment playbook and recipes."),
+    ("quick", "Python REPL / Jupyter quick API."),
+    ("examples", "Runnable examples."),
+    ("print", "Printing and sharing manual output."),
+    ("modes", "Pipeline mode precedence and triggers."),
+    ("formats", "Data file formats (JSONL, etc.)."),
+    ("taxonomy", "Canonical harm category taxonomy."),
+    ("datasets", "Bundled datasets and benchmarks."),
+)
+
+_SECTION_DESCRIPTIONS: dict[str, str] = {
+    spec.name: spec.description for spec in _SECTION_SPECS
+}
+
+
+def _render_topic_index() -> str:
+    """Render a compact topic index for ``vauban man``."""
+    lines: list[str] = []
+    lines.append("VAUBAN MANUAL — Topic Index")
+    lines.append("")
+    lines.append("Usage: vauban man <topic>")
+    lines.append("       vauban man all        (full manual)")
+    lines.append("")
+
+    lines.append("GENERAL TOPICS")
+    for name, desc in _GENERAL_TOPICS:
+        lines.append(f"  {name:<16s} {desc}")
+    lines.append("")
+
+    lines.append("PIPELINE MODES (by category)")
+    for category, modes in _MODE_CATEGORIES:
+        lines.append(f"  {category}:")
+        for mode in modes:
+            desc = _SECTION_DESCRIPTIONS.get(mode, "")
+            lines.append(f"    {mode:<20s} {desc}")
+    lines.append("")
+
+    lines.append("CONFIG SECTIONS")
+    for spec in _SECTION_SPECS:
+        tag = " (required)" if spec.required else ""
+        lines.append(f"  {spec.name:<20s} {spec.description}{tag}")
+    lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def render_manual(topic: str | None = None) -> str:
     """Render a grep-friendly text manual."""
     normalized = _normalize_topic(topic)
+
+    # No topic → show compact topic index instead of full manual
+    if normalized is None:
+        return _render_topic_index()
+
     sections = _build_sections()
     selected = _select_sections(sections, normalized)
-    include_quickstart = normalized in (None, "all", "quickstart")
-    include_commands = normalized in (None, "all", "commands")
-    include_validate = normalized in (None, "all", "validate")
-    include_playbook = normalized in (None, "all", "playbook")
-    include_quick = normalized in (None, "all", "quick")
-    include_examples = normalized in (None, "all", "examples")
-    include_print = normalized in (None, "all", "print")
-    include_modes = normalized in (None, "all", "modes")
-    include_formats = normalized in (None, "all", "formats")
+    include_quickstart = normalized in ("all", "quickstart")
+    include_commands = normalized in ("all", "commands")
+    include_validate = normalized in ("all", "validate")
+    include_playbook = normalized in ("all", "playbook")
+    include_quick = normalized in ("all", "quick")
+    include_examples = normalized in ("all", "examples")
+    include_print = normalized in ("all", "print")
+    include_modes = normalized in ("all", "modes")
+    include_formats = normalized in ("all", "formats")
 
     lines: list[str] = []
     lines.append("VAUBAN(1)")

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from vauban import _ops as ops
+from vauban._forward import get_transformer
 from vauban.softprompt._loss_common import (
     LossAuxConfig,
     LossPlacementConfig,
@@ -38,7 +39,7 @@ def _compute_externality_loss(
         infix_split=infix_split,
     )
     hidden_states, mask, n_prompt = _assemble_prefix_only_sequence(
-        model.model,
+        get_transformer(model),
         soft_embeds,
         prompt_token_ids,
         placement,

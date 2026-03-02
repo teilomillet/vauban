@@ -9,7 +9,15 @@ import math
 
 from vauban import _ops as ops
 from vauban._array import Array
-from vauban._forward import embed_and_mask, force_eval, lm_head_forward, make_cache
+from vauban._forward import (
+    embed_and_mask,
+    force_eval,
+    get_transformer,
+    lm_head_forward,
+    make_cache,
+    make_ssm_mask,
+    select_mask,
+)
 from vauban.types import (
     CausalLM,
     DepthConfig,
@@ -41,13 +49,14 @@ def depth_profile(
     token_ids_list = tokenizer.encode(text)
     token_ids = ops.array(token_ids_list)[None, :]
 
-    transformer = model.model
+    transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
 
     # Collect hidden states at each layer
     hidden_states: list[Array] = []
+    ssm_mask = make_ssm_mask(transformer, h)
     for layer in transformer.layers:
-        h = layer(h, mask)
+        h = layer(h, select_mask(layer, mask, ssm_mask))
         hidden_states.append(h)
         force_eval(h)
 
@@ -124,7 +133,7 @@ def depth_generate(
         raise TypeError(msg)
     input_ids = ops.array(tokenizer.encode(text))[None, :]
 
-    transformer = model.model
+    transformer = get_transformer(model)
     num_layers = len(transformer.layers)
     cache = make_cache(model)
     deep_threshold_layer = math.ceil((1 - config.deep_fraction) * num_layers)
@@ -307,11 +316,12 @@ def _prefill_cache(
     cache: list[LayerCache],
 ) -> Array:
     """Run input tokens through the model to populate the KV cache."""
-    transformer = model.model
+    transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
 
+    ssm_mask = make_ssm_mask(transformer, h)
     for i, layer in enumerate(transformer.layers):
-        h = layer(h, mask, cache=cache[i])
+        h = layer(h, select_mask(layer, mask, ssm_mask), cache=cache[i])
     force_eval(h)
     return h
 
@@ -322,12 +332,13 @@ def _forward_collect_hidden(
     cache: list[LayerCache],
 ) -> list[Array]:
     """Forward pass collecting hidden states at each layer."""
-    transformer = model.model
+    transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
 
     hidden_states: list[Array] = []
+    ssm_mask = make_ssm_mask(transformer, h)
     for i, layer in enumerate(transformer.layers):
-        h = layer(h, mask, cache=cache[i])
+        h = layer(h, select_mask(layer, mask, ssm_mask), cache=cache[i])
         hidden_states.append(h)
         force_eval(h)
 
@@ -340,15 +351,16 @@ def _cached_forward_all_hidden(
     cache: list[LayerCache] | None = None,
 ) -> Array:
     """Full forward pass returning logits (for initial token selection)."""
-    transformer = model.model
+    transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
 
+    ssm_mask = make_ssm_mask(transformer, h)
     if cache is not None:
         for i, layer in enumerate(transformer.layers):
-            h = layer(h, mask, cache=cache[i])
+            h = layer(h, select_mask(layer, mask, ssm_mask), cache=cache[i])
     else:
         for layer in transformer.layers:
-            h = layer(h, mask)
+            h = layer(h, select_mask(layer, mask, ssm_mask))
 
     h = transformer.norm(h)
     logits = lm_head_forward(model, h)

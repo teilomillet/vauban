@@ -12,7 +12,13 @@ import math
 
 from vauban import _ops as ops
 from vauban._array import Array
-from vauban._forward import embed_and_mask, force_eval
+from vauban._forward import (
+    embed_and_mask,
+    force_eval,
+    get_transformer,
+    make_ssm_mask,
+    select_mask,
+)
 from vauban.types import (
     CausalLM,
     ScanConfig,
@@ -57,11 +63,12 @@ def scan(
     token_ids = ops.array(token_ids_list)[None, :]
 
     # Forward pass to target layer, collecting all token activations
-    transformer = model.model
+    transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
 
+    ssm_mask = make_ssm_mask(transformer, h)
     for i, layer_module in enumerate(transformer.layers):
-        h = layer_module(h, mask)
+        h = layer_module(h, select_mask(layer_module, mask, ssm_mask))
         if i == target_layer:
             break
 

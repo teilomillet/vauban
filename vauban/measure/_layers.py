@@ -1,5 +1,6 @@
 """Layer type detection and target layer selection."""
 
+from vauban._forward import get_transformer
 from vauban.types import CausalLM
 
 
@@ -9,7 +10,7 @@ def detect_layer_types(model: CausalLM) -> list[str] | None:
     Returns ``None`` for uniform models. Returns a list of type strings
     (``"global"`` / ``"sliding"``) for interleaved architectures (Cohere2).
 
-    Detection works via ``model.model.args.sliding_window_pattern`` — present
+    Detection works via ``args.sliding_window_pattern`` — present
     on Cohere2 models, absent on everything else.
 
     Args:
@@ -18,7 +19,7 @@ def detect_layer_types(model: CausalLM) -> list[str] | None:
     Returns:
         Per-layer type list, or ``None`` if the model has uniform layers.
     """
-    transformer = model.model
+    transformer = get_transformer(model)
     args = getattr(transformer, "args", None)
     if args is None:
         return None

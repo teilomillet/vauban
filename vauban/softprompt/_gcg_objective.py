@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from vauban._forward import force_eval
+from vauban._forward import force_eval, get_transformer
 from vauban.softprompt._loss import (
     _compute_defensive_loss,
     _compute_externality_loss,
@@ -259,7 +259,7 @@ def _evaluate_candidate_loss(
     from vauban import _ops as ops
 
     candidate_array = ops.array(candidate_ids)[None, :]
-    candidate_embeds = state.model.model.embed_tokens(candidate_array)
+    candidate_embeds = get_transformer(state.model).embed_tokens(candidate_array)
     candidate_loss = _compute_average_objective_loss(
         state,
         candidate_embeds,

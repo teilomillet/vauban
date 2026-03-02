@@ -10,7 +10,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from vauban import _ops as ops
-from vauban._forward import force_eval
+from vauban._forward import force_eval, get_transformer
 from vauban.measure._activations import _collect_per_prompt_activations
 from vauban.types import RepBendConfig, RepBendResult
 
@@ -141,7 +141,7 @@ def _train_repbend(
     loss_history: list[float] = []
 
     # Get trainable parameters from target layers
-    transformer = model.model
+    transformer = get_transformer(model)
 
     for _epoch in range(config.n_epochs):
         # Collect activations

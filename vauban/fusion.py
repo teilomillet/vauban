@@ -9,7 +9,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from vauban import _ops as ops
-from vauban._forward import embed_and_mask, force_eval
+from vauban._forward import (
+    embed_and_mask,
+    force_eval,
+    get_transformer,
+    lm_head_forward,
+    make_ssm_mask,
+    select_mask,
+)
 from vauban.types import FusionConfig, FusionGeneration, FusionResult
 
 if TYPE_CHECKING:
@@ -36,7 +43,7 @@ def fuse_and_generate(
     Returns:
         A FusionGeneration with the fused output.
     """
-    transformer = model.model
+    transformer = get_transformer(model)
     n_layers = len(transformer.layers)
 
     # Resolve fusion layer (-1 = middle)
@@ -66,8 +73,9 @@ def fuse_and_generate(
 
     # Continue forward through remaining layers
     h = h_fused
+    ssm_mask = make_ssm_mask(transformer, h)
     for layer in transformer.layers[fusion_layer:]:
-        h = layer(h, None)
+        h = layer(h, select_mask(layer, None, ssm_mask))
     h = transformer.norm(h)
     force_eval(h)
 
@@ -117,7 +125,7 @@ def fuse_batch(
     # Resolve effective layer for reporting
     fusion_layer = config.layer
     if fusion_layer < 0:
-        fusion_layer = len(model.model.layers) // 2
+        fusion_layer = len(get_transformer(model).layers) // 2
 
     return FusionResult(
         generations=generations,
@@ -133,7 +141,7 @@ def _forward_to_layer(
     target_layer: int,
 ) -> Array:
     """Forward a prompt through layers [0..target_layer) and return hidden state."""
-    transformer = model.model
+    transformer = get_transformer(model)
     messages = [{"role": "user", "content": prompt}]
     text = tokenizer.apply_chat_template(messages, tokenize=False)
     if not isinstance(text, str):
@@ -142,8 +150,9 @@ def _forward_to_layer(
     token_ids = ops.array(tokenizer.encode(text))[None, :]
     h, mask = embed_and_mask(transformer, token_ids)
 
+    ssm_mask = make_ssm_mask(transformer, h)
     for layer in transformer.layers[:target_layer]:
-        h = layer(h, mask)
+        h = layer(h, select_mask(layer, mask, ssm_mask))
 
     force_eval(h)
     return h
@@ -169,12 +178,11 @@ def _generate_from_hidden(
     tokens: list[int] = []
     # Get logits from last position
     last_h = hidden[:, -1:, :]  # (1, 1, d_model)
+    transformer = get_transformer(model)
 
     for _ in range(n_tokens):
-        # Project to vocabulary
-        logits = model(last_h)  # type: ignore[operator]
-        if hasattr(logits, "logits"):
-            logits = logits.logits
+        # Project to vocabulary via the LM head
+        logits = lm_head_forward(model, last_h)
         logits = logits[:, -1, :]  # (1, vocab_size)
 
         if temperature <= 0:
@@ -190,7 +198,7 @@ def _generate_from_hidden(
         tokens.append(token_id)
 
         # Embed the new token for next step
-        new_embed = model.model.embed_tokens(
+        new_embed = transformer.embed_tokens(
             ops.array([[token_id]]),
         )
         last_h = new_embed

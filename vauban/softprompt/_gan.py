@@ -16,7 +16,7 @@ from dataclasses import replace
 
 from vauban import _ops as ops
 from vauban._array import Array
-from vauban._forward import force_eval
+from vauban._forward import force_eval, get_transformer
 from vauban.softprompt._amplecgc import _amplecgc_attack
 from vauban.softprompt._cold import _cold_attack
 from vauban.softprompt._continuous import _continuous_attack
@@ -379,12 +379,12 @@ def gan_loop(
             else:
                 transfer_token_ids = _project_to_tokens(
                     attack_result.embeddings,  # type: ignore[arg-type]
-                    model.model.embed_tokens.weight,
+                    get_transformer(model).embed_tokens.weight,
                 )
 
             for t_name, t_model, t_tok in transfer_models:
                 t_token_array = ops.array(transfer_token_ids)[None, :]
-                t_embeds = t_model.model.embed_tokens(t_token_array)
+                t_embeds = get_transformer(t_model).embed_tokens(t_token_array)
                 force_eval(t_embeds)
                 t_sr, t_resps = _evaluate_attack(
                     t_model, t_tok, round_prompts,

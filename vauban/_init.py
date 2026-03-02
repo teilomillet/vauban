@@ -169,6 +169,34 @@ KNOWN_MODES: frozenset[str] = (
     frozenset(_MODE_TEMPLATES) | frozenset(_STANDALONE_TEMPLATES)
 )
 
+MODE_DESCRIPTIONS: dict[str, str] = {
+    "default": "Measure → cut → evaluate → export pipeline.",
+    "probe": "Per-layer projection inspection for prompts.",
+    "steer": "Runtime activation steering for text generation.",
+    "cast": "Conditional activation steering with threshold gating.",
+    "depth": "Deep-thinking token analysis via JSD profiles.",
+    "surface": "Before/after refusal surface mapping.",
+    "softprompt": "Continuous/discrete soft prompt attack optimization.",
+    "optimize": "Optuna multi-objective hyperparameter search.",
+    "detect": "Defense-hardening detection.",
+    "sic": "Iterative input sanitization defense.",
+    "circuit": "Causal circuit tracing via activation patching.",
+    "features": "Sparse autoencoder training for feature decomposition.",
+    "svf": "Steering Vector Field boundary MLP training.",
+    "compose_optimize": "Bayesian optimization of composition weights.",
+    "defend": "Composed defense stack (scan + SIC + policy + intent).",
+    "linear_probe": "Train linear probes to measure refusal encoding.",
+    "fusion": "Latent fusion jailbreak via hidden state blending.",
+    "repbend": "RepBend contrastive fine-tuning for safety hardening.",
+    "api_eval": "Test optimized tokens against remote API endpoints.",
+}
+
+_missing = KNOWN_MODES - set(MODE_DESCRIPTIONS)
+if _missing:
+    msg = f"MODE_DESCRIPTIONS is missing entries for: {', '.join(sorted(_missing))}"
+    raise AssertionError(msg)
+del _missing
+
 
 def init_config(
     mode: str = "default",

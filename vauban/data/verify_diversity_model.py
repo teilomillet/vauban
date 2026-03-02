@@ -66,7 +66,13 @@ def extract_activations(
         - cosine_scores: per-layer separation scores
     """
     from vauban import _ops as ops
-    from vauban._forward import embed_and_mask, force_eval
+    from vauban._forward import (
+        embed_and_mask,
+        force_eval,
+        get_transformer,
+        make_ssm_mask,
+        select_mask,
+    )
     from vauban._model_io import load_model
     from vauban.measure import measure
 
@@ -113,7 +119,7 @@ def extract_activations(
         f"Collecting activations for {len(prompts)} prompts"
         f" at layer {best_layer}...",
     )
-    transformer = model.model
+    transformer = get_transformer(model)
     activations_list: list[np.ndarray] = []
     projections_list: list[float] = []
 
@@ -131,8 +137,9 @@ def extract_activations(
         token_ids = ops.array(tokenizer.encode(text))[None, :]
 
         h, mask = embed_and_mask(transformer, token_ids)
+        ssm_mask = make_ssm_mask(transformer, h)
         for layer_idx, layer in enumerate(transformer.layers):
-            h = layer(h, mask)
+            h = layer(h, select_mask(layer, mask, ssm_mask))
             if layer_idx == best_layer:
                 last_token = h[0, -1, :].astype(ops.float32)
                 proj = ops.sum(last_token * direction)

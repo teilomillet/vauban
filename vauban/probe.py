@@ -4,7 +4,15 @@ from typing import TYPE_CHECKING
 
 from vauban import _ops as ops
 from vauban._array import Array
-from vauban._forward import embed_and_mask, force_eval, lm_head_forward, make_cache
+from vauban._forward import (
+    embed_and_mask,
+    force_eval,
+    get_transformer,
+    lm_head_forward,
+    make_cache,
+    make_ssm_mask,
+    select_mask,
+)
 from vauban.types import CausalLM, LayerCache, ProbeResult, SteerResult, Tokenizer
 
 if TYPE_CHECKING:
@@ -29,12 +37,13 @@ def probe(
         raise TypeError(msg)
     token_ids = ops.array(tokenizer.encode(text))[None, :]
 
-    transformer = model.model
+    transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
 
     projections: list[float] = []
+    ssm_mask = make_ssm_mask(transformer, h)
     for layer in transformer.layers:
-        h = layer(h, mask)
+        h = layer(h, select_mask(layer, mask, ssm_mask))
         last_token = h[0, -1, :]
         proj = ops.sum(last_token * direction)
         force_eval(proj)
@@ -124,15 +133,16 @@ def _steered_forward(
     Returns (logits, projections_before, projections_after).
     Cache is mutated in-place.
     """
-    transformer = model.model
+    transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
 
     proj_before: list[float] = []
     proj_after: list[float] = []
     steer_set = set(steer_layers)
+    ssm_mask = make_ssm_mask(transformer, h)
 
     for i, layer in enumerate(transformer.layers):
-        h = layer(h, mask, cache=cache[i])
+        h = layer(h, select_mask(layer, mask, ssm_mask), cache=cache[i])
 
         if i in steer_set:
             last_token = h[0, -1, :]
@@ -223,15 +233,16 @@ def _svf_steered_forward(
     """
     from vauban.svf import svf_gradient
 
-    transformer = model.model
+    transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
 
     scores_before: list[float] = []
     scores_after: list[float] = []
     steer_set = set(steer_layers)
+    ssm_mask = make_ssm_mask(transformer, h)
 
     for i, layer in enumerate(transformer.layers):
-        h = layer(h, mask, cache=cache[i])
+        h = layer(h, select_mask(layer, mask, ssm_mask), cache=cache[i])
 
         if i in steer_set:
             last_token = h[0, -1, :]

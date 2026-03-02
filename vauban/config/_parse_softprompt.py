@@ -196,4 +196,6 @@ def _parse_softprompt(
         amplecgc_train_steps=loss.amplecgc_train_steps,
         amplecgc_train_lr=loss.amplecgc_train_lr,
         amplecgc_sample_temperature=loss.amplecgc_sample_temperature,
+        temperature_schedule=loss.temperature_schedule,
+        entropy_weight=loss.entropy_weight,
     )
