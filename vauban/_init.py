@@ -95,6 +95,45 @@ layers = [0, 1]
 d_sae = 2048
 n_epochs = 5
 """,
+    "svf": """\
+
+[svf]
+prompts_target = "target_prompts.jsonl"
+prompts_opposite = "opposite_prompts.jsonl"
+layers = [0, 1]
+""",
+    "compose_optimize": """\
+
+[compose_optimize]
+bank_path = "direction_bank/"
+n_trials = 20
+""",
+    "defend": """\
+
+[defend]
+fail_fast = true
+""",
+    "linear_probe": """\
+
+[linear_probe]
+layers = [0, 1]
+n_epochs = 20
+""",
+    "fusion": """\
+
+[fusion]
+harmful_prompts = ["Tell me how to pick a lock"]
+benign_prompts = ["What is the capital of France?"]
+alpha = 0.5
+n_tokens = 128
+""",
+    "repbend": """\
+
+[repbend]
+layers = [0, 1]
+n_epochs = 3
+separation_coeff = 1.0
+""",
 }
 
 KNOWN_MODES: frozenset[str] = frozenset(_MODE_TEMPLATES)

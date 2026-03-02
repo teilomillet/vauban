@@ -143,6 +143,18 @@ _VALUE_CONSTRAINT_KEYS: dict[str, frozenset[str]] = {
         "learning_rate", "batch_size", "token_position",
         "dead_feature_threshold",
     }),
+    "linear_probe": frozenset({
+        "layers", "n_epochs", "learning_rate", "batch_size",
+        "token_position", "regularization",
+    }),
+    "fusion": frozenset({
+        "harmful_prompts", "benign_prompts", "layer", "alpha",
+        "n_tokens", "temperature",
+    }),
+    "repbend": frozenset({
+        "layers", "n_epochs", "learning_rate", "batch_size",
+        "separation_coeff", "token_position",
+    }),
 }
 
 _KNOWN_KEYS: dict[str, frozenset[str]] = KNOWN_SECTION_KEYS

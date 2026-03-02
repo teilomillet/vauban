@@ -7,6 +7,10 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from vauban.config._mode_registry import (
+    EARLY_MODE_SPECS as _EARLY_MODE_SPECS,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class FieldSpec:
@@ -80,22 +84,8 @@ class PipelineModeDoc:
     early_return: bool
 
 
-EARLY_RETURN_PRECEDENCE: tuple[str, ...] = (
-    "depth",
-    "svf",
-    "features",
-    "probe",
-    "steer",
-    "cast",
-    "sic",
-    "optimize",
-    "compose_optimize",
-    "softprompt",
-    "defend",
-    "circuit",
-    "linear_probe",
-    "fusion",
-    "repbend",
+EARLY_RETURN_PRECEDENCE: tuple[str, ...] = tuple(
+    spec.mode for spec in _EARLY_MODE_SPECS
 )
 
 _PIPELINE_MODES: tuple[PipelineModeDoc, ...] = (

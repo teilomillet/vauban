@@ -96,6 +96,9 @@ _DATACLASS_SECTION_SPECS: tuple[_DataclassSectionSpec, ...] = (
     _DataclassSectionSpec("defend", DefenseStackConfig, {}),
     _DataclassSectionSpec("circuit", CircuitConfig, {}),
     _DataclassSectionSpec("features", FeaturesConfig, {}),
+    _DataclassSectionSpec("linear_probe", LinearProbeConfig, {}),
+    _DataclassSectionSpec("fusion", FusionConfig, {}),
+    _DataclassSectionSpec("repbend", RepBendConfig, {}),
 )
 
 _MANUAL_SECTION_KEYS: dict[str, frozenset[str]] = {
