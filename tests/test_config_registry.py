@@ -58,6 +58,7 @@ from vauban.types import (
 )
 
 _EXPECTED_SECTION_ORDER: list[str] = [
+    "lora",
     "depth",
     "cast",
     "cut",
@@ -84,6 +85,7 @@ _EXPECTED_SECTION_ORDER: list[str] = [
     "fusion",
     "repbend",
     "lora_export",
+    "lora_analysis",
 ]
 
 _MODEL = '[model]\npath = "test-model"\n'
@@ -473,6 +475,14 @@ def test_parse_registered_sections_respects_registry_order(
         call_order.append("lora_export")
         return None
 
+    def fake_lora_load(raw: TomlDict) -> None:
+        call_order.append("lora")
+        return None
+
+    def fake_lora_analysis(raw: TomlDict) -> None:
+        call_order.append("lora_analysis")
+        return None
+
     monkeypatch.setattr(
         "vauban.config._registry._parse_linear_probe", fake_linear_probe,
     )
@@ -480,6 +490,12 @@ def test_parse_registered_sections_respects_registry_order(
     monkeypatch.setattr("vauban.config._registry._parse_repbend", fake_repbend)
     monkeypatch.setattr(
         "vauban.config._registry._parse_lora_export", fake_lora_export,
+    )
+    monkeypatch.setattr(
+        "vauban.config._registry._parse_lora_load", fake_lora_load,
+    )
+    monkeypatch.setattr(
+        "vauban.config._registry._parse_lora_analysis", fake_lora_analysis,
     )
 
     context = ConfigParseContext(base_dir=tmp_path, raw={})

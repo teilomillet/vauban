@@ -349,6 +349,7 @@ def _parse_lora_analysis_adapter(
 
 
 SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
+    SectionParseSpec("lora", "lora_load", _parse_lora_load_adapter, 5),
     SectionParseSpec("depth", "depth", _parse_depth_adapter, 10),
     SectionParseSpec("cast", "cast", _parse_cast_adapter, 20),
     SectionParseSpec("cut", "cut", _parse_cut_adapter, 30),
@@ -384,7 +385,6 @@ SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     SectionParseSpec("fusion", "fusion", _parse_fusion_adapter, 175),
     SectionParseSpec("repbend", "repbend", _parse_repbend_adapter, 180),
     SectionParseSpec("lora_export", "lora_export", _parse_lora_export_adapter, 185),
-    SectionParseSpec("lora", "lora_load", _parse_lora_load_adapter, 5),
     SectionParseSpec(
         "lora_analysis", "lora_analysis", _parse_lora_analysis_adapter, 190,
     ),

@@ -157,6 +157,11 @@ _VALUE_CONSTRAINT_KEYS: dict[str, frozenset[str]] = {
         "separation_coeff", "token_position",
     }),
     "lora_export": frozenset({"format", "polarity"}),
+    "lora": frozenset({"adapter_path", "adapter_paths", "weights"}),
+    "lora_analysis": frozenset({
+        "adapter_path", "adapter_paths", "variance_threshold",
+        "align_with_direction",
+    }),
 }
 
 _KNOWN_KEYS: dict[str, frozenset[str]] = KNOWN_SECTION_KEYS

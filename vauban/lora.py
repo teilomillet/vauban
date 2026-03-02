@@ -550,7 +550,8 @@ def analyze_adapter(
         u, s, _vt = svd_stable(delta)
         force_eval(u, s)
 
-        sv_list = [float(v) for v in s.tolist()]
+        sv_raw: list[object] = s.tolist()  # type: ignore[assignment]
+        sv_list = [float(v) for v in sv_raw]  # type: ignore[arg-type]
 
         # Frobenius norm from singular values
         frob = math.sqrt(sum(v * v for v in sv_list))

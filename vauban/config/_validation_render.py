@@ -37,6 +37,7 @@ def _print_summary(
         "[fusion]": "fusion training",
         "[repbend]": "RepBend fine-tuning",
         "[lora_export]": "LoRA export",
+        "[lora_analysis]": "LoRA analysis",
     }
     first_mode = early_modes[0] if early_modes else None
     match first_mode:
