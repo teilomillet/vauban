@@ -1,5 +1,6 @@
 """JSON serialization helpers for pipeline result types."""
 
+from vauban.taxonomy import TaxonomyCoverage
 from vauban.types import (
     CastResult,
     CircuitResult,
@@ -92,6 +93,18 @@ def _depth_direction_to_dict(
     }
 
 
+def _taxonomy_coverage_to_dict(
+    coverage: TaxonomyCoverage,
+) -> dict[str, object]:
+    """Serialize a TaxonomyCoverage to a JSON-compatible dict."""
+    return {
+        "present": sorted(coverage.present),
+        "missing": sorted(coverage.missing),
+        "aliased": dict(sorted(coverage.aliased.items())),
+        "coverage_ratio": coverage.coverage_ratio,
+    }
+
+
 def _surface_comparison_to_dict(
     comparison: SurfaceComparison,
 ) -> dict[str, object]:
@@ -108,7 +121,7 @@ def _surface_comparison_to_dict(
             "mean_projection_delta": d.mean_projection_delta,
         }
 
-    return {
+    result: dict[str, object] = {
         "summary": {
             "refusal_rate_before": comparison.refusal_rate_before,
             "refusal_rate_after": comparison.refusal_rate_after,
@@ -152,6 +165,13 @@ def _surface_comparison_to_dict(
             _group_delta_to_dict(d) for d in comparison.cell_deltas
         ],
     }
+
+    # Include taxonomy coverage from the before-cut surface if available
+    tc = comparison.before.taxonomy_coverage
+    if tc is not None:
+        result["taxonomy_coverage"] = _taxonomy_coverage_to_dict(tc)
+
+    return result
 
 
 def _detect_to_dict(result: DetectResult) -> dict[str, object]:

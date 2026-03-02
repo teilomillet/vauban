@@ -232,11 +232,14 @@ CATEGORY_ALIASES: dict[str, str] = {
 # ── Helpers ───────────────────────────────────────────────────────────
 
 
+_ALL_CATEGORIES: frozenset[str] = frozenset(
+    cat.id for domain in TAXONOMY for cat in domain.categories
+)
+
+
 def all_categories() -> frozenset[str]:
     """Return the set of all canonical category IDs."""
-    return frozenset(
-        cat.id for domain in TAXONOMY for cat in domain.categories
-    )
+    return _ALL_CATEGORIES
 
 
 def resolve_category(raw: str) -> str:
@@ -285,9 +288,9 @@ def coverage_report(observed: set[str]) -> TaxonomyCoverage:
 
 __all__ = [
     "CATEGORY_ALIASES",
+    "TAXONOMY",
     "HarmCategory",
     "HarmDomain",
-    "TAXONOMY",
     "TaxonomyCoverage",
     "all_categories",
     "coverage_report",

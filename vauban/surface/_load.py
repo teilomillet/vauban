@@ -26,6 +26,15 @@ def default_multilingual_surface_path() -> Path:
     )
 
 
+def default_full_surface_path() -> Path:
+    """Return path to the bundled full-taxonomy surface prompt file."""
+    return (
+        Path(__file__).resolve().parent.parent
+        / "data"
+        / "surface_full.jsonl"
+    )
+
+
 def load_surface_prompts(path: str | Path) -> list[SurfacePrompt]:
     """Load surface prompts from a JSONL file."""
     path_obj = Path(path)

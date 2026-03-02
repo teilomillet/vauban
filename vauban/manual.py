@@ -1714,6 +1714,14 @@ _TOPIC_ALIASES: dict[str, str] = {
     "format": "formats",
     "file": "formats",
     "files": "formats",
+    "categories": "taxonomy",
+    "harm": "taxonomy",
+    "harms": "taxonomy",
+    "dataset": "datasets",
+    "prompts": "datasets",
+    "bundled": "datasets",
+    "benchmark": "datasets",
+    "benchmarks": "datasets",
 }
 
 
@@ -1730,6 +1738,8 @@ def manual_topics() -> list[str]:
         "print",
         "modes",
         "formats",
+        "taxonomy",
+        "datasets",
         *[spec.name for spec in _SECTION_SPECS],
     ]
 
@@ -1840,6 +1850,8 @@ def render_manual(topic: str | None = None) -> str:
     include_print = normalized in ("all", "print")
     include_modes = normalized in ("all", "modes")
     include_formats = normalized in ("all", "formats")
+    include_taxonomy = normalized in ("all", "taxonomy")
+    include_datasets = normalized in ("all", "datasets")
 
     lines: list[str] = []
     lines.append("VAUBAN(1)")
@@ -1980,6 +1992,14 @@ def render_manual(topic: str | None = None) -> str:
             lines.append(f"    - {note}")
         lines.append("")
 
+    if include_taxonomy:
+        lines.append(_render_taxonomy_topic())
+        lines.append("")
+
+    if include_datasets:
+        lines.append(_render_datasets_topic())
+        lines.append("")
+
     if selected:
         lines.append("CONFIG SECTIONS")
         for section in selected:
@@ -2009,6 +2029,66 @@ def render_manual(topic: str | None = None) -> str:
                     lines.append(f"      note: {note}")
 
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_taxonomy_topic() -> str:
+    """Render the harm taxonomy as a grep-friendly tree."""
+    from vauban.taxonomy import CATEGORY_ALIASES, TAXONOMY
+
+    lines: list[str] = []
+    lines.append("HARM TAXONOMY")
+    lines.append("    Canonical two-level taxonomy: domains > categories.")
+    lines.append(
+        "    Category IDs match the 'category' field in JSONL data files.",
+    )
+    lines.append("")
+
+    for domain in TAXONOMY:
+        lines.append(f"  {domain.name} ({domain.id})")
+        for cat in domain.categories:
+            lines.append(f"    {cat.id:<28s} {cat.description}")
+    lines.append("")
+
+    lines.append("  ALIASES (legacy string -> canonical ID)")
+    for alias, canonical in sorted(CATEGORY_ALIASES.items()):
+        lines.append(f"    {alias:<20s} -> {canonical}")
+
+    return "\n".join(lines)
+
+
+def _render_datasets_topic() -> str:
+    """Render the bundled dataset registry as a table."""
+    from vauban.data import BUNDLED_DATASETS
+    from vauban.taxonomy import all_categories, coverage_report
+
+    canonical = all_categories()
+    lines: list[str] = []
+    lines.append("BUNDLED DATASETS")
+    lines.append(
+        "    Static registry of all JSONL files shipped with vauban.",
+    )
+    lines.append("")
+
+    for ds in BUNDLED_DATASETS:
+        lines.append(f"  {ds.name}")
+        lines.append(f"    file:       {ds.filename}")
+        lines.append(f"    count:      {ds.count}")
+        lines.append(f"    description: {ds.description}")
+        if ds.has_categories:
+            # Show taxonomy coverage for categorized datasets
+            coverage = coverage_report(ds.categories)
+            lines.append(
+                f"    taxonomy:   {len(coverage.present)}/{len(canonical)}"
+                f" categories ({coverage.coverage_ratio:.0%})",
+            )
+            if coverage.aliased:
+                aliased = ", ".join(
+                    f"{k}->{v}" for k, v in sorted(coverage.aliased.items())
+                )
+                lines.append(f"    aliases:    {aliased}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip()
 
 
 def _normalize_topic(topic: str | None) -> str | None:
@@ -2233,6 +2313,8 @@ def _select_sections(
         "print",
         "modes",
         "formats",
+        "taxonomy",
+        "datasets",
     }:
         return ()
     for section in sections:

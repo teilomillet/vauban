@@ -9,6 +9,8 @@ from vauban._array import Array
 if TYPE_CHECKING:
     import mlx.nn as nn
 
+    from vauban.taxonomy import TaxonomyCoverage
+
 # ---------------------------------------------------------------------------
 # Protocols — structural typing decoupled from mlx-lm internals
 # ---------------------------------------------------------------------------
@@ -493,6 +495,7 @@ class SurfaceResult:
     groups_by_framing: list[SurfaceGroup] = field(default_factory=list)
     groups_by_surface_cell: list[SurfaceGroup] = field(default_factory=list)
     coverage_score: float = 0.0
+    taxonomy_coverage: "TaxonomyCoverage | None" = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1755,6 +1758,46 @@ class RepBendResult:
 
 
 @dataclass(frozen=True, slots=True)
+class LoraExportConfig:
+    """Configuration for [lora_export] mode."""
+
+    format: str = "mlx"
+    polarity: str = "remove"
+
+
+@dataclass(frozen=True, slots=True)
+class LoraMatrices:
+    """A single LoRA adapter pair for one weight key."""
+
+    key: str
+    lora_a: Array
+    lora_b: Array
+
+
+@dataclass(frozen=True, slots=True)
+class LoraExportResult:
+    """Output of LoRA export."""
+
+    output_path: str
+    format: str
+    polarity: str
+    rank: int
+    n_weights: int
+    target_layers: list[int]
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to a JSON-compatible dict."""
+        return {
+            "output_path": self.output_path,
+            "format": self.format,
+            "polarity": self.polarity,
+            "rank": self.rank,
+            "n_weights": self.n_weights,
+            "target_layers": self.target_layers,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class PipelineConfig:
     """Full pipeline configuration loaded from TOML."""
 
@@ -1785,6 +1828,7 @@ class PipelineConfig:
     linear_probe: LinearProbeConfig | None = None
     fusion: FusionConfig | None = None
     repbend: RepBendConfig | None = None
+    lora_export: LoraExportConfig | None = None
     eval: EvalConfig = field(default_factory=EvalConfig)
     api_eval: ApiEvalConfig | None = None
     meta: MetaConfig | None = None

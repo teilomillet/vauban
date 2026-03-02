@@ -8,6 +8,7 @@ from vauban.surface._aggregate import (
     map_surface,
 )
 from vauban.surface._load import (
+    default_full_surface_path,
     default_multilingual_surface_path,
     default_surface_path,
     load_surface_prompts,
@@ -31,6 +32,7 @@ __all__ = [
     "SurfacePromptRecordError",
     "aggregate",
     "compare_surfaces",
+    "default_full_surface_path",
     "default_multilingual_surface_path",
     "default_surface_path",
     "find_threshold",

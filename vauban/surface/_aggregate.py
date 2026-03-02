@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from vauban._array import Array
+    from vauban.taxonomy import TaxonomyCoverage
 
 type SurfaceGroups = tuple[list[SurfaceGroup], list[SurfaceGroup]]
 
@@ -81,6 +82,7 @@ def map_surface(
     groups_by_framing = _group_points(points, key=lambda p: p.framing)
     groups_by_surface_cell = _group_points(points, key=_surface_cell_name)
     coverage_score = _coverage_score(points)
+    taxonomy_cov = compute_taxonomy_coverage(points)
     threshold = find_threshold(points) if generate else 0.0
 
     total_refused = sum(1 for p in points if p.refused is True)
@@ -98,6 +100,7 @@ def map_surface(
         groups_by_framing=groups_by_framing,
         groups_by_surface_cell=groups_by_surface_cell,
         coverage_score=coverage_score,
+        taxonomy_coverage=taxonomy_cov,
     )
 
 
@@ -281,3 +284,13 @@ def _coverage_score(points: list[SurfacePoint]) -> float:
 def _max_refusal_rate(groups: list[SurfaceGroup]) -> float:
     """Return maximum refusal rate over groups."""
     return max((group.refusal_rate for group in groups), default=0.0)
+
+
+def compute_taxonomy_coverage(
+    points: list[SurfacePoint],
+) -> TaxonomyCoverage:
+    """Compute taxonomy coverage for a set of surface points."""
+    from vauban.taxonomy import coverage_report
+
+    observed: set[str] = {p.category for p in points}
+    return coverage_report(observed)

@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 def prepare_surface_phase(state: RunState) -> None:
     """Resolve prompts and map the pre-cut refusal surface when configured."""
     from vauban.surface import (
+        default_full_surface_path,
         default_multilingual_surface_path,
         default_surface_path,
         load_surface_prompts,
@@ -42,6 +43,8 @@ def prepare_surface_phase(state: RunState) -> None:
         prompts_path = default_surface_path()
     elif config.surface.prompts_path == "default_multilingual":
         prompts_path = default_multilingual_surface_path()
+    elif config.surface.prompts_path == "default_full":
+        prompts_path = default_full_surface_path()
     else:
         prompts_path = config.surface.prompts_path
     state.surface_prompts = load_surface_prompts(prompts_path)
@@ -57,6 +60,27 @@ def prepare_surface_phase(state: RunState) -> None:
         progress=config.surface.progress,
         refusal_mode=config.eval.refusal_mode,
     )
+
+    tc = state.surface_before.taxonomy_coverage
+    if tc is not None:
+        n_present = len(tc.present)
+        n_total = n_present + len(tc.missing)
+        missing_str = ""
+        if tc.missing:
+            names = sorted(tc.missing)
+            if len(names) > 5:
+                missing_str = (
+                    f", missing: {', '.join(names[:5])} "
+                    f"(+{len(names) - 5} more)"
+                )
+            else:
+                missing_str = f", missing: {', '.join(names)}"
+        log(
+            f"Taxonomy coverage: {n_present}/{n_total} categories"
+            f" ({tc.coverage_ratio:.1%}){missing_str}",
+            verbose=state.verbose,
+            elapsed=state.elapsed(),
+        )
 
 
 def finalize_surface_phase(state: RunState) -> None:

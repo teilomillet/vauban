@@ -19,6 +19,7 @@ from vauban.cut import (
     sparsify_direction,
     target_weight_keys,
 )
+from vauban.data import BUNDLED_DATASETS, dataset_path, get_dataset, list_datasets
 from vauban.dataset import load_hf_prompts, resolve_prompts
 from vauban.defend import defend_content, defend_tool_call
 from vauban.depth import depth_direction, depth_generate, depth_profile
@@ -40,6 +41,14 @@ from vauban.geometry import (
 )
 from vauban.intent import capture_intent, check_alignment
 from vauban.linear_probe import train_probe
+from vauban.lora import (
+    build_lora_weights,
+    direction_to_lora,
+    merge_adapters,
+    save_adapter_mlx,
+    save_adapter_peft,
+    subspace_to_lora,
+)
 from vauban.measure import (
     default_eval_path,
     default_prompt_paths,
@@ -76,6 +85,7 @@ from vauban.subspace import (
 from vauban.surface import (
     aggregate,
     compare_surfaces,
+    default_full_surface_path,
     default_multilingual_surface_path,
     default_surface_path,
     find_threshold,
@@ -88,6 +98,13 @@ from vauban.svf import (
     save_svf_boundary,
     svf_gradient,
     train_svf_boundary,
+)
+from vauban.taxonomy import (
+    TAXONOMY,
+    TaxonomyCoverage,
+    all_categories,
+    coverage_report,
+    resolve_category,
 )
 from vauban.types import (
     AgentTurn,
@@ -132,6 +149,9 @@ from vauban.types import (
     LinearProbeConfig,
     LinearProbeLayerResult,
     LinearProbeResult,
+    LoraExportConfig,
+    LoraExportResult,
+    LoraMatrices,
     MeasureConfig,
     MetaConfig,
     OptimizeConfig,
@@ -175,6 +195,8 @@ from vauban.types import (
 )
 
 __all__ = [
+    "BUNDLED_DATASETS",
+    "TAXONOMY",
     "AgentTurn",
     "AlphaTier",
     "ApiEvalEndpoint",
@@ -219,6 +241,9 @@ __all__ = [
     "LinearProbeConfig",
     "LinearProbeLayerResult",
     "LinearProbeResult",
+    "LoraExportConfig",
+    "LoraExportResult",
+    "LoraMatrices",
     "MeasureConfig",
     "MetaConfig",
     "OptimizeConfig",
@@ -253,6 +278,7 @@ __all__ = [
     "SurfacePoint",
     "SurfacePrompt",
     "SurfaceResult",
+    "TaxonomyCoverage",
     "TokenDepth",
     "Tokenizer",
     "ToolCall",
@@ -261,6 +287,7 @@ __all__ = [
     "TrialResult",
     "__version__",
     "aggregate",
+    "all_categories",
     "analyze_directions",
     "calibrate_scan_threshold",
     "calibrate_threshold",
@@ -270,11 +297,14 @@ __all__ = [
     "check_alignment",
     "compare_surfaces",
     "compute_reward",
+    "coverage_report",
     "cut",
     "cut_biprojected",
     "cut_false_refusal_ortho",
     "cut_subspace",
+    "dataset_path",
     "default_eval_path",
+    "default_full_surface_path",
     "default_multilingual_surface_path",
     "default_prompt_paths",
     "default_surface_path",
@@ -299,9 +329,13 @@ __all__ = [
     "fuse_and_generate",
     "fuse_batch",
     "generate_config_schema",
+    "get_dataset",
     "grassmann_distance",
     "injection_scan",
     "is_quantized",
+    "list_datasets",
+    "build_lora_weights",
+    "direction_to_lora",
     "load_config",
     "load_hf_prompts",
     "load_prompts",
@@ -310,6 +344,7 @@ __all__ = [
     "map_surface",
     "measure",
     "measure_dbdi",
+    "merge_adapters",
     "measure_diff",
     "measure_subspace",
     "measure_subspace_bank",
@@ -322,6 +357,7 @@ __all__ = [
     "project_subspace",
     "remove_subspace",
     "repbend",
+    "resolve_category",
     "resolve_prompts",
     "run",
     "run_agent_loop",

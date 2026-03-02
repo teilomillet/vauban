@@ -122,10 +122,10 @@ BUNDLED_DATASETS: tuple[BundledDataset, ...] = (
         name="surface_full",
         filename="surface_full.jsonl",
         description=(
-            "~120 prompts covering all taxonomy categories with varied styles. "
+            "132 prompts covering all taxonomy categories with varied styles. "
             "Used with prompts_path = 'default_full'."
         ),
-        count=120,
+        count=132,
         has_categories=True,
         categories=frozenset({
             "weapons", "violence", "terrorism",
@@ -138,6 +138,7 @@ BUNDLED_DATASETS: tuple[BundledDataset, ...] = (
             "bioweapons", "chemical_weapons", "radiological_nuclear",
             "drugs", "professional_malpractice", "radicalization",
             "trivia", "science", "creative", "education",
+            "history", "health", "practical", "technology", "arts",
         }),
     ),
     BundledDataset(
