@@ -4,7 +4,9 @@ from pathlib import Path
 
 from vauban._pipeline import run
 from vauban._version import __version__
+from vauban.api_eval import evaluate_suffix_via_api
 from vauban.cast import cast_generate, cast_generate_svf
+from vauban.circuit import trace_circuit
 from vauban.config import generate_config_schema, load_config, write_config_schema
 from vauban.config._validation import validate_config
 from vauban.cut import (
@@ -17,17 +19,25 @@ from vauban.cut import (
     target_weight_keys,
 )
 from vauban.dataset import load_hf_prompts, resolve_prompts
+from vauban.defend import defend_content, defend_tool_call
 from vauban.depth import depth_direction, depth_generate, depth_profile
 from vauban.dequantize import dequantize_model, is_quantized
 from vauban.detect import detect
+from vauban.environment import (
+    compute_reward,
+    run_agent_loop,
+    score_candidates_via_rollout,
+)
 from vauban.evaluate import evaluate
 from vauban.export import export_model
+from vauban.features import train_sae, train_sae_multi_layer
 from vauban.fusion import fuse_and_generate, fuse_batch
 from vauban.geometry import (
     DirectionGeometryResult,
     DirectionPair,
     analyze_directions,
 )
+from vauban.intent import capture_intent, check_alignment
 from vauban.linear_probe import train_probe
 from vauban.measure import (
     default_eval_path,
@@ -44,8 +54,11 @@ from vauban.measure import (
     silhouette_scores,
 )
 from vauban.optimize import optimize, optimize_composition
+from vauban.policy import evaluate_data_flow, evaluate_tool_call
 from vauban.probe import multi_probe, probe, steer, steer_svf
 from vauban.repbend import repbend
+from vauban.scan import calibrate_scan_threshold
+from vauban.scan import scan as injection_scan
 from vauban.sic import calibrate_threshold, sic_single
 from vauban.sic import sic as sic_sanitize
 from vauban.softprompt import softprompt_attack
@@ -76,13 +89,24 @@ from vauban.svf import (
     train_svf_boundary,
 )
 from vauban.types import (
+    AgentTurn,
     AlphaTier,
+    ApiEvalEndpoint,
     CastConfig,
     CastResult,
     CausalLM,
+    CircuitConfig,
+    CircuitResult,
+    ComponentEffect,
+    ComposeOptimizeConfig,
+    ComposeOptimizeResult,
+    CompositionTrialResult,
     CutConfig,
+    DataFlowRule,
     DatasetRef,
     DBDIResult,
+    DefenseStackConfig,
+    DefenseStackResult,
     DepthConfig,
     DepthDirectionResult,
     DepthResult,
@@ -91,22 +115,38 @@ from vauban.types import (
     DiffResult,
     DirectionResult,
     DirectionTransferResult,
+    EnvironmentConfig,
+    EnvironmentResult,
     EvalConfig,
     EvalResult,
+    FeaturesConfig,
+    FeaturesResult,
     FusionConfig,
     FusionGeneration,
     FusionResult,
+    IntentCheckResult,
+    IntentConfig,
+    IntentState,
     LinearProbeConfig,
     LinearProbeLayerResult,
     LinearProbeResult,
     MeasureConfig,
+    MetaConfig,
     OptimizeConfig,
     OptimizeResult,
     PipelineConfig,
+    PolicyConfig,
+    PolicyDecision,
+    PolicyRule,
     ProbeConfig,
     ProbeResult,
+    RateLimitRule,
     RepBendConfig,
     RepBendResult,
+    SAELayerResult,
+    ScanConfig,
+    ScanResult,
+    ScanSpan,
     SICConfig,
     SICPromptResult,
     SICResult,
@@ -126,18 +166,31 @@ from vauban.types import (
     SVFResult,
     TokenDepth,
     Tokenizer,
+    ToolCall,
+    ToolSchema,
     TransferEvalResult,
     TrialResult,
 )
 
 __all__ = [
+    "AgentTurn",
     "AlphaTier",
+    "ApiEvalEndpoint",
     "CastConfig",
     "CastResult",
     "CausalLM",
+    "CircuitConfig",
+    "CircuitResult",
+    "ComponentEffect",
+    "ComposeOptimizeConfig",
+    "ComposeOptimizeResult",
+    "CompositionTrialResult",
     "CutConfig",
     "DBDIResult",
+    "DataFlowRule",
     "DatasetRef",
+    "DefenseStackConfig",
+    "DefenseStackResult",
     "DepthConfig",
     "DepthDirectionResult",
     "DepthResult",
@@ -148,27 +201,43 @@ __all__ = [
     "DirectionPair",
     "DirectionResult",
     "DirectionTransferResult",
+    "EnvironmentConfig",
+    "EnvironmentResult",
     "EvalConfig",
     "EvalResult",
+    "FeaturesConfig",
+    "FeaturesResult",
     "FusionConfig",
     "FusionGeneration",
     "FusionResult",
+    "IntentCheckResult",
+    "IntentConfig",
+    "IntentState",
     "LinearProbeConfig",
     "LinearProbeLayerResult",
     "LinearProbeResult",
     "MeasureConfig",
+    "MetaConfig",
     "OptimizeConfig",
     "OptimizeResult",
     "PipelineConfig",
+    "PolicyConfig",
+    "PolicyDecision",
+    "PolicyRule",
     "ProbeConfig",
     "ProbeResult",
+    "RateLimitRule",
     "RepBendConfig",
     "RepBendResult",
+    "SAELayerResult",
     "SICConfig",
     "SICPromptResult",
     "SICResult",
     "SVFConfig",
     "SVFResult",
+    "ScanConfig",
+    "ScanResult",
+    "ScanSpan",
     "SoftPromptConfig",
     "SoftPromptResult",
     "SteerConfig",
@@ -183,15 +252,21 @@ __all__ = [
     "SurfaceResult",
     "TokenDepth",
     "Tokenizer",
+    "ToolCall",
+    "ToolSchema",
     "TransferEvalResult",
     "TrialResult",
     "__version__",
     "aggregate",
     "analyze_directions",
+    "calibrate_scan_threshold",
     "calibrate_threshold",
+    "capture_intent",
     "cast_generate",
     "cast_generate_svf",
+    "check_alignment",
     "compare_surfaces",
+    "compute_reward",
     "cut",
     "cut_biprojected",
     "cut_false_refusal_ortho",
@@ -200,6 +275,8 @@ __all__ = [
     "default_multilingual_surface_path",
     "default_prompt_paths",
     "default_surface_path",
+    "defend_content",
+    "defend_tool_call",
     "depth_direction",
     "depth_generate",
     "depth_profile",
@@ -208,6 +285,9 @@ __all__ = [
     "detect_layer_types",
     "effective_rank",
     "evaluate",
+    "evaluate_data_flow",
+    "evaluate_suffix_via_api",
+    "evaluate_tool_call",
     "explained_variance_ratio",
     "export_model",
     "find_instruction_boundary",
@@ -216,6 +296,7 @@ __all__ = [
     "fuse_batch",
     "generate_config_schema",
     "grassmann_distance",
+    "injection_scan",
     "is_quantized",
     "load_config",
     "load_hf_prompts",
@@ -239,9 +320,11 @@ __all__ = [
     "repbend",
     "resolve_prompts",
     "run",
+    "run_agent_loop",
     "save_svf_boundary",
     "save_weights",
     "scan",
+    "score_candidates_via_rollout",
     "select_target_layers",
     "sic_sanitize",
     "sic_single",
@@ -253,7 +336,10 @@ __all__ = [
     "subspace_overlap",
     "svf_gradient",
     "target_weight_keys",
+    "trace_circuit",
     "train_probe",
+    "train_sae",
+    "train_sae_multi_layer",
     "train_svf_boundary",
     "validate",
     "write_config_schema",
