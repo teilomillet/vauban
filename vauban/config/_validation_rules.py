@@ -153,11 +153,15 @@ def _rule_refusal_phrases(
     try:
         phrases = _load_refusal_phrases(refusal_path)
     except ValueError as exc:
-        msg = (
-            f"{exc} — fix: add one refusal phrase per line in"
-            f" {refusal_path}, or remove [eval].refusal_phrases"
+        collector.add(
+            "HIGH",
+            f"[eval].refusal_phrases: {exc}",
+            fix=(
+                f"add one refusal phrase per line in {refusal_path},"
+                " or remove [eval].refusal_phrases"
+            ),
         )
-        raise ValueError(msg) from exc
+        return
     if len(phrases) < 2:
         collector.add(
             "MEDIUM",

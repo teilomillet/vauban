@@ -71,7 +71,7 @@ def _parse_softprompt_loss(
         )
         raise ValueError(msg)
 
-    token_constraint_raw = sec.get("token_constraint")
+    token_constraint_raw = reader.data.get("token_constraint")
     token_constraint: str | list[str] | None = None
     valid_constraints = (
         "ascii",

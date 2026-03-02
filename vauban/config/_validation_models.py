@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -12,11 +12,14 @@ if TYPE_CHECKING:
     from vauban.types import PipelineConfig
 
 
+type Severity = Literal["HIGH", "MEDIUM", "LOW"]
+
+
 @dataclass(frozen=True, slots=True)
 class ValidationIssue:
     """One rendered validation issue."""
 
-    severity: str
+    severity: Severity
     message: str
     fix: str | None = None
 
@@ -36,7 +39,7 @@ class ValidationCollector:
 
     def add(
         self,
-        severity: str,
+        severity: Severity,
         message: str,
         *,
         fix: str | None = None,

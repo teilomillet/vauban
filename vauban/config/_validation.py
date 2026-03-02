@@ -12,6 +12,7 @@ from vauban.config._validation_files import (
     _validate_prompt_jsonl_file as _validate_prompt_jsonl_file_impl,
 )
 from vauban.config._validation_models import (
+    Severity,
     ValidationCollector,
     ValidationContext,
     ValidationIssue,
@@ -151,6 +152,7 @@ def _rule_skipped_sections(
 
 __all__ = [
     "VALIDATION_RULE_SPECS",
+    "Severity",
     "ValidationCollector",
     "ValidationContext",
     "ValidationIssue",
