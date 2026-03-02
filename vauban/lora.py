@@ -382,6 +382,37 @@ def _find_safetensors(adapter_dir: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
+# Key normalization
+# ---------------------------------------------------------------------------
+
+# Suffixes in order of specificity (PEFT first, then mlx).
+_LORA_SUFFIXES: tuple[str, ...] = (
+    ".lora_A.weight",
+    ".lora_B.weight",
+    ".lora_a",
+    ".lora_b",
+)
+
+# PEFT adapters may carry a ``base_model.model.`` prefix that doesn't
+# appear in the mlx-lm weight namespace.
+_PEFT_PREFIX = "base_model.model."
+
+
+def _strip_lora_suffix(key: str) -> str | None:
+    """Return the base key with the LoRA suffix and PEFT prefix removed.
+
+    Returns ``None`` if the key doesn't end with a known LoRA suffix.
+    """
+    for suffix in _LORA_SUFFIXES:
+        if key.endswith(suffix):
+            base = key[: -len(suffix)]
+            if base.startswith(_PEFT_PREFIX):
+                base = base[len(_PEFT_PREFIX):]
+            return base
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Adapter loading
 # ---------------------------------------------------------------------------
 
@@ -412,8 +443,7 @@ def _fuse_lora_layers(model: object) -> None:
             child = getattr(module, child_name, None)
             if child is None:
                 continue
-            if type(child).__name__ == "LoRALinear":
-                # LoRALinear has a to_linear() method that returns fused Linear
+            if hasattr(child, "to_linear"):
                 fused = child.to_linear()
                 setattr(module, child_name, fused)
 
@@ -444,14 +474,15 @@ def load_and_merge_adapters(
 
     merged = merge_adapters(path_objs, weights)
 
-    # Group lora_a / lora_b pairs
+    # Group lora_a / lora_b pairs, normalizing both mlx and PEFT key formats
     pairs: dict[str, dict[str, Array]] = {}
     for key, tensor in merged.items():
-        if key.endswith(".lora_a"):
-            base = key[: -len(".lora_a")]
+        base = _strip_lora_suffix(key)
+        if base is None:
+            continue
+        if key.endswith((".lora_a", ".lora_A.weight")):
             pairs.setdefault(base, {})["lora_a"] = tensor
-        elif key.endswith(".lora_b"):
-            base = key[: -len(".lora_b")]
+        elif key.endswith((".lora_b", ".lora_B.weight")):
             pairs.setdefault(base, {})["lora_b"] = tensor
 
     # Apply deltas to model weights
@@ -466,10 +497,9 @@ def load_and_merge_adapters(
         lora_b = ab["lora_b"]
         delta = ops.matmul(lora_b, lora_a)
 
-        # Reconstruct the full weight key: add "model." prefix and ".weight" suffix
+        # Reconstruct the full weight key from the normalized base
         weight_key = f"model.{base_key}.weight"
         if weight_key not in flat_weights:
-            # Try without model. prefix
             weight_key = f"{base_key}.weight"
         if weight_key in flat_weights:
             new_w = flat_weights[weight_key] + delta
@@ -518,14 +548,15 @@ def analyze_adapter(
     st_file = _find_safetensors(adapter_dir)
     tensors = cast("dict[str, Array]", ops.load(str(st_file)))
 
-    # Group lora_a / lora_b pairs
+    # Group lora_a / lora_b pairs, normalizing both mlx and PEFT key formats
     pairs: dict[str, dict[str, Array]] = {}
     for key, tensor in tensors.items():
-        if key.endswith(".lora_a") or key.endswith(".lora_A.weight"):
-            base = key.replace(".lora_a", "").replace(".lora_A.weight", "")
+        base = _strip_lora_suffix(key)
+        if base is None:
+            continue
+        if key.endswith((".lora_a", ".lora_A.weight")):
             pairs.setdefault(base, {})["lora_a"] = tensor
-        elif key.endswith(".lora_b") or key.endswith(".lora_B.weight"):
-            base = key.replace(".lora_b", "").replace(".lora_B.weight", "")
+        elif key.endswith((".lora_b", ".lora_B.weight")):
             pairs.setdefault(base, {})["lora_b"] = tensor
 
     layers: list[_LayerResult] = []

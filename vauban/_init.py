@@ -139,6 +139,12 @@ separation_coeff = 1.0
 [lora_export]
 format = "mlx"       # "mlx" or "peft"
 polarity = "remove"  # "remove" or "add"
+
+# Uncomment to configure [cut] options that affect the exported adapter:
+# [cut]
+# biprojected = false         # orthogonalize against harmless direction
+# false_refusal_ortho = false # orthogonalize against borderline direction
+# sparsity = 0.0              # zero out fraction of direction components
 """,
     "lora_analysis": """\
 

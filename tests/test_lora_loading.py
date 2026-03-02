@@ -487,6 +487,148 @@ class TestAnalyzeAdapter:
 
 
 # ---------------------------------------------------------------------------
+# Key normalization tests
+# ---------------------------------------------------------------------------
+
+
+class TestStripLoraSuffix:
+    """Tests for _strip_lora_suffix helper."""
+
+    def test_mlx_lora_a(self) -> None:
+        """mlx .lora_a suffix should be stripped."""
+        from vauban.lora import _strip_lora_suffix
+
+        assert _strip_lora_suffix("layers.0.self_attn.o_proj.lora_a") == (
+            "layers.0.self_attn.o_proj"
+        )
+
+    def test_mlx_lora_b(self) -> None:
+        """mlx .lora_b suffix should be stripped."""
+        from vauban.lora import _strip_lora_suffix
+
+        assert _strip_lora_suffix("layers.0.self_attn.o_proj.lora_b") == (
+            "layers.0.self_attn.o_proj"
+        )
+
+    def test_peft_lora_a(self) -> None:
+        """PEFT .lora_A.weight suffix and prefix should be stripped."""
+        from vauban.lora import _strip_lora_suffix
+
+        key = "base_model.model.layers.0.self_attn.o_proj.lora_A.weight"
+        assert _strip_lora_suffix(key) == "layers.0.self_attn.o_proj"
+
+    def test_peft_lora_b(self) -> None:
+        """PEFT .lora_B.weight suffix and prefix should be stripped."""
+        from vauban.lora import _strip_lora_suffix
+
+        key = "base_model.model.layers.0.self_attn.o_proj.lora_B.weight"
+        assert _strip_lora_suffix(key) == "layers.0.self_attn.o_proj"
+
+    def test_unknown_suffix_returns_none(self) -> None:
+        """Non-LoRA keys should return None."""
+        from vauban.lora import _strip_lora_suffix
+
+        assert _strip_lora_suffix("layers.0.self_attn.o_proj.weight") is None
+
+    def test_peft_prefix_without_model_dot(self) -> None:
+        """Keys without PEFT prefix should keep their base as-is."""
+        from vauban.lora import _strip_lora_suffix
+
+        assert _strip_lora_suffix("layers.0.lora_a") == "layers.0"
+
+
+# ---------------------------------------------------------------------------
+# load_and_merge_adapters tests
+# ---------------------------------------------------------------------------
+
+
+class TestLoadAndMergeAdapters:
+    """Tests for load_and_merge_adapters with synthetic adapters."""
+
+    def test_merge_single_adapter_applies_delta(self, tmp_path: Path) -> None:
+        """Merging a single adapter should add delta to model weights."""
+        from vauban.lora import load_and_merge_adapters
+
+        adapter_dir = _save_rank1_adapter(tmp_path)
+
+        # Build a mock model with load_weights and parameters
+        weight = ops.zeros((D_MODEL, IN_FEATURES))
+        ops.eval(weight)
+
+        loaded: list[tuple[str, Array]] = []
+
+        class _MockModel:
+            def parameters(self) -> dict[str, object]:
+                return {
+                    "model": {
+                        "layers": [
+                            {
+                                "self_attn": {
+                                    "o_proj": {"weight": weight},
+                                },
+                            },
+                        ],
+                    },
+                }
+
+            def load_weights(
+                self, updates: list[tuple[str, Array]],
+            ) -> None:
+                loaded.extend(updates)
+
+        model = _MockModel()
+        load_and_merge_adapters(model, [str(adapter_dir)])
+
+        assert len(loaded) == 1
+        key, new_w = loaded[0]
+        assert "o_proj" in key
+        # delta = ones(8,1) @ ones(1,16) = ones(8,16), weight was zeros
+        assert new_w.shape == (D_MODEL, IN_FEATURES)
+        # Every element should be ~1.0
+        flat = new_w.reshape(-1)
+        assert float(flat[0]) == pytest.approx(1.0, abs=0.01)
+
+    def test_merge_with_custom_weight(self, tmp_path: Path) -> None:
+        """Custom weight should scale the adapter delta."""
+        from vauban.lora import load_and_merge_adapters
+
+        adapter_dir = _save_rank1_adapter(tmp_path)
+
+        weight = ops.zeros((D_MODEL, IN_FEATURES))
+        ops.eval(weight)
+
+        loaded: list[tuple[str, Array]] = []
+
+        class _MockModel:
+            def parameters(self) -> dict[str, object]:
+                return {
+                    "model": {
+                        "layers": [
+                            {
+                                "self_attn": {
+                                    "o_proj": {"weight": weight},
+                                },
+                            },
+                        ],
+                    },
+                }
+
+            def load_weights(
+                self, updates: list[tuple[str, Array]],
+            ) -> None:
+                loaded.extend(updates)
+
+        model = _MockModel()
+        load_and_merge_adapters(model, [str(adapter_dir)], weights=[0.5])
+
+        assert len(loaded) == 1
+        _key, new_w = loaded[0]
+        # merge_adapters scales each tensor: (0.5*B) @ (0.5*A) = 0.25 * B@A
+        flat = new_w.reshape(-1)
+        assert float(flat[0]) == pytest.approx(0.25, abs=0.01)
+
+
+# ---------------------------------------------------------------------------
 # Mode registry tests
 # ---------------------------------------------------------------------------
 

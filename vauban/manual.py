@@ -1629,9 +1629,17 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
         notes=(
             (
                 "Exports the measured direction as a LoRA adapter."
-                " Layer selection and alpha come from [cut]."
+                " Layer selection, alpha, and sparsity come from [cut]."
                 " Use polarity = \"add\" for trait amplification."
             ),
+            (
+                "Orthogonalization: if [cut].biprojected = true, the direction"
+                " is Gram-Schmidt orthogonalized against the harmless direction."
+                " If [cut].false_refusal_ortho = true and borderline_path is set,"
+                " it is orthogonalized against the borderline direction instead."
+                " [cut].norm_preserve is ignored (incompatible with low-rank LoRA)."
+            ),
+            "See also: [lora] (load adapters), [lora_analysis] (inspect adapters).",
         ),
     ),
     SectionSpec(
@@ -1660,6 +1668,10 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 "Infrastructure section: loads adapter(s) into the model"
                 " before any pipeline phase. Any existing mode then works"
                 " transparently on the LoRA'd model."
+            ),
+            (
+                "See also: [lora_export] (create adapters),"
+                " [lora_analysis] (inspect adapters)."
             ),
         ),
     ),
@@ -1697,6 +1709,10 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 "Decomposes adapter weight pairs via SVD to report"
                 " per-layer effective rank, Frobenius norm profile,"
                 " and optional alignment with the measured direction."
+            ),
+            (
+                "See also: [lora_export] (create adapters),"
+                " [lora] (load adapters)."
             ),
         ),
     ),
