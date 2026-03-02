@@ -62,7 +62,7 @@ def validate_config(config_path: str | Path) -> list[str]:
 
 def _add_warning(
     warnings: list[str],
-    severity: str,
+    severity: Severity,
     message: str,
     *,
     fix: str | None = None,
