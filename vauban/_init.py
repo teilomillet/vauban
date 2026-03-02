@@ -142,6 +142,9 @@ polarity = "remove"  # "remove" or "add"
 
 # Uncomment to configure [cut] options that affect the exported adapter:
 # [cut]
+# alpha = 1.0                 # scaling factor baked into adapter weights
+# layers = [10, 11, 12]       # explicit layer list (overrides layer_strategy)
+# layer_strategy = "all"      # "all", "above_median", or "top_k"
 # biprojected = false         # orthogonalize against harmless direction
 # false_refusal_ortho = false # orthogonalize against borderline direction
 # sparsity = 0.0              # zero out fraction of direction components
@@ -152,6 +155,8 @@ polarity = "remove"  # "remove" or "add"
 adapter_path = "output/lora_adapter"
 # variance_threshold = 0.99
 # align_with_direction = true
+
+# See also: [lora_export] (create adapters), [lora] (load adapters).
 """,
     "scan": """\
 
