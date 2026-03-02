@@ -34,7 +34,8 @@ class LossAuxConfig:
     cast_threshold: float
     perplexity_weight: float
     suffix_token_ids: Array | None
-    svf_boundary: object | None = None  # SVFBoundary, kept as object to avoid circular import
+    # SVFBoundary, kept as object to avoid circular import
+    svf_boundary: object | None = None
 
 
 @dataclass(frozen=True, slots=True)

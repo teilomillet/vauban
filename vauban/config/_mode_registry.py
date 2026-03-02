@@ -96,6 +96,11 @@ def _has_repbend(config: PipelineConfig) -> bool:
     return config.repbend is not None
 
 
+def _has_grpo(config: PipelineConfig) -> bool:
+    """Return whether [grpo] mode is active."""
+    return config.grpo is not None
+
+
 EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
     EarlyModeSpec("[depth]", "depth", "before_prompts", False, _has_depth),
     EarlyModeSpec("[svf]", "svf", "before_prompts", False, _has_svf),
@@ -153,6 +158,13 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "after_measure",
         True,
         _has_repbend,
+    ),
+    EarlyModeSpec(
+        "[grpo]",
+        "grpo",
+        "before_prompts",
+        False,
+        _has_grpo,
     ),
 )
 

@@ -82,7 +82,7 @@ def load_config(path: str | Path) -> PipelineConfig:
     linear_probe_config = parsed_sections.linear_probe
     fusion_config = parsed_sections.fusion
     repbend_config = parsed_sections.repbend
-
+    grpo_config = parsed_sections.grpo
     output_section = raw.get("output")
     output_dir_str = "output"
     if isinstance(output_section, dict):
@@ -163,6 +163,7 @@ def load_config(path: str | Path) -> PipelineConfig:
         linear_probe=linear_probe_config,
         fusion=fusion_config,
         repbend=repbend_config,
+        grpo=grpo_config,
         eval=eval_config,
         api_eval=api_eval_config,
         meta=meta_config,
@@ -292,26 +293,3 @@ def _resolve_single_data(
     raise TypeError(msg)
 
 
-def _resolve_path(
-    base_dir: Path,
-    raw: TomlDict,
-    section: str,
-    key: str,
-) -> Path:
-    """Resolve a path from a TOML section relative to the config directory."""
-    sec = raw.get(section)
-    if not isinstance(sec, dict):
-        msg = f"Config must have [{section}] section with '{key}' key"
-        raise ValueError(msg)
-    sec_typed = cast("TomlDict", sec)
-    if key not in sec_typed:
-        msg = f"Config must have [{section}] section with '{key}' key"
-        raise ValueError(msg)
-    value = sec_typed[key]
-    if not isinstance(value, str):
-        msg = (
-            f"[{section}].{key} must be a string,"
-            f" got {type(value).__name__}"
-        )
-        raise TypeError(msg)
-    return base_dir / value

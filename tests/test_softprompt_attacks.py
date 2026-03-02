@@ -405,6 +405,7 @@ class TestInvalidMode:
         object.__setattr__(bad_config, "injection_context_template", None)
         object.__setattr__(bad_config, "paraphrase_strategies", [])
         object.__setattr__(bad_config, "token_position", "prefix")
+        object.__setattr__(bad_config, "largo_reflection_rounds", 0)
 
         with pytest.raises(ValueError, match="Unknown soft prompt mode"):
             softprompt_attack(model, tokenizer, ["test"], bad_config, None)

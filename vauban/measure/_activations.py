@@ -85,6 +85,10 @@ def _collect_per_prompt_activations(
 
     Returns a list of length num_layers, each element shape (num_prompts, d_model).
     """
+    if not prompts:
+        msg = "prompts must be non-empty"
+        raise ValueError(msg)
+
     all_residuals: list[list[Array]] = []
 
     for prompt in prompts:

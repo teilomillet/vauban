@@ -90,6 +90,18 @@ def _run_softprompt_mode(context: EarlyModeContext) -> None:
                 (transfer_model_id, transfer_model, transfer_tokenizer),
             )
 
+    # Load SVF boundary if configured
+    svf_boundary = None
+    if config.softprompt.svf_boundary_path is not None:
+        from vauban.svf import load_svf_boundary
+
+        svf_boundary = load_svf_boundary(config.softprompt.svf_boundary_path)
+        log(
+            f"Loaded SVF boundary from {config.softprompt.svf_boundary_path}",
+            verbose=v,
+            elapsed=time.monotonic() - context.t0,
+        )
+
     sp_result = softprompt_attack(
         model,
         tokenizer,
@@ -100,6 +112,7 @@ def _run_softprompt_mode(context: EarlyModeContext) -> None:
         transfer_models=transfer_models_loaded,
         api_eval_config=config.api_eval,
         environment_config=config.environment,
+        svf_boundary=svf_boundary,
     )
 
     if transfer_models_loaded and not config.softprompt.gan_rounds:

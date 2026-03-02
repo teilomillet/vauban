@@ -143,6 +143,7 @@ def _cold_attack(
         z = ops.zeros((config.n_tokens, vocab_size))
 
     # Apply vocab mask in logit space: set masked positions to large negative
+    mask_penalty: Array | None = None
     if vocab_mask is not None:
         force_eval(vocab_mask)
         neg_inf = ops.array(-1e9)
@@ -249,8 +250,8 @@ def _cold_attack(
         z = z - lr * grad + noise * noise_scale
 
         # Re-apply vocab mask penalty after update
-        if vocab_mask is not None:
-            z = z + mask_penalty  # type: ignore[possibly-undefined]
+        if mask_penalty is not None:
+            z = z + mask_penalty
 
         force_eval(z)
 

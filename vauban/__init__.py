@@ -37,6 +37,7 @@ from vauban.geometry import (
     DirectionPair,
     analyze_directions,
 )
+from vauban.grpo import grpo
 from vauban.intent import capture_intent, check_alignment
 from vauban.linear_probe import train_probe
 from vauban.measure import (
@@ -124,6 +125,8 @@ from vauban.types import (
     FusionConfig,
     FusionGeneration,
     FusionResult,
+    GRPOConfig,
+    GRPOResult,
     IntentCheckResult,
     IntentConfig,
     IntentState,
@@ -210,6 +213,8 @@ __all__ = [
     "FusionConfig",
     "FusionGeneration",
     "FusionResult",
+    "GRPOConfig",
+    "GRPOResult",
     "IntentCheckResult",
     "IntentConfig",
     "IntentState",
@@ -296,6 +301,7 @@ __all__ = [
     "fuse_batch",
     "generate_config_schema",
     "grassmann_distance",
+    "grpo",
     "injection_scan",
     "is_quantized",
     "load_config",

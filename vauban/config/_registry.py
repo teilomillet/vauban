@@ -17,6 +17,7 @@ from vauban.config._parse_environment import _parse_environment
 from vauban.config._parse_eval import _parse_eval
 from vauban.config._parse_features import _parse_features
 from vauban.config._parse_fusion import _parse_fusion
+from vauban.config._parse_grpo import _parse_grpo
 from vauban.config._parse_intent import _parse_intent
 from vauban.config._parse_linear_probe import _parse_linear_probe
 from vauban.config._parse_measure import _parse_measure
@@ -44,6 +45,7 @@ from vauban.types import (
     EvalConfig,
     FeaturesConfig,
     FusionConfig,
+    GRPOConfig,
     IntentConfig,
     LinearProbeConfig,
     MeasureConfig,
@@ -85,6 +87,7 @@ type _SectionParserResult = (
     | MeasureConfig
     | OptimizeConfig
     | PolicyConfig
+    | GRPOConfig
     | RepBendConfig
     | ScanConfig
     | SurfaceConfig
@@ -140,6 +143,7 @@ class ParsedSectionValues:
     linear_probe: LinearProbeConfig | None
     fusion: FusionConfig | None
     repbend: RepBendConfig | None
+    grpo: GRPOConfig | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -315,6 +319,13 @@ def _parse_repbend_adapter(
     return _parse_repbend(context.raw)
 
 
+def _parse_grpo_adapter(
+    context: ConfigParseContext,
+) -> GRPOConfig | None:
+    """Adapter for parsers that accept the full raw config mapping."""
+    return _parse_grpo(context.raw)
+
+
 SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     SectionParseSpec("depth", "depth", _parse_depth_adapter, 10),
     SectionParseSpec("cast", "cast", _parse_cast_adapter, 20),
@@ -350,6 +361,7 @@ SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     ),
     SectionParseSpec("fusion", "fusion", _parse_fusion_adapter, 175),
     SectionParseSpec("repbend", "repbend", _parse_repbend_adapter, 180),
+    SectionParseSpec("grpo", "grpo", _parse_grpo_adapter, 185),
 )
 
 
@@ -419,4 +431,5 @@ def parse_registered_sections(
         ),
         fusion=cast("FusionConfig | None", parsed["fusion"]),
         repbend=cast("RepBendConfig | None", parsed["repbend"]),
+        grpo=cast("GRPOConfig | None", parsed["grpo"]),
     )

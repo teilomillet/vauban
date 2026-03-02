@@ -17,6 +17,7 @@ from dataclasses import replace
 from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import force_eval
+from vauban.softprompt._amplecgc import _amplecgc_attack
 from vauban.softprompt._cold import _cold_attack
 from vauban.softprompt._continuous import _continuous_attack
 from vauban.softprompt._defense_eval import (
@@ -105,9 +106,17 @@ def _dispatch_attack(
             infix_map=infix_map,
             environment_config=environment_config,
         )
+    if config.mode == "amplecgc":
+        return _amplecgc_attack(
+            model, tokenizer, prompts, config, direction, ref_model,
+            all_prompt_ids_override=injection_ids,
+            transfer_models=transfer_models,
+            infix_map=infix_map,
+            environment_config=environment_config,
+        )
     msg = (
         f"Unknown soft prompt mode: {config.mode!r},"
-        " must be 'continuous', 'gcg', 'egd', or 'cold'"
+        " must be 'continuous', 'gcg', 'egd', 'cold', or 'amplecgc'"
     )
     raise ValueError(msg)
 
@@ -184,9 +193,17 @@ def _dispatch_attack_multiturn(
             infix_map=infix_map,
             environment_config=environment_config,
         )
+    if config.mode == "amplecgc":
+        return _amplecgc_attack(
+            model, tokenizer, prompts, config, direction, ref_model,
+            all_prompt_ids_override=all_prompt_ids,
+            transfer_models=transfer_models,
+            infix_map=infix_map,
+            environment_config=environment_config,
+        )
     msg = (
-        f"Multi-turn attack requires mode 'gcg', 'egd', or 'cold',"
-        f" got {config.mode!r}"
+        f"Multi-turn attack requires mode 'gcg', 'egd', 'cold',"
+        f" or 'amplecgc', got {config.mode!r}"
     )
     raise ValueError(msg)
 
@@ -345,7 +362,8 @@ def gan_loop(
                     attacker_won = True
                 else:
                     # Need both defense bypass AND environment success
-                    attacker_won = attacker_won and True
+                    # attacker_won is already True here (else branch)
+                    pass
 
         # --- Transfer evaluation ---
         round_transfer_results: list[TransferEvalResult] = []

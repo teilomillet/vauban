@@ -188,4 +188,12 @@ def _parse_softprompt(
         largo_max_reflection_tokens=loss.largo_max_reflection_tokens,
         largo_objective=loss.largo_objective,
         largo_embed_warmstart=loss.largo_embed_warmstart,
+        amplecgc_collect_steps=loss.amplecgc_collect_steps,
+        amplecgc_collect_restarts=loss.amplecgc_collect_restarts,
+        amplecgc_collect_threshold=loss.amplecgc_collect_threshold,
+        amplecgc_n_candidates=loss.amplecgc_n_candidates,
+        amplecgc_hidden_dim=loss.amplecgc_hidden_dim,
+        amplecgc_train_steps=loss.amplecgc_train_steps,
+        amplecgc_train_lr=loss.amplecgc_train_lr,
+        amplecgc_sample_temperature=loss.amplecgc_sample_temperature,
     )

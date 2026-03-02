@@ -5,6 +5,7 @@ from dataclasses import replace
 
 from vauban import _ops as ops
 from vauban._array import Array
+from vauban.softprompt._amplecgc import _amplecgc_attack
 from vauban.softprompt._cold import _cold_attack
 from vauban.softprompt._continuous import _continuous_attack
 from vauban.softprompt._defense_eval import evaluate_against_defenses
@@ -35,6 +36,7 @@ def _run_single_attack(
     ref_model: CausalLM | None = None,
     transfer_models: list[tuple[str, CausalLM, Tokenizer]] | None = None,
     environment_config: EnvironmentConfig | None = None,
+    svf_boundary: object | None = None,
 ) -> SoftPromptResult:
     """Dispatch to the appropriate attack mode.
 
@@ -93,9 +95,17 @@ def _run_single_attack(
             infix_map=infix_map,
             environment_config=environment_config,
         )
+    if config.mode == "amplecgc":
+        return _amplecgc_attack(
+            model, tokenizer, prompts, config, direction, ref_model,
+            all_prompt_ids_override=injection_ids,
+            transfer_models=transfer_models,
+            infix_map=infix_map,
+            environment_config=environment_config,
+        )
     msg = (
         f"Unknown soft prompt mode: {config.mode!r},"
-        " must be 'continuous', 'gcg', 'egd', or 'cold'"
+        " must be 'continuous', 'gcg', 'egd', 'cold', or 'amplecgc'"
     )
     raise ValueError(msg)
 
@@ -110,6 +120,7 @@ def softprompt_attack(
     transfer_models: list[tuple[str, CausalLM, Tokenizer]] | None = None,
     api_eval_config: ApiEvalConfig | None = None,
     environment_config: EnvironmentConfig | None = None,
+    svf_boundary: object | None = None,
 ) -> SoftPromptResult:
     """Run a soft prompt attack against a model.
 
@@ -139,6 +150,15 @@ def softprompt_attack(
         ops.random.seed(config.seed)
         random.seed(config.seed)
 
+    # LARGO reflection loop: continuous + self-reflective decoding
+    if config.largo_reflection_rounds > 0:
+        from vauban.softprompt._largo import largo_loop
+
+        return largo_loop(
+            model, tokenizer, prompts, config, direction, ref_model,
+            svf_boundary=svf_boundary,
+        )
+
     # GAN loop: iterative attack-defense rounds
     if config.gan_rounds > 0:
         return gan_loop(
@@ -153,6 +173,7 @@ def softprompt_attack(
         model, tokenizer, prompts, config, direction, ref_model,
         transfer_models=transfer_models,
         environment_config=environment_config,
+        svf_boundary=svf_boundary,
     )
 
     # Post-attack environment rollout evaluation (continuous mode only —

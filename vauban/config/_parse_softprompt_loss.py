@@ -40,6 +40,14 @@ class _SoftPromptLossSection:
     largo_max_reflection_tokens: int
     largo_objective: str
     largo_embed_warmstart: bool
+    amplecgc_collect_steps: int
+    amplecgc_collect_restarts: int
+    amplecgc_collect_threshold: float
+    amplecgc_n_candidates: int
+    amplecgc_hidden_dim: int
+    amplecgc_train_steps: int
+    amplecgc_train_lr: float
+    amplecgc_sample_temperature: float
 
 
 def _parse_softprompt_loss(
@@ -263,6 +271,87 @@ def _parse_softprompt_loss(
         "largo_embed_warmstart", default=True,
     )
 
+    # --- AmpleGCG fields ---
+    amplecgc_collect_steps = reader.integer(
+        "amplecgc_collect_steps", default=100,
+    )
+    if amplecgc_collect_steps < 1:
+        msg = (
+            "[softprompt].amplecgc_collect_steps must be >= 1,"
+            f" got {amplecgc_collect_steps}"
+        )
+        raise ValueError(msg)
+
+    amplecgc_collect_restarts = reader.integer(
+        "amplecgc_collect_restarts", default=5,
+    )
+    if amplecgc_collect_restarts < 1:
+        msg = (
+            "[softprompt].amplecgc_collect_restarts must be >= 1,"
+            f" got {amplecgc_collect_restarts}"
+        )
+        raise ValueError(msg)
+
+    amplecgc_collect_threshold = reader.number(
+        "amplecgc_collect_threshold", default=5.0,
+    )
+    if amplecgc_collect_threshold <= 0:
+        msg = (
+            "[softprompt].amplecgc_collect_threshold must be > 0,"
+            f" got {amplecgc_collect_threshold}"
+        )
+        raise ValueError(msg)
+
+    amplecgc_n_candidates = reader.integer(
+        "amplecgc_n_candidates", default=256,
+    )
+    if amplecgc_n_candidates < 1:
+        msg = (
+            "[softprompt].amplecgc_n_candidates must be >= 1,"
+            f" got {amplecgc_n_candidates}"
+        )
+        raise ValueError(msg)
+
+    amplecgc_hidden_dim = reader.integer(
+        "amplecgc_hidden_dim", default=512,
+    )
+    if amplecgc_hidden_dim < 1:
+        msg = (
+            "[softprompt].amplecgc_hidden_dim must be >= 1,"
+            f" got {amplecgc_hidden_dim}"
+        )
+        raise ValueError(msg)
+
+    amplecgc_train_steps = reader.integer(
+        "amplecgc_train_steps", default=200,
+    )
+    if amplecgc_train_steps < 1:
+        msg = (
+            "[softprompt].amplecgc_train_steps must be >= 1,"
+            f" got {amplecgc_train_steps}"
+        )
+        raise ValueError(msg)
+
+    amplecgc_train_lr = reader.number(
+        "amplecgc_train_lr", default=0.001,
+    )
+    if amplecgc_train_lr <= 0:
+        msg = (
+            "[softprompt].amplecgc_train_lr must be > 0,"
+            f" got {amplecgc_train_lr}"
+        )
+        raise ValueError(msg)
+
+    amplecgc_sample_temperature = reader.number(
+        "amplecgc_sample_temperature", default=1.0,
+    )
+    if amplecgc_sample_temperature <= 0:
+        msg = (
+            "[softprompt].amplecgc_sample_temperature must be > 0,"
+            f" got {amplecgc_sample_temperature}"
+        )
+        raise ValueError(msg)
+
     return _SoftPromptLossSection(
         direction_weight=direction_weight,
         embed_reg_weight=embed_reg_weight,
@@ -288,4 +377,12 @@ def _parse_softprompt_loss(
         largo_max_reflection_tokens=largo_max_reflection_tokens,
         largo_objective=largo_objective,
         largo_embed_warmstart=largo_embed_warmstart,
+        amplecgc_collect_steps=amplecgc_collect_steps,
+        amplecgc_collect_restarts=amplecgc_collect_restarts,
+        amplecgc_collect_threshold=amplecgc_collect_threshold,
+        amplecgc_n_candidates=amplecgc_n_candidates,
+        amplecgc_hidden_dim=amplecgc_hidden_dim,
+        amplecgc_train_steps=amplecgc_train_steps,
+        amplecgc_train_lr=amplecgc_train_lr,
+        amplecgc_sample_temperature=amplecgc_sample_temperature,
     )

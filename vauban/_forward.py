@@ -182,6 +182,7 @@ elif _BACKEND == "torch":
         """
         dev = transformer.embed_tokens.weight.device
         token_ids = token_ids.to(dev)
+        prefix_embeds = prefix_embeds.to(dev)
         prompt_embeds = transformer.embed_tokens(token_ids)
         if token_position == "suffix":
             h = _torch.cat([prompt_embeds, prefix_embeds], dim=1)

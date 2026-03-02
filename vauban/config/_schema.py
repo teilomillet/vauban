@@ -30,6 +30,7 @@ from vauban.types import (
     EvalConfig,
     FeaturesConfig,
     FusionConfig,
+    GRPOConfig,
     IntentConfig,
     LinearProbeConfig,
     MeasureConfig,
@@ -99,6 +100,7 @@ _DATACLASS_SECTION_SPECS: tuple[_DataclassSectionSpec, ...] = (
     _DataclassSectionSpec("linear_probe", LinearProbeConfig, {}),
     _DataclassSectionSpec("fusion", FusionConfig, {}),
     _DataclassSectionSpec("repbend", RepBendConfig, {}),
+    _DataclassSectionSpec("grpo", GRPOConfig, {}),
 )
 
 _MANUAL_SECTION_KEYS: dict[str, frozenset[str]] = {

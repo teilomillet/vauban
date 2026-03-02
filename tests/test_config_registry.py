@@ -83,6 +83,7 @@ _EXPECTED_SECTION_ORDER: list[str] = [
     "linear_probe",
     "fusion",
     "repbend",
+    "grpo",
 ]
 
 _MODEL = '[model]\npath = "test-model"\n'
@@ -473,6 +474,12 @@ def test_parse_registered_sections_respects_registry_order(
     )
     monkeypatch.setattr("vauban.config._registry._parse_fusion", fake_fusion)
     monkeypatch.setattr("vauban.config._registry._parse_repbend", fake_repbend)
+
+    def fake_grpo(raw: TomlDict) -> None:
+        call_order.append("grpo")
+        return None
+
+    monkeypatch.setattr("vauban.config._registry._parse_grpo", fake_grpo)
 
     context = ConfigParseContext(base_dir=tmp_path, raw={})
     parsed = parse_registered_sections(context)
