@@ -47,6 +47,7 @@ Then open a new shell and check the command:
 ```bash
 vauban --help
 vauban man quickstart
+vauban tree --help
 ```
 
 For development from this repo:
@@ -196,6 +197,7 @@ vauban man quickstart
 vauban man commands
 vauban man formats
 vauban man output
+vauban tree --help
 ```
 
 Scaffold configs:
@@ -234,6 +236,7 @@ Render the experiment lineage tree:
 ```bash
 vauban tree experiments/
 vauban tree experiments/ --format mermaid
+vauban tree experiments/ --status promising
 ```
 
 ## Data Formats

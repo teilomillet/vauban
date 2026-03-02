@@ -44,6 +44,7 @@ def _shared_refusal_loss(
     infix_split: int | None,
     *,
     maximize_refusal: bool,
+    svf_boundary: object | None = None,
 ) -> Array:
     """Compute the shared refusal-probability objective."""
     placement = LossPlacementConfig(
@@ -68,6 +69,7 @@ def _shared_refusal_loss(
         cast_threshold=cast_threshold,
         perplexity_weight=perplexity_weight,
         suffix_token_ids=suffix_token_ids,
+        svf_boundary=svf_boundary,
     )
     hidden_states, mask, n_prompt = _assemble_prefix_only_sequence(
         model.model,
@@ -129,6 +131,7 @@ def _compute_defensive_loss(
     suffix_token_ids: Array | None = None,
     token_position: str = "prefix",
     infix_split: int | None = None,
+    svf_boundary: object | None = None,
 ) -> Array:
     """Compute the defensive objective that maximizes refusal mass."""
     return _shared_refusal_loss(
@@ -156,6 +159,7 @@ def _compute_defensive_loss(
         token_position,
         infix_split,
         maximize_refusal=True,
+        svf_boundary=svf_boundary,
     )
 
 
@@ -183,6 +187,7 @@ def _compute_untargeted_loss(
     suffix_token_ids: Array | None = None,
     token_position: str = "prefix",
     infix_split: int | None = None,
+    svf_boundary: object | None = None,
 ) -> Array:
     """Compute the untargeted objective that minimizes refusal mass."""
     return _shared_refusal_loss(
@@ -210,4 +215,5 @@ def _compute_untargeted_loss(
         token_position,
         infix_split,
         maximize_refusal=False,
+        svf_boundary=svf_boundary,
     )

@@ -157,6 +157,7 @@ def _compute_prompt_objective_loss(
             suffix_token_ids=suffix_token_ids,
             token_position=state.token_position,
             infix_split=infix_split,
+            svf_boundary=state.svf_boundary,
         )
     if state.loss_mode == "untargeted" and state.refusal_ids is not None:
         return _compute_untargeted_loss(
@@ -183,6 +184,7 @@ def _compute_prompt_objective_loss(
             suffix_token_ids=suffix_token_ids,
             token_position=state.token_position,
             infix_split=infix_split,
+            svf_boundary=state.svf_boundary,
         )
     if state.loss_mode == "externality":
         return _compute_externality_loss(
@@ -221,6 +223,7 @@ def _compute_prompt_objective_loss(
         suffix_token_ids=suffix_token_ids,
         token_position=state.token_position,
         infix_split=infix_split,
+        svf_boundary=state.svf_boundary,
     )
 
 
