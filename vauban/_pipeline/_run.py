@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
-from vauban._pipeline._context import EarlyModeContext, log, write_experiment_log
+from vauban._pipeline._context import log, write_experiment_log
 from vauban._pipeline._modes import dispatch_early_mode
 from vauban._pipeline._run_cut import run_cut_phase
 from vauban._pipeline._run_eval import run_eval_phase
@@ -50,22 +50,11 @@ def run(config_path: str | Path) -> None:
         t0=t0,
         verbose=config.verbose,
     )
-    early_mode_context = EarlyModeContext(
-        config_path=config_path,
-        config=config,
-        model=model,
-        tokenizer=tokenizer,
-        t0=t0,
-    )
-    if dispatch_early_mode("before_prompts", early_mode_context):
+    if dispatch_early_mode("before_prompts", state.early_mode_context()):
         return
     if run_measure_phase(state):
         return
-
-    early_mode_context.harmful = state.harmful
-    early_mode_context.harmless = state.harmless
-    early_mode_context.direction_result = state.direction_result
-    if dispatch_early_mode("after_measure", early_mode_context):
+    if dispatch_early_mode("after_measure", state.early_mode_context()):
         return
 
     prepare_surface_phase(state)

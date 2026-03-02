@@ -6,6 +6,8 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from vauban._pipeline._context import EarlyModeContext
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -58,3 +60,16 @@ class RunState:
     def elapsed(self) -> float:
         """Return elapsed runtime in seconds."""
         return time.monotonic() - self.t0
+
+    def early_mode_context(self) -> EarlyModeContext:
+        """Build an EarlyModeContext reflecting current state."""
+        return EarlyModeContext(
+            config_path=self.config_path,
+            config=self.config,
+            model=self.model,
+            tokenizer=self.tokenizer,
+            t0=self.t0,
+            harmful=self.harmful,
+            harmless=self.harmless,
+            direction_result=self.direction_result,
+        )
