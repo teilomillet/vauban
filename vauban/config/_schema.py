@@ -32,6 +32,7 @@ from vauban.types import (
     FusionConfig,
     IntentConfig,
     LinearProbeConfig,
+    LoraExportConfig,
     MeasureConfig,
     MetaConfig,
     OptimizeConfig,
@@ -99,6 +100,7 @@ _DATACLASS_SECTION_SPECS: tuple[_DataclassSectionSpec, ...] = (
     _DataclassSectionSpec("linear_probe", LinearProbeConfig, {}),
     _DataclassSectionSpec("fusion", FusionConfig, {}),
     _DataclassSectionSpec("repbend", RepBendConfig, {}),
+    _DataclassSectionSpec("lora_export", LoraExportConfig, {}),
 )
 
 _MANUAL_SECTION_KEYS: dict[str, frozenset[str]] = {

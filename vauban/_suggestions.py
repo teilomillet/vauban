@@ -156,6 +156,7 @@ _VALUE_CONSTRAINT_KEYS: dict[str, frozenset[str]] = {
         "layers", "n_epochs", "learning_rate", "batch_size",
         "separation_coeff", "token_position",
     }),
+    "lora_export": frozenset({"format", "polarity"}),
 }
 
 _KNOWN_KEYS: dict[str, frozenset[str]] = KNOWN_SECTION_KEYS
@@ -266,6 +267,8 @@ _KNOWN_VALUES: dict[tuple[str, str], frozenset[str]] = {
     ("meta", "status"): frozenset({
         "wip", "promising", "dead_end", "baseline", "superseded", "archived",
     }),
+    ("lora_export", "format"): frozenset({"mlx", "peft"}),
+    ("lora_export", "polarity"): frozenset({"remove", "add"}),
 }
 
 # (min_inclusive, max_exclusive) — None = unbounded

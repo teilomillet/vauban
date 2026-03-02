@@ -96,6 +96,11 @@ def _has_repbend(config: PipelineConfig) -> bool:
     return config.repbend is not None
 
 
+def _has_lora_export(config: PipelineConfig) -> bool:
+    """Return whether [lora_export] mode is active."""
+    return config.lora_export is not None
+
+
 def _has_standalone_api_eval(config: PipelineConfig) -> bool:
     """Return whether standalone [api_eval] mode is active.
 
@@ -169,6 +174,13 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "after_measure",
         True,
         _has_repbend,
+    ),
+    EarlyModeSpec(
+        "[lora_export]",
+        "lora_export",
+        "after_measure",
+        True,
+        _has_lora_export,
     ),
 )
 

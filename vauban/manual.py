@@ -191,6 +191,12 @@ _PIPELINE_MODES: tuple[PipelineModeDoc, ...] = (
         output="repbend_report.json + modified weights.",
         early_return=True,
     ),
+    PipelineModeDoc(
+        mode="lora_export",
+        trigger="[lora_export] section present.",
+        output="lora_export_report.json + lora_adapter/.",
+        early_return=True,
+    ),
 )
 
 _FORMAT_NOTES: tuple[str, ...] = (
@@ -1596,6 +1602,33 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
         ),
     ),
     SectionSpec(
+        name="lora_export",
+        description="Export measured direction as a LoRA adapter.",
+        early_return=True,
+        config_class="LoraExportConfig",
+        fields=(
+            FieldSpec(
+                key="format",
+                description="Adapter format.",
+                constraints='"mlx" or "peft".',
+                default_override='"mlx"',
+            ),
+            FieldSpec(
+                key="polarity",
+                description="Direction polarity.",
+                constraints='"remove" or "add".',
+                default_override='"remove"',
+            ),
+        ),
+        notes=(
+            (
+                "Exports the measured direction as a LoRA adapter."
+                " Layer selection and alpha come from [cut]."
+                " Use polarity = \"add\" for trait amplification."
+            ),
+        ),
+    ),
+    SectionSpec(
         name="api_eval",
         description=(
             "Test optimized suffixes against remote"
@@ -1773,7 +1806,7 @@ def _known_quick_functions() -> tuple[str, ...]:
 
 
 _MODE_CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("Core Pipeline", ("default", "optimize")),
+    ("Core Pipeline", ("default", "optimize", "lora_export")),
     ("Runtime Inspection", ("probe", "steer", "depth")),
     ("Defense", ("cast", "sic", "defend", "repbend")),
     ("Adversarial", ("softprompt", "fusion")),

@@ -19,6 +19,7 @@ from vauban.config._parse_features import _parse_features
 from vauban.config._parse_fusion import _parse_fusion
 from vauban.config._parse_intent import _parse_intent
 from vauban.config._parse_linear_probe import _parse_linear_probe
+from vauban.config._parse_lora_export import _parse_lora_export
 from vauban.config._parse_measure import _parse_measure
 from vauban.config._parse_optimize import _parse_optimize
 from vauban.config._parse_policy import _parse_policy
@@ -46,6 +47,7 @@ from vauban.types import (
     FusionConfig,
     IntentConfig,
     LinearProbeConfig,
+    LoraExportConfig,
     MeasureConfig,
     OptimizeConfig,
     PolicyConfig,
@@ -82,6 +84,7 @@ type _SectionParserResult = (
     | FusionConfig
     | IntentConfig
     | LinearProbeConfig
+    | LoraExportConfig
     | MeasureConfig
     | OptimizeConfig
     | PolicyConfig
@@ -140,6 +143,7 @@ class ParsedSectionValues:
     linear_probe: LinearProbeConfig | None
     fusion: FusionConfig | None
     repbend: RepBendConfig | None
+    lora_export: LoraExportConfig | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -315,6 +319,13 @@ def _parse_repbend_adapter(
     return _parse_repbend(context.raw)
 
 
+def _parse_lora_export_adapter(
+    context: ConfigParseContext,
+) -> LoraExportConfig | None:
+    """Adapter for parsers that accept the full raw config mapping."""
+    return _parse_lora_export(context.raw)
+
+
 SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     SectionParseSpec("depth", "depth", _parse_depth_adapter, 10),
     SectionParseSpec("cast", "cast", _parse_cast_adapter, 20),
@@ -350,6 +361,7 @@ SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     ),
     SectionParseSpec("fusion", "fusion", _parse_fusion_adapter, 175),
     SectionParseSpec("repbend", "repbend", _parse_repbend_adapter, 180),
+    SectionParseSpec("lora_export", "lora_export", _parse_lora_export_adapter, 185),
 )
 
 
@@ -419,4 +431,5 @@ def parse_registered_sections(
         ),
         fusion=cast("FusionConfig | None", parsed["fusion"]),
         repbend=cast("RepBendConfig | None", parsed["repbend"]),
+        lora_export=cast("LoraExportConfig | None", parsed["lora_export"]),
     )
