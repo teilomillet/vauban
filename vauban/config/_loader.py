@@ -93,6 +93,8 @@ def load_config(path: str | Path) -> PipelineConfig:
     fusion_config = parsed_sections.fusion
     repbend_config = parsed_sections.repbend
     lora_export_config = parsed_sections.lora_export
+    lora_load_config = parsed_sections.lora_load
+    lora_analysis_config = parsed_sections.lora_analysis
     output_section = raw.get("output")
     output_dir_str = "output"
     if isinstance(output_section, dict):
@@ -174,6 +176,8 @@ def load_config(path: str | Path) -> PipelineConfig:
         fusion=fusion_config,
         repbend=repbend_config,
         lora_export=lora_export_config,
+        lora_load=lora_load_config,
+        lora_analysis=lora_analysis_config,
         eval=eval_config,
         api_eval=api_eval_config,
         meta=meta_config,

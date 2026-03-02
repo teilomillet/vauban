@@ -1798,6 +1798,71 @@ class LoraExportResult:
 
 
 @dataclass(frozen=True, slots=True)
+class LoraLoadConfig:
+    """Configuration for [lora] — adapter loading infrastructure."""
+
+    adapter_path: str | None = None
+    adapter_paths: list[str] | None = None
+    weights: list[float] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class LoraAnalysisConfig:
+    """Configuration for [lora_analysis] mode."""
+
+    adapter_path: str | None = None
+    adapter_paths: list[str] | None = None
+    variance_threshold: float = 0.99
+    align_with_direction: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class LoraLayerAnalysis:
+    """SVD analysis for one LoRA weight pair."""
+
+    key: str
+    frobenius_norm: float
+    singular_values: list[float]
+    effective_rank: float
+    variance_cutoff: int
+    direction_alignment: float | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to a JSON-compatible dict."""
+        d: dict[str, object] = {
+            "key": self.key,
+            "frobenius_norm": self.frobenius_norm,
+            "singular_values": self.singular_values,
+            "effective_rank": self.effective_rank,
+            "variance_cutoff": self.variance_cutoff,
+        }
+        if self.direction_alignment is not None:
+            d["direction_alignment"] = self.direction_alignment
+        return d
+
+
+@dataclass(frozen=True, slots=True)
+class LoraAnalysisResult:
+    """Full result from lora_analysis mode."""
+
+    adapter_path: str
+    layers: list[LoraLayerAnalysis]
+    total_params: int
+    mean_effective_rank: float
+    norm_profile: list[float]
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to a JSON-compatible dict."""
+        return {
+            "adapter_path": self.adapter_path,
+            "layers": [layer.to_dict() for layer in self.layers],
+            "total_params": self.total_params,
+            "mean_effective_rank": self.mean_effective_rank,
+            "norm_profile": self.norm_profile,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class PipelineConfig:
     """Full pipeline configuration loaded from TOML."""
 
@@ -1829,6 +1894,8 @@ class PipelineConfig:
     fusion: FusionConfig | None = None
     repbend: RepBendConfig | None = None
     lora_export: LoraExportConfig | None = None
+    lora_load: LoraLoadConfig | None = None
+    lora_analysis: LoraAnalysisConfig | None = None
     eval: EvalConfig = field(default_factory=EvalConfig)
     api_eval: ApiEvalConfig | None = None
     meta: MetaConfig | None = None

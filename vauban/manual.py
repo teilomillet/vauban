@@ -197,6 +197,12 @@ _PIPELINE_MODES: tuple[PipelineModeDoc, ...] = (
         output="lora_export_report.json + lora_adapter/.",
         early_return=True,
     ),
+    PipelineModeDoc(
+        mode="lora_analysis",
+        trigger="[lora_analysis] section present.",
+        output="lora_analysis_report.json.",
+        early_return=True,
+    ),
 )
 
 _FORMAT_NOTES: tuple[str, ...] = (
@@ -1629,6 +1635,72 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
         ),
     ),
     SectionSpec(
+        name="lora",
+        description="Load LoRA adapter(s) into the model before pipeline phases.",
+        config_class="LoraLoadConfig",
+        fields=(
+            FieldSpec(
+                key="adapter_path",
+                description="Path to a single adapter directory.",
+                constraints="string; mutually exclusive with adapter_paths.",
+            ),
+            FieldSpec(
+                key="adapter_paths",
+                description="Paths to multiple adapters for task arithmetic merge.",
+                constraints="list of strings; mutually exclusive with adapter_path.",
+            ),
+            FieldSpec(
+                key="weights",
+                description="Scalar weight for each adapter in adapter_paths.",
+                constraints="list of numbers; length must match adapter_paths.",
+            ),
+        ),
+        notes=(
+            (
+                "Infrastructure section: loads adapter(s) into the model"
+                " before any pipeline phase. Any existing mode then works"
+                " transparently on the LoRA'd model."
+            ),
+        ),
+    ),
+    SectionSpec(
+        name="lora_analysis",
+        description="Decompose LoRA adapters via SVD for structural analysis.",
+        early_return=True,
+        config_class="LoraAnalysisConfig",
+        fields=(
+            FieldSpec(
+                key="adapter_path",
+                description="Path to a single adapter directory to analyze.",
+                constraints="string; mutually exclusive with adapter_paths.",
+            ),
+            FieldSpec(
+                key="adapter_paths",
+                description="Paths to multiple adapters to analyze.",
+                constraints="list of strings; mutually exclusive with adapter_path.",
+            ),
+            FieldSpec(
+                key="variance_threshold",
+                description="Cumulative variance threshold for rank cutoff.",
+                constraints="number in (0.0, 1.0].",
+                default_override="0.99",
+            ),
+            FieldSpec(
+                key="align_with_direction",
+                description="Compute alignment with measured refusal direction.",
+                constraints="boolean.",
+                default_override="true",
+            ),
+        ),
+        notes=(
+            (
+                "Decomposes adapter weight pairs via SVD to report"
+                " per-layer effective rank, Frobenius norm profile,"
+                " and optional alignment with the measured direction."
+            ),
+        ),
+    ),
+    SectionSpec(
         name="api_eval",
         description=(
             "Test optimized suffixes against remote"
@@ -1806,7 +1878,7 @@ def _known_quick_functions() -> tuple[str, ...]:
 
 
 _MODE_CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("Core Pipeline", ("default", "optimize", "lora_export")),
+    ("Core Pipeline", ("default", "optimize", "lora_export", "lora_analysis")),
     ("Runtime Inspection", ("probe", "steer", "depth")),
     ("Defense", ("cast", "sic", "defend", "repbend")),
     ("Adversarial", ("softprompt", "fusion")),

@@ -55,6 +55,25 @@ def run(config_path: str | Path) -> None:
         )
         dequantize_model(model)
 
+    if config.lora_load is not None:
+        from vauban.lora import load_and_apply_adapter, load_and_merge_adapters
+
+        lora = config.lora_load
+        if lora.adapter_path is not None:
+            log(
+                f"Loading LoRA adapter from {lora.adapter_path}",
+                verbose=config.verbose,
+                elapsed=time.monotonic() - t0,
+            )
+            load_and_apply_adapter(model, lora.adapter_path)
+        elif lora.adapter_paths is not None:
+            log(
+                f"Merging {len(lora.adapter_paths)} LoRA adapters",
+                verbose=config.verbose,
+                elapsed=time.monotonic() - t0,
+            )
+            load_and_merge_adapters(model, lora.adapter_paths, lora.weights)
+
     state = RunState(
         config_path=config_path,
         config=config,

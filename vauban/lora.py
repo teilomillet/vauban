@@ -1,15 +1,16 @@
-"""LoRA adapter construction from measured directions.
+"""LoRA adapter construction, loading, and analysis.
 
 Converts the rank-1 weight update ``W' = W - alpha * d (d^T W)`` into
 LoRA matrices ``delta_W = B @ A`` where ``B = -d`` and ``A = d^T W``.
 
-Pure functions, no pipeline dependencies beyond ``cut._keys_for_layer``
-and ``cut._OUTPUT_SUFFIXES``.
+Also provides adapter loading (single or multi-adapter merge) and
+SVD-based adapter decomposition for structural analysis.
 """
 
 from __future__ import annotations
 
 import json
+import math
 from typing import TYPE_CHECKING, cast
 
 from vauban import _ops as ops
@@ -20,6 +21,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from vauban._array import Array
+    from vauban.types import LoraAnalysisResult
 
 
 # ---------------------------------------------------------------------------
@@ -97,9 +99,7 @@ def subspace_to_lora(
     lora_a = ops.matmul(basis, weight)
 
     # B = basis^T -> (d_model, k)
-    # Stack column vectors to avoid needing a transpose op
-    cols = [ops.expand_dims(basis[i], axis=1) for i in range(k)]
-    lora_b = ops.concatenate(cols, axis=1)  # (d_model, k)
+    lora_b = ops.stack([basis[i] for i in range(k)], axis=1)  # (d_model, k)
 
     if polarity == "remove":
         lora_b = -lora_b
@@ -338,7 +338,8 @@ def merge_adapters(
     """Merge multiple LoRA adapters via weighted sum (task arithmetic).
 
     Loads each adapter's safetensors file and computes the weighted
-    sum of matching keys. All adapters must have the same keys.
+    sum of matching keys. Keys present in only some adapters are
+    weighted by their respective scalar only.
 
     Args:
         adapter_paths: Paths to adapter directories. Each must contain
@@ -378,3 +379,223 @@ def _find_safetensors(adapter_dir: Path) -> Path:
             return candidate
     msg = f"No safetensors file found in {adapter_dir}"
     raise FileNotFoundError(msg)
+
+
+# ---------------------------------------------------------------------------
+# Adapter loading
+# ---------------------------------------------------------------------------
+
+
+def load_and_apply_adapter(model: object, adapter_path: str) -> None:
+    """Load a LoRA adapter and fuse into model weights.
+
+    Uses mlx-lm's ``load_adapters`` to inject LoRA layers, then fuses
+    each ``LoRALinear`` back into its parent as a plain ``Linear``.
+    Mutates the model in-place.
+
+    Args:
+        model: An mlx-lm model instance.
+        adapter_path: Path to adapter directory containing
+            ``adapters.safetensors`` and ``adapter_config.json``.
+    """
+    from mlx_lm.tuner.utils import apply_lora_layers  # type: ignore[import-untyped]
+
+    apply_lora_layers(model, adapter_path)
+    _fuse_lora_layers(model)
+
+
+def _fuse_lora_layers(model: object) -> None:
+    """Walk the model tree and fuse all LoRALinear into plain Linear."""
+    for _name, module in model.named_modules():  # type: ignore[attr-defined]
+        # Check children for LoRALinear instances
+        for child_name in list(vars(module)):
+            child = getattr(module, child_name, None)
+            if child is None:
+                continue
+            if type(child).__name__ == "LoRALinear":
+                # LoRALinear has a to_linear() method that returns fused Linear
+                fused = child.to_linear()
+                setattr(module, child_name, fused)
+
+
+def load_and_merge_adapters(
+    model: object,
+    adapter_paths: list[str],
+    weights: list[float] | None = None,
+) -> None:
+    """Merge multiple adapters via task arithmetic and apply to model.
+
+    Groups lora_a/lora_b pairs from the merged weight dict, reconstructs
+    the full-rank delta ``B @ A``, and adds it to the corresponding model
+    weight. Mutates the model in-place.
+
+    Args:
+        model: An mlx-lm model instance.
+        adapter_paths: Paths to adapter directories.
+        weights: Scalar weight for each adapter. Defaults to uniform 1.0.
+    """
+    from pathlib import Path
+
+    from vauban._forward import force_eval
+
+    path_objs = [Path(p) for p in adapter_paths]
+    if weights is None:
+        weights = [1.0] * len(path_objs)
+
+    merged = merge_adapters(path_objs, weights)
+
+    # Group lora_a / lora_b pairs
+    pairs: dict[str, dict[str, Array]] = {}
+    for key, tensor in merged.items():
+        if key.endswith(".lora_a"):
+            base = key[: -len(".lora_a")]
+            pairs.setdefault(base, {})["lora_a"] = tensor
+        elif key.endswith(".lora_b"):
+            base = key[: -len(".lora_b")]
+            pairs.setdefault(base, {})["lora_b"] = tensor
+
+    # Apply deltas to model weights
+    flat_weights = cast(
+        "dict[str, Array]",
+        dict(ops.tree_flatten(model.parameters())),  # type: ignore[attr-defined]
+    )
+
+    updates: list[tuple[str, Array]] = []
+    for base_key, ab in pairs.items():
+        lora_a = ab["lora_a"]
+        lora_b = ab["lora_b"]
+        delta = ops.matmul(lora_b, lora_a)
+
+        # Reconstruct the full weight key: add "model." prefix and ".weight" suffix
+        weight_key = f"model.{base_key}.weight"
+        if weight_key not in flat_weights:
+            # Try without model. prefix
+            weight_key = f"{base_key}.weight"
+        if weight_key in flat_weights:
+            new_w = flat_weights[weight_key] + delta
+            force_eval(new_w)
+            updates.append((weight_key, new_w))
+
+    # Apply updates via tree_unflatten pattern
+    if updates:
+        model.load_weights(updates)  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------------------
+# Adapter analysis
+# ---------------------------------------------------------------------------
+
+
+def analyze_adapter(
+    adapter_path: str,
+    variance_threshold: float = 0.99,
+    direction: Array | None = None,
+) -> LoraAnalysisResult:
+    """Decompose a LoRA adapter via SVD for structural analysis.
+
+    Per weight pair (lora_a, lora_b):
+    1. Reconstruct ``delta = B @ A``.
+    2. SVD decomposition.
+    3. Compute Frobenius norm, effective rank, variance cutoff.
+    4. Optionally compute alignment with a measured direction.
+
+    Args:
+        adapter_path: Path to adapter directory.
+        variance_threshold: Cumulative variance threshold for rank cutoff.
+        direction: Optional direction vector for alignment computation.
+
+    Returns:
+        Full analysis result with per-layer and aggregate metrics.
+    """
+    from pathlib import Path
+
+    from vauban._forward import force_eval, svd_stable
+    from vauban.subspace import effective_rank, explained_variance_ratio
+    from vauban.types import LoraAnalysisResult as _Result
+    from vauban.types import LoraLayerAnalysis as _LayerResult
+
+    adapter_dir = Path(adapter_path)
+    st_file = _find_safetensors(adapter_dir)
+    tensors = cast("dict[str, Array]", ops.load(str(st_file)))
+
+    # Group lora_a / lora_b pairs
+    pairs: dict[str, dict[str, Array]] = {}
+    for key, tensor in tensors.items():
+        if key.endswith(".lora_a") or key.endswith(".lora_A.weight"):
+            base = key.replace(".lora_a", "").replace(".lora_A.weight", "")
+            pairs.setdefault(base, {})["lora_a"] = tensor
+        elif key.endswith(".lora_b") or key.endswith(".lora_B.weight"):
+            base = key.replace(".lora_b", "").replace(".lora_B.weight", "")
+            pairs.setdefault(base, {})["lora_b"] = tensor
+
+    layers: list[_LayerResult] = []
+    total_params = 0
+    norm_profile: list[float] = []
+
+    for base_key in sorted(pairs):
+        ab = pairs[base_key]
+        if "lora_a" not in ab or "lora_b" not in ab:
+            continue
+
+        lora_a = ab["lora_a"]
+        lora_b = ab["lora_b"]
+        total_params += lora_a.shape[0] * lora_a.shape[1]
+        total_params += lora_b.shape[0] * lora_b.shape[1]
+
+        # Reconstruct delta
+        delta = ops.matmul(lora_b, lora_a)
+        force_eval(delta)
+
+        # SVD
+        u, s, _vt = svd_stable(delta)
+        force_eval(u, s)
+
+        sv_list = [float(v) for v in s.tolist()]
+
+        # Frobenius norm from singular values
+        frob = math.sqrt(sum(v * v for v in sv_list))
+
+        # Effective rank
+        eff_rank = effective_rank(sv_list) if sv_list else 1.0
+
+        # Variance cutoff
+        ratios = explained_variance_ratio(sv_list)
+        cumsum = 0.0
+        cutoff = len(sv_list)
+        for i, r in enumerate(ratios):
+            cumsum += r
+            if cumsum >= variance_threshold:
+                cutoff = i + 1
+                break
+
+        # Direction alignment
+        alignment: float | None = None
+        if direction is not None and u.shape[0] == direction.shape[0]:
+            # cos(U[:,0], direction)
+            u0 = u[:, 0]
+            dot = float(ops.sum(u0 * direction))
+            alignment = abs(dot)
+
+        layers.append(_LayerResult(
+            key=base_key,
+            frobenius_norm=frob,
+            singular_values=sv_list,
+            effective_rank=eff_rank,
+            variance_cutoff=cutoff,
+            direction_alignment=alignment,
+        ))
+        norm_profile.append(frob)
+
+    mean_eff_rank = (
+        sum(layer.effective_rank for layer in layers) / len(layers)
+        if layers
+        else 0.0
+    )
+
+    return _Result(
+        adapter_path=adapter_path,
+        layers=layers,
+        total_params=total_params,
+        mean_effective_rank=mean_eff_rank,
+        norm_profile=norm_profile,
+    )

@@ -2,18 +2,14 @@
 
 from vauban import _ops as ops
 from vauban._array import Array
-from vauban._forward import force_eval, get_transformer
-from vauban.softprompt._encoding import _pre_encode_prompts
-from vauban.softprompt._gcg_objective import (
-    _build_gcg_shared_state,
-    _compute_average_objective_loss,
-)
+from vauban._forward import force_eval
+from vauban.softprompt._attack_init import prepare_attack
+from vauban.softprompt._gcg_objective import _compute_average_objective_loss
 from vauban.softprompt._generation import _evaluate_attack
 from vauban.softprompt._runtime import (
     _compute_accessibility_score,
     _compute_embed_regularization,
     _compute_learning_rate,
-    _encode_targets,
 )
 from vauban.softprompt._search import (
     _compute_per_prompt_losses,
@@ -48,9 +44,19 @@ def _continuous_attack(
             these are used instead of random initialization, with small
             Gaussian perturbation scaled by ``config.init_scale``.
     """
-    transformer = get_transformer(model)
-    d_model = transformer.embed_tokens.weight.shape[1]
-    embed_matrix = transformer.embed_tokens.weight
+    init = prepare_attack(
+        model, tokenizer, prompts, config, direction,
+        ref_model=ref_model,
+        all_prompt_ids_override=all_prompt_ids_override,
+        perplexity_weight_override=0.0,
+    )
+    d_model = init.d_model
+    embed_matrix = init.embed_matrix
+    target_ids = init.target_ids
+    all_prompt_ids = init.all_prompt_ids
+    objective_state = init.objective_state
+    direction_layers_set = objective_state.direction_layers
+    refusal_ids = objective_state.refusal_ids
 
     if init_embeddings is not None:
         # Warm-start: perturb previous embeddings slightly
@@ -61,32 +67,6 @@ def _continuous_attack(
             ops.random.normal((1, config.n_tokens, d_model)) * config.init_scale
         )
     force_eval(soft_embeds)
-
-    target_ids = _encode_targets(
-        tokenizer, config.target_prefixes, config.target_repeat_count,
-    )
-    force_eval(target_ids)
-
-    # Pre-encode all prompts (or use override with history baked in)
-    if all_prompt_ids_override is not None:
-        all_prompt_ids = all_prompt_ids_override
-    else:
-        effective_prompts = prompts if prompts else ["Hello"]
-        all_prompt_ids = _pre_encode_prompts(
-            tokenizer, effective_prompts, config.system_prompt,
-        )
-
-    objective_state = _build_gcg_shared_state(
-        model,
-        tokenizer,
-        config,
-        target_ids,
-        direction,
-        ref_model=ref_model,
-        perplexity_weight_override=0.0,
-    )
-    direction_layers_set = objective_state.direction_layers
-    refusal_ids = objective_state.refusal_ids
 
     # Adam state: manual tracking since we're optimizing a bare array
     m = ops.zeros_like(soft_embeds)

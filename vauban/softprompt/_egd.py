@@ -4,21 +4,16 @@ import random
 
 from vauban import _ops as ops
 from vauban._array import Array
-from vauban._forward import force_eval, get_transformer
+from vauban._forward import force_eval
+from vauban.softprompt._attack_init import prepare_attack
 from vauban.softprompt._constraints import _build_vocab_mask
-from vauban.softprompt._encoding import _pre_encode_prompts
-from vauban.softprompt._gcg_objective import (
-    _build_gcg_shared_state,
-    _compute_average_objective_loss,
-)
+from vauban.softprompt._gcg_objective import _compute_average_objective_loss
 from vauban.softprompt._generation import _evaluate_attack
 from vauban.softprompt._runtime import (
     _build_peaked_probs,
     _compute_accessibility_score,
     _compute_learning_rate,
     _compute_temperature,
-    _encode_targets,
-    _prepare_transfer_data,
     _resolve_init_ids,
     _score_transfer_loss,
 )
@@ -67,38 +62,20 @@ def _egd_attack(
         config: Soft prompt configuration.
         direction: Optional refusal direction for direction-guided mode.
     """
-    transformer = get_transformer(model)
-    vocab_size = transformer.embed_tokens.weight.shape[0]
-    embed_matrix = transformer.embed_tokens.weight
-
-    target_ids = _encode_targets(
-        tokenizer, config.target_prefixes, config.target_repeat_count,
-    )
-    force_eval(target_ids)
-
-    # Pre-encode all prompts (or use override with history baked in)
-    if all_prompt_ids_override is not None:
-        all_prompt_ids = all_prompt_ids_override
-    else:
-        effective_prompts = prompts if prompts else ["Hello"]
-        all_prompt_ids = _pre_encode_prompts(
-            tokenizer, effective_prompts, config.system_prompt,
-        )
-
-    # Pre-encode transfer model data for post-optimization scoring
-    transfer_data = _prepare_transfer_data(
-        transfer_models, config, prompts,
-    )
-
-    objective_state = _build_gcg_shared_state(
-        model,
-        tokenizer,
-        config,
-        target_ids,
-        direction,
+    init = prepare_attack(
+        model, tokenizer, prompts, config, direction,
         ref_model=ref_model,
+        all_prompt_ids_override=all_prompt_ids_override,
+        transfer_models=transfer_models,
         infix_map=infix_map,
     )
+    transformer = init.transformer
+    vocab_size = init.vocab_size
+    embed_matrix = init.embed_matrix
+    target_ids = init.target_ids
+    all_prompt_ids = init.all_prompt_ids
+    objective_state = init.objective_state
+    transfer_data = init.transfer_data
     direction_layers_set = objective_state.direction_layers
     refusal_ids = objective_state.refusal_ids
 

@@ -405,6 +405,114 @@ class TestMergeAdapters:
 
 
 # ---------------------------------------------------------------------------
+# Biprojected / ortho direction tests
+# ---------------------------------------------------------------------------
+
+
+class TestBiprojectedDirection:
+    """Tests for biprojected orthogonalization in LoRA export context."""
+
+    def test_orthogonalized_direction_is_orthogonal(self) -> None:
+        """Gram-Schmidt should produce a direction orthogonal to harmless."""
+        from vauban.cut import _biprojected_direction
+
+        refusal = ops.array([1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        refusal = refusal / ops.linalg.norm(refusal)
+        harmless = ops.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        harmless = harmless / ops.linalg.norm(harmless)
+
+        ortho = _biprojected_direction(refusal, harmless)
+
+        # Result should be orthogonal to harmless
+        dot = float(ops.sum(ortho * harmless))
+        assert abs(dot) < 1e-5
+
+        # Result should be unit-length
+        norm = float(ops.linalg.norm(ortho))
+        assert abs(norm - 1.0) < 1e-5
+
+    def test_orthogonalized_lora_reconstruction(self) -> None:
+        """LoRA from orthogonalized direction should match orthogonalized cut."""
+        from vauban.cut import _biprojected_direction, _orthogonalize_matrix
+        from vauban.lora import direction_to_lora
+
+        refusal = ops.array([1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        refusal = refusal / ops.linalg.norm(refusal)
+        harmless = ops.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        harmless = harmless / ops.linalg.norm(harmless)
+
+        ortho = _biprojected_direction(refusal, harmless)
+        w = _make_weight()
+        alpha = 1.0
+
+        # Cut result with orthogonalized direction
+        w_cut = _orthogonalize_matrix(w, ortho, alpha)
+
+        # LoRA reconstruction with orthogonalized direction
+        lora_a, lora_b = direction_to_lora(ortho, w, polarity="remove")
+        delta_w = ops.matmul(lora_b, lora_a) * (alpha / 1)
+        w_lora = w + delta_w
+
+        assert ops.allclose(w_lora, w_cut, atol=1e-5)
+
+
+class TestNormPreserveWarning:
+    """Test that norm_preserve logs a warning via the real mode runner."""
+
+    def test_norm_preserve_warning(self, tmp_path: Path) -> None:
+        """norm_preserve=True should print a warning to stderr."""
+        from io import StringIO
+        from unittest.mock import patch
+
+        from tests.conftest import (
+            D_MODEL,
+            NUM_HEADS,
+            NUM_LAYERS,
+            VOCAB_SIZE,
+            MockCausalLM,
+            MockTokenizer,
+            make_direction_result,
+            make_pipeline_config,
+        )
+        from vauban._pipeline._context import EarlyModeContext
+        from vauban._pipeline._mode_lora_export import _run_lora_export_mode
+        from vauban.types import CutConfig, LoraExportConfig
+
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        ops.eval(model.parameters())
+        dr = make_direction_result(d_model=D_MODEL)
+        config = make_pipeline_config(
+            tmp_path,
+            cut=CutConfig(norm_preserve=True),
+            lora_export=LoraExportConfig(),
+            verbose=False,
+        )
+        ctx = EarlyModeContext(
+            config_path="test.toml",
+            config=config,
+            model=model,
+            tokenizer=MockTokenizer(VOCAB_SIZE),
+            t0=0.0,
+            direction_result=dr,
+        )
+
+        captured = StringIO()
+        with (
+            patch("sys.stderr", captured),
+            patch(
+                "vauban._pipeline._mode_lora_export.finish_mode_run",
+            ),
+            patch(
+                "vauban._pipeline._mode_lora_export.write_mode_report",
+                return_value=tmp_path / "report.json",
+            ),
+        ):
+            _run_lora_export_mode(ctx)
+
+        assert "norm_preserve is incompatible with LoRA export" in captured.getvalue()
+
+
+# ---------------------------------------------------------------------------
 # Result dataclass
 # ---------------------------------------------------------------------------
 

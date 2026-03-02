@@ -19,16 +19,10 @@ from vauban import _ops as ops
 from vauban._forward import force_eval, get_transformer
 from vauban.softprompt._amplecgc_collect import collect_gcg_suffixes
 from vauban.softprompt._amplecgc_train import train_amplecgc_generator
-from vauban.softprompt._encoding import _pre_encode_prompts
-from vauban.softprompt._gcg_objective import (
-    _build_gcg_shared_state,
-    _evaluate_candidate_loss,
-)
+from vauban.softprompt._attack_init import prepare_attack
+from vauban.softprompt._gcg_objective import _evaluate_candidate_loss
 from vauban.softprompt._generation import _evaluate_attack
-from vauban.softprompt._runtime import (
-    _compute_accessibility_score,
-    _encode_targets,
-)
+from vauban.softprompt._runtime import _compute_accessibility_score
 from vauban.softprompt._search import _compute_per_prompt_losses
 from vauban.types import (
     CausalLM,
@@ -98,41 +92,31 @@ def _amplecgc_attack(
             early_stopped=False,
         )
 
-    vocab_size = transformer.embed_tokens.weight.shape[0]
-
     # Phase 2: Train generator MLP
+    init = prepare_attack(
+        model, tokenizer, prompts, config, direction,
+        ref_model=ref_model,
+        all_prompt_ids_override=all_prompt_ids_override,
+        infix_map=infix_map,
+    )
     generator = train_amplecgc_generator(
         collected,
         embed_dim=embed_dim,
         n_tokens=config.n_tokens,
-        vocab_size=vocab_size,
+        vocab_size=init.vocab_size,
         hidden_dim=config.amplecgc_hidden_dim,
         train_steps=config.amplecgc_train_steps,
         learning_rate=config.amplecgc_train_lr,
     )
 
     # Phase 3: Generate candidates and select best
-    target_ids = _encode_targets(
-        tokenizer, config.target_prefixes, config.target_repeat_count,
-    )
-    force_eval(target_ids)
-
-    if all_prompt_ids_override is not None:
-        all_prompt_ids = all_prompt_ids_override
-    else:
-        effective_prompts = prompts if prompts else ["Hello"]
-        all_prompt_ids = _pre_encode_prompts(
-            tokenizer, effective_prompts, config.system_prompt,
-        )
-
-    objective_state = _build_gcg_shared_state(
-        model, tokenizer, config, target_ids, direction,
-        ref_model=ref_model, infix_map=infix_map,
-    )
+    target_ids = init.target_ids
+    all_prompt_ids = init.all_prompt_ids
+    objective_state = init.objective_state
 
     # Generate candidate prompt embedding (mean of first prompt)
     first_prompt_ids = all_prompt_ids[0]
-    prompt_embeds = transformer.embed_tokens(first_prompt_ids[None, :])
+    prompt_embeds = init.transformer.embed_tokens(first_prompt_ids[None, :])
     force_eval(prompt_embeds)
     mean_prompt_embed = ops.mean(prompt_embeds[0], axis=0)
     force_eval(mean_prompt_embed)
@@ -163,7 +147,7 @@ def _amplecgc_attack(
 
     # Build final embeddings
     final_token_array = ops.array(best_ids)[None, :]
-    final_embeds = transformer.embed_tokens(final_token_array)
+    final_embeds = init.transformer.embed_tokens(final_token_array)
     force_eval(final_embeds)
 
     # Compute per-prompt losses

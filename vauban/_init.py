@@ -140,6 +140,13 @@ separation_coeff = 1.0
 format = "mlx"       # "mlx" or "peft"
 polarity = "remove"  # "remove" or "add"
 """,
+    "lora_analysis": """\
+
+[lora_analysis]
+adapter_path = "output/lora_adapter"
+# variance_threshold = 0.99
+# align_with_direction = true
+""",
     "scan": """\
 
 [scan]
@@ -201,6 +208,7 @@ MODE_DESCRIPTIONS: dict[str, str] = {
     "fusion": "Latent fusion jailbreak via hidden state blending.",
     "repbend": "RepBend contrastive fine-tuning for safety hardening.",
     "lora_export": "Export measured direction as a LoRA adapter.",
+    "lora_analysis": "Decompose LoRA adapters via SVD for structural analysis.",
     "scan": "Injection detection via per-token direction projection.",
     "api_eval": "Test optimized tokens against remote API endpoints.",
 }

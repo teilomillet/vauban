@@ -101,6 +101,11 @@ def _has_lora_export(config: PipelineConfig) -> bool:
     return config.lora_export is not None
 
 
+def _has_lora_analysis(config: PipelineConfig) -> bool:
+    """Return whether [lora_analysis] mode is active."""
+    return config.lora_analysis is not None
+
+
 def _has_standalone_api_eval(config: PipelineConfig) -> bool:
     """Return whether standalone [api_eval] mode is active.
 
@@ -181,6 +186,13 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "after_measure",
         True,
         _has_lora_export,
+    ),
+    EarlyModeSpec(
+        "[lora_analysis]",
+        "lora_analysis",
+        "after_measure",
+        False,
+        _has_lora_analysis,
     ),
 )
 
