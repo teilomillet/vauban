@@ -51,6 +51,7 @@ def test_commands_section_contains_format_flag() -> None:
     assert "--format" in output
     assert "--threshold" in output
     assert "CI gate" in output
+    assert "vauban tree" in output
 
 
 def test_quick_section_contains_compare_scan() -> None:
@@ -92,3 +93,16 @@ def test_main_typo_command_suggests_valid_command(
     captured = capsys.readouterr()
     assert "unknown command 'men'" in captured.err
     assert "Did you mean 'man'" in captured.err
+
+
+def test_main_tree_help(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["vauban", "tree", "--help"])
+    with pytest.raises(SystemExit) as exc:
+        main()
+    assert exc.value.code == 0
+    captured = capsys.readouterr()
+    assert "Visualize experiment tech tree from TOML configs" in captured.out
+    assert "--format" in captured.out

@@ -34,6 +34,7 @@ class LossAuxConfig:
     cast_threshold: float
     perplexity_weight: float
     suffix_token_ids: Array | None
+    svf_boundary: object | None = None  # SVFBoundary, kept as object to avoid circular import
 
 
 @dataclass(frozen=True, slots=True)
@@ -264,20 +265,27 @@ def _run_transformer_with_penalties(
     for layer_idx, layer in enumerate(transformer.layers):
         h = layer(h, mask)
         if (
-            aux_config.direction is not None
-            and aux_config.direction_weight > 0.0
+            aux_config.direction_weight > 0.0
             and aux_config.direction_mode != "last"
             and (
                 aux_config.direction_layers is None
                 or layer_idx in aux_config.direction_layers
             )
         ):
-            if aux_config.direction_mode == "raid":
-                proj = ops.sum(h[:, prompt_last_pos, :] * aux_config.direction)
-            else:
-                proj = ops.mean(ops.sum(h * aux_config.direction, axis=-1))
-            penalties.direction_penalty = penalties.direction_penalty + proj
-            penalties.n_penalty_layers += 1
+            if aux_config.svf_boundary is not None:
+                # SVF: context-dependent boundary score replaces static projection
+                boundary = aux_config.svf_boundary
+                h_pos = h[:, prompt_last_pos, :]
+                proj = boundary.forward(h_pos[0], layer_idx)  # type: ignore[union-attr]
+                penalties.direction_penalty = penalties.direction_penalty + proj
+                penalties.n_penalty_layers += 1
+            elif aux_config.direction is not None:
+                if aux_config.direction_mode == "raid":
+                    proj = ops.sum(h[:, prompt_last_pos, :] * aux_config.direction)
+                else:
+                    proj = ops.mean(ops.sum(h * aux_config.direction, axis=-1))
+                penalties.direction_penalty = penalties.direction_penalty + proj
+                penalties.n_penalty_layers += 1
         if aux_config.defense_aware_weight > 0.0:
             penalties.defense_penalty = penalties.defense_penalty + (
                 _compute_defense_aware_penalty(
@@ -317,10 +325,19 @@ def _apply_shared_aux_terms(
     direction_sign: float = 1.0,
 ) -> Array:
     """Apply shared direction, defense, EOS, KL, and perplexity terms."""
-    if aux_config.direction is not None and aux_config.direction_weight > 0.0:
+    if aux_config.direction_weight > 0.0 and (
+        aux_config.direction is not None or aux_config.svf_boundary is not None
+    ):
         if aux_config.direction_mode == "last":
             last_hidden = trace.hidden_states[:, trace.prompt_last_pos, :]
-            proj = ops.sum(last_hidden * aux_config.direction)
+            if aux_config.svf_boundary is not None:
+                # SVF: use boundary score at the last layer as direction signal
+                n_layers = len(model.model.layers)
+                proj = aux_config.svf_boundary.forward(  # type: ignore[union-attr]
+                    last_hidden[0], n_layers - 1,
+                )
+            else:
+                proj = ops.sum(last_hidden * aux_config.direction)  # type: ignore[arg-type]
             loss = loss + direction_sign * aux_config.direction_weight * proj
         elif trace.n_penalty_layers > 0:
             loss = loss + direction_sign * aux_config.direction_weight * (

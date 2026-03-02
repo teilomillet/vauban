@@ -1,7 +1,11 @@
 """Tests for vauban.tree: experiment tech tree discovery and rendering."""
 
+import sys
 from pathlib import Path
 
+import pytest
+
+from vauban.__main__ import main as cli_main
 from vauban.tree import (
     ExperimentNode,
     _sanitize_mermaid_id,
@@ -271,3 +275,24 @@ class TestDiscoveryWarningsInTree:
         )
         assert "Warnings:" in text
         assert "bad_meta.toml" in text
+
+
+def test_tree_subcommand_renders_text_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "baseline.toml").write_text(
+        '[meta]\n'
+        'title = "Baseline"\n'
+        'status = "baseline"\n'
+        '[model]\n'
+        'path = "test"\n',
+    )
+
+    monkeypatch.setattr(sys, "argv", ["vauban", "tree", str(tmp_path)])
+    with pytest.raises(SystemExit) as exc:
+        cli_main()
+    assert exc.value.code == 0
+    captured = capsys.readouterr()
+    assert "[BASE] Baseline" in captured.out

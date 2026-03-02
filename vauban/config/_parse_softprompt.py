@@ -91,6 +91,20 @@ def _parse_softprompt(
         )
         raise ValueError(msg)
 
+    if loss.largo_reflection_rounds > 0 and gan.gan_rounds > 0:
+        msg = (
+            "[softprompt].largo_reflection_rounds and gan_rounds are"
+            " mutually exclusive — use one or the other"
+        )
+        raise ValueError(msg)
+
+    if loss.largo_reflection_rounds > 0 and core.mode != "continuous":
+        msg = (
+            "[softprompt].largo_reflection_rounds requires mode"
+            " 'continuous' (continuous embedding optimization)"
+        )
+        raise ValueError(msg)
+
     alpha_tiers = defense.defense_eval_alpha_tiers
     if alpha_tiers is not None:
         for i in range(1, len(alpha_tiers)):
@@ -167,4 +181,11 @@ def _parse_softprompt(
         token_position=context.token_position,
         paraphrase_strategies=context.paraphrase_strategies,
         externality_target=loss.externality_target,
+        cold_temperature=loss.cold_temperature,
+        cold_noise_scale=loss.cold_noise_scale,
+        svf_boundary_path=loss.svf_boundary_path,
+        largo_reflection_rounds=loss.largo_reflection_rounds,
+        largo_max_reflection_tokens=loss.largo_max_reflection_tokens,
+        largo_objective=loss.largo_objective,
+        largo_embed_warmstart=loss.largo_embed_warmstart,
     )

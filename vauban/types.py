@@ -634,6 +634,16 @@ class SoftPromptConfig:
     paraphrase_strategies: list[str] = field(default_factory=list)
     # --- Externality loss mode ---
     externality_target: str | None = None  # path to direction for externality loss
+    # --- COLD-Attack (Langevin dynamics) ---
+    cold_temperature: float = 0.5  # softmax temperature for logit→prob conversion
+    cold_noise_scale: float = 1.0  # Langevin noise scaling factor
+    # --- SVF boundary for context-dependent directions ---
+    svf_boundary_path: str | None = None  # path to trained SVF boundary weights
+    # --- LARGO (Latent Adversarial Reflection) ---
+    largo_reflection_rounds: int = 0  # 0 = disabled, >0 = reflection loop
+    largo_max_reflection_tokens: int = 200  # max tokens per reflection generation
+    largo_objective: str = "targeted"  # objective for reflection satisfaction check
+    largo_embed_warmstart: bool = True  # warm-start embeddings between rounds
 
 
 @dataclass(frozen=True, slots=True)

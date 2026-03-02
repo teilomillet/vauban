@@ -6,6 +6,7 @@ Usage:
     vauban schema [--output FILE]
     vauban init [--mode MODE] [--model PATH] [--output FILE] [--force]
     vauban diff [--format text|markdown] [--threshold FLOAT] <dir_a> <dir_b>
+    vauban tree [directory] [--format text|mermaid] [--status STATUS] [--tag TAG]
     vauban man [topic]
 """
 
@@ -19,6 +20,7 @@ Usage: vauban [--validate] <config.toml>
        vauban schema [--output FILE]
        vauban init [--mode MODE] [--model PATH] [--output FILE] [--force]
        vauban diff [--format text|markdown] [--threshold FLOAT] <dir_a> <dir_b>
+       vauban tree [directory] [--format text|mermaid] [--status STATUS] [--tag TAG]
        vauban man [topic]
 
 Run the full measure -> cut -> evaluate pipeline from a TOML config file.
@@ -29,6 +31,7 @@ Commands:
   init            Generate a starter TOML config file.
   diff            Compare JSON reports from two output directories.
                   Use --threshold as a CI gate (exit 1 on large deltas).
+  tree            Render the experiment lineage tree from TOML configs.
   man             Show built-in manual (topics: quickstart, commands,
                   validate, playbook, quick, examples, print, modes, formats,
                   model, data, measure, cut, eval, surface, detect, optimize,
@@ -50,7 +53,6 @@ _DIFF_USAGE = (
 )
 
 _SCHEMA_USAGE = "Usage: vauban schema [--output FILE]\n"
-
 _DIFF_HELP = (
     "Usage: vauban diff [--format text|markdown]"
     " [--threshold FLOAT] <dir_a> <dir_b>\n"
@@ -64,7 +66,7 @@ _DIFF_HELP = (
 
 def _command_suggestion(token: str) -> str | None:
     """Return a suggested command for typo'd subcommands."""
-    candidates = ("man", "init", "diff", "schema", "validate")
+    candidates = ("man", "init", "diff", "schema", "tree", "validate")
     aliases = {"validate": "--validate"}
     matches = difflib.get_close_matches(token, candidates, n=1, cutoff=0.6)
     if not matches:
@@ -231,6 +233,17 @@ def _run_schema(args: list[str]) -> None:
     raise SystemExit(0)
 
 
+def _run_tree(args: list[str]) -> None:
+    """Handle ``vauban tree`` by delegating to the tree viewer CLI."""
+    from vauban.tree import main as tree_main
+
+    try:
+        tree_main(args)
+    except SystemExit:
+        raise
+    raise SystemExit(0)
+
+
 def _set_backend_from_config(path: str) -> None:
     """Read backend from TOML and set VAUBAN_BACKEND env var.
 
@@ -296,6 +309,10 @@ def main() -> None:
 
     if args[0] == "schema":
         _run_schema(args[1:])
+        raise SystemExit(0)
+
+    if args[0] == "tree":
+        _run_tree(args[1:])
         raise SystemExit(0)
 
     known_prefixes = {"--validate", "--help", "-h"}

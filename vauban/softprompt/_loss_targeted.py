@@ -42,6 +42,7 @@ def _compute_loss(
     suffix_token_ids: Array | None = None,
     token_position: str = "prefix",
     infix_split: int | None = None,
+    svf_boundary: object | None = None,
 ) -> Array:
     """Compute the targeted teacher-forced loss."""
     placement = LossPlacementConfig(
@@ -66,6 +67,7 @@ def _compute_loss(
         cast_threshold=cast_threshold,
         perplexity_weight=perplexity_weight,
         suffix_token_ids=suffix_token_ids,
+        svf_boundary=svf_boundary,
     )
     hidden_states, mask, n_prompt = _assemble_targeted_sequence(
         model.model,

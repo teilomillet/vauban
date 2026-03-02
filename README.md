@@ -2,243 +2,278 @@
 
 An MLX-native toolkit for understanding and reshaping how language models behave on Apple Silicon.
 
-Named after [Sébastien Le Prestre de Vauban](https://en.wikipedia.org/wiki/Vauban) — the military engineer who mastered both siege and fortification. Vauban works both sides: break a model's safety alignment, or harden it against attacks.
+Named after [Sébastien Le Prestre de Vauban](https://en.wikipedia.org/wiki/Vauban), the military engineer who worked both siege and fortification. Vauban does the same for model behavior: measure it, cut it, probe it, steer it, or harden it.
 
 ## What it does
 
-Refusal in language models is mediated by a single direction in activation space ([Arditi et al., 2024](https://arxiv.org/abs/2406.11717)). Vauban operates directly on this geometry:
+Vauban is a TOML-first CLI for workflows built around activation-space geometry:
 
-- **Measure** a behavioral direction from the model's activations
-- **Cut** it from the weights (abliteration)
-- **Probe** per-layer projections to see what the model encodes
-- **Steer** generation at runtime by modifying activations mid-forward-pass
-- **CAST** runtime generation with conditional activation steering rules
-- **Map** the full refusal surface across diverse prompts
-- **Optimize** cut parameters automatically (Optuna search)
-- **Soft-prompt** — optimize learnable prefixes in embedding space (GCG, continuous, EGD) with perplexity regularization, token position control, prompt paraphrasing, and externality monitoring
-- **Sanitize** inputs iteratively before they reach the model (SIC)
-- **Detect** whether a model has been hardened against abliteration
-- **Defend** — compose scan, SIC, policy, and intent layers into a unified defense stack
-- **Environment** — agent simulation harness for indirect prompt injection testing
-- **SVF** — train steering vector field boundary MLPs for context-dependent steering
-- **Compose-optimize** — Bayesian optimization of Steer2Adapt composition weights
-- **GAN loop** — iterative attack-defense with escalation and multi-turn threading
-- **API eval** — test optimized suffixes against remote endpoints
-- **Track** experiments with metadata and tech tree lineage
+- measure behavioral directions from model activations
+- cut or sparsify those directions in weights
+- probe and steer models at runtime
+- map refusal surfaces before and after intervention
+- run defense, sanitization, optimization, and attack loops
 
-Everything runs natively on Apple Silicon via [MLX](https://github.com/ml-explore/mlx) — no CUDA, no Docker, no hooks. All configuration lives in TOML files.
+The primary interface is not a pile of subcommands. It is:
+
+```bash
+vauban <config.toml>
+```
+
+All pipeline behavior lives in the TOML file.
 
 ## Requirements
 
-- Apple Silicon Mac (M1 or later)
-- Python >= 3.12
-- [uv](https://docs.astral.sh/uv/) package manager
+- Apple Silicon Mac
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/)
 
 ## Install
 
-### Use from PyPI (recommended)
+Install the released CLI:
 
 ```bash
 uv tool install vauban
+```
+
+If your shell cannot find `vauban`, update your shell config once:
+
+```bash
 uv tool update-shell
 ```
 
-Then open a new shell and run:
+Then open a new shell and check the command:
 
 ```bash
 vauban --help
-```
-
-### Install from source (development)
-
-```bash
-git clone https://github.com/teilomillet/vauban.git
-cd vauban
-uv tool install --editable .
-```
-
-## Quick start
-
-**1. Open the built-in manual (start here):**
-
-```bash
 vauban man quickstart
 ```
 
-**2. Generate a starter config (`run.toml`):**
+For development from this repo:
 
 ```bash
-vauban init --mode default --output run.toml
+uv tool install --editable .
 ```
 
-This writes:
+## Quick Start
 
-```toml
-[model]
-path = "mlx-community/Llama-3.2-3B-Instruct-4bit"
-
-[data]
-harmful = "default"
-harmless = "default"
-```
-
-`path` is a HuggingFace model ID — it downloads automatically on first run. `"default"` uses the bundled prompt sets (128 harmful + 128 harmless).
-
-**3. Validate** (recommended):
-
-```bash
-vauban --validate run.toml
-```
-
-Checks types, ranges, file paths, and mode conflicts — without loading any model.
-It also validates JSONL schemas (`prompt`/`label`/`category`) and prints
-actionable `fix:` hints for ambiguous or broken configs.
-
-**4. Run:**
-
-```bash
-vauban run.toml
-```
-
-Output lands in `output/` — a complete model directory you can load directly:
-
-```python
-import mlx_lm
-model, tok = mlx_lm.load("output")
-```
-
-## Minimal TOML example
-
-Copy this into `run.toml`:
-
-```toml
-[model]
-path = "mlx-community/Llama-3.2-3B-Instruct-4bit"
-
-[data]
-harmful = "default"
-harmless = "default"
-```
-
-Then run:
-
-```bash
-vauban --validate run.toml
-vauban run.toml
-```
-
-## Most useful commands
-
-Use these before touching Python code:
+Start with the built-in manual:
 
 ```bash
 vauban man
 vauban man quickstart
 vauban man commands
-vauban man playbook
-vauban man print
 ```
 
-The manual is generated from typed config dataclasses plus parser constraints,
-so defaults and field types stay in sync with code.
+Scaffold a starter config:
 
-Config scaffolding:
+```bash
+vauban init --mode default --output run.toml
+```
+
+The verified scaffolded modes are:
+
+```text
+cast, circuit, default, depth, detect, features, optimize, probe, sic, softprompt, steer, surface
+```
+
+Validate before a real run:
+
+```bash
+vauban --validate run.toml
+```
+
+Then run the pipeline:
+
+```bash
+vauban run.toml
+```
+
+By default, output goes to `output/` relative to the TOML file.
+
+## Minimal TOML
+
+This is the minimal config the code accepts for the default pipeline:
+
+```toml
+[model]
+path = "mlx-community/Llama-3.2-3B-Instruct-4bit"
+
+[data]
+harmful = "default"
+harmless = "default"
+```
+
+`[model].path` is required.
+
+`[data].harmful` and `[data].harmless` are required for most runs. `"default"` uses Vauban's bundled prompt sets.
+
+You can also choose the output directory explicitly:
+
+```toml
+[output]
+dir = "runs/baseline"
+```
+
+## Experiment Tech Tree
+
+Vauban has built-in experiment lineage tracking through an optional `[meta]` section. This metadata does not change pipeline execution. It exists so you can organize runs as a tech tree.
+
+Minimal example:
+
+```toml
+[meta]
+id = "cut-alpha-1"
+title = "Baseline cut, alpha 1.0"
+status = "baseline"
+parents = ["measure-v1"]
+tags = ["cut", "baseline"]
+date = 2026-03-02
+notes = "First stable reference run."
+```
+
+Verified status values are:
+
+```text
+archived, baseline, dead_end, promising, superseded, wip
+```
+
+If `[meta].id` is omitted, Vauban uses the TOML filename stem.
+
+Render the tree from a directory of TOML configs:
+
+```bash
+vauban tree experiments/
+vauban tree experiments/ --format mermaid
+vauban tree experiments/ --status promising
+vauban tree experiments/ --tag gcg
+```
+
+Each run also appends an `experiment_log.jsonl` file inside the configured output directory with the resolved config path, pipeline mode, report files, metrics, and selected `[meta]` fields.
+
+## How TOML Drives Vauban
+
+`vauban <config.toml>` loads one TOML file and decides what to do from the sections you include.
+
+The default path is:
+
+1. measure
+2. cut
+3. export
+
+You extend that run by adding more sections. Common examples:
+
+- `[eval]` adds post-cut evaluation reports.
+- `[surface]` adds before/after refusal-surface mapping.
+- `[detect]` adds hardening detection during measurement.
+- some sections switch Vauban into dedicated mode-specific runs instead of the default pipeline.
+
+Mode precedence is not trivial and changes with the code, so rely on the generated manual instead of memorizing it:
+
+```bash
+vauban man modes
+```
+
+For field-level reference, use:
+
+```bash
+vauban man model
+vauban man data
+vauban man measure
+vauban man cut
+vauban man eval
+vauban man surface
+vauban man output
+```
+
+## Commands You Will Actually Use
+
+Inspect the manual:
+
+```bash
+vauban man
+vauban man quickstart
+vauban man commands
+vauban man formats
+vauban man output
+```
+
+Scaffold configs:
 
 ```bash
 vauban init --help
+vauban init --mode default --output run.toml
 vauban init --mode probe --output probe.toml
 ```
 
-Report comparison:
+Validate config and prompt files without loading model weights:
 
 ```bash
-vauban diff run_a/output run_b/output
-vauban diff --format markdown run_a/output run_b/output
-vauban diff --threshold 0.05 run_a/output run_b/output
+vauban --validate run.toml
 ```
 
-`--threshold` is a CI gate: it exits with code `1` if any metric delta exceeds the threshold.
-
-Experiment tree viewer:
+Export the current JSON Schema for editor tooling:
 
 ```bash
-python -m vauban.tree experiments/
+vauban schema
+vauban schema --output vauban.schema.json
 ```
 
-## How the default pipeline works
+Compare two run directories:
 
-1. **Measure** — runs both prompt sets through the model, captures per-layer activations at the last token position, computes the difference-in-means, and picks the layer with the highest separation. Output: a refusal direction vector.
-2. **Cut** — removes the direction from each layer's weight matrices via rank-1 projection: `W = W - alpha * (W @ d) * d`.
-3. **Export** — writes modified weights + tokenizer + config as a loadable model directory.
-
-Add `[eval]` for post-cut evaluation (refusal rate, perplexity, KL divergence) and `[surface]` for full refusal landscape mapping before and after the cut.
-
-## Pipeline modes
-
-The TOML sections you include determine what vauban does. The default is measure-cut-export, but specialized sections activate different pipelines:
-
-| Section | What it does | Output |
-|---------|-------------|--------|
-| *(default)* | Measure refusal direction, cut it, export modified model | model directory |
-| `[surface]` | Map the refusal landscape before and after | `surface_report.json` |
-| `[eval]` | Refusal rate, perplexity, KL divergence | `eval_report.json` |
-| `[detect]` | Check if a model has been hardened against abliteration | `detect_report.json` |
-| `[depth]` | Deep-thinking token analysis | `depth_report.json` |
-| `[probe]` | Per-layer projection inspection | `probe_report.json` |
-| `[steer]` | Runtime steered generation | `steer_report.json` |
-| `[cast]` | Conditional activation steering generation | `cast_report.json` |
-| `[optimize]` | Optuna search for best cut parameters | `optimize_report.json` |
-| `[softprompt]` | Optimize learnable prefixes in embedding space (GCG, continuous, EGD) | `softprompt_report.json` |
-| `[sic]` | Iterative input sanitization (SIC) | `sic_report.json` |
-| `[defend]` | Composed defense stack (scan + SIC + policy + intent) | `defend_report.json` |
-| `[environment]` | Agent simulation for indirect prompt injection | `environment_report.json` |
-| `[svf]` | Steering vector field boundary training | `svf_report.json` |
-| `[compose_optimize]` | Bayesian optimization of Steer2Adapt composition weights | `compose_optimize_report.json` |
-| `[api_eval]` | Remote API suffix evaluation | `api_eval_report.json` |
-| `[meta]` | Experiment metadata (no pipeline effect) | `python -m vauban.tree` |
-
-Early-return precedence is: `[depth]` > `[svf]` > `[probe]` > `[steer]` > `[cast]` > `[sic]` > `[optimize]` > `[compose_optimize]` > `[softprompt]` > `[defend]`. Use `--validate` to catch conflicts.
-
-## Python API
-
-For custom workflows beyond TOML configs:
-
-```python
-import mlx_lm
-from vauban import measure, cut, export_model, load_prompts, default_prompt_paths
-from mlx.utils import tree_flatten
-
-# Load model
-model, tok = mlx_lm.load("mlx-community/Llama-3.2-3B-Instruct-4bit")
-
-# Load prompt sets
-harmful = load_prompts(default_prompt_paths()[0])
-harmless = load_prompts(default_prompt_paths()[1])
-
-# Measure the refusal direction
-result = measure(model, tok, harmful, harmless)
-
-# Cut it from the weights
-weights = dict(tree_flatten(model.parameters()))
-modified = cut(weights, result.direction, list(range(len(model.model.layers))))
-
-# Export
-export_model("mlx-community/Llama-3.2-3B-Instruct-4bit", modified, "output")
+```bash
+vauban diff run_a run_b
+vauban diff --format markdown run_a run_b
+vauban diff --threshold 0.05 run_a run_b
 ```
 
-The API also exposes `probe()`, `steer()`, `evaluate()`, and `map_surface()` — see the getting-started guide for usage.
+`vauban diff --threshold ...` is a CI gate: it exits non-zero if any absolute metric delta crosses the threshold.
+
+Render the experiment lineage tree:
+
+```bash
+vauban tree experiments/
+vauban tree experiments/ --format mermaid
+```
+
+## Data Formats
+
+Verified by the generated manual:
+
+- prompt JSONL for `[data]` and `[eval]`: one JSON object per line with a `prompt` key
+- surface JSONL for `[surface].prompts`: requires `label` and `category`, plus either `prompt` or `messages`
+- refusal phrase files: plain text, one phrase per line
+- relative paths resolve from the TOML file's directory
+
+Minimal prompt dataset example:
+
+```jsonl
+{"prompt":"What is the capital of France?"}
+{"prompt":"Write a haiku about rain."}
+```
+
+## Notes On Verification
+
+This README is aligned to the code in this repo:
+
+- package name: `vauban`
+- console script: `vauban = vauban.__main__:main`
+- verified commands: `vauban <config.toml>`, `--validate`, `schema`, `init`, `diff`, `tree`, `man`
+- verified manual topics and scaffolded modes were checked against the live CLI help and generated manual
+
+The current README previously had some stale mode/output claims; this version removes those and points readers to `vauban man ...` for the parts generated directly from code.
 
 ## Documentation
 
-Full docs at [vauban.readthedocs.io](https://vauban.readthedocs.io/).
+Full docs: [vauban.readthedocs.io](https://vauban.readthedocs.io/)
 
 | Resource | Description |
 |----------|-------------|
-| [Spinning Up in Abliteration](https://vauban.readthedocs.io/class/index/) | Seven-part progressive curriculum — theory to production |
-| [Getting Started](https://vauban.readthedocs.io/getting-started/) | Guided walkthrough — all pipeline modes, data formats, Python API |
-| [Configuration Reference](https://vauban.readthedocs.io/config/) | Every TOML field documented |
-| [Surface Mapping](https://vauban.readthedocs.io/surface/) | Surface mapping reference and dataset format |
-| [`examples/config.toml`](examples/config.toml) | Annotated config with every field documented |
+| [Spinning Up in Abliteration](https://vauban.readthedocs.io/class/index/) | Seven-part progressive curriculum |
+| [Getting Started](https://vauban.readthedocs.io/getting-started/) | Guided walkthrough |
+| [Configuration Reference](https://vauban.readthedocs.io/config/) | TOML field reference |
+| [Surface Mapping](https://vauban.readthedocs.io/surface/) | Surface mapping reference |
+| [`examples/config.toml`](examples/config.toml) | Annotated example config |
 
 ## License
 

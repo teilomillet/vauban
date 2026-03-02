@@ -33,6 +33,13 @@ class _SoftPromptLossSection:
     transfer_rerank_count: int
     perplexity_weight: float
     externality_target: str | None
+    cold_temperature: float
+    cold_noise_scale: float
+    svf_boundary_path: str | None
+    largo_reflection_rounds: int
+    largo_max_reflection_tokens: int
+    largo_objective: str
+    largo_embed_warmstart: bool
 
 
 def _parse_softprompt_loss(
@@ -200,6 +207,62 @@ def _parse_softprompt_loss(
         resolve_dir = base_dir if base_dir is not None else Path.cwd()
         externality_target = str((resolve_dir / externality_target_raw).resolve())
 
+    # --- COLD-Attack fields ---
+    cold_temperature = reader.number("cold_temperature", default=0.5)
+    if cold_temperature <= 0:
+        msg = (
+            f"[softprompt].cold_temperature must be > 0, got {cold_temperature}"
+        )
+        raise ValueError(msg)
+
+    cold_noise_scale = reader.number("cold_noise_scale", default=1.0)
+    if cold_noise_scale < 0:
+        msg = (
+            "[softprompt].cold_noise_scale must be >= 0.0,"
+            f" got {cold_noise_scale}"
+        )
+        raise ValueError(msg)
+
+    # --- SVF boundary path ---
+    svf_boundary_path_raw = reader.optional_string("svf_boundary_path")
+    svf_boundary_path: str | None = None
+    if svf_boundary_path_raw is not None:
+        resolve_dir_svf = base_dir if base_dir is not None else Path.cwd()
+        svf_boundary_path = str(
+            (resolve_dir_svf / svf_boundary_path_raw).resolve(),
+        )
+
+    # --- LARGO fields ---
+    largo_reflection_rounds = reader.integer(
+        "largo_reflection_rounds", default=0,
+    )
+    if largo_reflection_rounds < 0:
+        msg = (
+            "[softprompt].largo_reflection_rounds must be >= 0,"
+            f" got {largo_reflection_rounds}"
+        )
+        raise ValueError(msg)
+
+    largo_max_reflection_tokens = reader.integer(
+        "largo_max_reflection_tokens", default=200,
+    )
+    if largo_max_reflection_tokens < 1:
+        msg = (
+            "[softprompt].largo_max_reflection_tokens must be >= 1,"
+            f" got {largo_max_reflection_tokens}"
+        )
+        raise ValueError(msg)
+
+    largo_objective = reader.literal(
+        "largo_objective",
+        ("targeted", "untargeted", "defensive"),
+        default="targeted",
+    )
+
+    largo_embed_warmstart = reader.boolean(
+        "largo_embed_warmstart", default=True,
+    )
+
     return _SoftPromptLossSection(
         direction_weight=direction_weight,
         embed_reg_weight=embed_reg_weight,
@@ -218,4 +281,11 @@ def _parse_softprompt_loss(
         transfer_rerank_count=transfer_rerank_count,
         perplexity_weight=perplexity_weight,
         externality_target=externality_target,
+        cold_temperature=cold_temperature,
+        cold_noise_scale=cold_noise_scale,
+        svf_boundary_path=svf_boundary_path,
+        largo_reflection_rounds=largo_reflection_rounds,
+        largo_max_reflection_tokens=largo_max_reflection_tokens,
+        largo_objective=largo_objective,
+        largo_embed_warmstart=largo_embed_warmstart,
     )

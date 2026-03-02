@@ -52,6 +52,7 @@ class GCGSharedState:
     perplexity_weight: float
     token_position: str
     infix_map: dict[int, int] | None
+    svf_boundary: object | None = None  # SVFBoundary for context-dependent directions
 
 
 def _build_gcg_shared_state(
@@ -63,6 +64,7 @@ def _build_gcg_shared_state(
     ref_model: CausalLM | None = None,
     infix_map: dict[int, int] | None = None,
     perplexity_weight_override: float | None = None,
+    svf_boundary: object | None = None,
 ) -> GCGSharedState:
     """Resolve reusable objective inputs once per optimizer run."""
     direction_layers = (
@@ -108,6 +110,7 @@ def _build_gcg_shared_state(
         ),
         token_position=config.token_position,
         infix_map=infix_map,
+        svf_boundary=svf_boundary,
     )
 
 

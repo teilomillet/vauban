@@ -38,7 +38,11 @@ def _parse_softprompt_core(sec: TomlDict) -> _SoftPromptCoreSection:
     """Parse the core [softprompt] fields."""
     reader = SectionReader("[softprompt]", sec)
 
-    mode = reader.literal("mode", ("continuous", "gcg", "egd"), default="continuous")
+    mode = reader.literal(
+        "mode",
+        ("continuous", "gcg", "egd", "cold", "amplecgc"),
+        default="continuous",
+    )
 
     n_tokens = reader.integer("n_tokens", default=16)
     if n_tokens < 1:

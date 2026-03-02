@@ -5,10 +5,11 @@ experiment lineage as a text tree or Mermaid flowchart.
 
 Usage::
 
+    vauban tree [directory]
+    vauban tree experiments/ --format mermaid
+    vauban tree experiments/ --status promising
+    vauban tree experiments/ --tag gcg
     python -m vauban.tree [directory]
-    python -m vauban.tree experiments/ --format mermaid
-    python -m vauban.tree experiments/ --status promising
-    python -m vauban.tree experiments/ --tag gcg
 """
 
 from __future__ import annotations

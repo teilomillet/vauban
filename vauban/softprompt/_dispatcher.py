@@ -5,6 +5,7 @@ from dataclasses import replace
 
 from vauban import _ops as ops
 from vauban._array import Array
+from vauban.softprompt._cold import _cold_attack
 from vauban.softprompt._continuous import _continuous_attack
 from vauban.softprompt._defense_eval import evaluate_against_defenses
 from vauban.softprompt._egd import _egd_attack
@@ -84,9 +85,17 @@ def _run_single_attack(
             infix_map=infix_map,
             environment_config=environment_config,
         )
+    if config.mode == "cold":
+        return _cold_attack(
+            model, tokenizer, prompts, config, direction, ref_model,
+            all_prompt_ids_override=injection_ids,
+            transfer_models=transfer_models,
+            infix_map=infix_map,
+            environment_config=environment_config,
+        )
     msg = (
         f"Unknown soft prompt mode: {config.mode!r},"
-        " must be 'continuous', 'gcg', or 'egd'"
+        " must be 'continuous', 'gcg', 'egd', or 'cold'"
     )
     raise ValueError(msg)
 

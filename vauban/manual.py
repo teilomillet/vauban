@@ -240,7 +240,8 @@ _PLAYBOOK_NOTES: tuple[str, ...] = (
     "2. Validate and iterate until warnings are understood/fixed.",
     "3. Run one experiment per TOML file for reproducibility.",
     "4. Compare two runs with: vauban diff out_a out_b",
-    "5. Keep an experiment log (config path + output dir + key metrics).",
+    "5. Visualize lineage with: vauban tree experiments/",
+    "6. Keep an experiment log (config path + output dir + key metrics).",
 )
 
 _QUICK_NOTES: tuple[str, ...] = (
@@ -259,6 +260,8 @@ _EXAMPLE_NOTES: tuple[str, ...] = (
     "  vauban diff runs/baseline runs/experiment_a",
     "CI gate for regression checks:",
     "  vauban diff --threshold 0.05 runs/baseline runs/candidate",
+    "Render the experiment tree:",
+    "  vauban tree experiments/ --format mermaid",
     "Open manual for one topic:",
     "  vauban man softprompt",
 )
@@ -1779,6 +1782,10 @@ def render_manual(topic: str | None = None) -> str:
         "    vauban diff [--format text|markdown]"
         " [--threshold FLOAT] <dir_a> <dir_b>",
     )
+    lines.append(
+        "    vauban tree [directory]"
+        " [--format text|mermaid] [--status STATUS] [--tag TAG]",
+    )
     lines.append("    vauban man [topic]")
     lines.append("")
     lines.append("DESCRIPTION")
@@ -1828,6 +1835,14 @@ def render_manual(topic: str | None = None) -> str:
             "      --threshold: CI gate; exit code 1 if any |delta| exceeds value.",
         )
         lines.append(f"      report files: {', '.join(_known_diff_reports())}")
+        lines.append(
+            "    vauban tree [directory]"
+            " [--format text|mermaid] [--status STATUS] [--tag TAG]",
+        )
+        lines.append("      Render the experiment lineage tree from TOML configs.")
+        lines.append("      directory: root to scan recursively for *.toml files.")
+        lines.append("      --format: text tree or Mermaid flowchart.")
+        lines.append("      --status/--tag: filter the rendered experiment set.")
         lines.append("    vauban man [topic]")
         lines.append("      Show this manual or one focused topic.")
         lines.append("")

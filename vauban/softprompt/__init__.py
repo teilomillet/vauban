@@ -1,6 +1,7 @@
-"""Soft prompt attack: continuous embedding optimization, GCG, and EGD."""
+"""Soft prompt attack: continuous embedding optimization, GCG, EGD, and COLD."""
 
 from vauban._forward import make_cache as _make_cache
+from vauban.softprompt._cold import _cold_attack
 from vauban.softprompt._constraints import _build_vocab_mask
 from vauban.softprompt._continuous import _continuous_attack
 from vauban.softprompt._defense_eval import (
@@ -60,6 +61,7 @@ from vauban.softprompt._search import (
 __all__ = [
     "_add_perplexity_term",
     "_build_vocab_mask",
+    "_cold_attack",
     "_compute_accessibility_score",
     "_compute_defense_aware_penalty",
     "_compute_defensive_loss",
