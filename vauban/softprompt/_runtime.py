@@ -7,6 +7,7 @@ import random
 from typing import TYPE_CHECKING
 
 from vauban import _ops as ops
+from vauban._array import Array
 from vauban._forward import (
     embed_and_mask_with_prefix,
     force_eval,
@@ -19,7 +20,6 @@ from vauban.softprompt._encoding import _pre_encode_prompts
 from vauban.softprompt._loss import _compute_loss
 
 if TYPE_CHECKING:
-    from vauban._array import Array
     from vauban.types import CausalLM, SoftPromptConfig, Tokenizer
 
 
