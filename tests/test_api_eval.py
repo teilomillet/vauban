@@ -828,6 +828,123 @@ class TestParseApiEvalStandaloneFields:
             _parse_api_eval(raw)
 
 
+class TestParseDefenseProxyFields:
+    """Tests for parsing the defense_proxy fields."""
+
+    def test_defense_proxy_sic(self) -> None:
+        raw = _minimal_api_eval_raw(defense_proxy="sic")
+        cfg = _parse_api_eval(raw)
+        assert cfg is not None
+        assert cfg.defense_proxy == "sic"
+
+    def test_defense_proxy_cast(self) -> None:
+        raw = _minimal_api_eval_raw(defense_proxy="cast")
+        cfg = _parse_api_eval(raw)
+        assert cfg is not None
+        assert cfg.defense_proxy == "cast"
+
+    def test_defense_proxy_both(self) -> None:
+        raw = _minimal_api_eval_raw(defense_proxy="both")
+        cfg = _parse_api_eval(raw)
+        assert cfg is not None
+        assert cfg.defense_proxy == "both"
+
+    def test_defense_proxy_absent(self) -> None:
+        raw = _minimal_api_eval_raw()
+        cfg = _parse_api_eval(raw)
+        assert cfg is not None
+        assert cfg.defense_proxy is None
+
+    def test_defense_proxy_invalid(self) -> None:
+        raw = _minimal_api_eval_raw(defense_proxy="firewall")
+        with pytest.raises(ValueError, match="defense_proxy"):
+            _parse_api_eval(raw)
+
+    def test_defense_proxy_not_string(self) -> None:
+        raw = _minimal_api_eval_raw(defense_proxy=42)
+        with pytest.raises(TypeError, match="defense_proxy"):
+            _parse_api_eval(raw)
+
+    def test_defense_proxy_sic_mode_default(self) -> None:
+        raw = _minimal_api_eval_raw(defense_proxy="sic")
+        cfg = _parse_api_eval(raw)
+        assert cfg is not None
+        assert cfg.defense_proxy_sic_mode == "direction"
+
+    def test_defense_proxy_sic_mode_generation(self) -> None:
+        raw = _minimal_api_eval_raw(
+            defense_proxy="sic",
+            defense_proxy_sic_mode="generation",
+        )
+        cfg = _parse_api_eval(raw)
+        assert cfg is not None
+        assert cfg.defense_proxy_sic_mode == "generation"
+
+    def test_defense_proxy_sic_mode_invalid(self) -> None:
+        raw = _minimal_api_eval_raw(defense_proxy_sic_mode="foobar")
+        with pytest.raises(ValueError, match="defense_proxy_sic_mode"):
+            _parse_api_eval(raw)
+
+    def test_defense_proxy_cast_mode_default(self) -> None:
+        raw = _minimal_api_eval_raw(defense_proxy="cast")
+        cfg = _parse_api_eval(raw)
+        assert cfg is not None
+        assert cfg.defense_proxy_cast_mode == "gate"
+
+    def test_defense_proxy_cast_mode_full(self) -> None:
+        raw = _minimal_api_eval_raw(
+            defense_proxy="cast",
+            defense_proxy_cast_mode="full",
+        )
+        cfg = _parse_api_eval(raw)
+        assert cfg is not None
+        assert cfg.defense_proxy_cast_mode == "full"
+
+    def test_defense_proxy_cast_mode_invalid(self) -> None:
+        raw = _minimal_api_eval_raw(defense_proxy_cast_mode="half")
+        with pytest.raises(ValueError, match="defense_proxy_cast_mode"):
+            _parse_api_eval(raw)
+
+    def test_defense_proxy_cast_layers(self) -> None:
+        raw = _minimal_api_eval_raw(defense_proxy_cast_layers=[14, 15])
+        cfg = _parse_api_eval(raw)
+        assert cfg is not None
+        assert cfg.defense_proxy_cast_layers == [14, 15]
+
+    def test_defense_proxy_cast_layers_not_list(self) -> None:
+        raw = _minimal_api_eval_raw(defense_proxy_cast_layers="14")
+        with pytest.raises(TypeError, match="defense_proxy_cast_layers"):
+            _parse_api_eval(raw)
+
+    def test_defense_proxy_cast_layers_item_not_int(self) -> None:
+        raw = _minimal_api_eval_raw(defense_proxy_cast_layers=[14, "x"])
+        with pytest.raises(TypeError, match=r"defense_proxy_cast_layers\[1\]"):
+            _parse_api_eval(raw)
+
+    def test_defense_proxy_sic_max_iterations_bounds(self) -> None:
+        raw = _minimal_api_eval_raw(defense_proxy_sic_max_iterations=0)
+        with pytest.raises(ValueError, match="defense_proxy_sic_max_iterations"):
+            _parse_api_eval(raw)
+
+    def test_defense_proxy_cast_max_tokens_bounds(self) -> None:
+        raw = _minimal_api_eval_raw(defense_proxy_cast_max_tokens=0)
+        with pytest.raises(ValueError, match="defense_proxy_cast_max_tokens"):
+            _parse_api_eval(raw)
+
+    def test_defense_proxy_numeric_fields(self) -> None:
+        raw = _minimal_api_eval_raw(
+            defense_proxy="both",
+            defense_proxy_sic_threshold=0.5,
+            defense_proxy_cast_threshold=0.3,
+            defense_proxy_cast_alpha=2.0,
+        )
+        cfg = _parse_api_eval(raw)
+        assert cfg is not None
+        assert cfg.defense_proxy_sic_threshold == 0.5
+        assert cfg.defense_proxy_cast_threshold == 0.3
+        assert cfg.defense_proxy_cast_alpha == 2.0
+
+
 class TestStandaloneApiEvalPredicate:
     """Tests for the _has_standalone_api_eval predicate."""
 

@@ -5,6 +5,7 @@ from pathlib import Path
 from vauban._pipeline import run
 from vauban._version import __version__
 from vauban.api_eval import evaluate_suffix_via_api
+from vauban.api_eval_proxy import evaluate_with_defense_proxy
 from vauban.cast import cast_generate, cast_generate_svf
 from vauban.circuit import trace_circuit
 from vauban.config import generate_config_schema, load_config, write_config_schema
@@ -105,6 +106,7 @@ from vauban.types import (
     DataFlowRule,
     DatasetRef,
     DBDIResult,
+    DefenseProxyResult,
     DefenseStackConfig,
     DefenseStackResult,
     DepthConfig,
@@ -189,6 +191,7 @@ __all__ = [
     "DBDIResult",
     "DataFlowRule",
     "DatasetRef",
+    "DefenseProxyResult",
     "DefenseStackConfig",
     "DefenseStackResult",
     "DepthConfig",
@@ -288,6 +291,7 @@ __all__ = [
     "evaluate_data_flow",
     "evaluate_suffix_via_api",
     "evaluate_tool_call",
+    "evaluate_with_defense_proxy",
     "explained_variance_ratio",
     "export_model",
     "find_instruction_boundary",

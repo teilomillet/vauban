@@ -10,8 +10,7 @@ final metric.
 import logging
 
 from vauban._array import Array
-from vauban.api_eval import _build_api_prompt, evaluate_suffix_via_api
-from vauban.evaluate import DEFAULT_REFUSAL_PHRASES
+from vauban.api_eval import _build_api_prompt, _is_refusal, evaluate_suffix_via_api
 from vauban.types import (
     ApiEvalConfig,
     CausalLM,
@@ -59,7 +58,13 @@ def evaluate_with_defense_proxy(
         Tuple of (api_results, proxy_result). api_results contains one
         TransferEvalResult per endpoint with adjusted success rates.
     """
-    proxy_mode = config.defense_proxy or "sic"
+    if config.defense_proxy is None:
+        msg = (
+            "evaluate_with_defense_proxy called with defense_proxy=None;"
+            " use evaluate_suffix_via_api directly instead"
+        )
+        raise ValueError(msg)
+    proxy_mode = config.defense_proxy
     use_sic = proxy_mode in ("sic", "both")
     use_cast = proxy_mode in ("cast", "both")
 
@@ -125,7 +130,7 @@ def evaluate_with_defense_proxy(
         # Adjust success rates: denominator = total prompts
         adjusted: list[TransferEvalResult] = []
         for r in api_results:
-            api_successes = int(r.success_rate * len(surviving_prompts))
+            api_successes = round(r.success_rate * len(surviving_prompts))
             adj_rate = api_successes / total if total > 0 else 0.0
             adjusted.append(TransferEvalResult(
                 model_id=r.model_id,
@@ -162,9 +167,15 @@ def _evaluate_preassembled(
 ) -> list[TransferEvalResult]:
     """Evaluate pre-assembled prompts against API endpoints.
 
-    Since the prompts already contain the suffix, we pass an empty
-    suffix_text and use suffix position so _build_api_prompt just
-    appends nothing meaningful — but we override prompts directly.
+    The prompts already contain the adversarial suffix. We use infix
+    position without a ``{suffix}`` marker so ``_build_api_prompt``
+    falls back to appending the (empty) suffix_text, but since the
+    marker is absent and the suffix is empty, the prompt passes
+    through with only a trailing space.
+
+    To avoid even that trailing space we wrap each prompt with the
+    ``{suffix}`` marker at the end, which gets replaced by the empty
+    string — yielding an exact match.
 
     Args:
         assembled_prompts: Prompts with suffix already embedded.
@@ -175,16 +186,16 @@ def _evaluate_preassembled(
     Returns:
         List of TransferEvalResult, one per endpoint.
     """
-    # Use empty suffix with suffix position — _build_api_prompt will
-    # just append " " which is negligible. The prompts already contain
-    # the adversarial content.
+    # Wrap each prompt so infix replacement produces the exact string.
+    marker = "{suffix}"
+    wrapped = [p + marker for p in assembled_prompts]
     return evaluate_suffix_via_api(
         suffix_text="",
-        prompts=assembled_prompts,
+        prompts=wrapped,
         config=config,
         fallback_system_prompt=fallback_system_prompt,
         history=history,
-        token_position="suffix",
+        token_position="infix",
     )
 
 
@@ -263,6 +274,8 @@ def _run_cast_gate(
     """
     from vauban.sic import _detect_adversarial_direction
 
+    # Gate mode does a single projection at one layer (detection only).
+    # Full mode uses all configured layers for steering.
     target_layer = (
         config.defense_proxy_cast_layers[0]
         if config.defense_proxy_cast_layers
@@ -338,7 +351,3 @@ def _run_cast_full(
     return survivors, gated, responses
 
 
-def _is_refusal(text: str) -> bool:
-    """Check if text contains refusal phrases."""
-    lower = text.lower()
-    return any(phrase.lower() in lower for phrase in DEFAULT_REFUSAL_PHRASES)
