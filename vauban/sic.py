@@ -13,6 +13,8 @@ from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import (
     embed_and_mask,
+    encode_chat_prompt,
+    encode_user_prompt,
     extract_logits,
     force_eval,
     get_transformer,
@@ -294,12 +296,7 @@ def _detect_adversarial_direction(
     Returns:
         Projection magnitude (float). Higher = more benign.
     """
-    messages = [{"role": "user", "content": prompt}]
-    text = tokenizer.apply_chat_template(messages, tokenize=False)
-    if not isinstance(text, str):
-        msg = "apply_chat_template must return str when tokenize=False"
-        raise TypeError(msg)
-    token_ids = ops.array(tokenizer.encode(text))[None, :]
+    token_ids = encode_user_prompt(tokenizer, prompt)
 
     transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
@@ -347,12 +344,7 @@ def _detect_adversarial_svf(
     transformer = get_transformer(model)
     n_layers = len(transformer.layers)
 
-    messages = [{"role": "user", "content": prompt}]
-    text = tokenizer.apply_chat_template(messages, tokenize=False)
-    if not isinstance(text, str):
-        msg = "apply_chat_template must return str when tokenize=False"
-        raise TypeError(msg)
-    token_ids = ops.array(tokenizer.encode(text))[None, :]
+    token_ids = encode_user_prompt(tokenizer, prompt)
 
     h, mask = embed_and_mask(transformer, token_ids)
     ssm_mask = make_ssm_mask(transformer, h)
@@ -425,17 +417,12 @@ def _generate_with_messages(
     Like evaluate._generate() but takes a full messages list (enables
     system messages for the sanitization step).
     """
-    text = tokenizer.apply_chat_template(messages, tokenize=False)
-    if not isinstance(text, str):
-        msg = "apply_chat_template must return str when tokenize=False"
-        raise TypeError(msg)
-    tokens = tokenizer.encode(text)
+    token_ids = encode_chat_prompt(tokenizer, messages)
     generated: list[int] = []
 
     eos_token_id: int | None = getattr(tokenizer, "eos_token_id", None)
 
     cache = make_cache(model)
-    token_ids = ops.array([tokens])
 
     for _ in range(max_tokens):
         result = model(token_ids, cache=cache)  # type: ignore[call-non-callable]

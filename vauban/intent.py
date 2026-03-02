@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from vauban import _ops as ops
 from vauban._forward import (
     embed_and_mask,
+    encode_user_prompt,
     extract_logits,
     force_eval,
     get_transformer,
@@ -50,12 +51,7 @@ def _extract_activation_at_layer(
     Returns:
         Activation array of shape (d_model,).
     """
-    messages = [{"role": "user", "content": text_content}]
-    text = tokenizer.apply_chat_template(messages, tokenize=False)
-    if not isinstance(text, str):
-        msg = "apply_chat_template must return str when tokenize=False"
-        raise TypeError(msg)
-    token_ids = ops.array(tokenizer.encode(text))[None, :]
+    token_ids = encode_user_prompt(tokenizer, text_content)
 
     transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
@@ -218,18 +214,11 @@ def _check_alignment_judge(
         f"Verdict:"
     )
 
-    messages = [{"role": "user", "content": prompt}]
-    text = tokenizer.apply_chat_template(messages, tokenize=False)
-    if not isinstance(text, str):
-        msg = "apply_chat_template must return str when tokenize=False"
-        raise TypeError(msg)
-
-    tokens = tokenizer.encode(text)
+    token_ids = encode_user_prompt(tokenizer, prompt)
     generated: list[int] = []
     eos_token_id: int | None = getattr(tokenizer, "eos_token_id", None)
 
     cache = make_cache(model)
-    token_ids = ops.array([tokens])
 
     for _ in range(config.max_tokens):
         result = model(token_ids, cache=cache)  # type: ignore[call-non-callable]

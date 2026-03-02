@@ -150,11 +150,11 @@ class TestResolveInitIds:
     """Tests for init ID resolution."""
 
     def test_with_init_tokens(self) -> None:
-        ids = _resolve_init_ids((1, 2, 3), 5, None, 100)
+        ids = _resolve_init_ids([1, 2, 3], 5, None, 100)
         assert ids == [1, 2, 3, 0, 0]  # padded
 
     def test_truncation(self) -> None:
-        ids = _resolve_init_ids((1, 2, 3, 4, 5), 3, None, 100)
+        ids = _resolve_init_ids([1, 2, 3, 4, 5], 3, None, 100)
         assert ids == [1, 2, 3]
 
     def test_random_fallback(self) -> None:

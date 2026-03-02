@@ -8,7 +8,7 @@ setup, LM head application, and logit extraction.
 from typing import TYPE_CHECKING
 
 from vauban._array import Array
-from vauban.types import CausalLM, LayerCache, TransformerModel
+from vauban.types import CausalLM, LayerCache, Tokenizer, TransformerModel
 
 if TYPE_CHECKING:
     from vauban._backend import get_backend as _get_backend
@@ -26,6 +26,32 @@ def get_transformer(model: CausalLM) -> TransformerModel:
 
     inner = get_inner_model(model)
     return normalize_transformer(inner)  # type: ignore[return-value]
+
+
+def encode_chat_prompt(
+    tokenizer: Tokenizer,
+    messages: list[dict[str, str]],
+) -> Array:
+    """Apply the chat template and encode messages into batched token IDs.
+
+    Returns a ``(1, seq_len)`` int array suitable for model input.
+    """
+    from vauban import _ops as ops
+
+    text = tokenizer.apply_chat_template(messages, tokenize=False)
+    if not isinstance(text, str):
+        msg = "apply_chat_template must return str when tokenize=False"
+        raise TypeError(msg)
+    return ops.array(tokenizer.encode(text))[None, :]
+
+
+def encode_user_prompt(tokenizer: Tokenizer, prompt: str) -> Array:
+    """Encode a single user message into batched token IDs.
+
+    Convenience wrapper around :func:`encode_chat_prompt` for the most
+    common case: a single ``{"role": "user"}`` message.
+    """
+    return encode_chat_prompt(tokenizer, [{"role": "user", "content": prompt}])
 
 
 def make_ssm_mask(transformer: TransformerModel, h: Array) -> Array | None:

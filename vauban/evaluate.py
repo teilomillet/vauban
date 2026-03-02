@@ -4,7 +4,7 @@ import math
 
 from vauban import _nn
 from vauban import _ops as ops
-from vauban._forward import extract_logits, force_eval, make_cache
+from vauban._forward import encode_user_prompt, extract_logits, force_eval, make_cache
 from vauban.types import CausalLM, EvalResult, Tokenizer
 
 DEFAULT_REFUSAL_PHRASES: list[str] = [
@@ -107,19 +107,13 @@ def _generate(
             ``tokenizer.eos_token_id``; if unavailable, generates
             all ``max_tokens``.
     """
-    messages = [{"role": "user", "content": prompt}]
-    text = tokenizer.apply_chat_template(messages, tokenize=False)
-    if not isinstance(text, str):
-        msg = "apply_chat_template must return str when tokenize=False"
-        raise TypeError(msg)
-    tokens = tokenizer.encode(text)
+    token_ids = encode_user_prompt(tokenizer, prompt)
     generated: list[int] = []
 
     if eos_token_id is None:
         eos_token_id = getattr(tokenizer, "eos_token_id", None)
 
     cache = make_cache(model)
-    token_ids = ops.array([tokens])  # prefill: full prompt
 
     for _ in range(max_tokens):
         result = model(token_ids, cache=cache)  # type: ignore[call-non-callable]

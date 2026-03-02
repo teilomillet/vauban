@@ -6,6 +6,7 @@ from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import (
     embed_and_mask,
+    encode_user_prompt,
     force_eval,
     get_transformer,
     lm_head_forward,
@@ -30,12 +31,7 @@ def probe(
     Runs a forward pass and returns how strongly each layer's residual
     stream aligns with the given direction.
     """
-    messages = [{"role": "user", "content": prompt}]
-    text = tokenizer.apply_chat_template(messages, tokenize=False)
-    if not isinstance(text, str):
-        msg = "apply_chat_template must return str when tokenize=False"
-        raise TypeError(msg)
-    token_ids = ops.array(tokenizer.encode(text))[None, :]
+    token_ids = encode_user_prompt(tokenizer, prompt)
 
     transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
@@ -82,12 +78,7 @@ def steer(
 
     Manual token-by-token loop with KV cache, intervening between layers.
     """
-    messages = [{"role": "user", "content": prompt}]
-    text = tokenizer.apply_chat_template(messages, tokenize=False)
-    if not isinstance(text, str):
-        msg = "apply_chat_template must return str when tokenize=False"
-        raise TypeError(msg)
-    token_ids = ops.array(tokenizer.encode(text))[None, :]
+    token_ids = encode_user_prompt(tokenizer, prompt)
 
     generated: list[int] = []
     cache = make_cache(model)
@@ -184,12 +175,7 @@ def steer_svf(
 
     Reference: Li, Li & Huang (2026) — arxiv.org/abs/2602.01654
     """
-    messages = [{"role": "user", "content": prompt}]
-    text = tokenizer.apply_chat_template(messages, tokenize=False)
-    if not isinstance(text, str):
-        msg = "apply_chat_template must return str when tokenize=False"
-        raise TypeError(msg)
-    token_ids = ops.array(tokenizer.encode(text))[None, :]
+    token_ids = encode_user_prompt(tokenizer, prompt)
 
     generated: list[int] = []
     cache = make_cache(model)

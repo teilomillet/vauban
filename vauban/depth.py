@@ -11,6 +11,7 @@ from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import (
     embed_and_mask,
+    encode_user_prompt,
     force_eval,
     get_transformer,
     lm_head_forward,
@@ -41,13 +42,8 @@ def depth_profile(
     Single forward pass, capture hidden states at each layer for all token
     positions, compute JSD profile per token.
     """
-    messages = [{"role": "user", "content": prompt}]
-    text = tokenizer.apply_chat_template(messages, tokenize=False)
-    if not isinstance(text, str):
-        msg = "apply_chat_template must return str when tokenize=False"
-        raise TypeError(msg)
-    token_ids_list = tokenizer.encode(text)
-    token_ids = ops.array(token_ids_list)[None, :]
+    token_ids = encode_user_prompt(tokenizer, prompt)
+    token_ids_list: list[int] = token_ids[0].tolist()  # type: ignore[assignment]
 
     transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
@@ -126,12 +122,7 @@ def depth_generate(
 
     Token-by-token generation with KV cache, compute JSD per generated token.
     """
-    messages = [{"role": "user", "content": prompt}]
-    text = tokenizer.apply_chat_template(messages, tokenize=False)
-    if not isinstance(text, str):
-        msg = "apply_chat_template must return str when tokenize=False"
-        raise TypeError(msg)
-    input_ids = ops.array(tokenizer.encode(text))[None, :]
+    input_ids = encode_user_prompt(tokenizer, prompt)
 
     transformer = get_transformer(model)
     num_layers = len(transformer.layers)

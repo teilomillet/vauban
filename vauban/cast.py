@@ -6,6 +6,7 @@ from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import (
     embed_and_mask,
+    encode_chat_prompt,
     force_eval,
     get_transformer,
     lm_head_forward,
@@ -162,12 +163,7 @@ def _cast_generate_from_messages(
     Returns:
         CastResult with generation and intervention stats.
     """
-    text = tokenizer.apply_chat_template(messages, tokenize=False)
-    if not isinstance(text, str):
-        msg = "apply_chat_template must return str when tokenize=False"
-        raise TypeError(msg)
-
-    token_ids = ops.array(tokenizer.encode(text))[None, :]
+    token_ids = encode_chat_prompt(tokenizer, messages)
     generated: list[int] = []
     cache = make_cache(model)
     projections_before_all: list[float] = []
@@ -350,12 +346,7 @@ def cast_generate_svf(
     Reference: Li, Li & Huang (2026) — arxiv.org/abs/2602.01654
     """
     messages = [{"role": "user", "content": prompt}]
-    text = tokenizer.apply_chat_template(messages, tokenize=False)
-    if not isinstance(text, str):
-        msg = "apply_chat_template must return str when tokenize=False"
-        raise TypeError(msg)
-
-    token_ids = ops.array(tokenizer.encode(text))[None, :]
+    token_ids = encode_chat_prompt(tokenizer, messages)
     generated: list[int] = []
     cache = make_cache(model)
     scores_before_all: list[float] = []

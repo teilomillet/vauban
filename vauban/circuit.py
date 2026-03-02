@@ -397,12 +397,9 @@ def trace_circuit(
 
 def _tokenize_prompt(tokenizer: Tokenizer, prompt: str) -> Array:
     """Tokenize a prompt through the chat template."""
-    messages = [{"role": "user", "content": prompt}]
-    text = tokenizer.apply_chat_template(messages, tokenize=False)
-    if not isinstance(text, str):
-        msg = "apply_chat_template must return str when tokenize=False"
-        raise TypeError(msg)
-    return ops.array(tokenizer.encode(text))[None, :]
+    from vauban._forward import encode_user_prompt
+
+    return encode_user_prompt(tokenizer, prompt)
 
 
 def _trace_layers(

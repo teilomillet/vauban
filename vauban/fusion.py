@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from vauban import _ops as ops
 from vauban._forward import (
     embed_and_mask,
+    encode_user_prompt,
     force_eval,
     get_transformer,
     lm_head_forward,
@@ -142,12 +143,7 @@ def _forward_to_layer(
 ) -> Array:
     """Forward a prompt through layers [0..target_layer) and return hidden state."""
     transformer = get_transformer(model)
-    messages = [{"role": "user", "content": prompt}]
-    text = tokenizer.apply_chat_template(messages, tokenize=False)
-    if not isinstance(text, str):
-        msg = "apply_chat_template must return str when tokenize=False"
-        raise TypeError(msg)
-    token_ids = ops.array(tokenizer.encode(text))[None, :]
+    token_ids = encode_user_prompt(tokenizer, prompt)
     h, mask = embed_and_mask(transformer, token_ids)
 
     ssm_mask = make_ssm_mask(transformer, h)

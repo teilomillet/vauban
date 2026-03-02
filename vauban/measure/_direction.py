@@ -2,7 +2,7 @@
 
 from vauban import _ops as ops
 from vauban._array import Array
-from vauban._forward import force_eval
+from vauban._forward import encode_user_prompt, force_eval
 from vauban.measure._activations import _clip_activation, _forward_collect
 from vauban.types import CausalLM, Tokenizer
 
@@ -132,14 +132,7 @@ def _collect_activations_at_instruction_end(
     means: list[Array] | None = None
 
     for count, prompt in enumerate(prompts, start=1):
-        messages = [{"role": "user", "content": prompt}]
-        text = tokenizer.apply_chat_template(
-            messages, tokenize=False,
-        )
-        if not isinstance(text, str):
-            msg = "apply_chat_template must return str when tokenize=False"
-            raise TypeError(msg)
-        token_ids = ops.array(tokenizer.encode(text))[None, :]
+        token_ids = encode_user_prompt(tokenizer, prompt)
         boundary = find_instruction_boundary(tokenizer, prompt)
         residuals = _forward_collect(model, token_ids, boundary)
 

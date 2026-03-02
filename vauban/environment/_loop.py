@@ -5,7 +5,7 @@ payloads into tool results, and computes reward.
 """
 
 from vauban import _ops as ops
-from vauban._forward import extract_logits, make_cache
+from vauban._forward import encode_chat_prompt, extract_logits, make_cache
 from vauban.environment._format import format_tools_for_prompt
 from vauban.environment._parse_tool_call import parse_tool_calls
 from vauban.environment._policy import check_policy
@@ -168,17 +168,11 @@ def _generate_response(
     Returns:
         Generated text string.
     """
-    text = tokenizer.apply_chat_template(messages, tokenize=False)
-    if not isinstance(text, str):
-        msg = "apply_chat_template must return str when tokenize=False"
-        raise TypeError(msg)
-
-    tokens = tokenizer.encode(text)
+    token_ids = encode_chat_prompt(tokenizer, messages)
     generated: list[int] = []
     eos_token_id: int | None = getattr(tokenizer, "eos_token_id", None)
 
     cache = make_cache(model)
-    token_ids = ops.array([tokens])
 
     for _ in range(max_tokens):
         result = model(token_ids, cache=cache)  # type: ignore[call-non-callable]

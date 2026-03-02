@@ -4,6 +4,7 @@ from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import (
     embed_and_mask_with_prefix,
+    encode_chat_prompt,
     force_eval,
     get_transformer,
     lm_head_forward,
@@ -118,11 +119,7 @@ def _evaluate_attack_with_history(
             messages.append({"role": "system", "content": config.system_prompt})
         messages.extend(history)
         messages.append({"role": "user", "content": prompt})
-        text = tokenizer.apply_chat_template(messages, tokenize=False)
-        if not isinstance(text, str):
-            msg = "apply_chat_template must return str when tokenize=False"
-            raise TypeError(msg)
-        prompt_ids = ops.array(tokenizer.encode(text))[None, :]
+        prompt_ids = encode_chat_prompt(tokenizer, messages)
 
         cache = make_cache(model)
         next_logits = _prefill_with_cache(
@@ -195,11 +192,7 @@ def _evaluate_attack(
         if config.system_prompt is not None:
             messages.append({"role": "system", "content": config.system_prompt})
         messages.append({"role": "user", "content": prompt})
-        text = tokenizer.apply_chat_template(messages, tokenize=False)
-        if not isinstance(text, str):
-            msg = "apply_chat_template must return str when tokenize=False"
-            raise TypeError(msg)
-        prompt_ids = ops.array(tokenizer.encode(text))[None, :]
+        prompt_ids = encode_chat_prompt(tokenizer, messages)
 
         # Prefill: forward soft + prompt through model with cache
         cache = make_cache(model)

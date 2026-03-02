@@ -4,6 +4,7 @@ from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import (
     embed_and_mask,
+    encode_user_prompt,
     force_eval,
     get_transformer,
     make_ssm_mask,
@@ -39,14 +40,7 @@ def _collect_activations(
     means: list[Array] | None = None
 
     for count, prompt in enumerate(prompts, start=1):
-        messages = [{"role": "user", "content": prompt}]
-        text = tokenizer.apply_chat_template(
-            messages, tokenize=False,
-        )
-        if not isinstance(text, str):
-            msg = "apply_chat_template must return str when tokenize=False"
-            raise TypeError(msg)
-        token_ids = ops.array(tokenizer.encode(text))[None, :]
+        token_ids = encode_user_prompt(tokenizer, prompt)
         residuals = _forward_collect(model, token_ids, token_position)
 
         if clip_quantile > 0.0:
@@ -98,14 +92,7 @@ def _collect_per_prompt_activations(
     all_residuals: list[list[Array]] = []
 
     for prompt in prompts:
-        messages = [{"role": "user", "content": prompt}]
-        text = tokenizer.apply_chat_template(
-            messages, tokenize=False,
-        )
-        if not isinstance(text, str):
-            msg = "apply_chat_template must return str when tokenize=False"
-            raise TypeError(msg)
-        token_ids = ops.array(tokenizer.encode(text))[None, :]
+        token_ids = encode_user_prompt(tokenizer, prompt)
         residuals = _forward_collect(model, token_ids, token_position)
 
         if clip_quantile > 0.0:

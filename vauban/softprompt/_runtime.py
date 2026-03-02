@@ -79,7 +79,7 @@ def _sample_random_init_ids(
 
 
 def _resolve_init_ids(
-    config_init_tokens: tuple[int, ...] | None,
+    config_init_tokens: list[int] | None,
     n_tokens: int,
     vocab_mask: Array | None,
     vocab_size: int,
