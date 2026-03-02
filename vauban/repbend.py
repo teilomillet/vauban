@@ -168,7 +168,8 @@ def _train_repbend(
             harmful_centroid = ops.mean(acts[:n_harmful], axis=0)
             harmless_centroid = ops.mean(acts[n_harmful:], axis=0)
 
-            # Loss = -cosine_distance = -(1 - cos_sim) = cos_sim - 1
+            # Monitoring loss: cos_sim (lower = more separated).
+            # Actual optimization is via manual outer-product update below.
             cos_sim = _cosine_similarity(harmful_centroid, harmless_centroid)
             loss = config.separation_coeff * cos_sim
             force_eval(loss)

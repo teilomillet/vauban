@@ -50,4 +50,9 @@ def _run_probe_mode(context: EarlyModeContext) -> None:
         verbose=v,
         elapsed=time.monotonic() - context.t0,
     )
-    finish_mode_run(context, "probe", ["probe_report.json"], {})
+    finish_mode_run(
+        context,
+        "probe",
+        ["probe_report.json"],
+        {"n_prompts": len(probe_results)},
+    )

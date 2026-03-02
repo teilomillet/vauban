@@ -160,4 +160,10 @@ def _run_cast_mode(context: EarlyModeContext) -> None:
         verbose=v,
         elapsed=time.monotonic() - context.t0,
     )
-    finish_mode_run(context, "cast", ["cast_report.json"], {})
+    total_interventions = sum(r.interventions for r in cast_results)
+    finish_mode_run(
+        context,
+        "cast",
+        ["cast_report.json"],
+        {"n_prompts": len(cast_results), "interventions": total_interventions},
+    )

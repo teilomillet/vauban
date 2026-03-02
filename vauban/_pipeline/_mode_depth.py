@@ -105,4 +105,9 @@ def _run_depth_mode(context: EarlyModeContext) -> None:
         verbose=v,
         elapsed=time.monotonic() - context.t0,
     )
-    finish_mode_run(context, "depth", ["depth_report.json"], {})
+    finish_mode_run(
+        context,
+        "depth",
+        ["depth_report.json"],
+        {"n_prompts": len(depth_results)},
+    )

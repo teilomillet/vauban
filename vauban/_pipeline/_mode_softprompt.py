@@ -194,9 +194,11 @@ def _run_softprompt_mode(context: EarlyModeContext) -> None:
         ModeReport("softprompt_report.json", _softprompt_to_dict(sp_result)),
     )
 
+    report_files = ["softprompt_report.json"]
     if sp_result.token_text:
         arena_path = config.output_dir / "arena_card.txt"
         write_arena_card(arena_path, sp_result, sp_prompts)
+        report_files.append("arena_card.txt")
         log(
             f"Arena card written to {arena_path}",
             verbose=v,
@@ -211,6 +213,6 @@ def _run_softprompt_mode(context: EarlyModeContext) -> None:
     finish_mode_run(
         context,
         "softprompt",
-        ["softprompt_report.json"],
+        report_files,
         {"success_rate": sp_result.success_rate},
     )

@@ -38,16 +38,12 @@ def _run_sic_mode(context: EarlyModeContext) -> None:
         verbose=v,
         elapsed=time.monotonic() - context.t0,
     )
-    direction_vec = (
-        context.direction_result.direction
-        if context.direction_result is not None
-        else None
-    )
-    layer_idx = (
-        context.direction_result.layer_index
-        if context.direction_result is not None
-        else 0
-    )
+    if context.direction_result is not None:
+        direction_vec = context.direction_result.direction
+        layer_idx = context.direction_result.layer_index
+    else:
+        direction_vec = None
+        layer_idx = 0
     if config.eval.prompts_path is not None:
         sic_prompts: list[str] = load_prompts(config.eval.prompts_path)
     else:
@@ -79,4 +75,9 @@ def _run_sic_mode(context: EarlyModeContext) -> None:
         verbose=v,
         elapsed=time.monotonic() - context.t0,
     )
-    finish_mode_run(context, "sic", ["sic_report.json"], {})
+    finish_mode_run(
+        context,
+        "sic",
+        ["sic_report.json"],
+        {"n_prompts": len(sic_prompts)},
+    )

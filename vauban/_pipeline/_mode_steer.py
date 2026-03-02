@@ -46,7 +46,10 @@ def _run_steer_mode(context: EarlyModeContext) -> None:
             verbose=v,
             elapsed=time.monotonic() - context.t0,
         )
-        bank = load_bank(config.steer.bank_path)
+        bank_path = Path(config.steer.bank_path)
+        if not bank_path.is_absolute():
+            bank_path = config.output_dir.parent / bank_path
+        bank = load_bank(str(bank_path))
         composed = compose_direction(bank, config.steer.composition)
         steer_results = [
             steer(
@@ -66,7 +69,10 @@ def _run_steer_mode(context: EarlyModeContext) -> None:
             raise ValueError(msg)
         from vauban.probe import steer_svf as _steer_svf
 
-        boundary = load_svf_boundary(Path(config.steer.svf_boundary_path))
+        svf_path = Path(config.steer.svf_boundary_path)
+        if not svf_path.is_absolute():
+            svf_path = config.output_dir.parent / svf_path
+        boundary = load_svf_boundary(svf_path)
         steer_results = [
             _steer_svf(
                 model,
@@ -108,4 +114,9 @@ def _run_steer_mode(context: EarlyModeContext) -> None:
         verbose=v,
         elapsed=time.monotonic() - context.t0,
     )
-    finish_mode_run(context, "steer", ["steer_report.json"], {})
+    finish_mode_run(
+        context,
+        "steer",
+        ["steer_report.json"],
+        {"n_prompts": len(steer_results)},
+    )
