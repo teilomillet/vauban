@@ -803,7 +803,7 @@ class TestEvaluateAttackWithHistory:
 class TestGcgBeamSearch:
     def test_beam_width_1_is_greedy(self) -> None:
         """beam_width=1 should produce valid results (fast path)."""
-        model = MockCausalLM(VOCAB_SIZE, D_MODEL, NUM_LAYERS, NUM_HEADS)
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
         tokenizer = MockTokenizer(VOCAB_SIZE)
         config = SoftPromptConfig(
             mode="gcg",
@@ -820,7 +820,7 @@ class TestGcgBeamSearch:
 
     def test_beam_width_gt1_produces_result(self) -> None:
         """beam_width>1 should produce valid results with beam search."""
-        model = MockCausalLM(VOCAB_SIZE, D_MODEL, NUM_LAYERS, NUM_HEADS)
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
         tokenizer = MockTokenizer(VOCAB_SIZE)
         config = SoftPromptConfig(
             mode="gcg",

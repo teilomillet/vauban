@@ -21,14 +21,9 @@ This builds `libmlx.so` from the matching MLX source tag and installs it into
 ## Running Tests
 
 ```bash
-uv run pytest tests/                              # unit tests (~40 s)
-uv run pytest tests/ -k "not gcg"                 # skip GCG (aborts on Linux CPU-only MLX)
+uv run pytest tests/                              # unit tests (~45 s)
 VAUBAN_INTEGRATION=1 uv run pytest -m integration # integration (downloads ~1 GB model)
 ```
-
-**Note:** A handful of GCG soft-prompt tests trigger an MLX abort on Linux
-because the CPU-only backend lacks Metal support.  These tests pass on macOS
-with Apple Silicon.  Use `-k "not gcg"` to skip them on Linux.
 
 ## Linting
 
