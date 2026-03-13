@@ -120,6 +120,11 @@ def _has_lora_analysis(config: PipelineConfig) -> bool:
     return config.lora_analysis is not None
 
 
+def _has_flywheel(config: PipelineConfig) -> bool:
+    """Return whether [flywheel] mode is active."""
+    return config.flywheel is not None
+
+
 def _has_standalone_api_eval(config: PipelineConfig) -> bool:
     """Return whether standalone [api_eval] mode is active.
 
@@ -349,6 +354,17 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "LoRA analysis",
         "[lora_analysis] section present.",
         "lora_analysis_report.json.",
+    ),
+    EarlyModeSpec(
+        "[flywheel]",
+        "flywheel",
+        "after_measure",
+        False,
+        _has_flywheel,
+        "Closed-loop attack-defense co-evolution flywheel.",
+        "flywheel co-evolution",
+        "[flywheel] section present.",
+        "flywheel_report.json + flywheel_*.jsonl.",
     ),
 )
 

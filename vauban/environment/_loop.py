@@ -20,6 +20,8 @@ from vauban.types import (
     ToolSchema,
 )
 
+_PAYLOAD_MARKER = "{payload}"
+
 
 def run_agent_loop(
     model: CausalLM,
@@ -121,7 +123,11 @@ def run_agent_loop(
 
         # Get tool result
         tool_result = _get_tool_result(
-            call, tool_map, env_config.injection_surface, injection_payload,
+            call,
+            tool_map,
+            env_config.injection_surface,
+            injection_payload,
+            env_config.injection_position,
         )
 
         messages.append({"role": "assistant", "content": response_text})
@@ -200,18 +206,21 @@ def _get_tool_result(
     tool_map: dict[str, ToolSchema],
     injection_surface: str,
     injection_payload: str,
+    injection_position: str = "suffix",
 ) -> str:
     """Get the result for a tool call.
 
     If the tool is the injection surface, the canned result is returned
-    with the injection payload appended. Otherwise, the canned result
-    is returned as-is (or a generic message if no result is defined).
+    with the injection payload inserted at the configured position.
+    Otherwise, the canned result is returned as-is (or a generic
+    message if no result is defined).
 
     Args:
         call: The tool call to get a result for.
         tool_map: Mapping of tool name to schema.
         injection_surface: Name of the tool to inject into.
         injection_payload: The adversarial payload to inject.
+        injection_position: Placement for the injected payload.
 
     Returns:
         Tool result string.
@@ -223,6 +232,31 @@ def _get_tool_result(
     base_result = tool.result if tool.result is not None else "{}"
 
     if call.function == injection_surface:
-        return f"{base_result}\n\n{injection_payload}"
+        return _inject_payload(
+            base_result,
+            injection_payload,
+            injection_position,
+        )
 
     return base_result
+
+
+def _inject_payload(
+    base_result: str,
+    injection_payload: str,
+    injection_position: str,
+) -> str:
+    """Insert a payload into tool output at the requested position."""
+    if _PAYLOAD_MARKER in base_result:
+        return base_result.replace(_PAYLOAD_MARKER, injection_payload)
+    if injection_payload == "":
+        return base_result
+    if injection_position == "prefix":
+        return f"{injection_payload}\n\n{base_result}"
+    if injection_position == "infix":
+        return (
+            f"{base_result}\n\n"
+            f"{injection_payload}\n\n"
+            "(retrieved content continues below)"
+        )
+    return f"{base_result}\n\n{injection_payload}"

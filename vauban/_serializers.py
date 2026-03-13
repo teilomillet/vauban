@@ -1,5 +1,7 @@
 """JSON serialization helpers for pipeline result types."""
 
+from dataclasses import asdict
+
 from vauban.taxonomy import TaxonomyCoverage
 from vauban.types import (
     AwarenessResult,
@@ -12,6 +14,7 @@ from vauban.types import (
     DiffResult,
     DirectionTransferResult,
     FeaturesResult,
+    FlywheelResult,
     IntentCheckResult,
     OptimizeResult,
     PolicyDecision,
@@ -445,3 +448,18 @@ def _circuit_to_dict(result: CircuitResult) -> dict[str, object]:
 def _features_to_dict(result: FeaturesResult) -> dict[str, object]:
     """Serialize a FeaturesResult to a JSON-compatible dict."""
     return result.to_dict()
+
+
+def _flywheel_to_dict(result: FlywheelResult) -> dict[str, object]:
+    """Serialize a FlywheelResult to a JSON-compatible dict."""
+    return {
+        "n_cycles": len(result.cycles),
+        "converged": result.converged,
+        "convergence_cycle": result.convergence_cycle,
+        "total_worlds": result.total_worlds,
+        "total_evasions": result.total_evasions,
+        "total_payloads": result.total_payloads,
+        "cycles": [asdict(m) for m in result.cycles],
+        "defense_history": [asdict(d) for d in result.defense_history],
+        "final_defense": asdict(result.final_defense),
+    }

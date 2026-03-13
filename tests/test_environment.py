@@ -3,6 +3,7 @@
 import pytest
 
 from vauban.environment._format import format_tools_for_prompt
+from vauban.environment._loop import _get_tool_result
 from vauban.environment._parse_tool_call import parse_tool_calls
 from vauban.environment._policy import check_policy
 from vauban.environment._reward import compute_reward
@@ -163,6 +164,79 @@ class TestCheckPolicy:
         policy = ToolCallPolicy(blocked_functions=["other_tool"])
         call = ToolCall(function="safe_tool", arguments={})
         assert check_policy(call, policy) is None
+
+
+# ---------------------------------------------------------------------------
+# Tool result injection
+# ---------------------------------------------------------------------------
+
+
+class TestGetToolResult:
+    """Tests for tool-result payload insertion."""
+
+    def test_prefix_position_prepends_payload(self) -> None:
+        call = ToolCall(function="calendar_lookup", arguments={})
+        tool_map = {
+            "calendar_lookup": ToolSchema(
+                name="calendar_lookup",
+                description="Look up calendar events.",
+                parameters={},
+                result="Event list",
+            ),
+        }
+
+        result = _get_tool_result(
+            call,
+            tool_map,
+            "calendar_lookup",
+            "PAYLOAD",
+            "prefix",
+        )
+
+        assert result.startswith("PAYLOAD")
+        assert result.endswith("Event list")
+
+    def test_infix_position_replaces_marker(self) -> None:
+        call = ToolCall(function="calendar_lookup", arguments={})
+        tool_map = {
+            "calendar_lookup": ToolSchema(
+                name="calendar_lookup",
+                description="Look up calendar events.",
+                parameters={},
+                result="Header\n\n{payload}\n\nFooter",
+            ),
+        }
+
+        result = _get_tool_result(
+            call,
+            tool_map,
+            "calendar_lookup",
+            "PAYLOAD",
+            "infix",
+        )
+
+        assert result == "Header\n\nPAYLOAD\n\nFooter"
+
+    def test_suffix_position_appends_payload(self) -> None:
+        call = ToolCall(function="calendar_lookup", arguments={})
+        tool_map = {
+            "calendar_lookup": ToolSchema(
+                name="calendar_lookup",
+                description="Look up calendar events.",
+                parameters={},
+                result="Event list",
+            ),
+        }
+
+        result = _get_tool_result(
+            call,
+            tool_map,
+            "calendar_lookup",
+            "PAYLOAD",
+            "suffix",
+        )
+
+        assert result == "Event list\n\nPAYLOAD"
 
 
 # ---------------------------------------------------------------------------

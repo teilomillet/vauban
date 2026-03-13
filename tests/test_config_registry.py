@@ -90,6 +90,7 @@ _EXPECTED_SECTION_ORDER: list[str] = [
     "repbend",
     "lora_export",
     "lora_analysis",
+    "flywheel",
 ]
 
 _MODEL = '[model]\npath = "test-model"\n'
@@ -510,6 +511,14 @@ def test_parse_registered_sections_respects_registry_order(
     )
     monkeypatch.setattr(
         "vauban.config._registry._parse_lora_analysis", fake_lora_analysis,
+    )
+
+    def fake_flywheel(raw: TomlDict) -> None:
+        call_order.append("flywheel")
+        return None
+
+    monkeypatch.setattr(
+        "vauban.config._registry._parse_flywheel", fake_flywheel,
     )
 
     context = ConfigParseContext(base_dir=tmp_path, raw={})

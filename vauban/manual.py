@@ -1793,6 +1793,62 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
         ),
     ),
     SectionSpec(
+        name="flywheel",
+        description=(
+            "Closed-loop attack-defense co-evolution flywheel."
+        ),
+        early_return=True,
+        config_class="FlywheelConfig",
+        fields=(
+            FieldSpec(
+                key="n_cycles",
+                description="Number of flywheel cycles.",
+                constraints="integer >= 1.",
+                default_override="10",
+            ),
+            FieldSpec(
+                key="worlds_per_cycle",
+                description="Agent worlds generated per cycle.",
+                constraints="integer >= 1.",
+                default_override="50",
+            ),
+            FieldSpec(
+                key="skeletons",
+                description="Skeleton domains for world generation.",
+                constraints=(
+                    "non-empty list of strings from:"
+                    " email, doc, code, calendar, search."
+                ),
+            ),
+            FieldSpec(
+                key="harden",
+                description=(
+                    "Whether to adapt defense parameters after"
+                    " each cycle."
+                ),
+                constraints="boolean.",
+                default_override="true",
+            ),
+            FieldSpec(
+                key="convergence_window",
+                description=(
+                    "Number of recent cycles to check for"
+                    " convergence."
+                ),
+                constraints="integer >= 2.",
+                default_override="3",
+            ),
+        ),
+        notes=(
+            (
+                "Generates synthetic agent scenarios, attacks"
+                " them with injection payloads, evaluates"
+                " CAST+SIC defenses, hardens parameters from"
+                " failures, and measures convergence."
+            ),
+        ),
+    ),
+    SectionSpec(
         name="output",
         description="Filesystem output location.",
         fields=(
@@ -1912,7 +1968,7 @@ _MODE_CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Core Pipeline", ("default", "optimize", "lora_export", "lora_analysis")),
     ("Runtime Inspection", ("probe", "steer", "depth")),
     ("Defense", ("cast", "sic", "defend", "repbend")),
-    ("Adversarial", ("softprompt", "fusion", "sss")),
+    ("Adversarial", ("softprompt", "fusion", "sss", "flywheel")),
     ("Analysis", (
         "circuit", "features", "linear_probe", "svf",
         "compose_optimize", "awareness",

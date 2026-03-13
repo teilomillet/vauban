@@ -34,6 +34,7 @@ from vauban.environment import (
 from vauban.evaluate import evaluate
 from vauban.export import export_model
 from vauban.features import train_sae, train_sae_multi_layer
+from vauban.flywheel import run_flywheel
 from vauban.fusion import fuse_and_generate, fuse_batch
 from vauban.geometry import (
     DirectionGeometryResult,
@@ -132,6 +133,7 @@ from vauban.types import (
     DataFlowRule,
     DatasetRef,
     DBDIResult,
+    DefendedTrace,
     DefenseProxyResult,
     DefenseStackConfig,
     DefenseStackResult,
@@ -149,6 +151,11 @@ from vauban.types import (
     EvalResult,
     FeaturesConfig,
     FeaturesResult,
+    FlywheelConfig,
+    FlywheelCycleMetrics,
+    FlywheelDefenseParams,
+    FlywheelResult,
+    FlywheelTrace,
     FusionConfig,
     FusionGeneration,
     FusionResult,
@@ -169,6 +176,7 @@ from vauban.types import (
     MetaConfig,
     OptimizeConfig,
     OptimizeResult,
+    Payload,
     PipelineConfig,
     PolicyConfig,
     PolicyDecision,
@@ -207,6 +215,7 @@ from vauban.types import (
     ToolSchema,
     TransferEvalResult,
     TrialResult,
+    WorldMeta,
 )
 
 __all__ = [
@@ -231,6 +240,7 @@ __all__ = [
     "DBDIResult",
     "DataFlowRule",
     "DatasetRef",
+    "DefendedTrace",
     "DefenseProxyResult",
     "DefenseStackConfig",
     "DefenseStackResult",
@@ -250,6 +260,11 @@ __all__ = [
     "EvalResult",
     "FeaturesConfig",
     "FeaturesResult",
+    "FlywheelConfig",
+    "FlywheelCycleMetrics",
+    "FlywheelDefenseParams",
+    "FlywheelResult",
+    "FlywheelTrace",
     "FusionConfig",
     "FusionGeneration",
     "FusionResult",
@@ -270,6 +285,7 @@ __all__ = [
     "MetaConfig",
     "OptimizeConfig",
     "OptimizeResult",
+    "Payload",
     "PipelineConfig",
     "PolicyConfig",
     "PolicyDecision",
@@ -309,6 +325,7 @@ __all__ = [
     "ToolSchema",
     "TransferEvalResult",
     "TrialResult",
+    "WorldMeta",
     "__version__",
     "aggregate",
     "all_categories",
@@ -391,6 +408,7 @@ __all__ = [
     "resolve_prompts",
     "run",
     "run_agent_loop",
+    "run_flywheel",
     "save_adapter_mlx",
     "save_adapter_peft",
     "save_svf_boundary",

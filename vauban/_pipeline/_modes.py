@@ -13,6 +13,7 @@ from vauban._pipeline._mode_compose_optimize import _run_compose_optimize_mode
 from vauban._pipeline._mode_defend import _run_defend_mode
 from vauban._pipeline._mode_depth import _run_depth_mode
 from vauban._pipeline._mode_features import _run_features_mode
+from vauban._pipeline._mode_flywheel import _run_flywheel_mode
 from vauban._pipeline._mode_fusion import _run_fusion_mode
 from vauban._pipeline._mode_linear_probe import _run_linear_probe_mode
 from vauban._pipeline._mode_lora_analysis import _run_lora_analysis_mode
@@ -53,6 +54,7 @@ EARLY_MODE_RUNNERS: dict[str, EarlyModeRunner] = {
     "repbend": _run_repbend_mode,
     "lora_export": _run_lora_export_mode,
     "lora_analysis": _run_lora_analysis_mode,
+    "flywheel": _run_flywheel_mode,
 }
 
 

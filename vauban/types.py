@@ -1390,6 +1390,8 @@ class EnvironmentConfig:
     target: EnvironmentTarget
     task: EnvironmentTask
     injection_surface: str
+    injection_position: Literal["prefix", "suffix", "infix"] = "suffix"
+    benign_expected_tools: list[str] = field(default_factory=list)
     max_turns: int = 6
     max_gen_tokens: int = 200
     policy: ToolCallPolicy | None = None
@@ -1949,6 +1951,141 @@ class LoraAnalysisResult:
 
 
 @dataclass(frozen=True, slots=True)
+class FlywheelConfig:
+    """Configuration for the flywheel attack-defense co-evolution mode."""
+
+    n_cycles: int = 10
+    worlds_per_cycle: int = 50
+    payloads_per_world: int = 5
+    skeletons: list[str] = field(default_factory=lambda: [
+        "email", "doc", "code", "calendar", "search",
+    ])
+    model_expand: bool = True
+    expand_temperature: float = 0.7
+    expand_max_tokens: int = 200
+    difficulty_range: tuple[int, int] = (1, 5)
+    payload_library_path: str | None = None
+    positions: list[str] = field(default_factory=lambda: ["infix"])
+    warmstart_gcg: bool = False
+    gcg_steps: int = 50
+    gcg_n_tokens: int = 16
+    cast_alpha: float = 2.0
+    cast_threshold: float = 0.0
+    cast_layers: list[int] | None = None
+    sic_threshold: float = 0.5
+    sic_iterations: int = 3
+    sic_mode: str = "direction"
+    harden: bool = True
+    adaptation_rate: float = 0.1
+    utility_floor: float = 0.90
+    validate_previous: bool = True
+    convergence_window: int = 3
+    convergence_threshold: float = 0.01
+    seed: int | None = None
+    max_turns: int = 6
+    max_gen_tokens: int = 200
+
+
+@dataclass(frozen=True, slots=True)
+class WorldMeta:
+    """Metadata for a generated flywheel world."""
+
+    domain: str
+    skeleton: str
+    complexity: int
+    position: str
+    seed_offset: int
+
+
+@dataclass(frozen=True, slots=True)
+class Payload:
+    """A single injection payload for flywheel attack cycles."""
+
+    text: str
+    source: str
+    cycle_discovered: int
+    domain: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FlywheelTrace:
+    """Result of running one (world, payload) attack pair."""
+
+    world_index: int
+    payload_index: int
+    payload_text: str
+    reward: float
+    target_called: bool
+    turns_used: int
+    tool_calls_made: int
+
+
+@dataclass(frozen=True, slots=True)
+class FlywheelDefenseParams:
+    """Current defense parameter snapshot for the flywheel."""
+
+    cast_alpha: float
+    cast_threshold: float
+    sic_threshold: float
+    sic_iterations: int
+    sic_mode: str
+    cast_layers: list[int] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DefendedTrace:
+    """FlywheelTrace extended with defense evaluation results.
+
+    Duplicates FlywheelTrace fields intentionally: frozen dataclasses
+    cannot use inheritance cleanly.  The canonical mapping between the
+    two lives in ``flywheel._defend._trace_to_defended()``.
+    """
+
+    world_index: int
+    payload_index: int
+    payload_text: str
+    reward: float
+    target_called: bool
+    turns_used: int
+    tool_calls_made: int
+    defense_blocked: bool = False
+    cast_refusal_rate: float = 0.0
+    sic_blocked: bool = False
+    cast_interventions: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class FlywheelCycleMetrics:
+    """Metrics collected for a single flywheel cycle."""
+
+    cycle: int
+    n_worlds: int
+    n_attacks: int
+    attack_success_rate: float
+    defense_block_rate: float
+    evasion_rate: float
+    utility_score: float
+    cast_alpha: float
+    sic_threshold: float
+    n_new_payloads: int
+    n_previous_blocked: int
+
+
+@dataclass(frozen=True, slots=True)
+class FlywheelResult:
+    """Full result from a flywheel co-evolution run."""
+
+    cycles: list[FlywheelCycleMetrics]
+    defense_history: list[FlywheelDefenseParams]
+    final_defense: FlywheelDefenseParams
+    converged: bool
+    convergence_cycle: int | None
+    total_worlds: int
+    total_evasions: int
+    total_payloads: int
+
+
+@dataclass(frozen=True, slots=True)
 class PipelineConfig:
     """Full pipeline configuration loaded from TOML."""
 
@@ -1984,6 +2121,7 @@ class PipelineConfig:
     lora_export: LoraExportConfig | None = None
     lora_load: LoraLoadConfig | None = None
     lora_analysis: LoraAnalysisConfig | None = None
+    flywheel: FlywheelConfig | None = None
     eval: EvalConfig = field(default_factory=EvalConfig)
     api_eval: ApiEvalConfig | None = None
     meta: MetaConfig | None = None

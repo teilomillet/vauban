@@ -17,6 +17,7 @@ from vauban.config._parse_detect import _parse_detect
 from vauban.config._parse_environment import _parse_environment
 from vauban.config._parse_eval import _parse_eval
 from vauban.config._parse_features import _parse_features
+from vauban.config._parse_flywheel import _parse_flywheel
 from vauban.config._parse_fusion import _parse_fusion
 from vauban.config._parse_intent import _parse_intent
 from vauban.config._parse_linear_probe import _parse_linear_probe
@@ -49,6 +50,7 @@ from vauban.types import (
     EnvironmentConfig,
     EvalConfig,
     FeaturesConfig,
+    FlywheelConfig,
     FusionConfig,
     IntentConfig,
     LinearProbeConfig,
@@ -89,6 +91,7 @@ type _SectionParserResult = (
     | DefenseStackConfig
     | EnvironmentConfig
     | FeaturesConfig
+    | FlywheelConfig
     | FusionConfig
     | IntentConfig
     | LinearProbeConfig
@@ -155,6 +158,7 @@ class ParsedSectionValues:
     circuit: CircuitConfig | None
     features: FeaturesConfig | None
     linear_probe: LinearProbeConfig | None
+    flywheel: FlywheelConfig | None
     fusion: FusionConfig | None
     repbend: RepBendConfig | None
     lora_export: LoraExportConfig | None
@@ -331,6 +335,11 @@ def _parse_linear_probe_adapter(
     return _parse_linear_probe(context.raw)
 
 
+def _parse_flywheel_adapter(context: ConfigParseContext) -> FlywheelConfig | None:
+    """Adapter for parsers that accept the full raw config mapping."""
+    return _parse_flywheel(context.raw)
+
+
 def _parse_fusion_adapter(
     context: ConfigParseContext,
 ) -> FusionConfig | None:
@@ -408,6 +417,7 @@ SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     SectionParseSpec(
         "lora_analysis", "lora_analysis", _parse_lora_analysis_adapter, 190,
     ),
+    SectionParseSpec("flywheel", "flywheel", _parse_flywheel_adapter, 195),
 )
 
 
@@ -482,4 +492,5 @@ def parse_registered_sections(
         lora_export=cast("LoraExportConfig | None", parsed["lora_export"]),
         lora_load=cast("LoraLoadConfig | None", parsed["lora_load"]),
         lora_analysis=cast("LoraAnalysisConfig | None", parsed["lora_analysis"]),
+        flywheel=cast("FlywheelConfig | None", parsed["flywheel"]),
     )

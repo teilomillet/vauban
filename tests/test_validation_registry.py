@@ -22,6 +22,7 @@ from vauban.types import (
     DefenseStackConfig,
     DepthConfig,
     FeaturesConfig,
+    FlywheelConfig,
     FusionConfig,
     LinearProbeConfig,
     LoraAnalysisConfig,
@@ -71,6 +72,7 @@ _EXPECTED_EARLY_MODE_ORDER: list[str] = [
     "[repbend]",
     "[lora_export]",
     "[lora_analysis]",
+    "[flywheel]",
 ]
 
 
@@ -160,7 +162,7 @@ def test_validation_warning_content_and_order_for_conflict_fixture(
             " > probe > steer > sss > awareness > cast > sic"
             " > optimize > compose_optimize"
             " > softprompt > defend > circuit > linear_probe > fusion"
-            " > repbend > lora_export > lora_analysis)"
+            " > repbend > lora_export > lora_analysis > flywheel)"
             " — fix: keep one early-return mode per config,"
             " and split other modes into separate TOML files"
         ),
@@ -240,6 +242,7 @@ def test_active_early_modes_precedence_matches_legacy_behavior() -> None:
         repbend=RepBendConfig(layers=[0, 1]),
         lora_export=LoraExportConfig(),
         lora_analysis=LoraAnalysisConfig(adapter_path="adapter/"),
+        flywheel=FlywheelConfig(),
     )
 
     assert active_early_modes(config) == _EXPECTED_EARLY_MODE_ORDER

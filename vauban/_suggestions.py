@@ -174,6 +174,17 @@ _VALUE_CONSTRAINT_KEYS: dict[str, frozenset[str]] = {
         "adapter_path", "adapter_paths", "variance_threshold",
         "align_with_direction",
     }),
+    "flywheel": frozenset({
+        "n_cycles", "worlds_per_cycle", "payloads_per_world",
+        "skeletons", "model_expand", "expand_temperature",
+        "expand_max_tokens", "difficulty_range",
+        "payload_library_path", "positions", "warmstart_gcg",
+        "gcg_steps", "gcg_n_tokens", "cast_alpha", "cast_threshold",
+        "cast_layers", "sic_threshold", "sic_iterations", "sic_mode",
+        "harden", "adaptation_rate", "utility_floor",
+        "validate_previous", "convergence_window",
+        "convergence_threshold", "seed", "max_turns", "max_gen_tokens",
+    }),
 }
 
 _KNOWN_KEYS: dict[str, frozenset[str]] = KNOWN_SECTION_KEYS
