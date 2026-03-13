@@ -26,6 +26,7 @@ def _print_summary(
         "[features]": "SAE feature decomposition",
         "[probe]": "probe inspection",
         "[steer]": "steer generation",
+        "[sss]": "sensitivity-scaled steering",
         "[cast]": "CAST steering",
         "[sic]": "SIC sanitization",
         "[optimize]": "Optuna optimization",

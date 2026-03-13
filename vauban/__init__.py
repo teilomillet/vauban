@@ -72,9 +72,11 @@ from vauban.probe import multi_probe, probe, steer, steer_svf
 from vauban.repbend import repbend
 from vauban.scan import calibrate_scan_threshold
 from vauban.scan import scan as injection_scan
+from vauban.sensitivity import compute_sensitivity_profile
 from vauban.sic import calibrate_threshold, sic_single
 from vauban.sic import sic as sic_sanitize
 from vauban.softprompt import softprompt_attack
+from vauban.sss import sss_generate
 from vauban.subspace import (
     effective_rank,
     explained_variance_ratio,
@@ -181,6 +183,8 @@ from vauban.types import (
     SICResult,
     SoftPromptConfig,
     SoftPromptResult,
+    SSSConfig,
+    SSSResult,
     SteerConfig,
     SteerResult,
     SubspaceResult,
@@ -272,6 +276,8 @@ __all__ = [
     "SICConfig",
     "SICPromptResult",
     "SICResult",
+    "SSSConfig",
+    "SSSResult",
     "SVFConfig",
     "SVFResult",
     "ScanConfig",
@@ -310,6 +316,7 @@ __all__ = [
     "check_alignment",
     "compare_surfaces",
     "compute_reward",
+    "compute_sensitivity_profile",
     "coverage_report",
     "cut",
     "cut_biprojected",
@@ -387,6 +394,7 @@ __all__ = [
     "silhouette_scores",
     "softprompt_attack",
     "sparsify_direction",
+    "sss_generate",
     "steer",
     "steer_svf",
     "subspace_overlap",

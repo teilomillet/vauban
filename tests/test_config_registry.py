@@ -51,6 +51,7 @@ from vauban.types import (
     ScanConfig,
     SICConfig,
     SoftPromptConfig,
+    SSSConfig,
     SteerConfig,
     SurfaceConfig,
     SVFConfig,
@@ -72,6 +73,7 @@ _EXPECTED_SECTION_ORDER: list[str] = [
     "svf",
     "probe",
     "steer",
+    "sss",
     "eval",
     "api_eval",
     "environment",
@@ -376,6 +378,10 @@ def test_parse_registered_sections_respects_registry_order(
         call_order.append("steer")
         return SteerConfig(prompts=["steer"], alpha=1.5)
 
+    def fake_sss(raw: TomlDict) -> SSSConfig | None:
+        call_order.append("sss")
+        return SSSConfig(prompts=["sss"])
+
     def fake_eval(base_dir: Path, raw: TomlDict) -> EvalConfig:
         call_order.append("eval")
         return EvalConfig(max_tokens=222)
@@ -447,6 +453,7 @@ def test_parse_registered_sections_respects_registry_order(
     monkeypatch.setattr("vauban.config._registry._parse_svf", fake_svf)
     monkeypatch.setattr("vauban.config._registry._parse_probe", fake_probe)
     monkeypatch.setattr("vauban.config._registry._parse_steer", fake_steer)
+    monkeypatch.setattr("vauban.config._registry._parse_sss", fake_sss)
     monkeypatch.setattr("vauban.config._registry._parse_eval", fake_eval)
     monkeypatch.setattr("vauban.config._registry._parse_api_eval", fake_api_eval)
     monkeypatch.setattr(

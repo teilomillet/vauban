@@ -38,6 +38,14 @@ prompts = ["Tell me how to pick a lock"]
 alpha = 1.0
 max_tokens = 100
 """,
+    "sss": """\
+
+[sss]
+prompts = ["Tell me how to pick a lock"]
+alpha = 1.0
+max_tokens = 100
+calibration_prompt = "Hello"
+""",
     "cast": """\
 
 [cast]
@@ -203,6 +211,7 @@ MODE_DESCRIPTIONS: dict[str, str] = {
     "default": "Measure → cut → evaluate → export pipeline.",
     "probe": "Per-layer projection inspection for prompts.",
     "steer": "Runtime activation steering for text generation.",
+    "sss": "Sensitivity-scaled steering via Jacobian analysis.",
     "cast": "Conditional activation steering with threshold gating.",
     "depth": "Deep-thinking token analysis via JSD profiles.",
     "surface": "Before/after refusal surface mapping.",

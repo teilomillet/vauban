@@ -126,6 +126,12 @@ _PIPELINE_MODES: tuple[PipelineModeDoc, ...] = (
         early_return=True,
     ),
     PipelineModeDoc(
+        mode="sss",
+        trigger="[sss] section present.",
+        output="sss_report.json.",
+        early_return=True,
+    ),
+    PipelineModeDoc(
         mode="cast",
         trigger="[cast] section present.",
         output="cast_report.json.",
@@ -983,6 +989,65 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
             FieldSpec(
                 key="max_tokens",
                 description="Generation cap per prompt.",
+                constraints="integer >= 1.",
+            ),
+        ),
+    ),
+    SectionSpec(
+        name="sss",
+        description="Sensitivity-scaled steering via Jacobian analysis.",
+        early_return=True,
+        config_class="SSSConfig",
+        fields=(
+            FieldSpec(
+                key="prompts",
+                description="Inline prompts for SSS generation.",
+                constraints="required non-empty list of strings.",
+                required=True,
+            ),
+            FieldSpec(
+                key="layers",
+                description="Layer subset to steer.",
+                constraints="list of integers or null (null means auto-select).",
+            ),
+            FieldSpec(
+                key="alpha",
+                description="Global steering strength multiplier.",
+                constraints="number.",
+            ),
+            FieldSpec(
+                key="max_tokens",
+                description="Generation cap per prompt.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="calibration_prompt",
+                description="Prompt for sensitivity calibration.",
+                constraints="string.",
+            ),
+            FieldSpec(
+                key="n_power_iterations",
+                description="Power iterations for dominant vector.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="fd_epsilon",
+                description="Finite-difference step size.",
+                constraints="number > 0.",
+            ),
+            FieldSpec(
+                key="seed_floor",
+                description="Minimum injection strength at seed layers.",
+                constraints="number.",
+            ),
+            FieldSpec(
+                key="valley_window",
+                description="Half-window for compression valley detection.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="top_k_valleys",
+                description="Maximum valleys to use as seed layers.",
                 constraints="integer >= 1.",
             ),
         ),
@@ -1897,7 +1962,7 @@ _MODE_CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Core Pipeline", ("default", "optimize", "lora_export", "lora_analysis")),
     ("Runtime Inspection", ("probe", "steer", "depth")),
     ("Defense", ("cast", "sic", "defend", "repbend")),
-    ("Adversarial", ("softprompt", "fusion")),
+    ("Adversarial", ("softprompt", "fusion", "sss")),
     ("Analysis", ("circuit", "features", "linear_probe", "svf", "compose_optimize")),
     ("External", ("api_eval",)),
 )

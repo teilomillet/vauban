@@ -963,6 +963,40 @@ class SteerConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class SSSConfig:
+    """Configuration for Sensitivity-Scaled Steering (SSS).
+
+    Adaptive activation-space attack using Jacobian sensitivity analysis.
+    Seeds a perturbation at the BOS token in compression-valley layers,
+    then applies per-token micro-injections scaled by directional gain.
+    """
+
+    prompts: list[str]
+    layers: list[int] | None = None  # None → auto-select via sensitivity
+    alpha: float = 1.0
+    max_tokens: int = 100
+    calibration_prompt: str = "Hello"
+    n_power_iterations: int = 5
+    fd_epsilon: float = 1e-4
+    seed_floor: float = 0.01
+    valley_window: int = 3
+    top_k_valleys: int = 3
+
+
+@dataclass(frozen=True, slots=True)
+class SSSResult:
+    """Result from SSS generation for a single prompt."""
+
+    text: str
+    prompt: str
+    seed_layers: list[int]
+    seed_strength: float
+    per_token_gains: list[float]
+    projections_before: list[float]
+    projections_after: list[float]
+
+
+@dataclass(frozen=True, slots=True)
 class CastConfig:
     """Configuration for conditional activation steering (CAST)."""
 
@@ -1880,6 +1914,7 @@ class PipelineConfig:
     depth: DepthConfig | None = None
     probe: ProbeConfig | None = None
     steer: SteerConfig | None = None
+    sss: SSSConfig | None = None
     cast: CastConfig | None = None
     svf: SVFConfig | None = None
     compose_optimize: ComposeOptimizeConfig | None = None

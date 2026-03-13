@@ -20,6 +20,7 @@ from vauban.types import (
     SICPromptResult,
     SICResult,
     SoftPromptResult,
+    SSSResult,
     SteerResult,
     SurfaceComparison,
     SurfaceGroupDelta,
@@ -305,6 +306,19 @@ def _steer_to_dict(result: SteerResult) -> dict[str, object]:
     """Serialize a SteerResult to a JSON-compatible dict."""
     return {
         "text": result.text,
+        "projections_before": result.projections_before,
+        "projections_after": result.projections_after,
+    }
+
+
+def _sss_to_dict(result: SSSResult) -> dict[str, object]:
+    """Serialize an SSSResult to a JSON-compatible dict."""
+    return {
+        "text": result.text,
+        "prompt": result.prompt,
+        "seed_layers": result.seed_layers,
+        "seed_strength": result.seed_strength,
+        "per_token_gains": result.per_token_gains,
         "projections_before": result.projections_before,
         "projections_after": result.projections_after,
     }

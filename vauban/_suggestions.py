@@ -100,6 +100,11 @@ _VALUE_CONSTRAINT_KEYS: dict[str, frozenset[str]] = {
         "direction_source", "svf_boundary_path",
         "bank_path", "composition",
     }),
+    "sss": frozenset({
+        "prompts", "layers", "alpha", "max_tokens",
+        "calibration_prompt", "n_power_iterations", "fd_epsilon",
+        "seed_floor", "valley_window", "top_k_valleys",
+    }),
     "cast": frozenset({
         "prompts", "layers", "alpha", "threshold", "max_tokens",
         "direction_source", "svf_boundary_path",

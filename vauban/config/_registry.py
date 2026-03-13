@@ -30,6 +30,7 @@ from vauban.config._parse_repbend import _parse_repbend
 from vauban.config._parse_scan import _parse_scan
 from vauban.config._parse_sic import _parse_sic
 from vauban.config._parse_softprompt import _parse_softprompt
+from vauban.config._parse_sss import _parse_sss
 from vauban.config._parse_steer import _parse_steer
 from vauban.config._parse_surface import _parse_surface
 from vauban.config._parse_svf import _parse_svf
@@ -60,6 +61,7 @@ from vauban.types import (
     ScanConfig,
     SICConfig,
     SoftPromptConfig,
+    SSSConfig,
     SteerConfig,
     SurfaceConfig,
     SVFConfig,
@@ -102,6 +104,7 @@ type _SectionParserResult = (
     | SoftPromptConfig
     | SICConfig
     | ProbeConfig
+    | SSSConfig
     | SteerConfig
     | EvalConfig
     | SVFConfig
@@ -136,6 +139,7 @@ class ParsedSectionValues:
     sic: SICConfig | None
     probe: ProbeConfig | None
     steer: SteerConfig | None
+    sss: SSSConfig | None
     eval: EvalConfig
     api_eval: ApiEvalConfig | None
     svf: SVFConfig | None
@@ -236,6 +240,11 @@ def _parse_probe_adapter(context: ConfigParseContext) -> ProbeConfig | None:
 def _parse_steer_adapter(context: ConfigParseContext) -> SteerConfig | None:
     """Adapter for parsers that accept the full raw config mapping."""
     return _parse_steer(context.raw)
+
+
+def _parse_sss_adapter(context: ConfigParseContext) -> SSSConfig | None:
+    """Adapter for parsers that accept the full raw config mapping."""
+    return _parse_sss(context.raw)
 
 
 def _parse_eval_adapter(context: ConfigParseContext) -> EvalConfig:
@@ -366,6 +375,7 @@ SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     SectionParseSpec("svf", "svf", _parse_svf_adapter, 95),
     SectionParseSpec("probe", "probe", _parse_probe_adapter, 100),
     SectionParseSpec("steer", "steer", _parse_steer_adapter, 110),
+    SectionParseSpec("sss", "sss", _parse_sss_adapter, 112),
     SectionParseSpec("eval", "eval", _parse_eval_adapter, 120),
     SectionParseSpec("api_eval", "api_eval", _parse_api_eval_adapter, 130),
     SectionParseSpec(
@@ -440,6 +450,7 @@ def parse_registered_sections(
         sic=cast("SICConfig | None", parsed["sic"]),
         probe=cast("ProbeConfig | None", parsed["probe"]),
         steer=cast("SteerConfig | None", parsed["steer"]),
+        sss=cast("SSSConfig | None", parsed["sss"]),
         eval=cast("EvalConfig", parsed["eval"]),
         api_eval=cast("ApiEvalConfig | None", parsed["api_eval"]),
         svf=cast("SVFConfig | None", parsed["svf"]),

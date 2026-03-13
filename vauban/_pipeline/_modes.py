@@ -21,6 +21,7 @@ from vauban._pipeline._mode_probe import _run_probe_mode
 from vauban._pipeline._mode_repbend import _run_repbend_mode
 from vauban._pipeline._mode_sic import _run_sic_mode
 from vauban._pipeline._mode_softprompt import _run_softprompt_mode
+from vauban._pipeline._mode_sss import _run_sss_mode
 from vauban._pipeline._mode_steer import _run_steer_mode
 from vauban._pipeline._mode_svf import _run_svf_mode
 from vauban.config._mode_registry import (
@@ -37,6 +38,7 @@ EARLY_MODE_RUNNERS: dict[str, EarlyModeRunner] = {
     "features": _run_features_mode,
     "probe": _run_probe_mode,
     "steer": _run_steer_mode,
+    "sss": _run_sss_mode,
     "cast": _run_cast_mode,
     "sic": _run_sic_mode,
     "optimize": _run_optimize_mode,
