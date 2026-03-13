@@ -32,7 +32,12 @@ def _parse_awareness(raw: TomlDict) -> AwarenessConfig | None:
         raise ValueError(msg)
 
     # -- calibration_prompt (optional, default "Hello") --
-    calibration_prompt = reader.optional_string("calibration_prompt") or "Hello"
+    calibration_prompt = reader.optional_string("calibration_prompt")
+    if calibration_prompt is None:
+        calibration_prompt = "Hello"
+    elif not calibration_prompt:
+        msg = "[awareness].calibration_prompt must be non-empty"
+        raise ValueError(msg)
 
     # -- mode (optional, default "full") --
     mode = reader.string("mode", default="full")

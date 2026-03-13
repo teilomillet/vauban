@@ -114,20 +114,19 @@ def _fast_gain_profile(
     ssm_mask = make_ssm_mask(transformer, h)
     layer_results: list[LayerSensitivity] = []
 
+    def _make_layer_fn(
+        _layer: object, _mask: Array | None,
+    ) -> Callable[[Array], Array]:
+        def fn(x: Array) -> Array:
+            return _layer(x, _mask)  # type: ignore[operator]
+        return fn
+
     h_cur = h
     for i, layer in enumerate(transformer.layers):
         layer_mask = select_mask(layer, mask, ssm_mask)
-
-        def _make_layer_fn(
-            _layer: object, _mask: Array | None,
-        ) -> Callable[[Array], Array]:
-            def fn(x: Array) -> Array:
-                return _layer(x, _mask)  # type: ignore[operator]
-            return fn
-
         layer_fn = _make_layer_fn(layer, layer_mask)
 
-        gain = directional_gain(layer_fn, h_cur, direction, config.fd_epsilon)  # type: ignore[arg-type]
+        gain = directional_gain(layer_fn, h_cur, direction, config.fd_epsilon)
 
         layer_results.append(LayerSensitivity(
             layer_index=i,
