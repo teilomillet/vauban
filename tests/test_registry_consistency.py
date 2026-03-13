@@ -11,14 +11,18 @@ from __future__ import annotations
 from vauban._init import KNOWN_MODES
 from vauban._pipeline._modes import EARLY_MODE_RUNNERS
 from vauban._suggestions import _VALUE_CONSTRAINT_KEYS
-from vauban.config._mode_registry import EARLY_MODE_SPECS
+from vauban.config._mode_registry import (
+    EARLY_MODE_DESCRIPTION_BY_MODE,
+    EARLY_MODE_LABEL_BY_SECTION,
+    EARLY_MODE_SPECS,
+    early_mode_label,
+)
 from vauban.config._registry import SECTION_PARSE_SPECS
 from vauban.config._schema import (
     _DATACLASS_SECTION_SPECS,
     KNOWN_SECTION_KEYS,
     KNOWN_TOP_LEVEL_KEYS,
 )
-from vauban.config._validation_render import _print_summary
 from vauban.manual import (
     _PIPELINE_MODES,
     _SECTION_SPECS,
@@ -176,6 +180,13 @@ class TestInitCoversAllModes:
             f"_init._MODE_TEMPLATES: {uncovered}"
         )
 
+    def test_init_descriptions_cover_all_early_modes(self) -> None:
+        uncovered = _EARLY_MODES - frozenset(EARLY_MODE_DESCRIPTION_BY_MODE)
+        assert not uncovered, (
+            "Modes in EARLY_MODE_SPECS but missing from "
+            f"EARLY_MODE_DESCRIPTION_BY_MODE: {uncovered}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # 6. Validation render covers all early-return modes
@@ -183,16 +194,14 @@ class TestInitCoversAllModes:
 
 
 class TestValidationRenderCoversAllModes:
-    """mode_labels in _validation_render must cover every early mode."""
+    """Shared validation labels must cover every early mode."""
 
     def test_mode_labels_cover_all_early_sections(self) -> None:
-        # mode_labels is a local dict inside _print_summary.
-        # We inspect the source to verify all modes are present.
-        import inspect
-
-        source = inspect.getsource(_print_summary)
         for spec in EARLY_MODE_SPECS:
-            assert f'"{spec.section}"' in source, (
-                f"mode_labels in _validation_render.py is missing "
+            assert spec.section in EARLY_MODE_LABEL_BY_SECTION, (
+                "EARLY_MODE_LABEL_BY_SECTION is missing "
                 f"an entry for {spec.section!r}"
+            )
+            assert early_mode_label(spec.section) == spec.validation_label, (
+                f"early_mode_label returned unexpected label for {spec.section!r}"
             )

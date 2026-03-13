@@ -10,6 +10,9 @@ from pathlib import Path
 from vauban.config._mode_registry import (
     EARLY_MODE_SPECS as _EARLY_MODE_SPECS,
 )
+from vauban.config._mode_registry import (
+    EARLY_RETURN_PRECEDENCE as _EARLY_RETURN_PRECEDENCE,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,7 +88,7 @@ class PipelineModeDoc:
 
 
 EARLY_RETURN_PRECEDENCE: tuple[str, ...] = tuple(
-    spec.mode for spec in _EARLY_MODE_SPECS
+    section.strip("[]") for section in _EARLY_RETURN_PRECEDENCE
 )
 
 _PIPELINE_MODES: tuple[PipelineModeDoc, ...] = (
@@ -95,125 +98,14 @@ _PIPELINE_MODES: tuple[PipelineModeDoc, ...] = (
         output="Modified model directory in [output].dir.",
         early_return=False,
     ),
-    PipelineModeDoc(
-        mode="api_eval",
-        trigger="[api_eval] with token_text set (standalone).",
-        output="api_eval_report.json.",
-        early_return=True,
-    ),
-    PipelineModeDoc(
-        mode="depth",
-        trigger="[depth] section present.",
-        output="depth_report.json (+ optional depth_direction.npy).",
-        early_return=True,
-    ),
-    PipelineModeDoc(
-        mode="svf",
-        trigger="[svf] section present.",
-        output="svf_report.json.",
-        early_return=True,
-    ),
-    PipelineModeDoc(
-        mode="probe",
-        trigger="[probe] section present.",
-        output="probe_report.json.",
-        early_return=True,
-    ),
-    PipelineModeDoc(
-        mode="steer",
-        trigger="[steer] section present.",
-        output="steer_report.json.",
-        early_return=True,
-    ),
-    PipelineModeDoc(
-        mode="sss",
-        trigger="[sss] section present.",
-        output="sss_report.json.",
-        early_return=True,
-    ),
-    PipelineModeDoc(
-        mode="awareness",
-        trigger="[awareness] section present.",
-        output="awareness_report.json.",
-        early_return=True,
-    ),
-    PipelineModeDoc(
-        mode="cast",
-        trigger="[cast] section present.",
-        output="cast_report.json.",
-        early_return=True,
-    ),
-    PipelineModeDoc(
-        mode="sic",
-        trigger="[sic] section present.",
-        output="sic_report.json.",
-        early_return=True,
-    ),
-    PipelineModeDoc(
-        mode="optimize",
-        trigger="[optimize] section present.",
-        output="optimize_report.json.",
-        early_return=True,
-    ),
-    PipelineModeDoc(
-        mode="compose_optimize",
-        trigger="[compose_optimize] section present.",
-        output="compose_optimize_report.json.",
-        early_return=True,
-    ),
-    PipelineModeDoc(
-        mode="softprompt",
-        trigger="[softprompt] section present.",
-        output="softprompt_report.json.",
-        early_return=True,
-    ),
-    PipelineModeDoc(
-        mode="defend",
-        trigger="[defend] section present.",
-        output="defend_report.json.",
-        early_return=True,
-    ),
-    PipelineModeDoc(
-        mode="circuit",
-        trigger="[circuit] section present.",
-        output="circuit_report.json.",
-        early_return=True,
-    ),
-    PipelineModeDoc(
-        mode="features",
-        trigger="[features] section present.",
-        output="features_report.json + sae_layer_*.safetensors.",
-        early_return=True,
-    ),
-    PipelineModeDoc(
-        mode="linear_probe",
-        trigger="[linear_probe] section present.",
-        output="linear_probe_report.json.",
-        early_return=True,
-    ),
-    PipelineModeDoc(
-        mode="fusion",
-        trigger="[fusion] section present.",
-        output="fusion_report.json.",
-        early_return=True,
-    ),
-    PipelineModeDoc(
-        mode="repbend",
-        trigger="[repbend] section present.",
-        output="repbend_report.json + modified weights.",
-        early_return=True,
-    ),
-    PipelineModeDoc(
-        mode="lora_export",
-        trigger="[lora_export] section present.",
-        output="lora_export_report.json + lora_adapter/.",
-        early_return=True,
-    ),
-    PipelineModeDoc(
-        mode="lora_analysis",
-        trigger="[lora_analysis] section present.",
-        output="lora_analysis_report.json.",
-        early_return=True,
+    *tuple(
+        PipelineModeDoc(
+            mode=spec.mode,
+            trigger=spec.manual_trigger,
+            output=spec.manual_output,
+            early_return=True,
+        )
+        for spec in _EARLY_MODE_SPECS
     ),
 )
 

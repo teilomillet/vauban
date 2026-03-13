@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, TextIO
 
-from vauban.config._mode_registry import EARLY_MODE_SPECS, active_early_modes
+from vauban.config._mode_registry import (
+    EARLY_MODE_SPECS,
+    active_early_modes,
+    early_mode_label,
+)
 
 if TYPE_CHECKING:
     from vauban.config._validation_models import ValidationContext
@@ -18,33 +22,10 @@ def _print_summary(
     """Print validation summary to stderr with the existing text format."""
     config = context.config
     early_modes = active_early_modes(config)
-
-    mode_labels: dict[str, str] = {
-        "[api_eval]": "standalone API eval",
-        "[depth]": "depth analysis",
-        "[svf]": "SVF training",
-        "[features]": "SAE feature decomposition",
-        "[probe]": "probe inspection",
-        "[steer]": "steer generation",
-        "[sss]": "sensitivity-scaled steering",
-        "[awareness]": "steering awareness detection",
-        "[cast]": "CAST steering",
-        "[sic]": "SIC sanitization",
-        "[optimize]": "Optuna optimization",
-        "[compose_optimize]": "composition optimization",
-        "[softprompt]": "soft prompt attack",
-        "[defend]": "defense stack",
-        "[circuit]": "circuit tracing",
-        "[linear_probe]": "linear probe training",
-        "[fusion]": "fusion training",
-        "[repbend]": "RepBend fine-tuning",
-        "[lora_export]": "LoRA export",
-        "[lora_analysis]": "LoRA analysis",
-    }
     first_mode = early_modes[0] if early_modes else None
     match first_mode:
-        case str() as mode_key if mode_key in mode_labels:
-            mode = mode_labels[mode_key]
+        case str() as mode_key if early_mode_label(mode_key) is not None:
+            mode = early_mode_label(mode_key) or "measure → cut → export"
         case _:
             mode = "measure → cut → export"
     extras: list[str] = []

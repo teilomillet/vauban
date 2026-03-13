@@ -5,6 +5,8 @@ Generates minimal, opinionated TOML starter configs for each pipeline mode.
 
 from pathlib import Path
 
+from vauban.config._mode_registry import EARLY_MODE_DESCRIPTION_BY_MODE
+
 _DEFAULT_MODEL = "mlx-community/Llama-3.2-3B-Instruct-4bit"
 
 _BASE = """\
@@ -219,31 +221,16 @@ KNOWN_MODES: frozenset[str] = (
     frozenset(_MODE_TEMPLATES) | frozenset(_STANDALONE_TEMPLATES)
 )
 
-MODE_DESCRIPTIONS: dict[str, str] = {
+_NON_EARLY_MODE_DESCRIPTIONS: dict[str, str] = {
     "default": "Measure → cut → evaluate → export pipeline.",
-    "probe": "Per-layer projection inspection for prompts.",
-    "steer": "Runtime activation steering for text generation.",
-    "sss": "Sensitivity-scaled steering via Jacobian analysis.",
-    "awareness": "Steering awareness detection via sensitivity comparison.",
-    "cast": "Conditional activation steering with threshold gating.",
-    "depth": "Deep-thinking token analysis via JSD profiles.",
     "surface": "Before/after refusal surface mapping.",
-    "softprompt": "Continuous/discrete soft prompt attack optimization.",
-    "optimize": "Optuna multi-objective hyperparameter search.",
     "detect": "Defense-hardening detection.",
-    "sic": "Iterative input sanitization defense.",
-    "circuit": "Causal circuit tracing via activation patching.",
-    "features": "Sparse autoencoder training for feature decomposition.",
-    "svf": "Steering Vector Field boundary MLP training.",
-    "compose_optimize": "Bayesian optimization of composition weights.",
-    "defend": "Composed defense stack (scan + SIC + policy + intent).",
-    "linear_probe": "Train linear probes to measure refusal encoding.",
-    "fusion": "Latent fusion jailbreak via hidden state blending.",
-    "repbend": "RepBend contrastive fine-tuning for safety hardening.",
-    "lora_export": "Export measured direction as a LoRA adapter.",
-    "lora_analysis": "Decompose LoRA adapters via SVD for structural analysis.",
     "scan": "Injection detection via per-token direction projection.",
-    "api_eval": "Test optimized tokens against remote API endpoints.",
+}
+
+MODE_DESCRIPTIONS: dict[str, str] = {
+    **_NON_EARLY_MODE_DESCRIPTIONS,
+    **EARLY_MODE_DESCRIPTION_BY_MODE,
 }
 
 _missing = KNOWN_MODES - set(MODE_DESCRIPTIONS)

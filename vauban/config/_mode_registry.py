@@ -1,4 +1,4 @@
-"""Shared early-return mode metadata for run + validation flows."""
+"""Shared early-return mode metadata for run, docs, and validation flows."""
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -19,6 +19,10 @@ class EarlyModeSpec:
     phase: EarlyModePhase
     requires_direction: bool
     enabled: EarlyModePredicate
+    description: str
+    validation_label: str
+    manual_trigger: str
+    manual_output: str
 
 
 def _has_depth(config: PipelineConfig) -> bool:
@@ -132,23 +136,131 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "standalone",
         False,
         _has_standalone_api_eval,
+        "Test optimized tokens against remote API endpoints.",
+        "standalone API eval",
+        "[api_eval] with token_text set (standalone).",
+        "api_eval_report.json.",
     ),
-    EarlyModeSpec("[depth]", "depth", "before_prompts", False, _has_depth),
-    EarlyModeSpec("[svf]", "svf", "before_prompts", False, _has_svf),
-    EarlyModeSpec("[features]", "features", "before_prompts", False, _has_features),
-    EarlyModeSpec("[probe]", "probe", "after_measure", True, _has_probe),
-    EarlyModeSpec("[steer]", "steer", "after_measure", True, _has_steer),
-    EarlyModeSpec("[sss]", "sss", "after_measure", True, _has_sss),
-    EarlyModeSpec("[awareness]", "awareness", "after_measure", True, _has_awareness),
-    EarlyModeSpec("[cast]", "cast", "after_measure", True, _has_cast),
-    EarlyModeSpec("[sic]", "sic", "after_measure", False, _has_sic),
-    EarlyModeSpec("[optimize]", "optimize", "after_measure", True, _has_optimize),
+    EarlyModeSpec(
+        "[depth]",
+        "depth",
+        "before_prompts",
+        False,
+        _has_depth,
+        "Deep-thinking token analysis via JSD profiles.",
+        "depth analysis",
+        "[depth] section present.",
+        "depth_report.json (+ optional depth_direction.npy).",
+    ),
+    EarlyModeSpec(
+        "[svf]",
+        "svf",
+        "before_prompts",
+        False,
+        _has_svf,
+        "Steering Vector Field boundary MLP training.",
+        "SVF training",
+        "[svf] section present.",
+        "svf_report.json.",
+    ),
+    EarlyModeSpec(
+        "[features]",
+        "features",
+        "before_prompts",
+        False,
+        _has_features,
+        "Sparse autoencoder training for feature decomposition.",
+        "SAE feature decomposition",
+        "[features] section present.",
+        "features_report.json + sae_layer_*.safetensors.",
+    ),
+    EarlyModeSpec(
+        "[probe]",
+        "probe",
+        "after_measure",
+        True,
+        _has_probe,
+        "Per-layer projection inspection for prompts.",
+        "probe inspection",
+        "[probe] section present.",
+        "probe_report.json.",
+    ),
+    EarlyModeSpec(
+        "[steer]",
+        "steer",
+        "after_measure",
+        True,
+        _has_steer,
+        "Runtime activation steering for text generation.",
+        "steer generation",
+        "[steer] section present.",
+        "steer_report.json.",
+    ),
+    EarlyModeSpec(
+        "[sss]",
+        "sss",
+        "after_measure",
+        True,
+        _has_sss,
+        "Sensitivity-scaled steering via Jacobian analysis.",
+        "sensitivity-scaled steering",
+        "[sss] section present.",
+        "sss_report.json.",
+    ),
+    EarlyModeSpec(
+        "[awareness]",
+        "awareness",
+        "after_measure",
+        True,
+        _has_awareness,
+        "Steering awareness detection via sensitivity comparison.",
+        "steering awareness detection",
+        "[awareness] section present.",
+        "awareness_report.json.",
+    ),
+    EarlyModeSpec(
+        "[cast]",
+        "cast",
+        "after_measure",
+        True,
+        _has_cast,
+        "Conditional activation steering with threshold gating.",
+        "CAST steering",
+        "[cast] section present.",
+        "cast_report.json.",
+    ),
+    EarlyModeSpec(
+        "[sic]",
+        "sic",
+        "after_measure",
+        False,
+        _has_sic,
+        "Iterative input sanitization defense.",
+        "SIC sanitization",
+        "[sic] section present.",
+        "sic_report.json.",
+    ),
+    EarlyModeSpec(
+        "[optimize]",
+        "optimize",
+        "after_measure",
+        True,
+        _has_optimize,
+        "Optuna multi-objective hyperparameter search.",
+        "Optuna optimization",
+        "[optimize] section present.",
+        "optimize_report.json.",
+    ),
     EarlyModeSpec(
         "[compose_optimize]",
         "compose_optimize",
         "after_measure",
         False,
         _has_compose_optimize,
+        "Bayesian optimization of composition weights.",
+        "composition optimization",
+        "[compose_optimize] section present.",
+        "compose_optimize_report.json.",
     ),
     EarlyModeSpec(
         "[softprompt]",
@@ -156,6 +268,10 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "after_measure",
         False,
         _has_softprompt,
+        "Continuous/discrete soft prompt attack optimization.",
+        "soft prompt attack",
+        "[softprompt] section present.",
+        "softprompt_report.json.",
     ),
     EarlyModeSpec(
         "[defend]",
@@ -163,6 +279,10 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "after_measure",
         False,
         _has_defend,
+        "Composed defense stack (scan + SIC + policy + intent).",
+        "defense stack",
+        "[defend] section present.",
+        "defend_report.json.",
     ),
     EarlyModeSpec(
         "[circuit]",
@@ -170,6 +290,10 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "after_measure",
         False,
         _has_circuit,
+        "Causal circuit tracing via activation patching.",
+        "circuit tracing",
+        "[circuit] section present.",
+        "circuit_report.json.",
     ),
     EarlyModeSpec(
         "[linear_probe]",
@@ -177,6 +301,10 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "after_measure",
         False,
         _has_linear_probe,
+        "Train linear probes to measure refusal encoding.",
+        "linear probe training",
+        "[linear_probe] section present.",
+        "linear_probe_report.json.",
     ),
     EarlyModeSpec(
         "[fusion]",
@@ -184,6 +312,10 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "before_prompts",
         False,
         _has_fusion,
+        "Latent fusion jailbreak via hidden state blending.",
+        "fusion training",
+        "[fusion] section present.",
+        "fusion_report.json.",
     ),
     EarlyModeSpec(
         "[repbend]",
@@ -191,6 +323,10 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "after_measure",
         True,
         _has_repbend,
+        "RepBend contrastive fine-tuning for safety hardening.",
+        "RepBend fine-tuning",
+        "[repbend] section present.",
+        "repbend_report.json + modified weights.",
     ),
     EarlyModeSpec(
         "[lora_export]",
@@ -198,6 +334,10 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "after_measure",
         True,
         _has_lora_export,
+        "Export measured direction as a LoRA adapter.",
+        "LoRA export",
+        "[lora_export] section present.",
+        "lora_export_report.json + lora_adapter/.",
     ),
     EarlyModeSpec(
         "[lora_analysis]",
@@ -205,6 +345,10 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "after_measure",
         False,
         _has_lora_analysis,
+        "Decompose LoRA adapters via SVD for structural analysis.",
+        "LoRA analysis",
+        "[lora_analysis] section present.",
+        "lora_analysis_report.json.",
     ),
 )
 
@@ -212,10 +356,23 @@ EARLY_RETURN_PRECEDENCE: tuple[str, ...] = tuple(
     spec.section for spec in EARLY_MODE_SPECS
 )
 
+EARLY_MODE_DESCRIPTION_BY_MODE: dict[str, str] = {
+    spec.mode: spec.description for spec in EARLY_MODE_SPECS
+}
+
+EARLY_MODE_LABEL_BY_SECTION: dict[str, str] = {
+    spec.section: spec.validation_label for spec in EARLY_MODE_SPECS
+}
+
 
 def active_early_modes(config: PipelineConfig) -> list[str]:
     """Return active early-return sections in runtime precedence order."""
     return [spec.section for spec in EARLY_MODE_SPECS if spec.enabled(config)]
+
+
+def early_mode_label(section: str) -> str | None:
+    """Return the user-facing validation label for an early-return section."""
+    return EARLY_MODE_LABEL_BY_SECTION.get(section)
 
 
 def active_early_mode_for_phase(
