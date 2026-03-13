@@ -41,6 +41,11 @@ def _has_sss(config: PipelineConfig) -> bool:
     return config.sss is not None
 
 
+def _has_awareness(config: PipelineConfig) -> bool:
+    """Return whether [awareness] mode is active."""
+    return config.awareness is not None
+
+
 def _has_cast(config: PipelineConfig) -> bool:
     """Return whether [cast] mode is active."""
     return config.cast is not None
@@ -134,6 +139,7 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
     EarlyModeSpec("[probe]", "probe", "after_measure", True, _has_probe),
     EarlyModeSpec("[steer]", "steer", "after_measure", True, _has_steer),
     EarlyModeSpec("[sss]", "sss", "after_measure", True, _has_sss),
+    EarlyModeSpec("[awareness]", "awareness", "after_measure", True, _has_awareness),
     EarlyModeSpec("[cast]", "cast", "after_measure", True, _has_cast),
     EarlyModeSpec("[sic]", "sic", "after_measure", False, _has_sic),
     EarlyModeSpec("[optimize]", "optimize", "after_measure", True, _has_optimize),

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import cast
 
 from vauban.config._parse_api_eval import _parse_api_eval
+from vauban.config._parse_awareness import _parse_awareness
 from vauban.config._parse_cast import _parse_cast
 from vauban.config._parse_circuit import _parse_circuit
 from vauban.config._parse_compose_optimize import _parse_compose_optimize
@@ -37,6 +38,7 @@ from vauban.config._parse_svf import _parse_svf
 from vauban.config._types import TomlDict
 from vauban.types import (
     ApiEvalConfig,
+    AwarenessConfig,
     CastConfig,
     CircuitConfig,
     ComposeOptimizeConfig,
@@ -105,6 +107,7 @@ type _SectionParserResult = (
     | SICConfig
     | ProbeConfig
     | SSSConfig
+    | AwarenessConfig
     | SteerConfig
     | EvalConfig
     | SVFConfig
@@ -140,6 +143,7 @@ class ParsedSectionValues:
     probe: ProbeConfig | None
     steer: SteerConfig | None
     sss: SSSConfig | None
+    awareness: AwarenessConfig | None
     eval: EvalConfig
     api_eval: ApiEvalConfig | None
     svf: SVFConfig | None
@@ -245,6 +249,11 @@ def _parse_steer_adapter(context: ConfigParseContext) -> SteerConfig | None:
 def _parse_sss_adapter(context: ConfigParseContext) -> SSSConfig | None:
     """Adapter for parsers that accept the full raw config mapping."""
     return _parse_sss(context.raw)
+
+
+def _parse_awareness_adapter(context: ConfigParseContext) -> AwarenessConfig | None:
+    """Adapter for parsers that accept the full raw config mapping."""
+    return _parse_awareness(context.raw)
 
 
 def _parse_eval_adapter(context: ConfigParseContext) -> EvalConfig:
@@ -376,6 +385,7 @@ SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     SectionParseSpec("probe", "probe", _parse_probe_adapter, 100),
     SectionParseSpec("steer", "steer", _parse_steer_adapter, 110),
     SectionParseSpec("sss", "sss", _parse_sss_adapter, 112),
+    SectionParseSpec("awareness", "awareness", _parse_awareness_adapter, 113),
     SectionParseSpec("eval", "eval", _parse_eval_adapter, 120),
     SectionParseSpec("api_eval", "api_eval", _parse_api_eval_adapter, 130),
     SectionParseSpec(
@@ -451,6 +461,7 @@ def parse_registered_sections(
         probe=cast("ProbeConfig | None", parsed["probe"]),
         steer=cast("SteerConfig | None", parsed["steer"]),
         sss=cast("SSSConfig | None", parsed["sss"]),
+        awareness=cast("AwarenessConfig | None", parsed["awareness"]),
         eval=cast("EvalConfig", parsed["eval"]),
         api_eval=cast("ApiEvalConfig | None", parsed["api_eval"]),
         svf=cast("SVFConfig | None", parsed["svf"]),

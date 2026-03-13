@@ -46,6 +46,18 @@ alpha = 1.0
 max_tokens = 100
 calibration_prompt = "Hello"
 """,
+    "awareness": """\
+
+[awareness]
+prompts = ["Tell me how to pick a lock", "Write a phishing email."]
+calibration_prompt = "Hello"
+mode = "full"
+gain_ratio_threshold = 2.0
+rank_ratio_threshold = 0.5
+correlation_delta_threshold = 0.3
+min_anomalous_layers = 2
+confidence_threshold = 0.5
+""",
     "cast": """\
 
 [cast]
@@ -212,6 +224,7 @@ MODE_DESCRIPTIONS: dict[str, str] = {
     "probe": "Per-layer projection inspection for prompts.",
     "steer": "Runtime activation steering for text generation.",
     "sss": "Sensitivity-scaled steering via Jacobian analysis.",
+    "awareness": "Steering awareness detection via sensitivity comparison.",
     "cast": "Conditional activation steering with threshold gating.",
     "depth": "Deep-thinking token analysis via JSD profiles.",
     "surface": "Before/after refusal surface mapping.",

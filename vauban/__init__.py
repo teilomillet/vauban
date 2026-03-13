@@ -6,6 +6,7 @@ from vauban._pipeline import run
 from vauban._version import __version__
 from vauban.api_eval import evaluate_suffix_via_api
 from vauban.api_eval_proxy import evaluate_with_defense_proxy
+from vauban.awareness import awareness_calibrate, awareness_detect
 from vauban.cast import cast_generate, cast_generate_svf
 from vauban.circuit import trace_circuit
 from vauban.config import generate_config_schema, load_config, write_config_schema
@@ -115,6 +116,9 @@ from vauban.types import (
     AgentTurn,
     AlphaTier,
     ApiEvalEndpoint,
+    AwarenessConfig,
+    AwarenessLayerResult,
+    AwarenessResult,
     CastConfig,
     CastResult,
     CausalLM,
@@ -211,6 +215,9 @@ __all__ = [
     "AgentTurn",
     "AlphaTier",
     "ApiEvalEndpoint",
+    "AwarenessConfig",
+    "AwarenessLayerResult",
+    "AwarenessResult",
     "CastConfig",
     "CastResult",
     "CausalLM",
@@ -307,6 +314,8 @@ __all__ = [
     "all_categories",
     "analyze_adapter",
     "analyze_directions",
+    "awareness_calibrate",
+    "awareness_detect",
     "build_lora_weights",
     "calibrate_scan_threshold",
     "calibrate_threshold",

@@ -27,6 +27,7 @@ def _print_summary(
         "[probe]": "probe inspection",
         "[steer]": "steer generation",
         "[sss]": "sensitivity-scaled steering",
+        "[awareness]": "steering awareness detection",
         "[cast]": "CAST steering",
         "[sic]": "SIC sanitization",
         "[optimize]": "Optuna optimization",

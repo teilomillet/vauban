@@ -105,6 +105,13 @@ _VALUE_CONSTRAINT_KEYS: dict[str, frozenset[str]] = {
         "calibration_prompt", "n_power_iterations", "fd_epsilon",
         "seed_floor", "valley_window", "top_k_valleys",
     }),
+    "awareness": frozenset({
+        "prompts", "calibration_prompt", "mode",
+        "n_power_iterations", "fd_epsilon", "valley_window", "top_k_valleys",
+        "gain_ratio_threshold", "rank_ratio_threshold",
+        "correlation_delta_threshold", "min_anomalous_layers",
+        "confidence_threshold",
+    }),
     "cast": frozenset({
         "prompts", "layers", "alpha", "threshold", "max_tokens",
         "direction_source", "svf_boundary_path",
@@ -273,6 +280,7 @@ _KNOWN_VALUES: dict[tuple[str, str], frozenset[str]] = {
     ("policy", "default_action"): frozenset({"allow", "block"}),
     ("circuit", "metric"): frozenset({"kl", "logit_diff"}),
     ("circuit", "granularity"): frozenset({"layer", "component"}),
+    ("awareness", "mode"): frozenset({"fast", "full"}),
     ("detect", "mode"): frozenset({"fast", "probe", "full", "margin"}),
     ("meta", "status"): frozenset({
         "wip", "promising", "dead_end", "baseline", "superseded", "archived",

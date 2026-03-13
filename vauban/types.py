@@ -997,6 +997,58 @@ class SSSResult:
 
 
 @dataclass(frozen=True, slots=True)
+class AwarenessConfig:
+    """Configuration for steering awareness detection.
+
+    Compares Jacobian sensitivity profiles between a clean baseline and
+    test inputs to detect anomalous amplification, rank collapse, or
+    direction alignment shifts indicative of runtime steering.
+    """
+
+    prompts: list[str]
+    calibration_prompt: str = "Hello"
+    mode: Literal["fast", "full"] = "full"
+    n_power_iterations: int = 5
+    fd_epsilon: float = 1e-4
+    valley_window: int = 3
+    top_k_valleys: int = 3
+    gain_ratio_threshold: float = 2.0
+    rank_ratio_threshold: float = 0.5
+    correlation_delta_threshold: float = 0.3
+    min_anomalous_layers: int = 2
+    confidence_threshold: float = 0.5
+
+
+@dataclass(frozen=True, slots=True)
+class AwarenessLayerResult:
+    """Per-layer awareness detection metrics."""
+
+    layer_index: int
+    baseline_gain: float
+    test_gain: float
+    gain_ratio: float
+    baseline_rank: float
+    test_rank: float
+    rank_ratio: float
+    baseline_correlation: float
+    test_correlation: float
+    correlation_delta: float
+    anomalous: bool
+
+
+@dataclass(frozen=True, slots=True)
+class AwarenessResult:
+    """Result from steering awareness detection for a single prompt."""
+
+    prompt: str
+    steered: bool
+    confidence: float
+    anomalous_layers: list[int]
+    layers: list[AwarenessLayerResult]
+    evidence: list[str]
+
+
+@dataclass(frozen=True, slots=True)
 class CastConfig:
     """Configuration for conditional activation steering (CAST)."""
 
@@ -1915,6 +1967,7 @@ class PipelineConfig:
     probe: ProbeConfig | None = None
     steer: SteerConfig | None = None
     sss: SSSConfig | None = None
+    awareness: AwarenessConfig | None = None
     cast: CastConfig | None = None
     svf: SVFConfig | None = None
     compose_optimize: ComposeOptimizeConfig | None = None

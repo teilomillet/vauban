@@ -78,6 +78,7 @@ def load_config(path: str | Path) -> PipelineConfig:
     probe_config = parsed_sections.probe
     steer_config = parsed_sections.steer
     sss_config = parsed_sections.sss
+    awareness_config = parsed_sections.awareness
     eval_config = parsed_sections.eval
     api_eval_config = parsed_sections.api_eval
     svf_config = parsed_sections.svf
@@ -164,6 +165,7 @@ def load_config(path: str | Path) -> PipelineConfig:
         probe=probe_config,
         steer=steer_config,
         sss=sss_config,
+        awareness=awareness_config,
         cast=cast_config,
         svf=svf_config,
         compose_optimize=compose_optimize_config,

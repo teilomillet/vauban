@@ -2,6 +2,7 @@
 
 from vauban.taxonomy import TaxonomyCoverage
 from vauban.types import (
+    AwarenessResult,
     CastResult,
     CircuitResult,
     DefenseStackResult,
@@ -321,6 +322,33 @@ def _sss_to_dict(result: SSSResult) -> dict[str, object]:
         "per_token_gains": result.per_token_gains,
         "projections_before": result.projections_before,
         "projections_after": result.projections_after,
+    }
+
+
+def _awareness_result_to_dict(result: AwarenessResult) -> dict[str, object]:
+    """Serialize an AwarenessResult to a JSON-compatible dict."""
+    return {
+        "prompt": result.prompt,
+        "steered": result.steered,
+        "confidence": result.confidence,
+        "anomalous_layers": result.anomalous_layers,
+        "layers": [
+            {
+                "layer_index": lr.layer_index,
+                "baseline_gain": lr.baseline_gain,
+                "test_gain": lr.test_gain,
+                "gain_ratio": lr.gain_ratio,
+                "baseline_rank": lr.baseline_rank,
+                "test_rank": lr.test_rank,
+                "rank_ratio": lr.rank_ratio,
+                "baseline_correlation": lr.baseline_correlation,
+                "test_correlation": lr.test_correlation,
+                "correlation_delta": lr.correlation_delta,
+                "anomalous": lr.anomalous,
+            }
+            for lr in result.layers
+        ],
+        "evidence": result.evidence,
     }
 
 

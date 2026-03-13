@@ -132,6 +132,12 @@ _PIPELINE_MODES: tuple[PipelineModeDoc, ...] = (
         early_return=True,
     ),
     PipelineModeDoc(
+        mode="awareness",
+        trigger="[awareness] section present.",
+        output="awareness_report.json.",
+        early_return=True,
+    ),
+    PipelineModeDoc(
         mode="cast",
         trigger="[cast] section present.",
         output="cast_report.json.",
@@ -1053,6 +1059,58 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
         ),
     ),
     SectionSpec(
+        name="awareness",
+        description="Steering awareness detection via Jacobian sensitivity comparison.",
+        early_return=True,
+        config_class="AwarenessConfig",
+        fields=(
+            FieldSpec(
+                key="prompts",
+                description="Inline prompts to test for steering.",
+                constraints="required non-empty list of strings.",
+                required=True,
+            ),
+            FieldSpec(
+                key="calibration_prompt",
+                description="Benign prompt for baseline calibration.",
+                constraints="string.",
+            ),
+            FieldSpec(
+                key="mode",
+                description=(
+                    "Detection mode: 'fast' (gain-only)"
+                    " or 'full' (gain+rank+correlation)."
+                ),
+                constraints="'fast' or 'full'.",
+            ),
+            FieldSpec(
+                key="gain_ratio_threshold",
+                description="Flag layer if test/baseline gain exceeds this.",
+                constraints="number > 0.",
+            ),
+            FieldSpec(
+                key="rank_ratio_threshold",
+                description="Flag layer if test/baseline rank drops below this.",
+                constraints="number > 0.",
+            ),
+            FieldSpec(
+                key="correlation_delta_threshold",
+                description="Flag layer if |correlation delta| exceeds this.",
+                constraints="number > 0.",
+            ),
+            FieldSpec(
+                key="min_anomalous_layers",
+                description="Minimum anomalous layers to declare steered.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="confidence_threshold",
+                description="Minimum confidence score to declare steered.",
+                constraints="number >= 0.",
+            ),
+        ),
+    ),
+    SectionSpec(
         name="cast",
         description="Conditional activation steering (CAST) generation.",
         early_return=True,
@@ -1963,7 +2021,10 @@ _MODE_CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Runtime Inspection", ("probe", "steer", "depth")),
     ("Defense", ("cast", "sic", "defend", "repbend")),
     ("Adversarial", ("softprompt", "fusion", "sss")),
-    ("Analysis", ("circuit", "features", "linear_probe", "svf", "compose_optimize")),
+    ("Analysis", (
+        "circuit", "features", "linear_probe", "svf",
+        "compose_optimize", "awareness",
+    )),
     ("External", ("api_eval",)),
 )
 

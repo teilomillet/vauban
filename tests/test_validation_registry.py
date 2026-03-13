@@ -15,6 +15,7 @@ from vauban.config._validation import VALIDATION_RULE_SPECS, validate_config
 from vauban.types import (
     ApiEvalConfig,
     ApiEvalEndpoint,
+    AwarenessConfig,
     CastConfig,
     CircuitConfig,
     ComposeOptimizeConfig,
@@ -57,6 +58,7 @@ _EXPECTED_EARLY_MODE_ORDER: list[str] = [
     "[probe]",
     "[steer]",
     "[sss]",
+    "[awareness]",
     "[cast]",
     "[sic]",
     "[optimize]",
@@ -155,7 +157,8 @@ def test_validation_warning_content_and_order_for_conflict_fixture(
             "[HIGH] Multiple early-return modes active: [depth], [probe]"
             " — only the first will run (precedence: api_eval > depth"
             " > svf > features"
-            " > probe > steer > sss > cast > sic > optimize > compose_optimize"
+            " > probe > steer > sss > awareness > cast > sic"
+            " > optimize > compose_optimize"
             " > softprompt > defend > circuit > linear_probe > fusion"
             " > repbend > lora_export > lora_analysis)"
             " — fix: keep one early-return mode per config,"
@@ -214,6 +217,7 @@ def test_active_early_modes_precedence_matches_legacy_behavior() -> None:
         probe=ProbeConfig(prompts=["probe"]),
         steer=SteerConfig(prompts=["steer"]),
         sss=SSSConfig(prompts=["sss"]),
+        awareness=AwarenessConfig(prompts=["awareness"]),
         cast=CastConfig(prompts=["cast"]),
         sic=SICConfig(),
         optimize=OptimizeConfig(),

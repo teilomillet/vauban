@@ -19,6 +19,7 @@ from typing import (
 from vauban._backend import SUPPORTED_BACKENDS
 from vauban.types import (
     ApiEvalConfig,
+    AwarenessConfig,
     CastConfig,
     CircuitConfig,
     ComposeOptimizeConfig,
@@ -90,6 +91,7 @@ _DATACLASS_SECTION_SPECS: tuple[_DataclassSectionSpec, ...] = (
     _DataclassSectionSpec("probe", ProbeConfig, {}),
     _DataclassSectionSpec("steer", SteerConfig, {}),
     _DataclassSectionSpec("sss", SSSConfig, {}),
+    _DataclassSectionSpec("awareness", AwarenessConfig, {}),
     _DataclassSectionSpec("cast", CastConfig, {}),
     _DataclassSectionSpec("svf", SVFConfig, {}),
     _DataclassSectionSpec("api_eval", ApiEvalConfig, {}),
