@@ -120,7 +120,7 @@ class TestHardenDefense:
         assert high_rate.cast_alpha > low_rate.cast_alpha
 
     def test_danger_zone_reduces_alpha(self) -> None:
-        """TRYLOCK: if hardening made evasion worse, back off alpha."""
+        """TRYLOCK: repeated evasion increase → back off alpha."""
         params = FlywheelDefenseParams(
             cast_alpha=3.0,
             cast_threshold=0.0,
@@ -128,17 +128,18 @@ class TestHardenDefense:
             sic_iterations=3,
             sic_mode="direction",
         )
-        # Current evasion (5/10=0.5) > prev evasion (0.2) → danger zone
+        # Two prior increases (0.1 → 0.2 → 0.3), current 0.5 → 3rd
+        # increase.  2+ increases in window → danger zone.
         result = harden_defense(
             params, _make_evaded(5), 0.1, 0.95, 0.90,
             n_successful=10,
-            prev_evasion_rate=0.2,
+            prev_evasion_rates=[0.1, 0.2, 0.3],
         )
         # Alpha should DECREASE (danger zone → back off)
         assert result.cast_alpha < params.cast_alpha
 
-    def test_no_danger_zone_increases_alpha(self) -> None:
-        """Normal case: evasion improved → keep increasing."""
+    def test_single_spike_not_danger_zone(self) -> None:
+        """A single evasion increase is noise, not danger zone."""
         params = FlywheelDefenseParams(
             cast_alpha=2.0,
             cast_threshold=0.0,
@@ -146,11 +147,29 @@ class TestHardenDefense:
             sic_iterations=3,
             sic_mode="direction",
         )
-        # Current evasion (3/10=0.3) < prev evasion (0.5) → improving
+        # Rates went 0.5 → 0.3 → 0.2, current 0.4 = only 1 increase
+        result = harden_defense(
+            params, _make_evaded(4), 0.1, 0.95, 0.90,
+            n_successful=10,
+            prev_evasion_rates=[0.5, 0.3, 0.2],
+        )
+        # Single spike → NOT danger zone → alpha increases
+        assert result.cast_alpha > params.cast_alpha
+
+    def test_no_danger_zone_increases_alpha(self) -> None:
+        """Normal case: evasion improving → keep increasing."""
+        params = FlywheelDefenseParams(
+            cast_alpha=2.0,
+            cast_threshold=0.0,
+            sic_threshold=0.5,
+            sic_iterations=3,
+            sic_mode="direction",
+        )
+        # Rates decreasing: 0.5 → 0.4 → 0.3, current 0.3 → stable
         result = harden_defense(
             params, _make_evaded(3), 0.1, 0.95, 0.90,
             n_successful=10,
-            prev_evasion_rate=0.5,
+            prev_evasion_rates=[0.5, 0.4, 0.3],
         )
         assert result.cast_alpha > params.cast_alpha
 

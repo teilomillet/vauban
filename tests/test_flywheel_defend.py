@@ -144,6 +144,7 @@ class TestDefendTraces:
         assert captured == [("Summarize my inbox.", "inject", "generation")]
         assert results[0].defense_blocked is True
         assert results[0].cast_interventions == 2
+        assert results[0].cast_refusal_rate == 0.2  # 2/10
 
     def test_generation_mode_runs_without_direction(self) -> None:
         world = _make_world()

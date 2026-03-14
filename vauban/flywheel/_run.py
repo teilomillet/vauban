@@ -184,9 +184,7 @@ def run_flywheel(
 
         # 8. Harden defense
         cycle_defense = defense
-        prev_evasion_rate = (
-            all_metrics[-1].evasion_rate if all_metrics else None
-        )
+        prev_rates = [m.evasion_rate for m in all_metrics[-3:]]
         if config.harden and evaded:
             defense = harden_defense(
                 defense, evaded,
@@ -194,7 +192,7 @@ def run_flywheel(
                 utility_score,
                 config.utility_floor,
                 n_successful=n_successful,
-                prev_evasion_rate=prev_evasion_rate,
+                prev_evasion_rates=prev_rates,
             )
             defense_history.append(defense)
         attack_success_rate = (

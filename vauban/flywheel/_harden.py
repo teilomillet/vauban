@@ -17,14 +17,15 @@ def harden_defense(
     utility_score: float,
     utility_floor: float,
     n_successful: int = 0,
-    prev_evasion_rate: float | None = None,
+    prev_evasion_rates: list[float] | None = None,
 ) -> FlywheelDefenseParams:
     """Adapt defense parameters based on evasion analysis.
 
     Uses complementarity-aware escalation: analyzes which defense
     (CAST vs SIC) is weaker on the evaded traces and prioritizes
     hardening that defense.  Implements TRYLOCK danger-zone detection:
-    if the previous hardening made evasion worse, backs off alpha.
+    if evasion increased in 2+ of the last 3 cycles, backs off alpha
+    to avoid oscillation in the non-monotonic region.
 
     Args:
         current: Current defense parameters.
@@ -33,9 +34,8 @@ def harden_defense(
         utility_score: Current utility score (0.0-1.0).
         utility_floor: Minimum acceptable utility.
         n_successful: Total successful attacks this cycle (for rate).
-        prev_evasion_rate: Evasion rate from the previous cycle.
-            Used for danger-zone detection: if hardening made things
-            worse, alpha is reduced instead of increased.
+        prev_evasion_rates: Recent evasion rates (oldest first).
+            Used for danger-zone detection with a multi-cycle window.
 
     Returns:
         Updated FlywheelDefenseParams.
@@ -51,13 +51,13 @@ def harden_defense(
         evasion_pressure = min(n_evaded / 10.0, 1.0)
 
     # -- TRYLOCK danger-zone detection --
-    # If the previous hardening increased evasion, we're in the
-    # non-monotonic danger zone.  Back off alpha instead of raising it.
-    in_danger_zone = False
-    if prev_evasion_rate is not None and n_successful > 0:
-        current_evasion_rate = n_evaded / n_successful
-        if current_evasion_rate > prev_evasion_rate:
-            in_danger_zone = True
+    # Check whether evasion increased in 2+ of the last 3 cycles.
+    # A single spike could be noise; repeated increases signal the
+    # non-monotonic danger zone where more alpha makes things worse.
+    in_danger_zone = _detect_danger_zone(
+        prev_evasion_rates or [],
+        n_evaded / n_successful if n_successful > 0 else 0.0,
+    )
 
     # -- Complementarity analysis --
     # Determine which defense is weaker on evaded traces.
@@ -134,3 +134,26 @@ def harden_defense(
         sic_mode=current.sic_mode,
         cast_layers=current.cast_layers,
     )
+
+
+def _detect_danger_zone(
+    prev_rates: list[float],
+    current_rate: float,
+) -> bool:
+    """Return whether the flywheel is in the TRYLOCK danger zone.
+
+    True when evasion increased in at least 2 of the last 3 transitions.
+    A single spike is treated as noise; repeated increases signal the
+    non-monotonic region where more alpha makes things worse.
+    """
+    # Build the full rate sequence (recent history + current)
+    rates = [*prev_rates[-3:], current_rate]
+    if len(rates) < 2:
+        return False
+
+    # Count transitions where evasion increased
+    from itertools import pairwise
+
+    increases = sum(1 for a, b in pairwise(rates) if b > a)
+    # Danger zone: 2+ increases in the window
+    return increases >= 2
