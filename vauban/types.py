@@ -2105,6 +2105,69 @@ class RemoteConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class RemoteChatResult:
+    """Single chat completion result from a remote backend."""
+
+    prompt: str
+    response: str | None = None
+    error: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RemoteActivationResult:
+    """Single activation tensor from a remote backend."""
+
+    prompt_index: int
+    module_name: str
+    data: list[list[float]]
+
+
+@runtime_checkable
+class RemoteBackend(Protocol):
+    """Protocol for pluggable remote inference backends.
+
+    Each backend (jsinfer, openai, etc.) implements this interface.
+    The orchestrator in ``vauban.remote._probe`` dispatches to it.
+    """
+
+    async def chat(
+        self,
+        model_id: str,
+        prompts: list[str],
+        max_tokens: int,
+    ) -> list[RemoteChatResult]:
+        """Send chat completions to a remote model.
+
+        Args:
+            model_id: Model identifier (backend-specific format).
+            prompts: List of user prompts to send.
+            max_tokens: Maximum tokens per response.
+
+        Returns:
+            One ``RemoteChatResult`` per prompt.
+        """
+        ...
+
+    async def activations(
+        self,
+        model_id: str,
+        prompts: list[str],
+        modules: list[str],
+    ) -> list[RemoteActivationResult]:
+        """Fetch activation tensors from a remote model.
+
+        Args:
+            model_id: Model identifier.
+            prompts: List of prompts to collect activations for.
+            modules: Expanded module names (e.g. ``model.layers.0.mlp.down_proj``).
+
+        Returns:
+            List of ``RemoteActivationResult`` (may be empty if unsupported).
+        """
+        ...
+
+
+@dataclass(frozen=True, slots=True)
 class PipelineConfig:
     """Full pipeline configuration loaded from TOML."""
 
