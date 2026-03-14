@@ -637,10 +637,10 @@ class TestModeRegistry:
     """Tests for lora_analysis mode registration."""
 
     def test_has_lora_analysis_predicate(self) -> None:
-        """Predicate should return True when lora_analysis is set."""
+        """Mode should be active when lora_analysis is set."""
         from pathlib import Path
 
-        from vauban.config._mode_registry import _has_lora_analysis
+        from vauban.config._mode_registry import active_early_modes
         from vauban.types import LoraAnalysisConfig, PipelineConfig
 
         config = PipelineConfig(
@@ -649,13 +649,13 @@ class TestModeRegistry:
             harmless_path=Path("s.jsonl"),
             lora_analysis=LoraAnalysisConfig(adapter_path="a/"),
         )
-        assert _has_lora_analysis(config) is True
+        assert "[lora_analysis]" in active_early_modes(config)
 
     def test_has_lora_analysis_none(self) -> None:
-        """Predicate should return False when lora_analysis is None."""
+        """Mode should not be active when lora_analysis is None."""
         from pathlib import Path
 
-        from vauban.config._mode_registry import _has_lora_analysis
+        from vauban.config._mode_registry import active_early_modes
         from vauban.types import PipelineConfig
 
         config = PipelineConfig(
@@ -663,7 +663,7 @@ class TestModeRegistry:
             harmful_path=Path("h.jsonl"),
             harmless_path=Path("s.jsonl"),
         )
-        assert _has_lora_analysis(config) is False
+        assert "[lora_analysis]" not in active_early_modes(config)
 
     def test_early_mode_spec_registered(self) -> None:
         """lora_analysis should be in EARLY_MODE_SPECS."""

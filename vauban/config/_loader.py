@@ -31,9 +31,9 @@ def load_config(path: str | Path) -> PipelineConfig:
     with path.open("rb") as f:
         raw: TomlDict = tomllib.load(f)
 
-    # Detect standalone api_eval: [api_eval] present with token_text set.
-    # Standalone mode needs no local model, so [model] and [data] are optional.
-    _standalone = _is_standalone_api_eval(raw)
+    # Detect standalone modes that need no local model.
+    # [model] and [data] are optional for these.
+    _standalone = _is_standalone_api_eval(raw) or _is_standalone_remote(raw)
 
     model_section = raw.get("model")
     if _standalone:
@@ -262,6 +262,16 @@ def _resolve_single_data(
     raise TypeError(msg)
 
 
+def _is_standalone_remote(raw: TomlDict) -> bool:
+    """Check whether the raw TOML represents a standalone remote config.
+
+    Returns True when the ``remote`` top-level key is present, even if the
+    section is malformed, so the remote parser can surface the specific
+    validation error before model/data checks run.
+    """
+    return "remote" in raw
+
+
 def _is_standalone_api_eval(raw: TomlDict) -> bool:
     """Check whether the raw TOML represents a standalone api_eval config.
 
@@ -271,4 +281,6 @@ def _is_standalone_api_eval(raw: TomlDict) -> bool:
     sec = raw.get("api_eval")
     if not isinstance(sec, dict):
         return False
-    return isinstance(sec.get("token_text"), str) and bool(sec["token_text"])
+    api_eval = cast("TomlDict", sec)
+    token_text = api_eval.get("token_text")
+    return isinstance(token_text, str) and bool(token_text)

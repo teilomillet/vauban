@@ -30,6 +30,7 @@ from vauban.types import (
     OptimizeConfig,
     PipelineConfig,
     ProbeConfig,
+    RemoteConfig,
     RepBendConfig,
     SICConfig,
     SoftPromptConfig,
@@ -52,6 +53,7 @@ _EXPECTED_RULE_ORDER: list[str] = [
 ]
 
 _EXPECTED_EARLY_MODE_ORDER: list[str] = [
+    "[remote]",
     "[api_eval]",
     "[depth]",
     "[svf]",
@@ -160,8 +162,8 @@ def test_validation_warning_content_and_order_for_conflict_fixture(
     assert warnings == [
         (
             "[HIGH] Multiple early-return modes active: [depth], [probe]"
-            " — only the first will run (precedence: api_eval > depth"
-            " > svf > features"
+            " — only the first will run (precedence: remote"
+            " > api_eval > depth > svf > features"
             " > probe > steer > sss > awareness > cast > sic"
             " > optimize > compose_optimize"
             " > softprompt > defend > circuit > linear_probe > fusion"
@@ -246,6 +248,12 @@ def test_active_early_modes_precedence_matches_legacy_behavior() -> None:
         lora_export=LoraExportConfig(),
         lora_analysis=LoraAnalysisConfig(adapter_path="adapter/"),
         flywheel=FlywheelConfig(),
+        remote=RemoteConfig(
+            backend="jsinfer",
+            api_key_env="K",
+            models=["m"],
+            prompts=["p"],
+        ),
     )
 
     assert active_early_modes(config) == _EXPECTED_EARLY_MODE_ORDER
@@ -255,7 +263,7 @@ def test_active_early_modes_precedence_matches_legacy_behavior() -> None:
     after_measure = active_early_mode_for_phase(config, "after_measure")
 
     assert standalone is not None
-    assert standalone.mode == "api_eval"
+    assert standalone.mode == "remote"
     assert before_prompts is not None
     assert before_prompts.mode == "depth"
     assert after_measure is not None

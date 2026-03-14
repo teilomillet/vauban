@@ -20,6 +20,7 @@ from vauban._pipeline._mode_lora_analysis import _run_lora_analysis_mode
 from vauban._pipeline._mode_lora_export import _run_lora_export_mode
 from vauban._pipeline._mode_optimize import _run_optimize_mode
 from vauban._pipeline._mode_probe import _run_probe_mode
+from vauban._pipeline._mode_remote import _run_remote_mode
 from vauban._pipeline._mode_repbend import _run_repbend_mode
 from vauban._pipeline._mode_sic import _run_sic_mode
 from vauban._pipeline._mode_softprompt import _run_softprompt_mode
@@ -34,6 +35,7 @@ from vauban.config._mode_registry import (
 type EarlyModeRunner = Callable[[EarlyModeContext], None]
 
 EARLY_MODE_RUNNERS: dict[str, EarlyModeRunner] = {
+    "remote": _run_remote_mode,
     "api_eval": _run_api_eval_mode,
     "depth": _run_depth_mode,
     "svf": _run_svf_mode,

@@ -2086,6 +2086,23 @@ class FlywheelResult:
 
 
 @dataclass(frozen=True, slots=True)
+class RemoteConfig:
+    """Configuration for remote model probing via batch API."""
+
+    backend: str
+    api_key_env: str
+    models: list[str]
+    prompts: list[str]
+    activations: bool = False
+    activation_layers: list[int] = field(default_factory=list)
+    activation_modules: list[str] = field(
+        default_factory=lambda: ["model.layers.{layer}.mlp.down_proj"],
+    )
+    max_tokens: int = 512
+    timeout: int = 600
+
+
+@dataclass(frozen=True, slots=True)
 class PipelineConfig:
     """Full pipeline configuration loaded from TOML."""
 
@@ -2122,6 +2139,7 @@ class PipelineConfig:
     lora_load: LoraLoadConfig | None = None
     lora_analysis: LoraAnalysisConfig | None = None
     flywheel: FlywheelConfig | None = None
+    remote: RemoteConfig | None = None
     eval: EvalConfig = field(default_factory=EvalConfig)
     api_eval: ApiEvalConfig | None = None
     meta: MetaConfig | None = None

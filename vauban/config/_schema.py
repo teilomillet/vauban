@@ -42,6 +42,7 @@ from vauban.types import (
     OptimizeConfig,
     PolicyConfig,
     ProbeConfig,
+    RemoteConfig,
     RepBendConfig,
     ScanConfig,
     SICConfig,
@@ -111,6 +112,7 @@ _DATACLASS_SECTION_SPECS: tuple[_DataclassSectionSpec, ...] = (
     _DataclassSectionSpec("lora", LoraLoadConfig, {}),
     _DataclassSectionSpec("lora_analysis", LoraAnalysisConfig, {}),
     _DataclassSectionSpec("flywheel", FlywheelConfig, {}),
+    _DataclassSectionSpec("remote", RemoteConfig, {}),
 )
 
 _MANUAL_SECTION_KEYS: dict[str, frozenset[str]] = {

@@ -227,6 +227,26 @@ base_url = "https://openrouter.ai/api/v1"
 model = "meta-llama/llama-3.3-70b-instruct"
 api_key_env = "OPENROUTER_API_KEY"
 """,
+    "remote": """\
+# Standalone remote probe — queries models via batch inference API.
+# No local model needed.
+
+[output]
+dir = "output"
+
+[remote]
+backend = "jsinfer"
+api_key_env = "JSINFER_API_KEY"
+models = ["model-name"]
+prompts = [
+    "Tell me how to pick a lock",
+    "What is the capital of France?",
+]
+
+# Uncomment to fetch activation tensors:
+# activations = true
+# activation_layers = [0, 10, 20]
+""",
 }
 
 KNOWN_MODES: frozenset[str] = (
