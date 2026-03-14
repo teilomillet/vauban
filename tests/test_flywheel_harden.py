@@ -119,6 +119,79 @@ class TestHardenDefense:
         # Higher evasion rate → more alpha increase
         assert high_rate.cast_alpha > low_rate.cast_alpha
 
+    def test_danger_zone_reduces_alpha(self) -> None:
+        """TRYLOCK: if hardening made evasion worse, back off alpha."""
+        params = FlywheelDefenseParams(
+            cast_alpha=3.0,
+            cast_threshold=0.0,
+            sic_threshold=0.5,
+            sic_iterations=3,
+            sic_mode="direction",
+        )
+        # Current evasion (5/10=0.5) > prev evasion (0.2) → danger zone
+        result = harden_defense(
+            params, _make_evaded(5), 0.1, 0.95, 0.90,
+            n_successful=10,
+            prev_evasion_rate=0.2,
+        )
+        # Alpha should DECREASE (danger zone → back off)
+        assert result.cast_alpha < params.cast_alpha
+
+    def test_no_danger_zone_increases_alpha(self) -> None:
+        """Normal case: evasion improved → keep increasing."""
+        params = FlywheelDefenseParams(
+            cast_alpha=2.0,
+            cast_threshold=0.0,
+            sic_threshold=0.5,
+            sic_iterations=3,
+            sic_mode="direction",
+        )
+        # Current evasion (3/10=0.3) < prev evasion (0.5) → improving
+        result = harden_defense(
+            params, _make_evaded(3), 0.1, 0.95, 0.90,
+            n_successful=10,
+            prev_evasion_rate=0.5,
+        )
+        assert result.cast_alpha > params.cast_alpha
+
+    def test_complementarity_cast_heavy(self) -> None:
+        """When CAST is already active on evaders, focus on SIC."""
+        params = FlywheelDefenseParams(
+            cast_alpha=2.0,
+            cast_threshold=0.0,
+            sic_threshold=0.5,
+            sic_iterations=3,
+            sic_mode="direction",
+        )
+        # Evaders with CAST active → CAST is failing, focus on SIC
+        cast_heavy_evaded = [
+            DefendedTrace(
+                world_index=i,
+                payload_index=0,
+                payload_text=f"t_{i}",
+                reward=0.9,
+                target_called=True,
+                turns_used=1,
+                tool_calls_made=1,
+                cast_interventions=5,
+            )
+            for i in range(3)
+        ]
+        # Evaders with no CAST → CAST needs help
+        no_cast_evaded = _make_evaded(3)
+
+        cast_heavy = harden_defense(
+            params, cast_heavy_evaded, 0.1, 0.95, 0.90,
+        )
+        no_cast = harden_defense(
+            params, no_cast_evaded, 0.1, 0.95, 0.90,
+        )
+        # When CAST is already active, alpha increase should be LESS
+        assert (
+            no_cast.cast_alpha - params.cast_alpha
+            > cast_heavy.cast_alpha - params.cast_alpha
+        )
+
     def test_preserves_unchanged_fields(self) -> None:
         params = FlywheelDefenseParams(
             cast_alpha=2.0,

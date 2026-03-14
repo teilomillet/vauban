@@ -126,6 +126,7 @@ class TestDefendTraces:
             return DefendedEnvironmentResult(
                 env_result=_make_env_result(0.0, target_called=False),
                 cast_interventions=2,
+                cast_considered=10,
                 sic_blocked=False,
             )
 
@@ -153,6 +154,7 @@ class TestDefendTraces:
             return_value=DefendedEnvironmentResult(
                 env_result=_make_env_result(0.9, target_called=True),
                 cast_interventions=0,
+                cast_considered=10,
                 sic_blocked=True,
             ),
         ) as mocked_run:

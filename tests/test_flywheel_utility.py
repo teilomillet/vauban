@@ -76,6 +76,7 @@ def _make_result(
     return DefendedEnvironmentResult(
         env_result=env_result,
         cast_interventions=0,
+        cast_considered=0,
         sic_blocked=sic_blocked,
     )
 

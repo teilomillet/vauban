@@ -29,6 +29,7 @@ class DefendedEnvironmentResult:
 
     env_result: EnvironmentResult
     cast_interventions: int
+    cast_considered: int
     sic_blocked: bool
 
 
@@ -54,20 +55,24 @@ def run_defended_agent_loop(
     turns: list[AgentTurn] = []
     all_tool_calls: list[ToolCall] = []
     cast_interventions = 0
+    cast_considered = 0
     sic_blocked = False
 
     for _turn_idx in range(env_config.max_turns):
-        response_text, turn_cast_interventions = _generate_defended_response(
-            model,
-            tokenizer,
-            messages,
-            env_config.max_gen_tokens,
-            env_config.temperature,
-            direction,
-            layer_index,
-            defense_params,
+        response_text, turn_interventions, turn_considered = (
+            _generate_defended_response(
+                model,
+                tokenizer,
+                messages,
+                env_config.max_gen_tokens,
+                env_config.temperature,
+                direction,
+                layer_index,
+                defense_params,
+            )
         )
-        cast_interventions += turn_cast_interventions
+        cast_interventions += turn_interventions
+        cast_considered += turn_considered
 
         parsed_calls = parse_tool_calls(response_text)
         if not parsed_calls:
@@ -104,6 +109,7 @@ def run_defended_agent_loop(
                 all_tool_calls,
                 injection_payload,
                 cast_interventions,
+                cast_considered,
                 sic_blocked,
                 env_config,
             )
@@ -139,6 +145,7 @@ def run_defended_agent_loop(
                     all_tool_calls,
                     injection_payload,
                     cast_interventions,
+                    cast_considered,
                     sic_blocked,
                     env_config,
                 )
@@ -157,6 +164,7 @@ def run_defended_agent_loop(
         all_tool_calls,
         injection_payload,
         cast_interventions,
+        cast_considered,
         sic_blocked,
         env_config,
     )
@@ -171,9 +179,11 @@ def _generate_defended_response(
     direction: Array | None,
     layer_index: int,
     defense_params: FlywheelDefenseParams,
-) -> tuple[str, int]:
-    """Generate the next assistant response, applying CAST when available."""
+) -> tuple[str, int, int]:
+    """Generate the next assistant response, applying CAST when available.
 
+    Returns (text, interventions, considered).
+    """
     cast_layers = (
         defense_params.cast_layers
         if defense_params.cast_layers is not None
@@ -186,7 +196,7 @@ def _generate_defended_response(
             messages,
             max_tokens,
             temperature,
-        ), 0
+        ), 0, 0
 
     try:
         from vauban.cast import cast_generate_with_messages
@@ -201,7 +211,7 @@ def _generate_defended_response(
             threshold=defense_params.cast_threshold,
             max_tokens=max_tokens,
         )
-        return result.text, result.interventions
+        return result.text, result.interventions, result.considered
     except Exception:  # CAST failure — fall back to undefended generation
         return _generate_response(
             model,
@@ -209,7 +219,7 @@ def _generate_defended_response(
             messages,
             max_tokens,
             temperature,
-        ), 0
+        ), 0, 0
 
 
 def _build_sic_config(defense_params: FlywheelDefenseParams) -> SICConfig:
@@ -236,6 +246,7 @@ def _finalize_result(
     all_tool_calls: list[ToolCall],
     injection_payload: str,
     cast_interventions: int,
+    cast_considered: int,
     sic_blocked: bool,
     env_config: EnvironmentConfig,
 ) -> DefendedEnvironmentResult:
@@ -256,5 +267,6 @@ def _finalize_result(
     return DefendedEnvironmentResult(
         env_result=env_result,
         cast_interventions=cast_interventions,
+        cast_considered=cast_considered,
         sic_blocked=sic_blocked,
     )

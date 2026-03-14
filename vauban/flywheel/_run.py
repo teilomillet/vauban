@@ -184,6 +184,9 @@ def run_flywheel(
 
         # 8. Harden defense
         cycle_defense = defense
+        prev_evasion_rate = (
+            all_metrics[-1].evasion_rate if all_metrics else None
+        )
         if config.harden and evaded:
             defense = harden_defense(
                 defense, evaded,
@@ -191,6 +194,7 @@ def run_flywheel(
                 utility_score,
                 config.utility_floor,
                 n_successful=n_successful,
+                prev_evasion_rate=prev_evasion_rate,
             )
             defense_history.append(defense)
         attack_success_rate = (
@@ -208,6 +212,19 @@ def run_flywheel(
         )
         total_evasions += len(evaded)
 
+        # Complementarity: fraction of blocks attributable to each defense
+        n_blocked = len(blocked)
+        cast_block_frac = (
+            sum(1 for t in blocked if t.cast_interventions > 0) / n_blocked
+            if n_blocked > 0
+            else 0.0
+        )
+        sic_block_frac = (
+            sum(1 for t in blocked if t.sic_blocked) / n_blocked
+            if n_blocked > 0
+            else 0.0
+        )
+
         cycle_metrics = FlywheelCycleMetrics(
             cycle=cycle,
             n_worlds=len(worlds),
@@ -220,6 +237,8 @@ def run_flywheel(
             sic_threshold=cycle_defense.sic_threshold,
             n_new_payloads=n_new_payloads,
             n_previous_blocked=n_previous_blocked,
+            cast_block_fraction=cast_block_frac,
+            sic_block_fraction=sic_block_frac,
         )
         all_metrics.append(cycle_metrics)
 

@@ -2069,6 +2069,8 @@ class FlywheelCycleMetrics:
     sic_threshold: float
     n_new_payloads: int
     n_previous_blocked: int
+    cast_block_fraction: float = 0.0
+    sic_block_fraction: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)

@@ -69,10 +69,18 @@ def defend_traces(
             continue
 
         cast_interventions = defended_result.cast_interventions
+        cast_considered = defended_result.cast_considered
         sic_blocked = defended_result.sic_blocked
         defense_blocked = (
             sic_blocked
             or defended_result.env_result.reward < 0.5
+        )
+
+        # Continuous rate: fraction of tokens where CAST intervened.
+        cast_rate = (
+            cast_interventions / cast_considered
+            if cast_considered > 0
+            else 0.0
         )
 
         results.append(DefendedTrace(
@@ -84,7 +92,7 @@ def defend_traces(
             turns_used=trace.turns_used,
             tool_calls_made=trace.tool_calls_made,
             defense_blocked=defense_blocked,
-            cast_refusal_rate=1.0 if cast_interventions > 0 else 0.0,
+            cast_refusal_rate=cast_rate,
             sic_blocked=sic_blocked,
             cast_interventions=cast_interventions,
         ))
