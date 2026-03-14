@@ -25,104 +25,15 @@ class EarlyModeSpec:
     manual_output: str
 
 
-def _has_depth(config: PipelineConfig) -> bool:
-    """Return whether [depth] mode is active."""
-    return config.depth is not None
+def _field_is_set(field: str) -> EarlyModePredicate:
+    """Build a predicate that checks ``getattr(config, field) is not None``."""
 
+    def _check(config: PipelineConfig) -> bool:
+        return getattr(config, field) is not None
 
-def _has_probe(config: PipelineConfig) -> bool:
-    """Return whether [probe] mode is active."""
-    return config.probe is not None
-
-
-def _has_steer(config: PipelineConfig) -> bool:
-    """Return whether [steer] mode is active."""
-    return config.steer is not None
-
-
-def _has_sss(config: PipelineConfig) -> bool:
-    """Return whether [sss] mode is active."""
-    return config.sss is not None
-
-
-def _has_awareness(config: PipelineConfig) -> bool:
-    """Return whether [awareness] mode is active."""
-    return config.awareness is not None
-
-
-def _has_cast(config: PipelineConfig) -> bool:
-    """Return whether [cast] mode is active."""
-    return config.cast is not None
-
-
-def _has_sic(config: PipelineConfig) -> bool:
-    """Return whether [sic] mode is active."""
-    return config.sic is not None
-
-
-def _has_optimize(config: PipelineConfig) -> bool:
-    """Return whether [optimize] mode is active."""
-    return config.optimize is not None
-
-
-def _has_compose_optimize(config: PipelineConfig) -> bool:
-    """Return whether [compose_optimize] mode is active."""
-    return config.compose_optimize is not None
-
-
-def _has_softprompt(config: PipelineConfig) -> bool:
-    """Return whether [softprompt] mode is active."""
-    return config.softprompt is not None
-
-
-def _has_svf(config: PipelineConfig) -> bool:
-    """Return whether [svf] mode is active."""
-    return config.svf is not None
-
-
-def _has_defend(config: PipelineConfig) -> bool:
-    """Return whether [defend] mode is active."""
-    return config.defend is not None
-
-
-def _has_circuit(config: PipelineConfig) -> bool:
-    """Return whether [circuit] mode is active."""
-    return config.circuit is not None
-
-
-def _has_features(config: PipelineConfig) -> bool:
-    """Return whether [features] mode is active."""
-    return config.features is not None
-
-
-def _has_linear_probe(config: PipelineConfig) -> bool:
-    """Return whether [linear_probe] mode is active."""
-    return config.linear_probe is not None
-
-
-def _has_fusion(config: PipelineConfig) -> bool:
-    """Return whether [fusion] mode is active."""
-    return config.fusion is not None
-
-
-def _has_repbend(config: PipelineConfig) -> bool:
-    """Return whether [repbend] mode is active."""
-    return config.repbend is not None
-
-
-def _has_lora_export(config: PipelineConfig) -> bool:
-    """Return whether [lora_export] mode is active."""
-    return config.lora_export is not None
-
-
-def _has_lora_analysis(config: PipelineConfig) -> bool:
-    """Return whether [lora_analysis] mode is active."""
-    return config.lora_analysis is not None
-
-
-def _has_flywheel(config: PipelineConfig) -> bool:
-    """Return whether [flywheel] mode is active."""
-    return config.flywheel is not None
+    _check.__name__ = f"_has_{field}"
+    _check.__qualname__ = f"_field_is_set.<locals>._has_{field}"
+    return _check
 
 
 def _has_standalone_api_eval(config: PipelineConfig) -> bool:
@@ -135,6 +46,17 @@ def _has_standalone_api_eval(config: PipelineConfig) -> bool:
 
 
 EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
+    EarlyModeSpec(
+        "[remote]",
+        "remote",
+        "standalone",
+        False,
+        _field_is_set("remote"),
+        "Probe remote models via batch inference API.",
+        "remote probe",
+        "[remote] section present.",
+        "remote_report.json (+ optional activation .npy files).",
+    ),
     EarlyModeSpec(
         "[api_eval]",
         "api_eval",
@@ -151,7 +73,7 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "depth",
         "before_prompts",
         False,
-        _has_depth,
+        _field_is_set("depth"),
         "Deep-thinking token analysis via JSD profiles.",
         "depth analysis",
         "[depth] section present.",
@@ -162,7 +84,7 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "svf",
         "before_prompts",
         False,
-        _has_svf,
+        _field_is_set("svf"),
         "Steering Vector Field boundary MLP training.",
         "SVF training",
         "[svf] section present.",
@@ -173,7 +95,7 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "features",
         "before_prompts",
         False,
-        _has_features,
+        _field_is_set("features"),
         "Sparse autoencoder training for feature decomposition.",
         "SAE feature decomposition",
         "[features] section present.",
@@ -184,7 +106,7 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "probe",
         "after_measure",
         True,
-        _has_probe,
+        _field_is_set("probe"),
         "Per-layer projection inspection for prompts.",
         "probe inspection",
         "[probe] section present.",
@@ -195,7 +117,7 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "steer",
         "after_measure",
         True,
-        _has_steer,
+        _field_is_set("steer"),
         "Runtime activation steering for text generation.",
         "steer generation",
         "[steer] section present.",
@@ -206,7 +128,7 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "sss",
         "after_measure",
         True,
-        _has_sss,
+        _field_is_set("sss"),
         "Sensitivity-scaled steering via Jacobian analysis.",
         "sensitivity-scaled steering",
         "[sss] section present.",
@@ -217,7 +139,7 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "awareness",
         "after_measure",
         True,
-        _has_awareness,
+        _field_is_set("awareness"),
         "Steering awareness detection via sensitivity comparison.",
         "steering awareness detection",
         "[awareness] section present.",
@@ -228,7 +150,7 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "cast",
         "after_measure",
         True,
-        _has_cast,
+        _field_is_set("cast"),
         "Conditional activation steering with threshold gating.",
         "CAST steering",
         "[cast] section present.",
@@ -239,7 +161,7 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "sic",
         "after_measure",
         False,
-        _has_sic,
+        _field_is_set("sic"),
         "Iterative input sanitization defense.",
         "SIC sanitization",
         "[sic] section present.",
@@ -250,7 +172,7 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "optimize",
         "after_measure",
         True,
-        _has_optimize,
+        _field_is_set("optimize"),
         "Optuna multi-objective hyperparameter search.",
         "Optuna optimization",
         "[optimize] section present.",
@@ -261,7 +183,7 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "compose_optimize",
         "after_measure",
         False,
-        _has_compose_optimize,
+        _field_is_set("compose_optimize"),
         "Bayesian optimization of composition weights.",
         "composition optimization",
         "[compose_optimize] section present.",
@@ -272,7 +194,7 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "softprompt",
         "after_measure",
         False,
-        _has_softprompt,
+        _field_is_set("softprompt"),
         "Continuous/discrete soft prompt attack optimization.",
         "soft prompt attack",
         "[softprompt] section present.",
@@ -283,7 +205,7 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "defend",
         "after_measure",
         False,
-        _has_defend,
+        _field_is_set("defend"),
         "Composed defense stack (scan + SIC + policy + intent).",
         "defense stack",
         "[defend] section present.",
@@ -294,7 +216,7 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "circuit",
         "after_measure",
         False,
-        _has_circuit,
+        _field_is_set("circuit"),
         "Causal circuit tracing via activation patching.",
         "circuit tracing",
         "[circuit] section present.",
@@ -305,7 +227,7 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "linear_probe",
         "after_measure",
         False,
-        _has_linear_probe,
+        _field_is_set("linear_probe"),
         "Train linear probes to measure refusal encoding.",
         "linear probe training",
         "[linear_probe] section present.",
@@ -316,7 +238,7 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "fusion",
         "before_prompts",
         False,
-        _has_fusion,
+        _field_is_set("fusion"),
         "Latent fusion jailbreak via hidden state blending.",
         "fusion training",
         "[fusion] section present.",
@@ -327,7 +249,7 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "repbend",
         "after_measure",
         True,
-        _has_repbend,
+        _field_is_set("repbend"),
         "RepBend contrastive fine-tuning for safety hardening.",
         "RepBend fine-tuning",
         "[repbend] section present.",
@@ -338,7 +260,7 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "lora_export",
         "after_measure",
         True,
-        _has_lora_export,
+        _field_is_set("lora_export"),
         "Export measured direction as a LoRA adapter.",
         "LoRA export",
         "[lora_export] section present.",
@@ -349,7 +271,7 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "lora_analysis",
         "after_measure",
         False,
-        _has_lora_analysis,
+        _field_is_set("lora_analysis"),
         "Decompose LoRA adapters via SVD for structural analysis.",
         "LoRA analysis",
         "[lora_analysis] section present.",
@@ -360,7 +282,7 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "flywheel",
         "after_measure",
         False,
-        _has_flywheel,
+        _field_is_set("flywheel"),
         "Closed-loop attack-defense co-evolution flywheel.",
         "flywheel co-evolution",
         "[flywheel] section present.",
