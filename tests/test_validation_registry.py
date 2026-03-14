@@ -139,7 +139,10 @@ def test_validate_wrapper_delegates_to_validation_registry(
         calls.append(config_path)
         return ["sentinel"]
 
-    monkeypatch.setattr(vauban, "validate_config", fake_validate_config)
+    monkeypatch.setattr(
+        "vauban.config._validation.validate_config",
+        fake_validate_config,
+    )
 
     result = vauban.validate("run.toml")
 
