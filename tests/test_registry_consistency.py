@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from vauban._init import KNOWN_MODES
 from vauban._pipeline._modes import EARLY_MODE_RUNNERS
-from vauban._suggestions import _VALUE_CONSTRAINT_KEYS
 from vauban.config._mode_registry import (
     EARLY_MODE_DESCRIPTION_BY_MODE,
     EARLY_MODE_LABEL_BY_SECTION,
@@ -121,14 +120,14 @@ class TestSchemaCoversParsers:
 
 
 class TestSuggestionsCoverParsers:
-    """_VALUE_CONSTRAINT_KEYS must cover every parsed section."""
+    """KNOWN_SECTION_KEYS must cover every parsed section."""
 
     def test_suggestions_cover_all_parsed_sections(self) -> None:
-        suggestion_sections = frozenset(_VALUE_CONSTRAINT_KEYS.keys())
+        suggestion_sections = frozenset(KNOWN_SECTION_KEYS.keys())
         uncovered = _PARSE_SECTIONS - suggestion_sections - _MANUAL_SCHEMA_SECTIONS
         assert not uncovered, (
             f"Sections in SECTION_PARSE_SPECS but missing from "
-            f"_VALUE_CONSTRAINT_KEYS: {uncovered}"
+            f"KNOWN_SECTION_KEYS: {uncovered}"
         )
 
 

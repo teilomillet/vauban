@@ -105,7 +105,6 @@ type _SectionParserResult = (
     | ScanConfig
     | SurfaceConfig
     | DetectConfig
-    | OptimizeConfig
     | SoftPromptConfig
     | SICConfig
     | ProbeConfig
@@ -454,43 +453,4 @@ def parse_registered_sections(
             continue
         parsed[spec.target_field] = spec.parser(context)
 
-    return ParsedSectionValues(
-        depth=cast("DepthConfig | None", parsed["depth"]),
-        cast=cast("CastConfig | None", parsed["cast"]),
-        cut=cast("CutConfig", parsed["cut"]),
-        measure=cast("MeasureConfig", parsed["measure"]),
-        surface=cast("SurfaceConfig | None", parsed["surface"]),
-        detect=cast("DetectConfig | None", parsed["detect"]),
-        optimize=cast("OptimizeConfig | None", parsed["optimize"]),
-        compose_optimize=cast(
-            "ComposeOptimizeConfig | None",
-            parsed["compose_optimize"],
-        ),
-        softprompt=cast("SoftPromptConfig | None", parsed["softprompt"]),
-        sic=cast("SICConfig | None", parsed["sic"]),
-        probe=cast("ProbeConfig | None", parsed["probe"]),
-        steer=cast("SteerConfig | None", parsed["steer"]),
-        sss=cast("SSSConfig | None", parsed["sss"]),
-        awareness=cast("AwarenessConfig | None", parsed["awareness"]),
-        eval=cast("EvalConfig", parsed["eval"]),
-        api_eval=cast("ApiEvalConfig | None", parsed["api_eval"]),
-        svf=cast("SVFConfig | None", parsed["svf"]),
-        environment=cast(
-            "EnvironmentConfig | None", parsed["environment"],
-        ),
-        scan=cast("ScanConfig | None", parsed["scan"]),
-        policy=cast("PolicyConfig | None", parsed["policy"]),
-        intent=cast("IntentConfig | None", parsed["intent"]),
-        defend=cast("DefenseStackConfig | None", parsed["defend"]),
-        circuit=cast("CircuitConfig | None", parsed["circuit"]),
-        features=cast("FeaturesConfig | None", parsed["features"]),
-        linear_probe=cast(
-            "LinearProbeConfig | None", parsed["linear_probe"],
-        ),
-        fusion=cast("FusionConfig | None", parsed["fusion"]),
-        repbend=cast("RepBendConfig | None", parsed["repbend"]),
-        lora_export=cast("LoraExportConfig | None", parsed["lora_export"]),
-        lora_load=cast("LoraLoadConfig | None", parsed["lora_load"]),
-        lora_analysis=cast("LoraAnalysisConfig | None", parsed["lora_analysis"]),
-        flywheel=cast("FlywheelConfig | None", parsed["flywheel"]),
-    )
+    return ParsedSectionValues(**parsed)  # type: ignore[arg-type]

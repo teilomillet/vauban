@@ -6,6 +6,7 @@ from typing import cast
 
 from vauban.config._parse_meta import parse_meta
 from vauban.config._registry import (
+    SECTION_PARSE_SPECS,
     ConfigParseContext,
     parse_registered_section,
     parse_registered_sections,
@@ -67,37 +68,7 @@ def load_config(path: str | Path) -> PipelineConfig:
         parse_context,
         depth_override=depth_config,
     )
-    cast_config = parsed_sections.cast
-    cut_config = parsed_sections.cut
-    measure_config = parsed_sections.measure
-    surface_config = parsed_sections.surface
-    detect_config = parsed_sections.detect
-    optimize_config = parsed_sections.optimize
-    softprompt_config = parsed_sections.softprompt
-    sic_config = parsed_sections.sic
-    probe_config = parsed_sections.probe
-    steer_config = parsed_sections.steer
-    sss_config = parsed_sections.sss
-    awareness_config = parsed_sections.awareness
-    eval_config = parsed_sections.eval
-    api_eval_config = parsed_sections.api_eval
-    svf_config = parsed_sections.svf
-    compose_optimize_config = parsed_sections.compose_optimize
 
-    environment_config = parsed_sections.environment
-    scan_config = parsed_sections.scan
-    policy_config = parsed_sections.policy
-    intent_config = parsed_sections.intent
-    defend_config = parsed_sections.defend
-    circuit_config = parsed_sections.circuit
-    features_config = parsed_sections.features
-    linear_probe_config = parsed_sections.linear_probe
-    fusion_config = parsed_sections.fusion
-    repbend_config = parsed_sections.repbend
-    lora_export_config = parsed_sections.lora_export
-    lora_load_config = parsed_sections.lora_load
-    lora_analysis_config = parsed_sections.lora_analysis
-    flywheel_config = parsed_sections.flywheel
     output_section = raw.get("output")
     output_dir_str = "output"
     if isinstance(output_section, dict):
@@ -111,7 +82,7 @@ def load_config(path: str | Path) -> PipelineConfig:
     borderline_path = _resolve_borderline_path(base_dir, raw)
 
     # Validate: false_refusal_ortho requires borderline_path
-    if cut_config.false_refusal_ortho and borderline_path is None:
+    if parsed_sections.cut.false_refusal_ortho and borderline_path is None:
         msg = (
             "[cut].false_refusal_ortho = true requires"
             " [data].borderline to be set"
@@ -150,42 +121,20 @@ def load_config(path: str | Path) -> PipelineConfig:
             raise TypeError(msg)
         verbose = verbose_raw
 
+    # Build section kwargs from registry specs — each spec target_field
+    # maps 1:1 to a PipelineConfig field.  Adding a new spec is the only
+    # step needed; no per-field lines here.
+    section_kwargs: dict[str, object] = {
+        spec.target_field: getattr(parsed_sections, spec.target_field)
+        for spec in SECTION_PARSE_SPECS
+    }
+
     return PipelineConfig(
         model_path=model_path,
         harmful_path=harmful_path,
         harmless_path=harmless_path,
         backend=backend,
-        cut=cut_config,
-        measure=measure_config,
-        surface=surface_config,
-        detect=detect_config,
-        optimize=optimize_config,
-        softprompt=softprompt_config,
-        sic=sic_config,
-        depth=depth_config,
-        probe=probe_config,
-        steer=steer_config,
-        sss=sss_config,
-        awareness=awareness_config,
-        cast=cast_config,
-        svf=svf_config,
-        compose_optimize=compose_optimize_config,
-        environment=environment_config,
-        scan=scan_config,
-        policy=policy_config,
-        intent=intent_config,
-        defend=defend_config,
-        circuit=circuit_config,
-        features=features_config,
-        linear_probe=linear_probe_config,
-        fusion=fusion_config,
-        repbend=repbend_config,
-        lora_export=lora_export_config,
-        lora_load=lora_load_config,
-        lora_analysis=lora_analysis_config,
-        flywheel=flywheel_config,
-        eval=eval_config,
-        api_eval=api_eval_config,
+        **section_kwargs,  # type: ignore[arg-type]
         meta=meta_config,
         output_dir=output_dir,
         borderline_path=borderline_path,
