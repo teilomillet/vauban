@@ -347,3 +347,28 @@ class TestManualDataclasses:
             notes=(),
         )
         assert ms.notes == ()
+
+
+# ── No auto-discovered fields ───────────────────────────────────────
+
+
+def test_no_auto_discovered_fields() -> None:
+    """Every config dataclass field must have an explicit FieldSpec.
+
+    If this test fails, a field was added to a config dataclass in
+    types.py without a corresponding FieldSpec in manual.py.  Add a
+    FieldSpec to the relevant SectionSpec in ``_SECTION_SPECS`` to fix.
+    """
+    sections = _build_sections()
+    undocumented: list[str] = []
+    for section in sections:
+        for field in section.fields:
+            if field.description.startswith("Auto-discovered"):
+                undocumented.append(
+                    f"[{section.name}].{field.key}"
+                )
+    assert undocumented == [], (
+        "Fields missing explicit FieldSpec in manual.py "
+        "(add a FieldSpec to _SECTION_SPECS):\n  "
+        + "\n  ".join(undocumented)
+    )

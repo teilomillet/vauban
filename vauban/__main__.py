@@ -32,8 +32,9 @@ Commands:
   diff            Compare JSON reports from two output directories.
                   Use --threshold as a CI gate (exit 1 on large deltas).
   tree            Render the experiment lineage tree from TOML configs.
-  man             Show topic index. Run 'vauban man <topic>' for details.
-                  'vauban man all' prints the full manual.
+  man             Manual and workflow guides.
+                  Start with 'vauban man workflows' to pick a goal.
+                  Run 'vauban man <topic>' for config section details.
 
 Options:
   --validate    Check config for errors without loading the model.

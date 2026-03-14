@@ -46,8 +46,7 @@ Then open a new shell and check the command:
 
 ```bash
 vauban --help
-vauban man quickstart
-vauban tree --help
+vauban man workflows
 ```
 
 For development from this repo:
@@ -58,12 +57,16 @@ uv tool install --editable .
 
 ## Quick Start
 
-Start with the built-in manual:
+Pick a goal — the manual will tell you which sections to use:
 
 ```bash
-vauban man
+vauban man workflows
+```
+
+Then scaffold a config and go:
+
+```bash
 vauban man quickstart
-vauban man commands
 ```
 
 Scaffold a starter config:
@@ -72,10 +75,10 @@ Scaffold a starter config:
 vauban init --mode default --output run.toml
 ```
 
-The verified scaffolded modes are:
+All pipeline modes can be scaffolded. See the full list with:
 
-```text
-cast, circuit, default, depth, detect, features, optimize, probe, sic, softprompt, steer, surface
+```bash
+vauban init --help
 ```
 
 Validate before a real run:
@@ -169,22 +172,24 @@ You extend that run by adding more sections. Common examples:
 - `[detect]` adds hardening detection during measurement.
 - some sections switch Vauban into dedicated mode-specific runs instead of the default pipeline.
 
-Mode precedence is not trivial and changes with the code, so rely on the generated manual instead of memorizing it:
+If you know what you want to do but not which sections to use:
+
+```bash
+vauban man workflows
+```
+
+For field-level reference on any section:
+
+```bash
+vauban man cast
+vauban man softprompt
+vauban man measure
+```
+
+For mode precedence:
 
 ```bash
 vauban man modes
-```
-
-For field-level reference, use:
-
-```bash
-vauban man model
-vauban man data
-vauban man measure
-vauban man cut
-vauban man eval
-vauban man surface
-vauban man output
 ```
 
 ## Commands You Will Actually Use
@@ -192,12 +197,10 @@ vauban man output
 Inspect the manual:
 
 ```bash
-vauban man
+vauban man workflows
 vauban man quickstart
-vauban man commands
-vauban man formats
-vauban man output
-vauban tree --help
+vauban man cast
+vauban man all
 ```
 
 Scaffold configs:

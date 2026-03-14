@@ -305,6 +305,26 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                     " reports without modifying model weights.",
                 ),
             ),
+            FieldSpec(
+                key="bank",
+                description=(
+                    "Steer2Adapt subspace bank entries for"
+                    " multi-direction composition."
+                ),
+                constraints=(
+                    "list of tables; each entry has 'path'"
+                    " and optional 'weight'."
+                ),
+                notes=(
+                    "Each [[measure.bank]] table has:"
+                    " name (string, required — label for"
+                    " this subspace),"
+                    " harmful (string, required — path or"
+                    ' "default"),'
+                    " harmless (string, required — path or"
+                    ' "default").',
+                ),
+            ),
         ),
     ),
     SectionSpec(
@@ -469,7 +489,7 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
             FieldSpec(
                 key="mode",
                 description="Detection depth.",
-                constraints="one of: fast, probe, full.",
+                constraints="one of: fast, probe, full, margin.",
             ),
             FieldSpec(
                 key="top_k",
@@ -490,6 +510,24 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 key="max_tokens",
                 description="Generation cap in full mode.",
                 constraints="integer.",
+            ),
+            FieldSpec(
+                key="margin_directions",
+                description=(
+                    "Paths to additional direction .npy files"
+                    " for margin analysis."
+                ),
+                constraints="list of strings.",
+            ),
+            FieldSpec(
+                key="margin_alphas",
+                description="Alpha values to sweep in margin mode.",
+                constraints="list of numbers.",
+            ),
+            FieldSpec(
+                key="svf_compare",
+                description="Compare SVF-based vs linear separation in detection.",
+                constraints="boolean.",
             ),
         ),
         notes=(
@@ -733,6 +771,291 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 ),
                 constraints="number >= 0.",
             ),
+            FieldSpec(
+                key="target_repeat_count",
+                description=(
+                    "Repeat target prefix tokens N times"
+                    " in the target sequence."
+                ),
+                constraints="integer >= 0 (0 = disabled).",
+            ),
+            FieldSpec(
+                key="system_prompt",
+                description=(
+                    "System prompt prepended to all messages"
+                    " during optimization."
+                ),
+                constraints="string or null.",
+            ),
+            FieldSpec(
+                key="token_position",
+                description="Where to inject the optimized tokens.",
+                constraints='one of: "prefix", "suffix", "infix".',
+            ),
+            FieldSpec(
+                key="init_tokens",
+                description="Warm-start token IDs for GCG/EGD optimization.",
+                constraints="list of integers or null.",
+            ),
+            FieldSpec(
+                key="injection_context",
+                description="Wrap optimized tokens in realistic surrounding context.",
+                constraints=(
+                    'one of: "web_page", "tool_output", "code_file",'
+                    " or null."
+                ),
+            ),
+            FieldSpec(
+                key="injection_context_template",
+                description=(
+                    "Custom template with {payload} placeholder"
+                    " for injection wrapping."
+                ),
+                constraints="string with {payload} placeholder, or null.",
+            ),
+            FieldSpec(
+                key="perplexity_weight",
+                description=(
+                    "Cross-entropy penalty pushing optimized tokens"
+                    " toward fluent text (code-doc attractor)."
+                ),
+                constraints="number >= 0.",
+            ),
+            FieldSpec(
+                key="paraphrase_strategies",
+                description="Paraphrase augmentation strategies applied to prompts.",
+                constraints="list of strings.",
+            ),
+            FieldSpec(
+                key="externality_target",
+                description=(
+                    "Path to direction .npy for externality"
+                    " loss regularization."
+                ),
+                constraints="string path or null.",
+            ),
+            FieldSpec(
+                key="svf_boundary_path",
+                description="Path to trained SVF boundary weights for SVF-aware loss.",
+                constraints="string path or null.",
+            ),
+            FieldSpec(
+                key="prompt_pool_size",
+                description=(
+                    "Override eval.num_prompts for the"
+                    " optimization prompt pool."
+                ),
+                constraints="integer or null.",
+            ),
+            FieldSpec(
+                key="beam_width",
+                description="GCG beam search population size (1 = greedy single-best).",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="cold_temperature",
+                description=(
+                    "COLD-Attack softmax temperature for"
+                    " logit-to-probability conversion."
+                ),
+                constraints="number > 0.",
+            ),
+            FieldSpec(
+                key="cold_noise_scale",
+                description="Langevin dynamics noise scaling factor for COLD-Attack.",
+                constraints="number > 0.",
+            ),
+            FieldSpec(
+                key="defense_eval",
+                description="Run defense evaluation alongside optimization.",
+                constraints='one of: "sic", "cast", "both", or null.',
+            ),
+            FieldSpec(
+                key="defense_eval_layer",
+                description="Layer for defense evaluation scoring.",
+                constraints="integer or null (null = auto-detect).",
+            ),
+            FieldSpec(
+                key="defense_eval_alpha",
+                description="CAST steering alpha for defense evaluation.",
+                constraints="number.",
+            ),
+            FieldSpec(
+                key="defense_eval_threshold",
+                description=(
+                    "Shared detection threshold for SIC/CAST"
+                    " defense evaluation."
+                ),
+                constraints="number.",
+            ),
+            FieldSpec(
+                key="defense_eval_sic_threshold",
+                description="SIC-specific threshold override for defense evaluation.",
+                constraints="number or null (null = use defense_eval_threshold).",
+            ),
+            FieldSpec(
+                key="defense_eval_sic_mode",
+                description="SIC mode for defense evaluation.",
+                constraints='one of: "direction", "generation".',
+            ),
+            FieldSpec(
+                key="defense_eval_sic_max_iterations",
+                description=(
+                    "Maximum SIC sanitization iterations"
+                    " in defense evaluation."
+                ),
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="defense_eval_cast_layers",
+                description="CAST layer subset for defense evaluation.",
+                constraints="list of integers or null.",
+            ),
+            FieldSpec(
+                key="defense_eval_alpha_tiers",
+                description=(
+                    "TRYLOCK-style adaptive alpha tiers"
+                    " for defense evaluation CAST."
+                ),
+                constraints="list of [threshold, alpha] pairs or null.",
+            ),
+            FieldSpec(
+                key="defense_aware_weight",
+                description=(
+                    "Weight for defense-aware auxiliary loss"
+                    " penalizing detection."
+                ),
+                constraints="number >= 0 (0 = off).",
+            ),
+            FieldSpec(
+                key="transfer_loss_weight",
+                description="Weight for multi-model transfer re-ranking loss.",
+                constraints="number >= 0 (0 = off).",
+            ),
+            FieldSpec(
+                key="transfer_rerank_count",
+                description="Top-N candidates to re-rank on transfer models.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="gan_rounds",
+                description=(
+                    "Number of iterative attack-defense GAN rounds"
+                    " (0 = disabled)."
+                ),
+                constraints="integer >= 0.",
+            ),
+            FieldSpec(
+                key="gan_step_multiplier",
+                description="Multiply n_steps by this factor each failed GAN round.",
+                constraints="number > 0.",
+            ),
+            FieldSpec(
+                key="gan_direction_escalation",
+                description="Amount added to direction_weight per failed GAN round.",
+                constraints="number >= 0.",
+            ),
+            FieldSpec(
+                key="gan_token_escalation",
+                description="Tokens added to n_tokens per failed GAN round.",
+                constraints="integer >= 0.",
+            ),
+            FieldSpec(
+                key="gan_defense_escalation",
+                description="Enable defender hardening between GAN rounds.",
+                constraints="boolean.",
+            ),
+            FieldSpec(
+                key="gan_defense_alpha_multiplier",
+                description="Multiply CAST alpha by this factor per attacker win.",
+                constraints="number > 0.",
+            ),
+            FieldSpec(
+                key="gan_defense_threshold_escalation",
+                description="Subtract from CAST threshold per attacker win.",
+                constraints="number >= 0.",
+            ),
+            FieldSpec(
+                key="gan_defense_sic_iteration_escalation",
+                description="Add to SIC max iterations per attacker win.",
+                constraints="integer >= 0.",
+            ),
+            FieldSpec(
+                key="gan_multiturn",
+                description="Enable multi-turn conversation threading in GAN mode.",
+                constraints="boolean.",
+            ),
+            FieldSpec(
+                key="gan_multiturn_max_turns",
+                description="Maximum conversation turns kept in GAN history.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="largo_reflection_rounds",
+                description=(
+                    "LARGO self-reflective decoding loop rounds"
+                    " (0 = disabled)."
+                ),
+                constraints="integer >= 0.",
+            ),
+            FieldSpec(
+                key="largo_max_reflection_tokens",
+                description="Generation cap per LARGO reflection step.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="largo_objective",
+                description="Objective function for LARGO reflection satisfaction.",
+                constraints='one of: "targeted", "untargeted".',
+            ),
+            FieldSpec(
+                key="largo_embed_warmstart",
+                description="Warm-start embeddings from previous LARGO round.",
+                constraints="boolean.",
+            ),
+            FieldSpec(
+                key="amplecgc_collect_steps",
+                description="GCG steps per collection restart in AmpleGCG mode.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="amplecgc_collect_restarts",
+                description="Number of GCG restarts for AmpleGCG suffix collection.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="amplecgc_collect_threshold",
+                description=(
+                    "Loss threshold for harvesting suffixes"
+                    " into the AmpleGCG corpus."
+                ),
+                constraints="number.",
+            ),
+            FieldSpec(
+                key="amplecgc_n_candidates",
+                description="Number of candidates sampled from the AmpleGCG generator.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="amplecgc_hidden_dim",
+                description="Hidden dimension of the AmpleGCG generator MLP.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="amplecgc_train_steps",
+                description="Training steps for the AmpleGCG generator.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="amplecgc_train_lr",
+                description="Learning rate for AmpleGCG generator training.",
+                constraints="number > 0.",
+            ),
+            FieldSpec(
+                key="amplecgc_sample_temperature",
+                description="Sampling temperature for the AmpleGCG generator.",
+                constraints="number > 0.",
+            ),
         ),
     ),
     SectionSpec(
@@ -790,6 +1113,14 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 key="calibrate_prompts",
                 description="Prompt pool used when calibration is enabled.",
                 constraints="one of: harmless, harmful.",
+            ),
+            FieldSpec(
+                key="svf_boundary_path",
+                description=(
+                    "Path to trained SVF boundary weights"
+                    " for SVF-aware scoring."
+                ),
+                constraints="string path or null.",
             ),
         ),
     ),
@@ -888,6 +1219,26 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 key="max_tokens",
                 description="Generation cap per prompt.",
                 constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="direction_source",
+                description="Source for the steering direction.",
+                constraints='one of: "linear", "svf".',
+            ),
+            FieldSpec(
+                key="svf_boundary_path",
+                description="Path to trained SVF boundary weights.",
+                constraints="string path or null.",
+            ),
+            FieldSpec(
+                key="bank_path",
+                description="Path to a Steer2Adapt direction bank .npz file.",
+                constraints="string path or null.",
+            ),
+            FieldSpec(
+                key="composition",
+                description="Named direction weights for multi-direction composition.",
+                constraints="table mapping direction names to float weights.",
             ),
         ),
     ),
@@ -1000,6 +1351,26 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 description="Minimum confidence score to declare steered.",
                 constraints="number >= 0.",
             ),
+            FieldSpec(
+                key="n_power_iterations",
+                description="Power iterations for dominant singular value estimation.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="fd_epsilon",
+                description="Finite-difference step size for Jacobian approximation.",
+                constraints="number > 0.",
+            ),
+            FieldSpec(
+                key="valley_window",
+                description="Half-window for compression valley detection.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="top_k_valleys",
+                description="Maximum valleys to identify as anomalous layers.",
+                constraints="integer >= 1.",
+            ),
         ),
     ),
     SectionSpec(
@@ -1060,6 +1431,44 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                     " steering.",
                 ),
             ),
+            FieldSpec(
+                key="direction_source",
+                description="Source for the steering direction.",
+                constraints='one of: "linear", "svf".',
+            ),
+            FieldSpec(
+                key="svf_boundary_path",
+                description="Path to trained SVF boundary weights.",
+                constraints="string path or null.",
+            ),
+            FieldSpec(
+                key="bank_path",
+                description="Path to a Steer2Adapt direction bank .npz file.",
+                constraints="string path or null.",
+            ),
+            FieldSpec(
+                key="composition",
+                description="Named direction weights for multi-direction composition.",
+                constraints="table mapping direction names to float weights.",
+            ),
+            FieldSpec(
+                key="externality_monitor",
+                description="Enable steering externality monitoring during generation.",
+                constraints="boolean.",
+            ),
+            FieldSpec(
+                key="displacement_threshold",
+                description="Displacement threshold for externality alerts.",
+                constraints="number >= 0.",
+            ),
+            FieldSpec(
+                key="baseline_activations_path",
+                description=(
+                    "Path to baseline activations .npy"
+                    " for displacement comparison."
+                ),
+                constraints="string path or null.",
+            ),
         ),
     ),
     SectionSpec(
@@ -1072,6 +1481,38 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 key="fail_fast",
                 description="Stop at the first layer that blocks.",
                 constraints="boolean.",
+            ),
+            FieldSpec(
+                key="scan",
+                description="Inline scan sub-config (populated from [scan] section).",
+                constraints="populated automatically from [scan] section if present.",
+            ),
+            FieldSpec(
+                key="sic",
+                description="Inline SIC sub-config (populated from [sic] section).",
+                constraints="populated automatically from [sic] section if present.",
+            ),
+            FieldSpec(
+                key="policy",
+                description=(
+                    "Inline policy sub-config"
+                    " (populated from [policy] section)."
+                ),
+                constraints=(
+                    "populated automatically from"
+                    " [policy] section if present."
+                ),
+            ),
+            FieldSpec(
+                key="intent",
+                description=(
+                    "Inline intent sub-config"
+                    " (populated from [intent] section)."
+                ),
+                constraints=(
+                    "populated automatically from"
+                    " [intent] section if present."
+                ),
             ),
         ),
         notes=(
@@ -1123,6 +1564,76 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 key="temperature",
                 description="Sampling temperature for agent generation.",
                 constraints="number >= 0.0.",
+            ),
+            FieldSpec(
+                key="tools",
+                description="Tool schemas available to the simulated agent.",
+                constraints=(
+                    "required list of [[environment.tools]]"
+                    " sub-tables."
+                ),
+                required=True,
+                notes=(
+                    "Each [[environment.tools]] table has:"
+                    " name (string, required),"
+                    " description (string, required),"
+                    " parameters (table mapping param names"
+                    " to type strings, required),"
+                    " result (string, optional —"
+                    " return type description).",
+                ),
+            ),
+            FieldSpec(
+                key="target",
+                description=(
+                    "Target action the injection payload"
+                    " tries to trigger."
+                ),
+                constraints=(
+                    "required [environment.target] sub-table."
+                ),
+                required=True,
+                notes=(
+                    "[environment.target] table has:"
+                    " function (string, required —"
+                    " tool name to call),"
+                    " required_args (list of strings,"
+                    " optional),"
+                    " arg_contains (table mapping arg names"
+                    " to expected substrings, optional).",
+                ),
+            ),
+            FieldSpec(
+                key="task",
+                description=(
+                    "Benign task the agent should complete"
+                    " without the injection."
+                ),
+                constraints=(
+                    "required [environment.task] sub-table."
+                ),
+                required=True,
+                notes=(
+                    "[environment.task] table has:"
+                    " content (string, required —"
+                    " the user message that starts the"
+                    " agent loop).",
+                ),
+            ),
+            FieldSpec(
+                key="injection_position",
+                description="Where the injection payload appears in tool output.",
+                constraints='one of: "prefix", "suffix", "infix".',
+            ),
+            FieldSpec(
+                key="benign_expected_tools",
+                description="Tool names expected during benign (non-injected) runs.",
+                constraints="list of strings.",
+            ),
+            FieldSpec(
+                key="policy",
+                description="Tool call policy for gating dangerous actions.",
+                constraints="[environment.policy] sub-table or null.",
             ),
         ),
         notes=(
@@ -1322,6 +1833,14 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 key="max_tokens",
                 description="Generation cap for judge mode.",
                 constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="judge_prompt",
+                description=(
+                    "System prompt used in judge mode"
+                    " for alignment classification."
+                ),
+                constraints="string.",
             ),
         ),
         notes=(
@@ -1744,6 +2263,18 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 description="List of API endpoints to evaluate against.",
                 constraints="required non-empty list of endpoint tables.",
                 required=True,
+                notes=(
+                    "Each [[api_eval.endpoints]] table has:"
+                    " name (string, required),"
+                    " base_url (string, required),"
+                    " model (string, required),"
+                    " api_key_env (string, required —"
+                    " env var holding the API key),"
+                    " system_prompt (string, optional"
+                    " per-endpoint override),"
+                    " auth_header (string, optional"
+                    " custom header name).",
+                ),
             ),
             FieldSpec(
                 key="max_tokens",
@@ -1782,6 +2313,76 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 description="Follow-up prompts for multi-turn mode.",
                 constraints="list of strings.",
                 default_override="[]",
+            ),
+            FieldSpec(
+                key="token_text",
+                description=(
+                    "Pre-optimized adversarial token text"
+                    " for standalone evaluation."
+                ),
+                constraints="string or null.",
+                notes=(
+                    "When set, enables standalone [api_eval] mode that needs"
+                    " no local model — skips [model] and [data] requirements.",
+                ),
+            ),
+            FieldSpec(
+                key="token_position",
+                description="Where to inject the adversarial token text.",
+                constraints='one of: "prefix", "suffix", "infix".',
+            ),
+            FieldSpec(
+                key="prompts",
+                description="Test prompts to pair with the adversarial tokens.",
+                constraints="list of strings.",
+            ),
+            FieldSpec(
+                key="defense_proxy",
+                description="Local defense proxy to test before sending to remote API.",
+                constraints='one of: "sic", "cast", "both", or null.',
+            ),
+            FieldSpec(
+                key="defense_proxy_sic_mode",
+                description="SIC scoring mode for defense proxy.",
+                constraints='one of: "direction", "generation", "svf".',
+            ),
+            FieldSpec(
+                key="defense_proxy_sic_threshold",
+                description="SIC detection threshold for defense proxy.",
+                constraints="number.",
+            ),
+            FieldSpec(
+                key="defense_proxy_sic_max_iterations",
+                description="Maximum SIC sanitization iterations.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="defense_proxy_cast_mode",
+                description="CAST proxy mode.",
+                constraints=(
+                    'one of: "gate" (detection only),'
+                    ' "full" (steer + generate).'
+                ),
+            ),
+            FieldSpec(
+                key="defense_proxy_cast_threshold",
+                description="CAST projection threshold for defense proxy.",
+                constraints="number.",
+            ),
+            FieldSpec(
+                key="defense_proxy_cast_layers",
+                description="CAST layer subset for defense proxy.",
+                constraints="list of integers or null.",
+            ),
+            FieldSpec(
+                key="defense_proxy_cast_alpha",
+                description="CAST steering alpha for defense proxy.",
+                constraints="number.",
+            ),
+            FieldSpec(
+                key="defense_proxy_cast_max_tokens",
+                description="Generation cap for CAST defense proxy.",
+                constraints="integer >= 1.",
             ),
         ),
         notes=(
@@ -1838,6 +2439,127 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 constraints="integer >= 2.",
                 default_override="3",
             ),
+            FieldSpec(
+                key="payloads_per_world",
+                description="Number of injection payloads tested per agent world.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="model_expand",
+                description=(
+                    "Use the model to expand skeleton scenarios"
+                    " into full worlds."
+                ),
+                constraints="boolean.",
+            ),
+            FieldSpec(
+                key="expand_temperature",
+                description="Sampling temperature for world expansion generation.",
+                constraints="number >= 0.",
+            ),
+            FieldSpec(
+                key="expand_max_tokens",
+                description="Generation cap for world expansion.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="difficulty_range",
+                description="Min and max difficulty levels for generated worlds.",
+                constraints="list of two integers [min, max].",
+            ),
+            FieldSpec(
+                key="payload_library_path",
+                description="Path to a JSONL file of pre-defined injection payloads.",
+                constraints="string path or null.",
+            ),
+            FieldSpec(
+                key="positions",
+                description="Injection positions to test.",
+                constraints='list of strings from: "prefix", "suffix", "infix".',
+            ),
+            FieldSpec(
+                key="warmstart_gcg",
+                description="Warm-start GCG from previous cycle's best tokens.",
+                constraints="boolean.",
+            ),
+            FieldSpec(
+                key="gcg_steps",
+                description="GCG optimization steps per payload.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="gcg_n_tokens",
+                description="Number of GCG adversarial tokens.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="cast_alpha",
+                description="Initial CAST steering strength.",
+                constraints="number.",
+            ),
+            FieldSpec(
+                key="cast_threshold",
+                description="Initial CAST intervention threshold.",
+                constraints="number.",
+            ),
+            FieldSpec(
+                key="cast_layers",
+                description="CAST layer subset.",
+                constraints="list of integers or null.",
+            ),
+            FieldSpec(
+                key="sic_threshold",
+                description="Initial SIC detection threshold.",
+                constraints="number.",
+            ),
+            FieldSpec(
+                key="sic_iterations",
+                description="Initial SIC maximum sanitization iterations.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="sic_mode",
+                description="SIC scoring mode.",
+                constraints='one of: "direction", "generation", "svf".',
+            ),
+            FieldSpec(
+                key="adaptation_rate",
+                description="Learning rate for defense parameter hardening.",
+                constraints="number > 0.",
+            ),
+            FieldSpec(
+                key="utility_floor",
+                description=(
+                    "Minimum utility score; hardening stops"
+                    " if utility drops below."
+                ),
+                constraints="number in [0, 1].",
+            ),
+            FieldSpec(
+                key="validate_previous",
+                description="Re-validate previously blocked payloads after hardening.",
+                constraints="boolean.",
+            ),
+            FieldSpec(
+                key="convergence_threshold",
+                description="Evasion rate delta below which convergence is declared.",
+                constraints="number > 0.",
+            ),
+            FieldSpec(
+                key="seed",
+                description="Random seed for reproducibility.",
+                constraints="integer or null.",
+            ),
+            FieldSpec(
+                key="max_turns",
+                description="Maximum agent conversation turns per scenario.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="max_gen_tokens",
+                description="Generation cap per agent turn.",
+                constraints="integer >= 1.",
+            ),
         ),
         notes=(
             (
@@ -1845,6 +2567,171 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 " them with injection payloads, evaluates"
                 " CAST+SIC defenses, hardens parameters from"
                 " failures, and measures convergence."
+            ),
+        ),
+    ),
+    SectionSpec(
+        name="meta",
+        description="Experiment metadata for lineage tracking.",
+        config_class="MetaConfig",
+        fields=(
+            FieldSpec(
+                key="id",
+                description="Unique experiment identifier.",
+                constraints="required string.",
+                required=True,
+            ),
+            FieldSpec(
+                key="title",
+                description="Human-readable experiment title.",
+                constraints="string.",
+            ),
+            FieldSpec(
+                key="status",
+                description="Experiment status.",
+                constraints=(
+                    'one of: "wip", "running", "done",'
+                    ' "failed", "archived".'
+                ),
+            ),
+            FieldSpec(
+                key="parents",
+                description=(
+                    "IDs of parent experiments"
+                    " in the lineage tree."
+                ),
+                constraints="list of strings.",
+            ),
+            FieldSpec(
+                key="tags",
+                description="Freeform tags for filtering.",
+                constraints="list of strings.",
+            ),
+            FieldSpec(
+                key="notes",
+                description="Freeform experiment notes.",
+                constraints="string.",
+            ),
+            FieldSpec(
+                key="docs",
+                description=(
+                    "References to associated documents."
+                ),
+                constraints="list of [[meta.docs]] tables.",
+                notes=(
+                    "Each [[meta.docs]] table has:"
+                    " path (string, required),"
+                    " label (string, optional).",
+                ),
+            ),
+            FieldSpec(
+                key="date",
+                description="Experiment date (ISO 8601).",
+                constraints="string.",
+            ),
+        ),
+        notes=(
+            (
+                "Does not affect pipeline execution."
+                " Used by vauban tree to render"
+                " experiment lineage graphs."
+            ),
+        ),
+    ),
+    SectionSpec(
+        name="remote",
+        description=(
+            "Probe remote models via batch inference API."
+        ),
+        early_return=True,
+        config_class="RemoteConfig",
+        fields=(
+            FieldSpec(
+                key="backend",
+                description="Inference backend to use.",
+                constraints='one of: "jsinfer".',
+                required=True,
+            ),
+            FieldSpec(
+                key="api_key_env",
+                description=(
+                    "Environment variable holding the API key."
+                ),
+                constraints="required string.",
+                required=True,
+            ),
+            FieldSpec(
+                key="models",
+                description="Model IDs to probe.",
+                constraints="non-empty list of strings.",
+                required=True,
+            ),
+            FieldSpec(
+                key="prompts",
+                description="Prompts to send to each model.",
+                constraints="non-empty list of strings.",
+                required=True,
+            ),
+            FieldSpec(
+                key="activations",
+                description="Whether to fetch activation tensors.",
+                constraints="boolean.",
+                default_override="false",
+            ),
+            FieldSpec(
+                key="activation_layers",
+                description=(
+                    "Layer indices to capture activations from."
+                ),
+                constraints="list of integers.",
+            ),
+            FieldSpec(
+                key="activation_modules",
+                description=(
+                    "Module name patterns for activation capture."
+                    " Use {layer} as a placeholder."
+                ),
+                constraints="list of strings.",
+            ),
+            FieldSpec(
+                key="max_tokens",
+                description="Generation cap per completion.",
+                constraints="integer >= 1.",
+                default_override="512",
+            ),
+            FieldSpec(
+                key="timeout",
+                description="HTTP request timeout in seconds.",
+                constraints="integer >= 1.",
+                default_override="600",
+            ),
+        ),
+        notes=(
+            (
+                "Standalone mode — no local model or [data] section"
+                " needed. Sends prompts to remote batch inference"
+                " APIs and collects responses plus optional"
+                " activation tensors saved as .npy files."
+            ),
+        ),
+    ),
+    SectionSpec(
+        name="backend",
+        description="Compute backend selection.",
+        table=False,
+        fields=(
+            FieldSpec(
+                key="backend",
+                description="Runtime backend for tensor operations.",
+                constraints='one of: "mlx", "pytorch".',
+                default_override='"mlx"',
+            ),
+        ),
+        notes=(
+            (
+                "Top-level key (not a section). Set backend = \"pytorch\""
+                " to use PyTorch instead of MLX. MLX is the default"
+                " and only fully supported backend on Apple Silicon."
             ),
         ),
     ),
@@ -1874,6 +2761,216 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
         ),
     ),
 )
+
+_WORKFLOW_SPECS: tuple[
+    tuple[str, str, tuple[str, ...], tuple[str, ...]], ...
+] = (
+    (
+        "Discover hidden behaviors",
+        (
+            "Find whether a model has dormant, suppressed,"
+            " or concealed behavioral directions."
+        ),
+        (
+            "1. Measure the behavioral direction:",
+            '   [measure]   # mode = "direction" (default)',
+            "",
+            "2. Probe specific prompts per-layer:",
+            "   [probe]",
+            '   prompts = ["Explain lockpicking",'
+            ' "How to hotwire a car"]',
+            "   -> probe_report.json: projection spikes.",
+            "",
+            "3. Map refusal surface across diverse prompts:",
+            "   [surface]",
+            '   prompts = "prompts.jsonl"',
+            "   -> surface_report.json: per-prompt refusal",
+            "      decisions before/after direction removal.",
+            "",
+            "4. Check for defense hardening:",
+            "   [detect]",
+            '   mode = "full"',
+            "   -> detect_report.json: hardening signals.",
+            "",
+            "5. Quantify linear decodability per layer:",
+            "   [linear_probe]",
+            "   -> linear_probe_report.json: per-layer",
+            "      classification accuracy.",
+        ),
+        (
+            "Start with probe for quick signal, then surface",
+            "for breadth, then linear_probe for depth.",
+            "Each step is a separate TOML — run one at a time.",
+            "Scaffold: vauban init --mode probe",
+        ),
+    ),
+    (
+        "Remove a behavior from weights",
+        (
+            "Extract a behavioral direction and surgically"
+            " remove it from model weights."
+        ),
+        (
+            "The default pipeline does this end-to-end:",
+            "   [model]",
+            '   path = "mlx-community/Llama-3.2-3B-'
+            'Instruct-4bit"',
+            "",
+            "   [data]",
+            '   harmful = "default"',
+            '   harmless = "default"',
+            "",
+            "   [cut]",
+            "   alpha = 1.0    # projection removal strength",
+            "",
+            "   Pipeline: measure -> cut -> eval -> export.",
+            "   Output: modified model in [output].dir.",
+            "",
+            "To search for optimal cut params automatically:",
+            "   [optimize]",
+            "   n_trials = 50",
+            "   -> Pareto front in optimize_report.json.",
+        ),
+        (
+            "Scaffold: vauban init --mode default",
+            "Compare: vauban diff output_base output_cut",
+        ),
+    ),
+    (
+        "Defend a model at inference time",
+        (
+            "Add runtime defenses that detect and block"
+            " adversarial inputs without modifying weights."
+        ),
+        (
+            "Option A  Conditional steering (CAST):",
+            "   [cast]",
+            '   prompts = ["Explain lockpicking"]',
+            "   alpha = 2.0",
+            "   threshold = 0.5",
+            "   -> Steers only when projection > threshold.",
+            "",
+            "Option B  Input sanitization (SIC):",
+            "   [sic]",
+            '   mode = "direction"',
+            "   threshold = 0.5",
+            "   calibrate = true",
+            "   -> Detects adversarial content, rewrites it.",
+            "",
+            "Option C  Composed defense stack:",
+            "   [defend]",
+            "   fail_fast = true",
+            "   [scan]     # token-level injection scanner",
+            "   [sic]      # input sanitization",
+            "   [policy]   # tool-call gating",
+            "   [intent]   # intent alignment check",
+            "   -> Layers multiple defenses in sequence.",
+            "",
+            "Option D  Fine-tune safety (RepBend):",
+            "   [repbend]",
+            "   n_steps = 100",
+            "   -> Pushes harmful activations apart from safe.",
+        ),
+        (
+            "CAST + SIC are complementary (negatively correlated).",
+            "For max coverage, combine both via [defend].",
+            "Scaffold: vauban init --mode cast",
+        ),
+    ),
+    (
+        "Test adversarial robustness",
+        (
+            "Generate adversarial inputs and measure how"
+            " well defenses hold up."
+        ),
+        (
+            "Step 1  Optimize adversarial tokens:",
+            "   [softprompt]",
+            '   mode = "gcg"',
+            '   token_position = "infix"  # most effective',
+            "   n_tokens = 16",
+            "   n_steps = 200",
+            '   defense_eval = "cast"  # test CAST inline',
+            "",
+            "Step 2  Test against remote endpoints:",
+            "   [api_eval]",
+            '   token_text = "tokens from step 1"',
+            "   [[api_eval.endpoints]]",
+            '   name = "target"',
+            '   base_url = "https://api.example.com/v1"',
+            '   model = "gpt-4"',
+            '   api_key_env = "OPENAI_API_KEY"',
+            "",
+            "Closed-loop co-evolution:",
+            "   [flywheel]",
+            "   n_cycles = 10",
+            "   harden = true",
+            "   -> Alternates attack and defense hardening",
+            "      until convergence.",
+        ),
+        (
+            "Infix position is 3.5x more effective than suffix.",
+            "Scaffold: vauban init --mode softprompt",
+        ),
+    ),
+    (
+        "Analyze model internals",
+        (
+            "Deep structural analysis: trace circuits,"
+            " decompose features, inspect reasoning."
+        ),
+        (
+            "Causal circuit tracing:",
+            "   [circuit]",
+            '   clean_prompts = ["What is 2+2?"]',
+            '   corrupt_prompts = ["How to pick a lock?"]',
+            "   -> circuit_report.json: per-component effects.",
+            "",
+            "Sparse autoencoder features:",
+            "   [features]",
+            "   layers = [14, 15, 16]",
+            "   -> features_report.json + sae_*.safetensors.",
+            "",
+            "Deep-thinking token analysis:",
+            "   [depth]",
+            '   prompts = ["Explain quantum computing"]',
+            "   -> depth_report.json: JSD across layers.",
+            "",
+            "Steering awareness detection:",
+            "   [awareness]",
+            '   prompts = ["Explain lockpicking"]',
+            "   -> awareness_report.json: anomaly scores.",
+        ),
+        (
+            "Each mode runs independently.",
+            "Scaffold: vauban init --mode circuit",
+        ),
+    ),
+)
+
+_WORKFLOW_SECTIONS: dict[str, tuple[str, ...]] = {
+    "Discover hidden behaviors": (
+        "probe", "surface", "detect", "linear_probe",
+    ),
+    "Remove a behavior from weights": (
+        "measure", "cut", "eval", "optimize",
+    ),
+    "Defend a model at inference time": (
+        "cast", "sic", "defend", "repbend",
+    ),
+    "Test adversarial robustness": (
+        "softprompt", "api_eval", "flywheel",
+    ),
+    "Analyze model internals": (
+        "circuit", "features", "depth", "awareness",
+    ),
+}
+
+_SECTION_TO_WORKFLOW: dict[str, str] = {
+    section: title
+    for title, sections in _WORKFLOW_SECTIONS.items()
+    for section in sections
+}
 
 _TOPIC_ALIASES: dict[str, str] = {
     "start": "quickstart",
@@ -1914,6 +3011,18 @@ _TOPIC_ALIASES: dict[str, str] = {
     "bundled": "datasets",
     "benchmark": "datasets",
     "benchmarks": "datasets",
+    "workflow": "workflows",
+    "goals": "workflows",
+    "howto": "workflows",
+    "how-to": "workflows",
+    "how_to": "workflows",
+    "discover": "workflows",
+    "use-case": "workflows",
+    "use_case": "workflows",
+    "usecases": "workflows",
+    "use-cases": "workflows",
+    "guide": "workflows",
+    "guides": "workflows",
 }
 
 
@@ -1932,6 +3041,7 @@ def manual_topics() -> list[str]:
         "formats",
         "taxonomy",
         "datasets",
+        "workflows",
         *[spec.name for spec in _SECTION_SPECS],
     ]
 
@@ -1973,10 +3083,11 @@ _MODE_CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
         "circuit", "features", "linear_probe", "svf",
         "compose_optimize", "awareness",
     )),
-    ("External", ("api_eval",)),
+    ("External", ("api_eval", "remote")),
 )
 
 _GENERAL_TOPICS: tuple[tuple[str, str], ...] = (
+    ("workflows", "Start here. Goal-oriented guides by use case."),
     ("quickstart", "Getting started with vauban."),
     ("commands", "CLI commands and flags."),
     ("validate", "Config validation workflow."),
@@ -2002,6 +3113,10 @@ def _render_topic_index() -> str:
     lines.append("")
     lines.append("Usage: vauban man <topic>")
     lines.append("       vauban man all        (full manual)")
+    lines.append("")
+    lines.append(
+        "New here? Run 'vauban man workflows' to pick a goal.",
+    )
     lines.append("")
 
     lines.append("GENERAL TOPICS")
@@ -2047,6 +3162,7 @@ def render_manual(topic: str | None = None) -> str:
     include_formats = normalized in ("all", "formats")
     include_taxonomy = normalized in ("all", "taxonomy")
     include_datasets = normalized in ("all", "datasets")
+    include_workflows = normalized in ("all", "workflows")
 
     lines: list[str] = []
     lines.append("VAUBAN(1)")
@@ -2195,15 +3311,27 @@ def render_manual(topic: str | None = None) -> str:
         lines.append(_render_datasets_topic())
         lines.append("")
 
+    if include_workflows:
+        lines.append(_render_workflows_topic())
+        lines.append("")
+
     if selected:
         lines.append("CONFIG SECTIONS")
         for section in selected:
             lines.append("")
             lines.append(_format_section_header(section))
             lines.append(f"  description: {section.description}")
-            lines.append(f"  required: {'yes' if section.required else 'no'}")
+            lines.append(
+                f"  required: {'yes' if section.required else 'no'}",
+            )
             if section.early_return:
                 lines.append("  early_return: yes")
+            workflow = _SECTION_TO_WORKFLOW.get(section.name)
+            if workflow:
+                lines.append(
+                    f"  workflow: {workflow}"
+                    " (vauban man workflows)",
+                )
             for note in section.notes:
                 lines.append(f"  note: {note}")
             lines.append("  fields:")
@@ -2281,6 +3409,41 @@ def _render_datasets_topic() -> str:
                     f"{k}->{v}" for k, v in sorted(coverage.aliased.items())
                 )
                 lines.append(f"    aliases:    {aliased}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip()
+
+
+def _render_workflows_topic() -> str:
+    """Render the goal-oriented workflow guides."""
+    lines: list[str] = []
+    lines.append("WORKFLOWS")
+    lines.append(
+        "    Goal-oriented guides. Each shows which sections to"
+        " use and in what order.",
+    )
+    lines.append(
+        '    Start here if you know what you want to do'
+        " but not which config sections to use.",
+    )
+    lines.append("")
+
+    for title, description, steps, tips in _WORKFLOW_SPECS:
+        lines.append(f"  {title}")
+        lines.append(f"    {description}")
+        lines.append("")
+        for step in steps:
+            lines.append(f"    {step}")
+        lines.append("")
+        lines.append("    Tips:")
+        for tip in tips:
+            lines.append(f"      {tip}")
+        sections = _WORKFLOW_SECTIONS.get(title, ())
+        if sections:
+            see = ", ".join(
+                f"vauban man {s}" for s in sections
+            )
+            lines.append(f"    Details: {see}")
         lines.append("")
 
     return "\n".join(lines).rstrip()
@@ -2510,6 +3673,7 @@ def _select_sections(
         "formats",
         "taxonomy",
         "datasets",
+        "workflows",
     }:
         return ()
     for section in sections:
