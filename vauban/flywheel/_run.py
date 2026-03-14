@@ -155,11 +155,17 @@ def run_flywheel(
         )
         blocked, evaded, _borderline = triage(defended)
 
-        # 5. Measure utility
+        # 5. Measure utility (random sample for unbiased estimate)
+        utility_seed = (
+            config.seed * 1000 + cycle
+            if config.seed is not None
+            else None
+        )
         utility_score = measure_utility(
             model, tokenizer, worlds, direction,
             layer_index, defense,
             n_samples=min(20, len(worlds)),
+            seed=utility_seed,
         )
 
         # 6. Validate previous evasions against current defense
@@ -170,7 +176,13 @@ def run_flywheel(
                 direction, layer_index, defense,
             )
 
-        # 7. Harden defense
+        # 7. Compute attack metrics (needed by hardening)
+        n_attacks = len(traces)
+        n_successful = sum(
+            1 for t in traces if t.reward >= 0.5
+        )
+
+        # 8. Harden defense
         cycle_defense = defense
         if config.harden and evaded:
             defense = harden_defense(
@@ -178,14 +190,9 @@ def run_flywheel(
                 config.adaptation_rate,
                 utility_score,
                 config.utility_floor,
+                n_successful=n_successful,
             )
             defense_history.append(defense)
-
-        # 8. Compute metrics
-        n_attacks = len(traces)
-        n_successful = sum(
-            1 for t in traces if t.reward >= 0.5
-        )
         attack_success_rate = (
             n_successful / n_attacks if n_attacks > 0 else 0.0
         )
@@ -288,7 +295,11 @@ def _count_now_blocked(
     layer_index: int,
     defense: FlywheelDefenseParams,
 ) -> int:
-    """Count how many previous evasions are now blocked."""
+    """Count how many previous evasions are now blocked.
+
+    Exceptions during re-evaluation are NOT counted as blocked —
+    a crash is ambiguous (not the same as defense success).
+    """
     count = 0
     for world, payload, _trace in previous_evasion_cases:
         try:
@@ -301,7 +312,7 @@ def _count_now_blocked(
                 layer_index,
                 defense,
             )
-        except Exception:
+        except Exception:  # re-evaluation crash — skip, don't count
             continue
         if defended_result.sic_blocked or defended_result.env_result.reward < 0.5:
             count += 1

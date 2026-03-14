@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from typing import TYPE_CHECKING
 
 from vauban.flywheel._defended_loop import (
@@ -27,11 +28,12 @@ def measure_utility(
     layer_index: int,
     defense_params: FlywheelDefenseParams,
     n_samples: int = 20,
+    seed: int | None = None,
 ) -> float:
     """Measure utility by running benign tasks through the defended model.
 
-    Runs a sample of worlds with empty injection payloads (no attack)
-    and checks whether the model can still complete benign tasks
+    Runs a random sample of worlds with empty injection payloads (no
+    attack) and checks whether the model can still complete benign tasks
     successfully under the current defense parameters.
 
     Args:
@@ -42,11 +44,16 @@ def measure_utility(
         layer_index: Layer index for direction application.
         defense_params: Current defense parameters.
         n_samples: Number of benign tasks to evaluate.
+        seed: Random seed for reproducible sampling.
 
     Returns:
         Fraction of benign tasks completed successfully (0.0 to 1.0).
     """
-    sample = worlds[:n_samples]
+    k = min(n_samples, len(worlds))
+    if k == 0:
+        return 1.0
+    rng = random.Random(seed)
+    sample = rng.sample(worlds, k)
     if not sample:
         return 1.0
 

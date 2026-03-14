@@ -98,6 +98,27 @@ class TestHardenDefense:
         result = harden_defense(params, _make_evaded(5), 0.1, 0.95, 0.90)
         assert result.sic_iterations > params.sic_iterations
 
+    def test_rate_based_pressure_with_n_successful(self) -> None:
+        params = FlywheelDefenseParams(
+            cast_alpha=2.0,
+            cast_threshold=0.0,
+            sic_threshold=0.5,
+            sic_iterations=3,
+            sic_mode="direction",
+        )
+        # 5 evasions out of 100 successful = 5% rate → low pressure
+        low_rate = harden_defense(
+            params, _make_evaded(5), 0.1, 0.95, 0.90,
+            n_successful=100,
+        )
+        # 5 evasions out of 10 successful = 50% rate → high pressure
+        high_rate = harden_defense(
+            params, _make_evaded(5), 0.1, 0.95, 0.90,
+            n_successful=10,
+        )
+        # Higher evasion rate → more alpha increase
+        assert high_rate.cast_alpha > low_rate.cast_alpha
+
     def test_preserves_unchanged_fields(self) -> None:
         params = FlywheelDefenseParams(
             cast_alpha=2.0,

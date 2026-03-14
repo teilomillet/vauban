@@ -52,3 +52,25 @@ class TestConvergence:
         assert check_convergence(
             metrics, window=3, threshold=0.05,
         ) is False
+
+    def test_zero_attack_success_does_not_converge(self) -> None:
+        """Evasion rate 0 from zero attack success is vacuous."""
+        metrics = [
+            FlywheelCycleMetrics(
+                cycle=i,
+                n_worlds=10,
+                n_attacks=50,
+                attack_success_rate=0.0,
+                defense_block_rate=1.0,
+                evasion_rate=0.0,
+                utility_score=0.95,
+                cast_alpha=2.0,
+                sic_threshold=0.5,
+                n_new_payloads=0,
+                n_previous_blocked=0,
+            )
+            for i in range(5)
+        ]
+        assert check_convergence(
+            metrics, window=3, threshold=0.01,
+        ) is False

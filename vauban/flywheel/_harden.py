@@ -16,6 +16,7 @@ def harden_defense(
     adaptation_rate: float,
     utility_score: float,
     utility_floor: float,
+    n_successful: int = 0,
 ) -> FlywheelDefenseParams:
     """Adapt defense parameters based on evasion analysis.
 
@@ -30,6 +31,7 @@ def harden_defense(
         adaptation_rate: Maximum fractional change per cycle.
         utility_score: Current utility score (0.0-1.0).
         utility_floor: Minimum acceptable utility.
+        n_successful: Total successful attacks this cycle (for rate).
 
     Returns:
         Updated FlywheelDefenseParams.
@@ -37,9 +39,13 @@ def harden_defense(
     if not evaded:
         return current
 
-    # Scale factor based on how many traces evaded
+    # Scale factor based on evasion RATE, not absolute count.
+    # Falls back to count-based pressure if n_successful is unknown.
     n_evaded = len(evaded)
-    evasion_pressure = min(n_evaded / 10.0, 1.0)  # cap at 1.0
+    if n_successful > 0:
+        evasion_pressure = min(n_evaded / n_successful, 1.0)
+    else:
+        evasion_pressure = min(n_evaded / 10.0, 1.0)
 
     # Base deltas proportional to evasion pressure and adaptation rate
     alpha_delta = (
