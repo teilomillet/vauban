@@ -82,6 +82,7 @@ def _egd_attack(
     # Pre-compute vocab mask
     vocab_mask = _build_vocab_mask(
         tokenizer, vocab_size, config.token_constraint,
+        embed_matrix=init.embed_matrix,
     )
 
     # Seed RNG for reproducible random init

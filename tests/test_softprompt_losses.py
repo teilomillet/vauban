@@ -351,6 +351,85 @@ class TestTokenConstraint:
         mask = _build_vocab_mask(tokenizer, VOCAB_SIZE, None)
         assert mask is None
 
+    def test_exclude_glitch_with_embed_matrix(self) -> None:
+        """exclude_glitch masks out tokens with extreme embedding norms."""
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        # Create embedding matrix with a few outlier rows (very low norm)
+        embed = ops.random.normal((VOCAB_SIZE, D_MODEL))
+        ops.eval(embed)
+        # Make tokens 0 and 1 have near-zero norm (under-trained)
+        embed_np = __import__("numpy").array(embed.astype(ops.float32))
+        embed_np[0] = 0.001
+        embed_np[1] = 0.001
+        embed_arr = ops.array(embed_np)
+        ops.eval(embed_arr)
+
+        mask = _build_vocab_mask(
+            tokenizer, VOCAB_SIZE, "exclude_glitch",
+            embed_matrix=embed_arr,
+        )
+        assert mask is not None
+        ops.eval(mask)
+        # Outlier tokens should be excluded
+        assert not bool(mask[0].item())
+        assert not bool(mask[1].item())
+        # Most tokens should be allowed
+        n_allowed = int(ops.sum(mask).item())
+        assert n_allowed > VOCAB_SIZE * 0.9
+
+    def test_exclude_glitch_with_precomputed_ids(self) -> None:
+        """exclude_glitch uses pre-computed IDs when provided."""
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        glitch_ids = {3, 7, 42}
+        mask = _build_vocab_mask(
+            tokenizer, VOCAB_SIZE, "exclude_glitch",
+            glitch_token_ids=glitch_ids,
+        )
+        assert mask is not None
+        ops.eval(mask)
+        assert not bool(mask[3].item())
+        assert not bool(mask[7].item())
+        assert not bool(mask[42].item())
+        assert bool(mask[0].item())
+        assert bool(mask[1].item())
+
+    def test_exclude_glitch_combined_with_ascii(self) -> None:
+        """exclude_glitch can combine with positive constraints."""
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        glitch_ids = {5}
+        mask = _build_vocab_mask(
+            tokenizer, VOCAB_SIZE, ["ascii", "exclude_glitch"],
+            glitch_token_ids=glitch_ids,
+        )
+        assert mask is not None
+        ops.eval(mask)
+        # Token 5 excluded even if it's ASCII
+        assert not bool(mask[5].item())
+
+    def test_gcg_with_exclude_glitch(self) -> None:
+        """GCG + token_constraint='exclude_glitch' runs without crashing."""
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        ops.eval(model.parameters())
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+
+        config = SoftPromptConfig(
+            mode="gcg",
+            n_tokens=4,
+            n_steps=2,
+            batch_size=4,
+            top_k=8,
+            seed=42,
+            max_gen_tokens=2,
+            token_constraint="exclude_glitch",
+        )
+
+        result = _gcg_attack(
+            model, tokenizer, ["test"], config, None,
+        )
+
+        assert result.token_ids is not None
+        assert len(result.token_ids) == 4
+
     def test_gcg_with_constraint(self) -> None:
         """GCG + token_constraint='ascii' runs, all token IDs map to ASCII."""
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)

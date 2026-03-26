@@ -721,8 +721,18 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
             ),
             FieldSpec(
                 key="token_constraint",
-                description="Token constraint set for candidate tokens.",
-                constraints="one of: ascii, alpha, alphanumeric, or null.",
+                description=(
+                    "Token constraint set for candidate tokens. Positive"
+                    " constraints (ascii, alpha, etc.) include only matching"
+                    " tokens. Negative constraints (exclude_glitch) remove"
+                    " under-trained tokens that cause model collapse."
+                    " Can be a single string or a list combining both types."
+                ),
+                constraints=(
+                    "one of: ascii, alpha, alphanumeric, non_latin, chinese,"
+                    " non_alphabetic, invisible, zalgo, emoji,"
+                    " exclude_glitch, or null."
+                ),
             ),
             FieldSpec(
                 key="eos_loss_mode",

@@ -100,6 +100,7 @@ def _parse_softprompt_loss(
         "invisible",
         "zalgo",
         "emoji",
+        "exclude_glitch",
     )
     if token_constraint_raw is not None:
         if isinstance(token_constraint_raw, str):

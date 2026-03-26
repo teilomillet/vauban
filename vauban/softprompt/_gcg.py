@@ -82,6 +82,7 @@ def _gcg_attack(
         tokenizer,
         vocab_size,
         config.token_constraint,
+        embed_matrix=init.embed_matrix,
     )
     allowed_indices = _allowed_indices_from_mask(vocab_mask, vocab_size)
 

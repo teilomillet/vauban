@@ -224,9 +224,30 @@ Optimizes a learnable prefix (soft prompt) to bypass the model's refusal. Three 
 |-------|------|---------|-------------|
 | `token_constraint` | string or list of strings | — | Restrict token search space. |
 
-Valid constraint values: `"ascii"`, `"alpha"`, `"alphanumeric"`, `"non_latin"`, `"chinese"`, `"non_alphabetic"`, `"invisible"`, `"zalgo"`, `"emoji"`.
+**Positive constraints** (include only matching tokens): `"ascii"`, `"alpha"`, `"alphanumeric"`, `"non_latin"`, `"chinese"`, `"non_alphabetic"`, `"invisible"`, `"zalgo"`, `"emoji"`.
 
-When a single string is provided, only tokens matching that constraint are allowed. When a list is provided, the intersection of all constraints is used (tokens must satisfy all listed constraints).
+**Negative constraints** (exclude matching tokens): `"exclude_glitch"`.
+
+When a single string is provided, only tokens matching that constraint are allowed (or excluded, for negative constraints). When a list is provided, positive constraints are intersected first, then negative constraints remove tokens from the result.
+
+#### `exclude_glitch`
+
+Detects and excludes under-trained ("glitch") tokens from the adversarial search space. These are tokens with anomalously low or high embedding norms (beyond 3 standard deviations from the mean) that cause model collapse when encountered during generation.
+
+**Why it matters:** Under-trained tokens produce random multilingual word salad instead of coherent text. If GCG/EGD selects one, the optimization step is wasted — the model cannot parse the input at all, so the gradient signal is noise. Excluding these tokens improves optimization efficiency.
+
+**Research basis:** "Fishing for Magikarp" (Rumbelow & Watkins, EMNLP 2024, arxiv 2405.05417) showed that ~0.3-0.6% of tokens in modern LLMs are under-trained and cause anomalous behavior. Our cross-model validation on Qwen2.5-0.5B/1.5B confirmed this rate with calibrated multi-template behavioral entropy testing.
+
+```toml
+[softprompt]
+mode = "gcg"
+token_constraint = "exclude_glitch"
+
+# Can combine with positive constraints:
+# token_constraint = ["ascii", "exclude_glitch"]
+```
+
+Detection runs automatically from the embedding matrix at mask-build time (~1 second). No additional configuration needed.
 
 ### EOS loss
 

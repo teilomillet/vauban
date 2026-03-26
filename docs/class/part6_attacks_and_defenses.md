@@ -161,7 +161,11 @@ SoftPromptConfig(
 )
 ```
 
-Options: `"ascii"`, `"alpha"`, `"alphanumeric"`, or `None` (all tokens).
+**Positive constraints** (include only matching): `"ascii"`, `"alpha"`, `"alphanumeric"`, `"non_latin"`, `"chinese"`, `"non_alphabetic"`, `"invisible"`, `"zalgo"`, `"emoji"`.
+
+**Negative constraints** (exclude matching): `"exclude_glitch"` removes under-trained tokens that cause model collapse. Combine with a list: `["ascii", "exclude_glitch"]`.
+
+See [Tokenizer Analysis](../research/tokenizer_analysis.md) for the research behind `exclude_glitch`.
 
 ### Transfer Testing (transfer_models list)
 

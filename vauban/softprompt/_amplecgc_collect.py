@@ -78,6 +78,7 @@ def collect_gcg_suffixes(
 
     vocab_mask = _build_vocab_mask(
         tokenizer, vocab_size, config.token_constraint,
+        embed_matrix=embed_matrix,
     )
     allowed_indices = _allowed_indices_from_mask(vocab_mask, vocab_size)
 
