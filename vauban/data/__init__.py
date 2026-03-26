@@ -169,6 +169,17 @@ BUNDLED_DATASETS: tuple[BundledDataset, ...] = (
         count=49,
         has_categories=False,
     ),
+    BundledDataset(
+        name="jailbreak_templates",
+        filename="jailbreak_templates.jsonl",
+        description=(
+            "30 jailbreak prompt templates across 5 strategies "
+            "(identity dissolution, boundary exploit, semantic inversion, "
+            "dual response, competitive pressure). Each has a {payload} placeholder."
+        ),
+        count=30,
+        has_categories=False,
+    ),
 )
 
 _DATASET_BY_NAME: dict[str, BundledDataset] = {

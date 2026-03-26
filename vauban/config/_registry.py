@@ -20,6 +20,7 @@ from vauban.config._parse_features import _parse_features
 from vauban.config._parse_flywheel import _parse_flywheel
 from vauban.config._parse_fusion import _parse_fusion
 from vauban.config._parse_intent import _parse_intent
+from vauban.config._parse_jailbreak import _parse_jailbreak
 from vauban.config._parse_linear_probe import _parse_linear_probe
 from vauban.config._parse_lora_analysis import _parse_lora_analysis
 from vauban.config._parse_lora_export import _parse_lora_export
@@ -54,6 +55,7 @@ from vauban.types import (
     FlywheelConfig,
     FusionConfig,
     IntentConfig,
+    JailbreakConfig,
     LinearProbeConfig,
     LoraAnalysisConfig,
     LoraExportConfig,
@@ -96,6 +98,7 @@ type _SectionParserResult = (
     | FlywheelConfig
     | FusionConfig
     | IntentConfig
+    | JailbreakConfig
     | LinearProbeConfig
     | LoraAnalysisConfig
     | LoraExportConfig
@@ -165,6 +168,7 @@ class ParsedSectionValues:
     scan: ScanConfig | None
     policy: PolicyConfig | None
     intent: IntentConfig | None
+    jailbreak: JailbreakConfig | None
     defend: DefenseStackConfig | None
     circuit: CircuitConfig | None
     features: FeaturesConfig | None
@@ -245,6 +249,7 @@ SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     SectionParseSpec("scan", "scan", _parse_scan, 140),
     SectionParseSpec("policy", "policy", _parse_policy, 145),
     SectionParseSpec("intent", "intent", _parse_intent, 150),
+    SectionParseSpec("jailbreak", "jailbreak", _parse_jailbreak, 152),
     SectionParseSpec("defend", "defend", _parse_defend, 155),
     SectionParseSpec("circuit", "circuit", _parse_circuit, 160),
     SectionParseSpec(

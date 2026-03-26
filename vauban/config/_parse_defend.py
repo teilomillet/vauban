@@ -2,20 +2,53 @@
 
 from typing import cast
 
+from vauban.config._parse_helpers import SectionReader
 from vauban.config._parse_intent import _parse_intent
 from vauban.config._parse_policy import _parse_policy
 from vauban.config._parse_scan import _parse_scan
 from vauban.config._parse_sic import _parse_sic
 from vauban.config._types import TomlDict
-from vauban.types import DefenseStackConfig
+from vauban.types import DefenseStackConfig, PerturbConfig
+
+_PERTURB_TECHNIQUES = (
+    "leetspeak", "homoglyph", "zero_width", "mixed_case", "phonetic", "random",
+)
+
+
+def _parse_perturb(raw: TomlDict) -> PerturbConfig | None:
+    """Parse the optional [perturb] section into a PerturbConfig."""
+    sec = raw.get("perturb")
+    if sec is None:
+        return None
+    if not isinstance(sec, dict):
+        msg = f"[perturb] must be a table, got {type(sec).__name__}"
+        raise TypeError(msg)
+
+    reader = SectionReader("[perturb]", sec)
+    technique = reader.literal(
+        "technique", _PERTURB_TECHNIQUES, default="random",
+    )
+    intensity = reader.integer("intensity", default=2)
+    if intensity not in (1, 2, 3):
+        msg = f"[perturb].intensity must be 1, 2, or 3, got {intensity}"
+        raise ValueError(msg)
+    seed = reader.optional_integer("seed")
+    trigger_words = reader.string_list("trigger_words", default=[])
+
+    return PerturbConfig(
+        technique=technique,
+        intensity=intensity,
+        seed=seed,
+        trigger_words=trigger_words,
+    )
 
 
 def _parse_defend(raw: TomlDict) -> DefenseStackConfig | None:
     """Parse the optional [defend] section into a DefenseStackConfig.
 
     The [defend] section acts as a composition layer. It references
-    other defense sections ([scan], [sic], [policy], [intent]) and
-    adds a fail_fast toggle.
+    other defense sections ([scan], [sic], [policy], [intent], [perturb])
+    and adds a fail_fast toggle.
 
     Returns None if the section is absent.
     """
@@ -42,11 +75,13 @@ def _parse_defend(raw: TomlDict) -> DefenseStackConfig | None:
     sic_config = _parse_sic(raw)
     policy_config = _parse_policy(raw)
     intent_config = _parse_intent(raw)
+    perturb_config = _parse_perturb(raw)
 
     return DefenseStackConfig(
         scan=scan_config,
         sic=sic_config,
         policy=policy_config,
         intent=intent_config,
+        perturb=perturb_config,
         fail_fast=fail_fast_raw,
     )

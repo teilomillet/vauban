@@ -24,6 +24,7 @@ from vauban.types import (
     FeaturesConfig,
     FlywheelConfig,
     FusionConfig,
+    JailbreakConfig,
     LinearProbeConfig,
     LoraAnalysisConfig,
     LoraExportConfig,
@@ -67,6 +68,7 @@ _EXPECTED_EARLY_MODE_ORDER: list[str] = [
     "[optimize]",
     "[compose_optimize]",
     "[softprompt]",
+    "[jailbreak]",
     "[defend]",
     "[circuit]",
     "[linear_probe]",
@@ -166,7 +168,7 @@ def test_validation_warning_content_and_order_for_conflict_fixture(
             " > api_eval > depth > svf > features"
             " > probe > steer > sss > awareness > cast > sic"
             " > optimize > compose_optimize"
-            " > softprompt > defend > circuit > linear_probe > fusion"
+            " > softprompt > jailbreak > defend > circuit > linear_probe > fusion"
             " > repbend > lora_export > lora_analysis > flywheel)"
             " — fix: keep one early-return mode per config,"
             " and split other modes into separate TOML files"
@@ -230,6 +232,7 @@ def test_active_early_modes_precedence_matches_legacy_behavior() -> None:
         optimize=OptimizeConfig(),
         compose_optimize=ComposeOptimizeConfig(bank_path="bank.safetensors"),
         softprompt=SoftPromptConfig(),
+        jailbreak=JailbreakConfig(),
         defend=DefenseStackConfig(),
         features=FeaturesConfig(
             prompts_path=Path("prompts.jsonl"),

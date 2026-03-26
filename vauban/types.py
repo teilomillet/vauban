@@ -275,6 +275,44 @@ class MeasureConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class ResponseScoreWeights:
+    """Axis weights for composite response scoring (must sum to ~1.0)."""
+
+    length: float = 0.15
+    structure: float = 0.15
+    anti_refusal: float = 0.30
+    directness: float = 0.20
+    relevance: float = 0.20
+
+
+@dataclass(frozen=True, slots=True)
+class ResponseScoreResult:
+    """Per-response composite score across 5 axes."""
+
+    prompt: str
+    response: str
+    length: float
+    structure: float
+    anti_refusal: float
+    directness: float
+    relevance: float
+    composite: float
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to JSON-compatible dict."""
+        return {
+            "prompt": self.prompt,
+            "response": self.response,
+            "length": self.length,
+            "structure": self.structure,
+            "anti_refusal": self.anti_refusal,
+            "directness": self.directness,
+            "relevance": self.relevance,
+            "composite": self.composite,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class EvalConfig:
     """Configuration for the evaluation step."""
 
@@ -283,6 +321,7 @@ class EvalConfig:
     num_prompts: int = 20  # fallback count when prompts_path is absent
     refusal_phrases_path: Path | None = None  # custom refusal phrases file
     refusal_mode: str = "phrases"  # "phrases" or "judge"
+    scoring_weights: ResponseScoreWeights | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1553,6 +1592,16 @@ class IntentCheckResult:
 
 
 @dataclass(frozen=True, slots=True)
+class PerturbConfig:
+    """Configuration for input perturbation in defense testing."""
+
+    technique: str = "random"
+    intensity: int = 2
+    seed: int | None = None
+    trigger_words: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
 class DefenseStackConfig:
     """Configuration for the composed defense stack."""
 
@@ -1560,6 +1609,7 @@ class DefenseStackConfig:
     sic: SICConfig | None = None
     policy: PolicyConfig | None = None
     intent: IntentConfig | None = None
+    perturb: PerturbConfig | None = None
     fail_fast: bool = True
 
 
@@ -1951,6 +2001,44 @@ class LoraAnalysisResult:
 
 
 @dataclass(frozen=True, slots=True)
+class JailbreakTemplate:
+    """One jailbreak prompt template from the bundled bank."""
+
+    strategy: str
+    name: str
+    template: str
+
+
+@dataclass(frozen=True, slots=True)
+class JailbreakConfig:
+    """Configuration for the jailbreak prompt evaluation mode."""
+
+    strategies: list[str] = field(default_factory=list)  # empty = all
+    custom_templates_path: str | None = None
+    payloads_from: str = "harmful"  # "harmful" or path to JSONL
+
+
+@dataclass(frozen=True, slots=True)
+class JailbreakStrategyResult:
+    """Block rate for one jailbreak strategy."""
+
+    strategy: str
+    total_prompts: int
+    total_blocked: int
+    block_rate: float
+
+
+@dataclass(frozen=True, slots=True)
+class JailbreakResult:
+    """Result of the jailbreak template evaluation mode."""
+
+    total_prompts: int
+    total_blocked: int
+    block_rate: float
+    per_strategy: list[JailbreakStrategyResult]
+
+
+@dataclass(frozen=True, slots=True)
 class FlywheelConfig:
     """Configuration for the flywheel attack-defense co-evolution mode."""
 
@@ -2194,6 +2282,7 @@ class PipelineConfig:
     scan: ScanConfig | None = None
     policy: PolicyConfig | None = None
     intent: IntentConfig | None = None
+    jailbreak: JailbreakConfig | None = None
     defend: DefenseStackConfig | None = None
     circuit: CircuitConfig | None = None
     features: FeaturesConfig | None = None

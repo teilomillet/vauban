@@ -59,6 +59,7 @@ _EXPECTED_SECTION_ORDER: list[str] = [
     "scan",
     "policy",
     "intent",
+    "jailbreak",
     "defend",
     "circuit",
     "features",

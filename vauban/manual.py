@@ -430,6 +430,14 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 description="Refusal detection method.",
                 constraints='one of: "phrases", "judge".',
             ),
+            FieldSpec(
+                key="scoring_weights",
+                description="Composite response scoring weights (sub-table).",
+                constraints=(
+                    "table with float keys: length, structure,"
+                    " anti_refusal, directness, relevance."
+                ),
+            ),
         ),
     ),
     SectionSpec(
@@ -1514,12 +1522,56 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                     " [intent] section if present."
                 ),
             ),
+            FieldSpec(
+                key="perturb",
+                description=(
+                    "Input perturbation sub-config"
+                    " (populated from [perturb] section)."
+                ),
+                constraints=(
+                    "populated automatically from"
+                    " [perturb] section if present."
+                ),
+            ),
         ),
         notes=(
             (
-                "The [defend] section composes [scan], [sic], [policy], and"
-                " [intent] sections. Define those sections alongside [defend]"
-                " to configure each defense layer."
+                "The [defend] section composes [scan], [sic], [policy],"
+                " [intent], and [perturb] sections. Define those sections"
+                " alongside [defend] to configure each defense layer."
+            ),
+        ),
+    ),
+    SectionSpec(
+        name="jailbreak",
+        description="Evaluate defenses against known jailbreak prompt strategies.",
+        early_return=True,
+        config_class="JailbreakConfig",
+        fields=(
+            FieldSpec(
+                key="strategies",
+                description="Strategies to test (empty = all 5 strategies).",
+                constraints=(
+                    "list of strings from: identity_dissolution,"
+                    " boundary_exploit, semantic_inversion,"
+                    " dual_response, competitive_pressure."
+                ),
+            ),
+            FieldSpec(
+                key="custom_templates_path",
+                description="Path to custom templates JSONL.",
+                constraints="optional string path.",
+            ),
+            FieldSpec(
+                key="payloads_from",
+                description="Source of payload prompts.",
+                constraints='"harmful" (default) or path to JSONL file.',
+            ),
+        ),
+        notes=(
+            (
+                "Feeds cross-product of jailbreak templates x payloads"
+                " through the defense stack. Reports block rates per strategy."
             ),
         ),
     ),
@@ -2959,7 +3011,7 @@ _WORKFLOW_SECTIONS: dict[str, tuple[str, ...]] = {
         "cast", "sic", "defend", "repbend",
     ),
     "Test adversarial robustness": (
-        "softprompt", "api_eval", "flywheel",
+        "softprompt", "api_eval", "flywheel", "jailbreak",
     ),
     "Analyze model internals": (
         "circuit", "features", "depth", "awareness",

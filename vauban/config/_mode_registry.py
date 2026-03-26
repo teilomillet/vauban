@@ -201,6 +201,17 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "softprompt_report.json.",
     ),
     EarlyModeSpec(
+        "[jailbreak]",
+        "jailbreak",
+        "after_measure",
+        False,
+        _field_is_set("jailbreak"),
+        "Evaluate defenses against known jailbreak prompt strategies.",
+        "jailbreak template evaluation",
+        "[jailbreak] section present.",
+        "jailbreak_report.json.",
+    ),
+    EarlyModeSpec(
         "[defend]",
         "defend",
         "after_measure",

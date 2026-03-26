@@ -48,6 +48,33 @@ def _run_defend_mode(context: EarlyModeContext) -> None:
     else:
         defend_prompts = context.harmful[:config.eval.num_prompts]
 
+    # Apply input perturbation if configured
+    perturbed = False
+    if config.defend.perturb is not None:
+        from vauban.perturb import PerturbIntensity, PerturbTechnique, perturb
+
+        pcfg = config.defend.perturb
+        custom_triggers = (
+            frozenset(pcfg.trigger_words) if pcfg.trigger_words else None
+        )
+        defend_prompts = [
+            perturb(
+                p,
+                technique=_cast("PerturbTechnique", pcfg.technique),
+                intensity=_cast("PerturbIntensity", pcfg.intensity),
+                seed=pcfg.seed,
+                trigger_words=custom_triggers,
+            )
+            for p in defend_prompts
+        ]
+        perturbed = True
+        log(
+            f"Perturbed {len(defend_prompts)} prompts"
+            f" (technique={pcfg.technique}, intensity={pcfg.intensity})",
+            verbose=v,
+            elapsed=time.monotonic() - context.t0,
+        )
+
     defend_results = [
         defend_content(
             model,
@@ -63,12 +90,16 @@ def _run_defend_mode(context: EarlyModeContext) -> None:
     total_blocked = sum(1 for result in defend_results if result.blocked)
     block_rate = total_blocked / len(defend_results) if defend_results else 0.0
 
-    report = {
+    report: dict[str, object] = {
         "total_prompts": len(defend_results),
         "total_blocked": total_blocked,
         "block_rate": block_rate,
+        "perturbed": perturbed,
         "results": [_defend_to_dict(result) for result in defend_results],
     }
+    if perturbed and config.defend.perturb is not None:
+        report["perturb_technique"] = config.defend.perturb.technique
+        report["perturb_intensity"] = config.defend.perturb.intensity
     report_path = write_mode_report(
         config.output_dir,
         ModeReport("defend_report.json", report),

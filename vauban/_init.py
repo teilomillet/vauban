@@ -130,6 +130,15 @@ layers = [0, 1]
 bank_path = "direction_bank/"
 n_trials = 20
 """,
+    "jailbreak": """\
+
+[jailbreak]
+# strategies = ["identity_dissolution", "boundary_exploit"]  # default: all
+# payloads_from = "harmful"  # or path to custom JSONL
+
+[defend]
+fail_fast = true
+""",
     "defend": """\
 
 [defend]

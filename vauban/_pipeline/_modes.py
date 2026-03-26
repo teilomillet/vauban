@@ -15,6 +15,7 @@ from vauban._pipeline._mode_depth import _run_depth_mode
 from vauban._pipeline._mode_features import _run_features_mode
 from vauban._pipeline._mode_flywheel import _run_flywheel_mode
 from vauban._pipeline._mode_fusion import _run_fusion_mode
+from vauban._pipeline._mode_jailbreak import _run_jailbreak_mode
 from vauban._pipeline._mode_linear_probe import _run_linear_probe_mode
 from vauban._pipeline._mode_lora_analysis import _run_lora_analysis_mode
 from vauban._pipeline._mode_lora_export import _run_lora_export_mode
@@ -49,6 +50,7 @@ EARLY_MODE_RUNNERS: dict[str, EarlyModeRunner] = {
     "optimize": _run_optimize_mode,
     "compose_optimize": _run_compose_optimize_mode,
     "softprompt": _run_softprompt_mode,
+    "jailbreak": _run_jailbreak_mode,
     "defend": _run_defend_mode,
     "circuit": _run_circuit_mode,
     "linear_probe": _run_linear_probe_mode,
