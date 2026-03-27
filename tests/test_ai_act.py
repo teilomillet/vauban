@@ -121,6 +121,90 @@ class TestReadinessBundle:
             )
             + "\n",
         )
+        (tmp_path / "operation_monitoring.md").write_text(
+            "\n".join(
+                [
+                    "Provider instructions: use only for stated intended purpose.",
+                    "Monitoring plan: review logs and incidents weekly.",
+                    "Responsible operator: AI Operations Lead.",
+                ],
+            )
+            + "\n",
+        )
+        (tmp_path / "input_data_governance.md").write_text(
+            "\n".join(
+                [
+                    "Input data scope: applicant-provided documents and forms.",
+                    (
+                        "Relevance criteria: use only fields required for the"
+                        " stated purpose."
+                    ),
+                    (
+                        "Representativeness validation: sample review for bias"
+                        " and coverage."
+                    ),
+                ],
+            )
+            + "\n",
+        )
+        (tmp_path / "log_retention.md").write_text(
+            "\n".join(
+                [
+                    "Logging scope: automated system logs and audit trail records.",
+                    "Retention: keep logs for at least six months.",
+                    "Access control: logs remain under the deployer's control.",
+                ],
+            )
+            + "\n",
+        )
+        (tmp_path / "worker_notice.md").write_text(
+            "\n".join(
+                [
+                    "Employees and workers will be informed before deployment.",
+                    "Workers' representatives receive the same notice.",
+                    "The notice applies before the system is put into use.",
+                ],
+            )
+            + "\n",
+        )
+        (tmp_path / "affected_person_notice.md").write_text(
+            "\n".join(
+                [
+                    (
+                        "Affected persons are informed that they are subject"
+                        " to the use of a high-risk AI system."
+                    ),
+                    "Intended purpose: support credit decisions for natural persons.",
+                    "Decision support context: recommendations assist decision-making.",
+                ],
+            )
+            + "\n",
+        )
+        (tmp_path / "explanation_request.md").write_text(
+            "\n".join(
+                [
+                    (
+                        "Right to an explanation: affected persons may"
+                        " request an explanation."
+                    ),
+                    (
+                        "Response process: compliance reviews and answers"
+                        " requests within the workflow timeline."
+                    ),
+                ],
+            )
+            + "\n",
+        )
+        (tmp_path / "eu_registration.md").write_text(
+            "\n".join(
+                [
+                    "EU database registration record for the deployed system.",
+                    "Competent authority reference: EUA-12345.",
+                    "System ID: high-risk-credit-01.",
+                ],
+            )
+            + "\n",
+        )
         (tmp_path / "red_team.json").write_text('{"report_version":"v1"}\n')
         (tmp_path / "transparency.md").write_text(
             "\n".join(
@@ -354,6 +438,41 @@ class TestReadinessBundle:
         assert article5["status"] == "fail"
         assert article5["legal_review_required"] is True
 
+    def test_article5_rbi_exception_claim_stays_unknown(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        self._write_complete_evidence(tmp_path)
+        config = AIActConfig(
+            company_name="Example Energy",
+            system_name="Public Safety Scanner",
+            intended_purpose=(
+                "Supports law-enforcement identification in public spaces."
+            ),
+            ai_literacy_record=tmp_path / "ai_literacy.md",
+            real_time_remote_biometric_identification_for_law_enforcement=True,
+            real_time_remote_biometric_identification_exception_claimed=True,
+        )
+
+        _report, ledger, _library, _remediation = generate_deployer_readiness_bundle(
+            config,
+        )
+
+        controls = ledger["controls"]
+        assert isinstance(controls, list)
+        control_entries = [
+            _object_dict(entry)
+            for entry in controls
+            if isinstance(entry, dict)
+        ]
+        article5 = next(
+            entry
+            for entry in control_entries
+            if entry["control_id"] == "ai_act.article5.prohibited_practices_screen"
+        )
+        assert article5["status"] == "unknown"
+        assert article5["legal_review_required"] is True
+
     def test_public_interest_text_editorial_exception_is_not_applicable(
         self,
         tmp_path: Path,
@@ -508,6 +627,169 @@ class TestReadinessBundle:
             if entry["control_id"] == "ai_act.triage.fria_requirement"
         )
         assert fria["status"] == "pass"
+
+    def test_article6_3_carve_out_claim_requires_review(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        (tmp_path / "ai_literacy.md").write_text("ok\n")
+        config = AIActConfig(
+            company_name="Example Energy",
+            system_name="Recruiting File Router",
+            intended_purpose=(
+                "Routes incoming recruitment files for later human review."
+            ),
+            ai_literacy_record=tmp_path / "ai_literacy.md",
+            annex_iii_use_cases=["annex_iii_4_recruitment_selection"],
+            annex_iii_narrow_procedural_task=True,
+            annex_iii_does_not_materially_influence_decision_outcome=True,
+        )
+
+        artifacts = generate_deployer_readiness_artifacts(config)
+        rows = artifacts.controls_matrix["rows"]
+        assert isinstance(rows, list)
+        row_entries = [
+            _object_dict(entry)
+            for entry in rows
+            if isinstance(entry, dict)
+        ]
+        carve_out = next(
+            entry
+            for entry in row_entries
+            if entry["control_id"] == "ai_act.triage.article6_3_annex_iii_carve_out"
+        )
+        assert carve_out["status"] == "unknown"
+        classification = artifacts.annex_iii_classification
+        assert classification["article6_3_claimed_conditions"] == [
+            "narrow_procedural_task",
+        ]
+
+    def test_high_risk_deployer_article26_controls_can_pass(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        self._write_complete_evidence(tmp_path)
+        config = AIActConfig(
+            company_name="Example Energy",
+            system_name="Public Credit Assistant",
+            intended_purpose="Supports credit decisions for natural persons.",
+            role="deployer",
+            ai_literacy_record=tmp_path / "ai_literacy.md",
+            annex_iii_use_cases=["annex_iii_5_creditworthiness_or_credit_score"],
+            provider_documentation=tmp_path / "provider.md",
+            human_oversight_procedure=tmp_path / "oversight.md",
+            operation_monitoring_procedure=tmp_path / "operation_monitoring.md",
+            input_data_governance_procedure=tmp_path / "input_data_governance.md",
+            log_retention_procedure=tmp_path / "log_retention.md",
+            employee_or_worker_representative_notice=tmp_path / "worker_notice.md",
+            affected_person_notice=tmp_path / "affected_person_notice.md",
+            explanation_request_procedure=tmp_path / "explanation_request.md",
+            eu_database_registration_record=tmp_path / "eu_registration.md",
+            provides_input_data_for_high_risk_system=True,
+            workplace_deployment=True,
+            makes_or_assists_decisions_about_natural_persons=True,
+            decision_with_legal_or_similarly_significant_effects=True,
+            public_sector_use=True,
+            risk_owner="AI Risk Lead",
+        )
+
+        _report, ledger, _library, _remediation = generate_deployer_readiness_bundle(
+            config,
+        )
+
+        controls = ledger["controls"]
+        assert isinstance(controls, list)
+        control_entries = [
+            _object_dict(entry)
+            for entry in controls
+            if isinstance(entry, dict)
+        ]
+        control_ids = {
+            str(entry["control_id"]): str(entry["status"])
+            for entry in control_entries
+        }
+        assert control_ids["ai_act.article26.instructions_monitoring"] == "pass"
+        assert control_ids["ai_act.article26.human_oversight"] == "pass"
+        assert control_ids["ai_act.article26.input_data_governance"] == "pass"
+        assert control_ids["ai_act.article26.log_retention"] == "pass"
+        assert control_ids["ai_act.article26.workplace_notice"] == "pass"
+        assert (
+            control_ids["ai_act.article26.affected_person_notice_and_explanation"]
+            == "pass"
+        )
+        assert (
+            control_ids["ai_act.article26.public_authority_registration"] == "pass"
+        )
+
+    def test_high_risk_deployer_missing_monitoring_blocks_article26(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        self._write_complete_evidence(tmp_path)
+        config = AIActConfig(
+            company_name="Example Energy",
+            system_name="Hiring Assistant",
+            intended_purpose="Scores applicants for open roles.",
+            role="deployer",
+            ai_literacy_record=tmp_path / "ai_literacy.md",
+            annex_iii_use_cases=["annex_iii_4_recruitment_selection"],
+        )
+
+        report, ledger, _library, _remediation = generate_deployer_readiness_bundle(
+            config,
+        )
+
+        assert report["overall_status"] == "blocked"
+        controls = ledger["controls"]
+        assert isinstance(controls, list)
+        control_entries = [
+            _object_dict(entry)
+            for entry in controls
+            if isinstance(entry, dict)
+        ]
+        monitoring = next(
+            entry
+            for entry in control_entries
+            if entry["control_id"] == "ai_act.article26.instructions_monitoring"
+        )
+        assert monitoring["status"] == "unknown"
+
+    def test_high_risk_deployer_missing_human_oversight_blocks_article26(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        self._write_complete_evidence(tmp_path)
+        config = AIActConfig(
+            company_name="Example Energy",
+            system_name="Public Credit Assistant",
+            intended_purpose="Supports credit decisions for natural persons.",
+            role="deployer",
+            ai_literacy_record=tmp_path / "ai_literacy.md",
+            annex_iii_use_cases=["annex_iii_5_creditworthiness_or_credit_score"],
+            provider_documentation=tmp_path / "provider.md",
+            operation_monitoring_procedure=tmp_path / "operation_monitoring.md",
+            log_retention_procedure=tmp_path / "log_retention.md",
+            public_sector_use=True,
+        )
+
+        report, ledger, _library, _remediation = generate_deployer_readiness_bundle(
+            config,
+        )
+
+        assert report["overall_status"] == "blocked"
+        controls = ledger["controls"]
+        assert isinstance(controls, list)
+        control_entries = [
+            _object_dict(entry)
+            for entry in controls
+            if isinstance(entry, dict)
+        ]
+        oversight = next(
+            entry
+            for entry in control_entries
+            if entry["control_id"] == "ai_act.article26.human_oversight"
+        )
+        assert oversight["status"] == "unknown"
 
     def test_fria_prep_artifact_is_generated_for_triggered_case(
         self,

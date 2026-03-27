@@ -206,6 +206,26 @@
       "blocking": true
     },
     {
+      "control_id": "ai_act.triage.article6_3_annex_iii_carve_out",
+      "title": "Article 6(3) Annex III carve-out triage",
+      "source_type": "ai_act",
+      "source_ref": "Article 6(3) AI Act",
+      "description": "Review declared Annex III carve-out facts for narrow procedural, preparatory, or similarly low-impact tasks that may avoid high-risk classification if the system does not materially influence decision outcomes.",
+      "applies_when": "EU-market operation outside research-only scope with a declared Annex III use case.",
+      "source_ids": [
+        "commission_navigating_ai_act",
+        "eurlex_ai_act_regulation"
+      ],
+      "evidence_required": [
+        "Declared Annex III use cases",
+        "declared Article 6(3) carve-out conditions",
+        "declared no-material-influence fact",
+        "declared profiling fact where relevant"
+      ],
+      "check_method": "Rule-based triage from customer assertions.",
+      "blocking": true
+    },
+    {
       "control_id": "ai_act.triage.fria_requirement",
       "title": "FRIA triage",
       "source_type": "ai_act",
@@ -221,6 +241,142 @@
         "declared Annex III point 5(b)/(c) facts where relevant"
       ],
       "check_method": "Rule-based triage from customer assertions.",
+      "blocking": true
+    },
+    {
+      "control_id": "ai_act.article26.instructions_monitoring",
+      "title": "Article 26 instructions-of-use and monitoring",
+      "source_type": "ai_act",
+      "source_ref": "Article 26 AI Act",
+      "description": "High-risk deployers should retain provider instructions and operational monitoring evidence showing how they use and monitor the system in practice.",
+      "applies_when": "Declared EU-market high-risk deployer scenario.",
+      "source_ids": [
+        "commission_navigating_ai_act",
+        "eurlex_ai_act_regulation"
+      ],
+      "evidence_required": [
+        "Provider documentation or instructions for use",
+        "operation monitoring procedure",
+        "risk or incident escalation path",
+        "operator or oversight assignment"
+      ],
+      "check_method": "File presence plus minimum content markers.",
+      "blocking": true
+    },
+    {
+      "control_id": "ai_act.article26.human_oversight",
+      "title": "Article 26 human oversight",
+      "source_type": "ai_act",
+      "source_ref": "Article 26 AI Act",
+      "description": "High-risk deployers should document how a sufficiently equipped person or persons exercise human oversight in operation.",
+      "applies_when": "Declared EU-market high-risk deployer scenario.",
+      "source_ids": [
+        "commission_navigating_ai_act",
+        "eurlex_ai_act_regulation"
+      ],
+      "evidence_required": [
+        "Human oversight procedure",
+        "review or override step",
+        "handoff or escalation trigger",
+        "named owner or responsible person"
+      ],
+      "check_method": "File presence plus minimum content markers.",
+      "blocking": true
+    },
+    {
+      "control_id": "ai_act.article26.input_data_governance",
+      "title": "Article 26 input-data governance",
+      "source_type": "ai_act",
+      "source_ref": "Article 26 AI Act",
+      "description": "Where deployers provide input data to a high-risk AI system, they should document relevance and representativeness controls for those inputs.",
+      "applies_when": "Declared EU-market high-risk deployer scenario with deployer-provided input data.",
+      "source_ids": [
+        "commission_navigating_ai_act",
+        "eurlex_ai_act_regulation"
+      ],
+      "evidence_required": [
+        "Input data governance procedure",
+        "relevance criteria",
+        "representativeness or quality checks"
+      ],
+      "check_method": "File presence plus minimum content markers.",
+      "blocking": true
+    },
+    {
+      "control_id": "ai_act.article26.log_retention",
+      "title": "Article 26 log retention",
+      "source_type": "ai_act",
+      "source_ref": "Article 26 AI Act",
+      "description": "High-risk deployers should retain logs under their control for an appropriate period, with the six-month baseline reflected in the procedure.",
+      "applies_when": "Declared EU-market high-risk deployer scenario.",
+      "source_ids": [
+        "commission_navigating_ai_act",
+        "eurlex_ai_act_regulation"
+      ],
+      "evidence_required": [
+        "Log retention procedure",
+        "retention period",
+        "control or access scope"
+      ],
+      "check_method": "File presence plus minimum content markers.",
+      "blocking": true
+    },
+    {
+      "control_id": "ai_act.article26.workplace_notice",
+      "title": "Article 26 workplace information duty",
+      "source_type": "ai_act",
+      "source_ref": "Article 26 AI Act",
+      "description": "High-risk deployers using the system in the workplace should document notice to affected employees and workers' representatives.",
+      "applies_when": "Declared EU-market high-risk deployer scenario with workplace deployment.",
+      "source_ids": [
+        "commission_navigating_ai_act",
+        "eurlex_ai_act_regulation"
+      ],
+      "evidence_required": [
+        "Employee or worker representative notice",
+        "workplace deployment context",
+        "before-use or pre-deployment notice language"
+      ],
+      "check_method": "File presence plus minimum content markers.",
+      "blocking": true
+    },
+    {
+      "control_id": "ai_act.article26.affected_person_notice_and_explanation",
+      "title": "Article 26 affected-person notice and Article 86 explanation readiness",
+      "source_type": "ai_act",
+      "source_ref": "Article 26 / Article 86 AI Act",
+      "description": "High-risk deployers making or assisting decisions about natural persons should document affected-person notice and, where legal or similarly significant effects arise, explanation handling.",
+      "applies_when": "Declared EU-market high-risk deployer scenario with decision support affecting natural persons.",
+      "source_ids": [
+        "commission_navigating_ai_act",
+        "eurlex_ai_act_regulation"
+      ],
+      "evidence_required": [
+        "Affected person notice",
+        "intended purpose statement",
+        "decision-type disclosure",
+        "explanation request procedure where legal or similarly significant effects apply"
+      ],
+      "check_method": "File presence plus minimum content markers.",
+      "blocking": true
+    },
+    {
+      "control_id": "ai_act.article26.public_authority_registration",
+      "title": "Public-sector high-risk registration evidence",
+      "source_type": "ai_act",
+      "source_ref": "Article 26 / EU database registration",
+      "description": "Public authorities deploying high-risk AI systems, or entities acting on their behalf, should retain evidence of the relevant EU database registration path where applicable.",
+      "applies_when": "Declared EU-market high-risk deployer scenario in public-sector use outside the critical-infrastructure exception.",
+      "source_ids": [
+        "commission_navigating_ai_act",
+        "eurlex_ai_act_regulation"
+      ],
+      "evidence_required": [
+        "EU database registration record",
+        "public or non-public registration path reference",
+        "system or authority identifier"
+      ],
+      "check_method": "File presence plus minimum content markers.",
       "blocking": true
     },
     {
@@ -459,11 +615,92 @@
       "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
     },
     {
+      "use_case_id": "annex_iii_6_victim_risk_assessment",
+      "area": "6",
+      "area_title": "Law enforcement",
+      "title": "Risk assessment of a natural person becoming the victim of criminal offences",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_6_polygraph_or_similar_tools",
+      "area": "6",
+      "area_title": "Law enforcement",
+      "title": "Polygraphs or similar law-enforcement tools",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_6_reliability_of_evidence",
+      "area": "6",
+      "area_title": "Law enforcement",
+      "title": "Evaluation of the reliability of evidence in criminal investigations or prosecution",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_6_offending_or_reoffending_risk_assessment",
+      "area": "6",
+      "area_title": "Law enforcement",
+      "title": "Risk assessment of offending or re-offending, or assessment of personality traits and characteristics",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_6_criminal_offence_profiling",
+      "area": "6",
+      "area_title": "Law enforcement",
+      "title": "Profiling of natural persons in the course of detection, investigation, or prosecution of criminal offences",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
       "use_case_id": "annex_iii_7_migration_asylum_border_generic",
       "area": "7",
       "area_title": "Migration, asylum, and border control",
       "title": "Generic migration, asylum, or border-control context",
       "generic": true,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_7_polygraph_or_similar_tools",
+      "area": "7",
+      "area_title": "Migration, asylum, and border control",
+      "title": "Polygraphs or similar migration, asylum, or border-control tools",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_7_entry_visa_asylum_risk_assessment",
+      "area": "7",
+      "area_title": "Migration, asylum, and border control",
+      "title": "Risk assessment for entry, visa, or asylum applicants",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_7_asylum_visa_residence_exam_support",
+      "area": "7",
+      "area_title": "Migration, asylum, and border control",
+      "title": "Support for examination of asylum, visa, or residence applications and associated complaints",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_7_detect_recognise_identify",
+      "area": "7",
+      "area_title": "Migration, asylum, and border control",
+      "title": "Detection, recognition, or identification of natural persons in migration, asylum, or border-control management",
+      "generic": false,
       "fria_relevant": false,
       "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
     },
@@ -490,6 +727,24 @@
       "area": "8",
       "area_title": "Administration of justice and democratic processes",
       "title": "Democratic-process or voter-influence support",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_8_judicial_or_adr_research_and_application",
+      "area": "8",
+      "area_title": "Administration of justice and democratic processes",
+      "title": "Researching and interpreting facts and law and applying the law to a concrete set of facts",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_8_election_or_referendum_influence",
+      "area": "8",
+      "area_title": "Administration of justice and democratic processes",
+      "title": "Influencing the outcome of an election or referendum or the voting behaviour of natural persons",
       "generic": false,
       "fria_relevant": false,
       "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
@@ -616,6 +871,272 @@
       {
         "label": "escalation_or_reporting_step",
         "patterns": ["\\b(escalat|report|notify|containment|severity)\\b"]
+      }
+    ],
+    "operation_monitoring": [
+      {
+        "label": "instructions_or_provider_inputs",
+        "patterns": ["\\b(instructions?|provider|intended purpose|limitations?)\\b"]
+      },
+      {
+        "label": "monitoring_or_risk_review",
+        "patterns": ["\\b(monitor|monitoring|review|risk|serious incident|incident)\\b"]
+      },
+      {
+        "label": "operator_or_oversight_assignment",
+        "patterns": ["\\b(operator|oversight|owner|responsible|assigned)\\b"]
+      }
+    ],
+    "input_data_governance": [
+      {
+        "label": "input_data_scope",
+        "patterns": ["\\b(input data|inputs?|prompt|source data)\\b"]
+      },
+      {
+        "label": "relevance_or_quality",
+        "patterns": ["\\b(relevant|relevance|quality|fit for purpose)\\b"]
+      },
+      {
+        "label": "representativeness_or_validation",
+        "patterns": ["\\b(representative|representativeness|validation|sampling|bias)\\b"]
+      }
+    ],
+    "log_retention": [
+      {
+        "label": "logging_scope",
+        "patterns": ["\\b(logs?|logging|audit trail|trace)\\b"]
+      },
+      {
+        "label": "retention_period",
+        "patterns": ["\\b(six months|6 months|180 days|retention|retain)\\b"]
+      },
+      {
+        "label": "control_or_access_scope",
+        "patterns": ["\\b(control|under our control|access|storage|custody)\\b"]
+      }
+    ],
+    "worker_notice": [
+      {
+        "label": "employee_or_worker_scope",
+        "patterns": ["\\b(employee|employees|worker|workers|staff)\\b"]
+      },
+      {
+        "label": "representative_notice",
+        "patterns": ["\\b(representative|representatives|works council|union)\\b"]
+      },
+      {
+        "label": "before_use_or_deployment",
+        "patterns": ["\\b(before|prior to|beforehand|pre-deployment|put into use)\\b"]
+      }
+    ],
+    "affected_person_notice": [
+      {
+        "label": "affected_person_scope",
+        "patterns": ["\\b(affected person|natural person|subject to the use)\\b"]
+      },
+      {
+        "label": "intended_purpose_statement",
+        "patterns": ["\\b(intended purpose|purpose|used to)\\b"]
+      },
+      {
+        "label": "decision_type_disclosure",
+        "patterns": ["\\b(decision|assist in making decisions|recommendation)\\b"]
+      }
+    ],
+    "explanation_request": [
+      {
+        "label": "explanation_right_or_channel",
+        "patterns": ["\\b(explanation|right to an explanation|request an explanation)\\b"]
+      },
+      {
+        "label": "response_process",
+        "patterns": ["\\b(process|workflow|request|response|timeline|handler)\\b"]
+      }
+    ],
+    "eu_database_registration": [
+      {
+        "label": "registration_scope",
+        "patterns": ["\\b(eu database|registration|registered|recorded)\\b"]
+      },
+      {
+        "label": "authority_or_system_reference",
+        "patterns": ["\\b(authority|competent authority|system id|registration id)\\b"]
+      }
+    ]
+  },
+  "structured_fields": {
+    "ai_literacy": [
+      {
+        "label": "organisation_role",
+        "aliases": ["role", "organisation role", "organization role"]
+      },
+      {
+        "label": "system_context",
+        "aliases": ["system context", "use context", "workflow"]
+      },
+      {
+        "label": "risk_topics",
+        "aliases": ["risk topics", "risks", "limitations"]
+      },
+      {
+        "label": "owner",
+        "aliases": ["owner", "contact", "responsible person"]
+      },
+      {
+        "label": "target_roles",
+        "aliases": ["target roles", "target audience", "persons covered"]
+      },
+      {
+        "label": "last_updated",
+        "aliases": ["last updated", "training date", "completed date"]
+      },
+      {
+        "label": "scope",
+        "aliases": ["scope", "materials", "coverage"]
+      },
+      {
+        "label": "refresh_cadence",
+        "aliases": ["refresh cadence", "review cadence", "refresh cycle"]
+      }
+    ],
+    "provider_documentation": [
+      {
+        "label": "provider_identifier",
+        "aliases": ["provider", "vendor", "service"]
+      },
+      {
+        "label": "model_identifier",
+        "aliases": ["model", "system", "model name"]
+      },
+      {
+        "label": "version",
+        "aliases": ["version", "release", "snapshot"]
+      },
+      {
+        "label": "limitations",
+        "aliases": ["limitations", "constraints", "do not use"]
+      }
+    ],
+    "human_oversight": [
+      {
+        "label": "review_step",
+        "aliases": ["review step", "human review", "approval step"]
+      },
+      {
+        "label": "override_capability",
+        "aliases": ["override capability", "override", "manual override"]
+      },
+      {
+        "label": "escalation_trigger",
+        "aliases": ["escalation trigger", "handoff trigger", "fallback trigger"]
+      }
+    ],
+    "incident_response": [
+      {
+        "label": "incident_scope",
+        "aliases": ["incident scope", "scope", "covered incidents"]
+      },
+      {
+        "label": "escalation_reporting",
+        "aliases": ["escalation", "reporting", "escalation or reporting"]
+      },
+      {
+        "label": "contact_owner",
+        "aliases": ["contact owner", "owner", "responsible contact"]
+      }
+    ],
+    "operation_monitoring": [
+      {
+        "label": "provider_instructions",
+        "aliases": ["provider instructions", "instructions", "instructions for use"]
+      },
+      {
+        "label": "monitoring_plan",
+        "aliases": ["monitoring plan", "monitoring", "risk review"]
+      },
+      {
+        "label": "responsible_operator",
+        "aliases": ["responsible operator", "owner", "operator"]
+      }
+    ],
+    "input_data_governance": [
+      {
+        "label": "input_data_scope",
+        "aliases": ["input data scope", "input scope", "data scope"]
+      },
+      {
+        "label": "relevance_criteria",
+        "aliases": ["relevance criteria", "relevance", "quality criteria"]
+      },
+      {
+        "label": "representativeness_validation",
+        "aliases": ["representativeness validation", "representativeness", "validation"]
+      }
+    ],
+    "log_retention": [
+      {
+        "label": "logging_scope",
+        "aliases": ["logging scope", "log scope", "audit trail scope"]
+      },
+      {
+        "label": "retention_period",
+        "aliases": ["retention period", "retention", "retention window"]
+      },
+      {
+        "label": "access_control",
+        "aliases": ["access control", "control", "custody"]
+      }
+    ],
+    "worker_notice": [
+      {
+        "label": "employee_scope",
+        "aliases": ["employee scope", "worker scope", "staff scope"]
+      },
+      {
+        "label": "representative_notice",
+        "aliases": ["representative notice", "workers representatives", "works council"]
+      },
+      {
+        "label": "before_use",
+        "aliases": ["before use", "pre deployment", "before deployment"]
+      }
+    ],
+    "affected_person_notice": [
+      {
+        "label": "affected_person_scope",
+        "aliases": ["affected person scope", "subject scope", "natural person scope"]
+      },
+      {
+        "label": "intended_purpose",
+        "aliases": ["intended purpose", "purpose", "system purpose"]
+      },
+      {
+        "label": "decision_support_context",
+        "aliases": ["decision support context", "decision context", "decision support"]
+      }
+    ],
+    "explanation_request": [
+      {
+        "label": "explanation_right",
+        "aliases": ["right to an explanation", "explanation right", "explanation channel"]
+      },
+      {
+        "label": "response_process",
+        "aliases": ["response process", "workflow", "handling process"]
+      }
+    ],
+    "eu_database_registration": [
+      {
+        "label": "registration_scope",
+        "aliases": ["registration scope", "registration record", "eu database registration"]
+      },
+      {
+        "label": "authority_reference",
+        "aliases": ["authority reference", "competent authority", "registration reference"]
+      },
+      {
+        "label": "system_identifier",
+        "aliases": ["system identifier", "system id", "registration id"]
       }
     ]
   },

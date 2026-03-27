@@ -33,10 +33,21 @@ _AI_ACT_ANNEX_III_USE_CASES: frozenset[str] = frozenset(
         "annex_iii_5_life_or_health_insurance",
         "annex_iii_5_emergency_dispatch",
         "annex_iii_6_law_enforcement_generic",
+        "annex_iii_6_victim_risk_assessment",
+        "annex_iii_6_polygraph_or_similar_tools",
+        "annex_iii_6_reliability_of_evidence",
+        "annex_iii_6_offending_or_reoffending_risk_assessment",
+        "annex_iii_6_criminal_offence_profiling",
         "annex_iii_7_migration_asylum_border_generic",
+        "annex_iii_7_polygraph_or_similar_tools",
+        "annex_iii_7_entry_visa_asylum_risk_assessment",
+        "annex_iii_7_asylum_visa_residence_exam_support",
+        "annex_iii_7_detect_recognise_identify",
         "annex_iii_8_justice_democracy_generic",
         "annex_iii_8_justice_support",
         "annex_iii_8_democratic_process_influence",
+        "annex_iii_8_judicial_or_adr_research_and_application",
+        "annex_iii_8_election_or_referendum_influence",
     },
 )
 
@@ -152,6 +163,42 @@ def _parse_ai_act(base_dir: Path, raw: TomlDict) -> AIActConfig | None:
         "biometric_categorization_infers_sensitive_traits",
         default=False,
     )
+    uses_subliminal_manipulative_or_deceptive_techniques = reader.boolean(
+        "uses_subliminal_manipulative_or_deceptive_techniques",
+        default=False,
+    )
+    materially_distorts_behavior_causing_significant_harm = reader.boolean(
+        "materially_distorts_behavior_causing_significant_harm",
+        default=False,
+    )
+    exploits_age_disability_or_socioeconomic_vulnerabilities = reader.boolean(
+        "exploits_age_disability_or_socioeconomic_vulnerabilities",
+        default=False,
+    )
+    social_scoring_leading_to_detrimental_treatment = reader.boolean(
+        "social_scoring_leading_to_detrimental_treatment",
+        default=False,
+    )
+    individual_predictive_policing_based_solely_on_profiling = reader.boolean(
+        "individual_predictive_policing_based_solely_on_profiling",
+        default=False,
+    )
+    untargeted_scraping_of_face_images = reader.boolean(
+        "untargeted_scraping_of_face_images",
+        default=False,
+    )
+    real_time_remote_biometric_identification_for_law_enforcement = (
+        reader.boolean(
+            "real_time_remote_biometric_identification_for_law_enforcement",
+            default=False,
+        )
+    )
+    real_time_remote_biometric_identification_exception_claimed = (
+        reader.boolean(
+            "real_time_remote_biometric_identification_exception_claimed",
+            default=False,
+        )
+    )
     publishes_text = reader.boolean(
         "publishes_text_on_matters_of_public_interest",
         default=False,
@@ -228,6 +275,39 @@ def _parse_ai_act(base_dir: Path, raw: TomlDict) -> AIActConfig | None:
         "uses_profiling_or_similarly_significant_decision_support",
         default=False,
     )
+    annex_iii_narrow_procedural_task = reader.boolean(
+        "annex_iii_narrow_procedural_task",
+        default=False,
+    )
+    annex_iii_improves_completed_human_activity = reader.boolean(
+        "annex_iii_improves_completed_human_activity",
+        default=False,
+    )
+    annex_iii_detects_decision_pattern_deviations = reader.boolean(
+        "annex_iii_detects_decision_pattern_deviations",
+        default=False,
+    )
+    annex_iii_preparatory_task = reader.boolean(
+        "annex_iii_preparatory_task",
+        default=False,
+    )
+    annex_iii_does_not_materially_influence_decision_outcome = reader.boolean(
+        "annex_iii_does_not_materially_influence_decision_outcome",
+        default=False,
+    )
+    workplace_deployment = reader.boolean("workplace_deployment", default=False)
+    provides_input_data_for_high_risk_system = reader.boolean(
+        "provides_input_data_for_high_risk_system",
+        default=False,
+    )
+    makes_or_assists_decisions_about_natural_persons = reader.boolean(
+        "makes_or_assists_decisions_about_natural_persons",
+        default=False,
+    )
+    decision_with_legal_or_similarly_significant_effects = reader.boolean(
+        "decision_with_legal_or_similarly_significant_effects",
+        default=False,
+    )
     annex_i_product_or_safety_component = reader.boolean(
         "annex_i_product_or_safety_component",
         default=False,
@@ -256,6 +336,37 @@ def _parse_ai_act(base_dir: Path, raw: TomlDict) -> AIActConfig | None:
     provider_documentation = _resolve_optional_path(
         base_dir,
         reader.optional_string("provider_documentation"),
+    )
+    operation_monitoring_procedure = _resolve_optional_path(
+        base_dir,
+        reader.optional_string("operation_monitoring_procedure"),
+    )
+    input_data_governance_procedure = _resolve_optional_path(
+        base_dir,
+        reader.optional_string("input_data_governance_procedure"),
+    )
+    log_retention_procedure = _resolve_optional_path(
+        base_dir,
+        reader.optional_string("log_retention_procedure"),
+    )
+    employee_or_worker_representative_notice = _resolve_optional_path(
+        base_dir,
+        reader.optional_string("employee_or_worker_representative_notice"),
+    )
+    affected_person_notice = _resolve_optional_path(
+        base_dir,
+        reader.optional_string("affected_person_notice"),
+    )
+    explanation_request_procedure = _resolve_optional_path(
+        base_dir,
+        reader.optional_string("explanation_request_procedure"),
+    )
+    eu_database_registration_record = _resolve_optional_path(
+        base_dir,
+        reader.optional_string("eu_database_registration_record"),
+    )
+    bundle_signature_secret_env = reader.optional_string(
+        "bundle_signature_secret_env",
     )
     technical_report_paths = _resolve_path_list(
         base_dir,
@@ -294,6 +405,28 @@ def _parse_ai_act(base_dir: Path, raw: TomlDict) -> AIActConfig | None:
         biometric_categorization_infers_sensitive_traits=(
             biometric_categorization_infers_sensitive_traits
         ),
+        uses_subliminal_manipulative_or_deceptive_techniques=(
+            uses_subliminal_manipulative_or_deceptive_techniques
+        ),
+        materially_distorts_behavior_causing_significant_harm=(
+            materially_distorts_behavior_causing_significant_harm
+        ),
+        exploits_age_disability_or_socioeconomic_vulnerabilities=(
+            exploits_age_disability_or_socioeconomic_vulnerabilities
+        ),
+        social_scoring_leading_to_detrimental_treatment=(
+            social_scoring_leading_to_detrimental_treatment
+        ),
+        individual_predictive_policing_based_solely_on_profiling=(
+            individual_predictive_policing_based_solely_on_profiling
+        ),
+        untargeted_scraping_of_face_images=untargeted_scraping_of_face_images,
+        real_time_remote_biometric_identification_for_law_enforcement=(
+            real_time_remote_biometric_identification_for_law_enforcement
+        ),
+        real_time_remote_biometric_identification_exception_claimed=(
+            real_time_remote_biometric_identification_exception_claimed
+        ),
         publishes_text_on_matters_of_public_interest=publishes_text,
         public_interest_text_human_review_or_editorial_control=(
             public_interest_text_human_review_or_editorial_control
@@ -325,6 +458,27 @@ def _parse_ai_act(base_dir: Path, raw: TomlDict) -> AIActConfig | None:
         uses_profiling_or_similarly_significant_decision_support=(
             significant_decision_support
         ),
+        annex_iii_narrow_procedural_task=annex_iii_narrow_procedural_task,
+        annex_iii_improves_completed_human_activity=(
+            annex_iii_improves_completed_human_activity
+        ),
+        annex_iii_detects_decision_pattern_deviations=(
+            annex_iii_detects_decision_pattern_deviations
+        ),
+        annex_iii_preparatory_task=annex_iii_preparatory_task,
+        annex_iii_does_not_materially_influence_decision_outcome=(
+            annex_iii_does_not_materially_influence_decision_outcome
+        ),
+        workplace_deployment=workplace_deployment,
+        provides_input_data_for_high_risk_system=(
+            provides_input_data_for_high_risk_system
+        ),
+        makes_or_assists_decisions_about_natural_persons=(
+            makes_or_assists_decisions_about_natural_persons
+        ),
+        decision_with_legal_or_similarly_significant_effects=(
+            decision_with_legal_or_similarly_significant_effects
+        ),
         annex_i_product_or_safety_component=annex_i_product_or_safety_component,
         annex_i_third_party_conformity_assessment=(
             annex_i_third_party_conformity_assessment
@@ -334,7 +488,17 @@ def _parse_ai_act(base_dir: Path, raw: TomlDict) -> AIActConfig | None:
         human_oversight_procedure=human_oversight_procedure,
         incident_response_procedure=incident_response_procedure,
         provider_documentation=provider_documentation,
+        operation_monitoring_procedure=operation_monitoring_procedure,
+        input_data_governance_procedure=input_data_governance_procedure,
+        log_retention_procedure=log_retention_procedure,
+        employee_or_worker_representative_notice=(
+            employee_or_worker_representative_notice
+        ),
+        affected_person_notice=affected_person_notice,
+        explanation_request_procedure=explanation_request_procedure,
+        eu_database_registration_record=eu_database_registration_record,
         technical_report_paths=technical_report_paths,
         risk_owner=risk_owner,
         compliance_contact=compliance_contact,
+        bundle_signature_secret_env=bundle_signature_secret_env,
     )

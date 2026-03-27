@@ -356,3 +356,75 @@ def test_validate_ai_act_legacy_high_risk_flags_warn_without_annex_iii_ids(
         "[ai_act] uses legacy high-risk area flags but" in w and "fix:" in w
         for w in warnings
     )
+
+
+def test_validate_ai_act_article6_3_without_annex_iii_ids_warns(
+    tmp_path: Path,
+) -> None:
+    toml_file = tmp_path / "readiness.toml"
+    toml_file.write_text(
+        "[ai_act]\n"
+        'company_name = "Example Energy"\n'
+        'system_name = "Recruiting Router"\n'
+        'intended_purpose = "Routes candidate files."\n'
+        "annex_iii_narrow_procedural_task = true\n"
+    )
+
+    warnings = validate(toml_file)
+    assert any(
+        "declares Article 6(3) carve-out facts but" in w and "fix:" in w
+        for w in warnings
+    )
+
+
+def test_validate_ai_act_high_risk_deployer_missing_monitoring_warns(
+    tmp_path: Path,
+) -> None:
+    literacy = tmp_path / "literacy.md"
+    literacy.write_text("ok\n")
+    toml_file = tmp_path / "readiness.toml"
+    toml_file.write_text(
+        "[ai_act]\n"
+        'company_name = "Example Energy"\n'
+        'system_name = "Hiring Assistant"\n'
+        'intended_purpose = "Scores applicants."\n'
+        'role = "deployer"\n'
+        'ai_literacy_record = "literacy.md"\n'
+        'annex_iii_use_cases = ["annex_iii_4_recruitment_selection"]\n'
+    )
+
+    warnings = validate(toml_file)
+    assert any(
+        "declares a high-risk deployer scenario but" in w
+        and "operation_monitoring_procedure" in w
+        for w in warnings
+    )
+
+
+def test_validate_ai_act_high_risk_deployer_missing_human_oversight_warns(
+    tmp_path: Path,
+) -> None:
+    literacy = tmp_path / "literacy.md"
+    literacy.write_text("ok\n")
+    toml_file = tmp_path / "readiness.toml"
+    toml_file.write_text(
+        "[ai_act]\n"
+        'company_name = "Example Energy"\n'
+        'system_name = "Hiring Assistant"\n'
+        'intended_purpose = "Scores applicants."\n'
+        'role = "deployer"\n'
+        'ai_literacy_record = "literacy.md"\n'
+        'annex_iii_use_cases = ["annex_iii_4_recruitment_selection"]\n'
+    )
+
+    warnings = validate(toml_file)
+    assert any(
+        "declares a high-risk deployer scenario but" in w
+        and "human_oversight_procedure" in w
+        for w in warnings
+    )
+    assert any(
+        "declares a high-risk deployer scenario but" in w
+        and "[ai_act].risk_owner is not set" in w
+        for w in warnings
+    )

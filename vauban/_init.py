@@ -239,6 +239,14 @@ uses_emotion_recognition = false
 uses_biometric_categorization = false
 emotion_recognition_medical_or_safety_exception = false
 biometric_categorization_infers_sensitive_traits = false
+uses_subliminal_manipulative_or_deceptive_techniques = false
+materially_distorts_behavior_causing_significant_harm = false
+exploits_age_disability_or_socioeconomic_vulnerabilities = false
+social_scoring_leading_to_detrimental_treatment = false
+individual_predictive_policing_based_solely_on_profiling = false
+untargeted_scraping_of_face_images = false
+real_time_remote_biometric_identification_for_law_enforcement = false
+real_time_remote_biometric_identification_exception_claimed = false
 publishes_text_on_matters_of_public_interest = false
 public_interest_text_human_review_or_editorial_control = false
 public_interest_text_editorial_responsibility = false
@@ -264,6 +272,15 @@ migration_or_border_management_use = false
 administration_of_justice_or_democracy_use = false
 biometric_or_emotion_related_use = false
 uses_profiling_or_similarly_significant_decision_support = false
+annex_iii_narrow_procedural_task = false
+annex_iii_improves_completed_human_activity = false
+annex_iii_detects_decision_pattern_deviations = false
+annex_iii_preparatory_task = false
+annex_iii_does_not_materially_influence_decision_outcome = false
+workplace_deployment = false
+provides_input_data_for_high_risk_system = false
+makes_or_assists_decisions_about_natural_persons = false
+decision_with_legal_or_similarly_significant_effects = false
 annex_i_product_or_safety_component = false
 annex_i_third_party_conformity_assessment = false
 
@@ -273,11 +290,19 @@ annex_i_third_party_conformity_assessment = false
 # human_oversight_procedure = "evidence/human_oversight.md"
 # incident_response_procedure = "evidence/incident_response.md"
 # provider_documentation = "evidence/provider_docs.md"
+# operation_monitoring_procedure = "evidence/operation_monitoring.md"
+# input_data_governance_procedure = "evidence/input_data_governance.md"
+# log_retention_procedure = "evidence/log_retention.md"
+# employee_or_worker_representative_notice = "evidence/worker_notice.md"
+# affected_person_notice = "evidence/affected_person_notice.md"
+# explanation_request_procedure = "evidence/explanation_request.md"
+# eu_database_registration_record = "evidence/eu_database_registration.md"
 # technical_report_paths = ["evidence/red_team_report.json"]
 
 # Owners:
 # risk_owner = "AI Risk Lead"
 # compliance_contact = "compliance@example.com"
+# bundle_signature_secret_env = "VAUBAN_AI_ACT_SIGNING_SECRET"
 """,
     "api_eval": """\
 # Standalone API eval — tests pre-optimized tokens against remote endpoints.

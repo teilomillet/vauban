@@ -1279,6 +1279,14 @@ class AIActConfig:
     uses_biometric_categorization: bool = False
     emotion_recognition_medical_or_safety_exception: bool = False
     biometric_categorization_infers_sensitive_traits: bool = False
+    uses_subliminal_manipulative_or_deceptive_techniques: bool = False
+    materially_distorts_behavior_causing_significant_harm: bool = False
+    exploits_age_disability_or_socioeconomic_vulnerabilities: bool = False
+    social_scoring_leading_to_detrimental_treatment: bool = False
+    individual_predictive_policing_based_solely_on_profiling: bool = False
+    untargeted_scraping_of_face_images: bool = False
+    real_time_remote_biometric_identification_for_law_enforcement: bool = False
+    real_time_remote_biometric_identification_exception_claimed: bool = False
     publishes_text_on_matters_of_public_interest: bool = False
     public_interest_text_human_review_or_editorial_control: bool = False
     public_interest_text_editorial_responsibility: bool = False
@@ -1298,6 +1306,15 @@ class AIActConfig:
     administration_of_justice_or_democracy_use: bool = False
     biometric_or_emotion_related_use: bool = False
     uses_profiling_or_similarly_significant_decision_support: bool = False
+    annex_iii_narrow_procedural_task: bool = False
+    annex_iii_improves_completed_human_activity: bool = False
+    annex_iii_detects_decision_pattern_deviations: bool = False
+    annex_iii_preparatory_task: bool = False
+    annex_iii_does_not_materially_influence_decision_outcome: bool = False
+    workplace_deployment: bool = False
+    provides_input_data_for_high_risk_system: bool = False
+    makes_or_assists_decisions_about_natural_persons: bool = False
+    decision_with_legal_or_similarly_significant_effects: bool = False
     annex_i_product_or_safety_component: bool = False
     annex_i_third_party_conformity_assessment: bool = False
     ai_literacy_record: Path | None = None
@@ -1305,9 +1322,17 @@ class AIActConfig:
     human_oversight_procedure: Path | None = None
     incident_response_procedure: Path | None = None
     provider_documentation: Path | None = None
+    operation_monitoring_procedure: Path | None = None
+    input_data_governance_procedure: Path | None = None
+    log_retention_procedure: Path | None = None
+    employee_or_worker_representative_notice: Path | None = None
+    affected_person_notice: Path | None = None
+    explanation_request_procedure: Path | None = None
+    eu_database_registration_record: Path | None = None
     technical_report_paths: list[Path] = field(default_factory=list)
     risk_owner: str | None = None
     compliance_contact: str | None = None
+    bundle_signature_secret_env: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -386,6 +386,71 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 constraints="boolean; used for Article 5 screening.",
             ),
             FieldSpec(
+                key="uses_subliminal_manipulative_or_deceptive_techniques",
+                description=(
+                    "Whether the use relies on subliminal, manipulative, or"
+                    " deceptive techniques."
+                ),
+                constraints="boolean; used for Article 5 screening.",
+            ),
+            FieldSpec(
+                key="materially_distorts_behavior_causing_significant_harm",
+                description=(
+                    "Whether the declared practice materially distorts"
+                    " behaviour and risks significant harm."
+                ),
+                constraints="boolean; used for Article 5 screening.",
+            ),
+            FieldSpec(
+                key="exploits_age_disability_or_socioeconomic_vulnerabilities",
+                description=(
+                    "Whether the use exploits vulnerabilities linked to age,"
+                    " disability, or socioeconomic circumstances."
+                ),
+                constraints="boolean; used for Article 5 screening.",
+            ),
+            FieldSpec(
+                key="social_scoring_leading_to_detrimental_treatment",
+                description=(
+                    "Whether the use performs social scoring leading to"
+                    " detrimental or unfavourable treatment."
+                ),
+                constraints="boolean; used for Article 5 screening.",
+            ),
+            FieldSpec(
+                key="individual_predictive_policing_based_solely_on_profiling",
+                description=(
+                    "Whether the use performs individual predictive policing"
+                    " based solely on profiling."
+                ),
+                constraints="boolean; used for Article 5 screening.",
+            ),
+            FieldSpec(
+                key="untargeted_scraping_of_face_images",
+                description=(
+                    "Whether the use involves untargeted scraping of facial"
+                    " images from the internet or CCTV."
+                ),
+                constraints="boolean; used for Article 5 screening.",
+            ),
+            FieldSpec(
+                key="real_time_remote_biometric_identification_for_law_enforcement",
+                description=(
+                    "Whether the use performs real-time remote biometric"
+                    " identification in publicly accessible spaces for law"
+                    " enforcement."
+                ),
+                constraints="boolean; used for Article 5 screening.",
+            ),
+            FieldSpec(
+                key="real_time_remote_biometric_identification_exception_claimed",
+                description=(
+                    "Whether a narrow law-enforcement exception is claimed for"
+                    " real-time remote biometric identification."
+                ),
+                constraints="boolean; used for Article 5 screening.",
+            ),
+            FieldSpec(
                 key="publishes_text_on_matters_of_public_interest",
                 description=(
                     "Whether the deployer publishes AI-generated text on"
@@ -536,6 +601,78 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 constraints="boolean; used for conservative high-risk / FRIA triage.",
             ),
             FieldSpec(
+                key="annex_iii_narrow_procedural_task",
+                description=(
+                    "Whether the Annex III use is claimed to perform only a"
+                    " narrow procedural task."
+                ),
+                constraints="boolean; used for Article 6(3) carve-out triage.",
+            ),
+            FieldSpec(
+                key="annex_iii_improves_completed_human_activity",
+                description=(
+                    "Whether the Annex III use is claimed only to improve a"
+                    " previously completed human activity."
+                ),
+                constraints="boolean; used for Article 6(3) carve-out triage.",
+            ),
+            FieldSpec(
+                key="annex_iii_detects_decision_pattern_deviations",
+                description=(
+                    "Whether the Annex III use is claimed only to detect"
+                    " deviations from prior decision-making patterns."
+                ),
+                constraints="boolean; used for Article 6(3) carve-out triage.",
+            ),
+            FieldSpec(
+                key="annex_iii_preparatory_task",
+                description=(
+                    "Whether the Annex III use is claimed to be merely"
+                    " preparatory to a later assessment."
+                ),
+                constraints="boolean; used for Article 6(3) carve-out triage.",
+            ),
+            FieldSpec(
+                key="annex_iii_does_not_materially_influence_decision_outcome",
+                description=(
+                    "Whether the Annex III use is claimed not to materially"
+                    " influence decision outcomes."
+                ),
+                constraints="boolean; used for Article 6(3) carve-out triage.",
+            ),
+            FieldSpec(
+                key="workplace_deployment",
+                description=(
+                    "Whether the high-risk deployment is used in the"
+                    " workplace."
+                ),
+                constraints="boolean; used for Article 26 worker notice checks.",
+            ),
+            FieldSpec(
+                key="provides_input_data_for_high_risk_system",
+                description=(
+                    "Whether the deployer provides input data to a declared"
+                    " high-risk AI system."
+                ),
+                constraints="boolean; used for Article 26 input-data checks.",
+            ),
+            FieldSpec(
+                key="makes_or_assists_decisions_about_natural_persons",
+                description=(
+                    "Whether the high-risk system makes or assists decisions"
+                    " about natural persons."
+                ),
+                constraints="boolean; used for Article 26 notice checks.",
+            ),
+            FieldSpec(
+                key="decision_with_legal_or_similarly_significant_effects",
+                description=(
+                    "Whether those high-risk decisions can produce legal or"
+                    " similarly significant effects."
+                ),
+                constraints="boolean; used for Article 86 explanation readiness.",
+            ),
+            FieldSpec(
                 key="annex_i_product_or_safety_component",
                 description=(
                     "Whether the AI system is or is embedded as a safety"
@@ -579,6 +716,63 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 constraints="string path or null.",
             ),
             FieldSpec(
+                key="operation_monitoring_procedure",
+                description=(
+                    "Path to a deployer procedure covering provider"
+                    " instructions and operational monitoring."
+                ),
+                constraints="string path or null.",
+            ),
+            FieldSpec(
+                key="input_data_governance_procedure",
+                description=(
+                    "Path to the deployer's high-risk input-data governance"
+                    " procedure."
+                ),
+                constraints="string path or null.",
+            ),
+            FieldSpec(
+                key="log_retention_procedure",
+                description=(
+                    "Path to the high-risk log retention and access-control"
+                    " procedure."
+                ),
+                constraints="string path or null.",
+            ),
+            FieldSpec(
+                key="employee_or_worker_representative_notice",
+                description=(
+                    "Path to notice evidence for employees and workers'"
+                    " representatives."
+                ),
+                constraints="string path or null.",
+            ),
+            FieldSpec(
+                key="affected_person_notice",
+                description=(
+                    "Path to notice evidence for natural persons affected by"
+                    " high-risk decision support."
+                ),
+                constraints="string path or null.",
+            ),
+            FieldSpec(
+                key="explanation_request_procedure",
+                description=(
+                    "Path to the procedure for handling explanation requests"
+                    " where legal or similarly significant effects apply."
+                ),
+                constraints="string path or null.",
+            ),
+            FieldSpec(
+                key="eu_database_registration_record",
+                description=(
+                    "Path to evidence of the relevant EU database"
+                    " registration path for a public-sector high-risk"
+                    " deployment."
+                ),
+                constraints="string path or null.",
+            ),
+            FieldSpec(
                 key="technical_report_paths",
                 description=(
                     "Paths to technical evidence reports to include in the"
@@ -596,6 +790,14 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 description="Named compliance or legal contact for escalation.",
                 constraints="string or null.",
             ),
+            FieldSpec(
+                key="bundle_signature_secret_env",
+                description=(
+                    "Optional environment variable name holding the secret"
+                    " used to HMAC-sign the integrity manifest."
+                ),
+                constraints="string or null.",
+            ),
         ),
         notes=(
             (
@@ -606,6 +808,11 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
             (
                 "Every applicable control terminates as pass, fail, or"
                 " unknown; non-passing controls get a remediation action."
+            ),
+            (
+                "Evidence documents are strongest when they use explicit"
+                " labeled fields such as 'Owner:' or 'Intended purpose:' so"
+                " Vauban can validate both narrative content and structure."
             ),
             (
                 "Use this section by itself for a standalone report:"

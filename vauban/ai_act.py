@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import hmac
 import json
+import os
 import re
 from collections import Counter
 from dataclasses import dataclass
@@ -33,6 +35,7 @@ type ClaimKind = Literal[
     "requires_external_review",
 ]
 type MarkerRule = tuple[str, tuple[str, ...]]
+type StructuredFieldRule = tuple[str, tuple[str, ...]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +51,7 @@ class AIActArtifacts:
     risk_register: dict[str, object]
     annex_iii_classification: dict[str, object]
     fria_prep: dict[str, object]
+    integrity: dict[str, object]
     executive_summary_markdown: str
     fria_prep_markdown: str
 
@@ -69,6 +73,9 @@ def generate_deployer_readiness_artifacts(
     config: AIActConfig,
 ) -> AIActArtifacts:
     """Generate the full deployer-readiness artifact bundle."""
+    generated_at = datetime.datetime.now(
+        tz=datetime.UTC,
+    ).isoformat(timespec="seconds")
     evidence_manifest = _build_evidence_manifest(config)
     controls = _control_library_v1()
     coverage = [
@@ -80,7 +87,18 @@ def generate_deployer_readiness_artifacts(
         _evaluate_article50_deepfake(config, evidence_manifest),
         _evaluate_article50_public_interest_text(config, evidence_manifest),
         _evaluate_high_risk_triage(config),
+        _evaluate_article6_3_carve_out_triage(config),
         _evaluate_fria_triage(config),
+        _evaluate_article26_instructions_monitoring(config, evidence_manifest),
+        _evaluate_article26_human_oversight(config, evidence_manifest),
+        _evaluate_article26_input_data_governance(config, evidence_manifest),
+        _evaluate_article26_log_retention(config, evidence_manifest),
+        _evaluate_article26_workplace_notice(config, evidence_manifest),
+        _evaluate_article26_affected_person_notice(config, evidence_manifest),
+        _evaluate_article26_public_authority_registration(
+            config,
+            evidence_manifest,
+        ),
         _evaluate_provider_documentation(config, evidence_manifest),
         _evaluate_technical_evidence(config, evidence_manifest),
         _evaluate_human_oversight(config, evidence_manifest),
@@ -93,6 +111,7 @@ def generate_deployer_readiness_artifacts(
     obligations = _likely_obligations(config)
     remediation_items = _collect_remediation_items(coverage)
     rulebook = _rulebook_metadata()
+    integrity_summary = _integrity_summary(config)
     technical_artifacts, technical_findings = _summarize_technical_artifacts(
         config.technical_report_paths,
     )
@@ -140,9 +159,7 @@ def generate_deployer_readiness_artifacts(
 
     report: dict[str, object] = {
         "report_version": "ai_act_deployer_readiness_v1",
-        "generated_at": datetime.datetime.now(
-            tz=datetime.UTC,
-        ).isoformat(timespec="seconds"),
+        "generated_at": generated_at,
         "overall_status": overall_status,
         "risk_level": risk_level,
         "system": {
@@ -172,6 +189,7 @@ def generate_deployer_readiness_artifacts(
         "rulebook": rulebook,
         "evidence_manifest_sha256": evidence_manifest_sha256,
         "bundle_fingerprint": bundle_fingerprint,
+        "integrity": integrity_summary,
         "likely_obligations": obligations,
         "summary": _build_summary(config, coverage, overall_status),
         "coverage_contract": {
@@ -248,6 +266,24 @@ def generate_deployer_readiness_artifacts(
         risk_register,
     )
     fria_prep_markdown = _render_fria_prep_markdown(fria_prep)
+    integrity = _build_integrity_artifact(
+        config,
+        generated_at=generated_at,
+        rulebook=rulebook,
+        evidence_manifest_sha256=evidence_manifest_sha256,
+        bundle_fingerprint=bundle_fingerprint,
+        report=report,
+        coverage_ledger=coverage_ledger,
+        control_library=library,
+        evidence_manifest=evidence_manifest_payload,
+        controls_matrix=controls_matrix,
+        risk_register=risk_register,
+        annex_iii_classification=annex_iii_classification,
+        fria_prep=fria_prep,
+        executive_summary_markdown=executive_summary_markdown,
+        remediation_markdown=remediation_markdown,
+        fria_prep_markdown=fria_prep_markdown,
+    )
     return AIActArtifacts(
         report=report,
         coverage_ledger=coverage_ledger,
@@ -258,6 +294,7 @@ def generate_deployer_readiness_artifacts(
         risk_register=risk_register,
         annex_iii_classification=annex_iii_classification,
         fria_prep=fria_prep,
+        integrity=integrity,
         executive_summary_markdown=executive_summary_markdown,
         fria_prep_markdown=fria_prep_markdown,
     )
@@ -408,6 +445,42 @@ def _rulebook_markers(name: str) -> tuple[MarkerRule, ...]:
     return tuple(markers)
 
 
+def _rulebook_structured_fields(name: str) -> tuple[StructuredFieldRule, ...]:
+    """Return one structured-field rule-set from the packaged rulebook."""
+    raw_structured_fields = _rulebook_v1().get("structured_fields")
+    if not isinstance(raw_structured_fields, dict):
+        msg = "AI Act rulebook structured_fields must be an object"
+        raise TypeError(msg)
+    structured_fields_dict = cast("dict[str, object]", raw_structured_fields)
+    field_entries_raw = structured_fields_dict.get(name)
+    if not isinstance(field_entries_raw, list):
+        msg = f"AI Act rulebook structured_fields[{name!r}] must be a list"
+        raise TypeError(msg)
+    fields: list[StructuredFieldRule] = []
+    for entry in field_entries_raw:
+        if not isinstance(entry, dict):
+            msg = f"AI Act structured field entry for {name!r} must be an object"
+            raise TypeError(msg)
+        entry_dict = cast("dict[str, object]", entry)
+        label = entry_dict.get("label")
+        aliases_raw = entry_dict.get("aliases")
+        if not isinstance(label, str):
+            msg = f"AI Act structured field entry for {name!r} is missing label"
+            raise TypeError(msg)
+        if not isinstance(aliases_raw, list):
+            msg = (
+                f"AI Act structured field entry for {name!r} is missing"
+                " aliases list"
+            )
+            raise TypeError(msg)
+        aliases = [alias for alias in aliases_raw if isinstance(alias, str)]
+        if len(aliases) != len(aliases_raw):
+            msg = f"AI Act structured field entry for {name!r} has non-string aliases"
+            raise TypeError(msg)
+        fields.append((label, tuple(aliases)))
+    return tuple(fields)
+
+
 def _rulebook_technical_metric_rules() -> list[dict[str, object]]:
     """Return technical metric interpretation hints from the rulebook."""
     raw_rules = _rulebook_v1().get("technical_metric_rules")
@@ -426,6 +499,16 @@ def _rulebook_technical_metric_rules() -> list[dict[str, object]]:
 def _sha256_bytes(data: bytes) -> str:
     """Return a SHA-256 hex digest for raw bytes."""
     return hashlib.sha256(data).hexdigest()
+
+
+def _sha256_text(text: str) -> str:
+    """Return a SHA-256 hex digest for a UTF-8 text payload."""
+    return _sha256_bytes(text.encode("utf-8"))
+
+
+def _render_json(payload: object) -> str:
+    """Render JSON exactly like the mode writer for stable hashing."""
+    return json.dumps(payload, indent=2)
 
 
 def _json_sha256(payload: object) -> str:
@@ -569,6 +652,76 @@ def _build_evidence_manifest(config: AIActConfig) -> list[dict[str, object]]:
             "value": config.biometric_categorization_infers_sensitive_traits,
         },
         {
+            "evidence_id": "fact.manipulative_or_deceptive_techniques",
+            "kind": "config_fact",
+            "claim_kind": "asserted_by_client",
+            "label": "Declared subliminal, manipulative, or deceptive techniques",
+            "value": config.uses_subliminal_manipulative_or_deceptive_techniques,
+        },
+        {
+            "evidence_id": "fact.behavior_distortion_significant_harm",
+            "kind": "config_fact",
+            "claim_kind": "asserted_by_client",
+            "label": "Declared behaviour distortion causing significant harm",
+            "value": config.materially_distorts_behavior_causing_significant_harm,
+        },
+        {
+            "evidence_id": "fact.exploits_vulnerabilities",
+            "kind": "config_fact",
+            "claim_kind": "asserted_by_client",
+            "label": (
+                "Declared exploitation of age, disability, or socioeconomic"
+                " vulnerabilities"
+            ),
+            "value": (
+                config.exploits_age_disability_or_socioeconomic_vulnerabilities
+            ),
+        },
+        {
+            "evidence_id": "fact.social_scoring",
+            "kind": "config_fact",
+            "claim_kind": "asserted_by_client",
+            "label": "Declared social scoring use",
+            "value": config.social_scoring_leading_to_detrimental_treatment,
+        },
+        {
+            "evidence_id": "fact.predictive_policing_solely_on_profiling",
+            "kind": "config_fact",
+            "claim_kind": "asserted_by_client",
+            "label": "Declared predictive policing based solely on profiling",
+            "value": (
+                config.individual_predictive_policing_based_solely_on_profiling
+            ),
+        },
+        {
+            "evidence_id": "fact.untargeted_face_scraping",
+            "kind": "config_fact",
+            "claim_kind": "asserted_by_client",
+            "label": "Declared untargeted scraping of facial images",
+            "value": config.untargeted_scraping_of_face_images,
+        },
+        {
+            "evidence_id": "fact.rbi_law_enforcement",
+            "kind": "config_fact",
+            "claim_kind": "asserted_by_client",
+            "label": (
+                "Declared real-time remote biometric identification for law"
+                " enforcement"
+            ),
+            "value": (
+                config.real_time_remote_biometric_identification_for_law_enforcement
+            ),
+        },
+        {
+            "evidence_id": "fact.rbi_law_enforcement_exception",
+            "kind": "config_fact",
+            "claim_kind": "asserted_by_client",
+            "label": "Declared law-enforcement RBI exception claim",
+            "value": (
+                config.real_time_remote_biometric_identification_exception_claimed
+            ),
+        },
+        {
             "evidence_id": "fact.public_interest_text",
             "kind": "config_fact",
             "claim_kind": "asserted_by_client",
@@ -611,6 +764,47 @@ def _build_evidence_manifest(config: AIActConfig) -> list[dict[str, object]]:
                 config.annex_i_third_party_conformity_assessment,
             ),
         },
+        {
+            "evidence_id": "fact.article6_3_carve_out_claims",
+            "kind": "config_fact",
+            "claim_kind": "asserted_by_client",
+            "label": "Declared Article 6(3) carve-out facts",
+            "value": (
+                config.annex_iii_narrow_procedural_task,
+                config.annex_iii_improves_completed_human_activity,
+                config.annex_iii_detects_decision_pattern_deviations,
+                config.annex_iii_preparatory_task,
+                config.annex_iii_does_not_materially_influence_decision_outcome,
+            ),
+        },
+        {
+            "evidence_id": "fact.workplace_deployment",
+            "kind": "config_fact",
+            "claim_kind": "asserted_by_client",
+            "label": "Declared workplace deployment",
+            "value": config.workplace_deployment,
+        },
+        {
+            "evidence_id": "fact.provides_input_data_for_high_risk_system",
+            "kind": "config_fact",
+            "claim_kind": "asserted_by_client",
+            "label": "Declared deployer-provided input data for high-risk system",
+            "value": config.provides_input_data_for_high_risk_system,
+        },
+        {
+            "evidence_id": "fact.decisions_about_natural_persons",
+            "kind": "config_fact",
+            "claim_kind": "asserted_by_client",
+            "label": "Declared high-risk decisions about natural persons",
+            "value": config.makes_or_assists_decisions_about_natural_persons,
+        },
+        {
+            "evidence_id": "fact.legal_or_significant_effects",
+            "kind": "config_fact",
+            "claim_kind": "asserted_by_client",
+            "label": "Declared legal or similarly significant effects",
+            "value": config.decision_with_legal_or_similarly_significant_effects,
+        },
     ]
     evidence.extend(
         [
@@ -618,6 +812,7 @@ def _build_evidence_manifest(config: AIActConfig) -> list[dict[str, object]]:
                 "file.ai_literacy_record",
                 "AI literacy record",
                 config.ai_literacy_record,
+                schema_name="ai_literacy",
             ),
             _path_evidence(
                 "file.transparency_notice",
@@ -628,16 +823,61 @@ def _build_evidence_manifest(config: AIActConfig) -> list[dict[str, object]]:
                 "file.human_oversight_procedure",
                 "Human oversight procedure",
                 config.human_oversight_procedure,
+                schema_name="human_oversight",
             ),
             _path_evidence(
                 "file.incident_response_procedure",
                 "Incident response procedure",
                 config.incident_response_procedure,
+                schema_name="incident_response",
             ),
             _path_evidence(
                 "file.provider_documentation",
                 "Provider documentation",
                 config.provider_documentation,
+                schema_name="provider_documentation",
+            ),
+            _path_evidence(
+                "file.operation_monitoring_procedure",
+                "Operation monitoring procedure",
+                config.operation_monitoring_procedure,
+                schema_name="operation_monitoring",
+            ),
+            _path_evidence(
+                "file.input_data_governance_procedure",
+                "Input data governance procedure",
+                config.input_data_governance_procedure,
+                schema_name="input_data_governance",
+            ),
+            _path_evidence(
+                "file.log_retention_procedure",
+                "Log retention procedure",
+                config.log_retention_procedure,
+                schema_name="log_retention",
+            ),
+            _path_evidence(
+                "file.employee_or_worker_representative_notice",
+                "Employee or worker representative notice",
+                config.employee_or_worker_representative_notice,
+                schema_name="worker_notice",
+            ),
+            _path_evidence(
+                "file.affected_person_notice",
+                "Affected person notice",
+                config.affected_person_notice,
+                schema_name="affected_person_notice",
+            ),
+            _path_evidence(
+                "file.explanation_request_procedure",
+                "Explanation request procedure",
+                config.explanation_request_procedure,
+                schema_name="explanation_request",
+            ),
+            _path_evidence(
+                "file.eu_database_registration_record",
+                "EU database registration record",
+                config.eu_database_registration_record,
+                schema_name="eu_database_registration",
             ),
         ],
     )
@@ -656,14 +896,21 @@ def _path_evidence(
     evidence_id: str,
     label: str,
     path: Path | None,
+    *,
+    schema_name: str | None = None,
 ) -> dict[str, object]:
     """Build one file-based evidence record."""
     exists = path.exists() if path is not None else False
     sha256: str | None = None
     size_bytes: int | None = None
+    structured_fields_detected: list[str] = []
     if path is not None and exists:
         sha256 = _path_sha256(path)
         size_bytes = _path_size_bytes(path)
+        if schema_name is not None:
+            structured_fields_detected = sorted(
+                _extract_structured_field_names(path),
+            )
     return {
         "evidence_id": evidence_id,
         "kind": "file",
@@ -673,20 +920,99 @@ def _path_evidence(
         "exists": exists,
         "sha256": sha256,
         "size_bytes": size_bytes,
+        "structured_schema": schema_name,
+        "structured_fields_detected": structured_fields_detected,
     }
+
+
+def _normalize_structured_field_name(value: str) -> str:
+    """Normalize structured field labels from text or JSON keys."""
+    normalized = re.sub(r"[^a-z0-9]+", "_", value.strip().lower())
+    return normalized.strip("_")
+
+
+def _collect_json_field_names(
+    value: object,
+    detected_fields: set[str],
+) -> None:
+    """Collect normalized JSON object keys recursively."""
+    if isinstance(value, dict):
+        for key, nested_value in value.items():
+            if isinstance(key, str):
+                normalized = _normalize_structured_field_name(key)
+                if normalized:
+                    detected_fields.add(normalized)
+            _collect_json_field_names(nested_value, detected_fields)
+        return
+    if isinstance(value, list):
+        for item in value:
+            _collect_json_field_names(item, detected_fields)
+
+
+def _extract_structured_field_names(path: Path | None) -> set[str]:
+    """Extract explicit field labels from markdown/text or JSON evidence."""
+    if path is None or not path.exists():
+        return set()
+
+    if path.suffix.lower() == ".json":
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8", errors="ignore"))
+        except (json.JSONDecodeError, OSError):
+            return set()
+        detected_fields: set[str] = set()
+        _collect_json_field_names(loaded, detected_fields)
+        return detected_fields
+
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return set()
+
+    detected_fields = set()
+    for raw_line in text.splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        candidate = stripped.lstrip("-*+ ").strip()
+        if candidate.startswith("#"):
+            heading = candidate.lstrip("#").strip()
+            normalized_heading = _normalize_structured_field_name(heading)
+            if normalized_heading:
+                detected_fields.add(normalized_heading)
+            continue
+        if ":" not in candidate:
+            continue
+        field_name = candidate.split(":", 1)[0].strip()
+        normalized_field = _normalize_structured_field_name(field_name)
+        if normalized_field:
+            detected_fields.add(normalized_field)
+    return detected_fields
 
 
 def _document_marker_assessment(
     path: Path | None,
     markers: tuple[MarkerRule, ...],
+    *,
+    schema_name: str | None = None,
 ) -> tuple[list[str], list[str]]:
     """Return present and missing minimum markers for a text artifact."""
+    structured_fields = (
+        _rulebook_structured_fields(schema_name)
+        if schema_name is not None
+        else ()
+    )
     if path is None or not path.exists():
-        return [], [label for label, _patterns in markers]
+        return [], [
+            *[label for label, _patterns in markers],
+            *[f"field:{label}" for label, _aliases in structured_fields],
+        ]
     try:
         text = path.read_text(encoding="utf-8", errors="ignore").lower()
     except OSError:
-        return [], [label for label, _patterns in markers]
+        return [], [
+            *[label for label, _patterns in markers],
+            *[f"field:{label}" for label, _aliases in structured_fields],
+        ]
 
     present: list[str] = []
     missing: list[str] = []
@@ -695,6 +1021,15 @@ def _document_marker_assessment(
             present.append(label)
         else:
             missing.append(label)
+    detected_fields = _extract_structured_field_names(path)
+    for label, aliases in structured_fields:
+        if any(
+            _normalize_structured_field_name(alias) in detected_fields
+            for alias in aliases
+        ):
+            present.append(f"field:{label}")
+        else:
+            missing.append(f"field:{label}")
     return present, missing
 
 
@@ -771,6 +1106,41 @@ def _incident_response_markers() -> tuple[MarkerRule, ...]:
     return _rulebook_markers("incident_response")
 
 
+def _operation_monitoring_markers() -> tuple[MarkerRule, ...]:
+    """Return minimum markers for Article 26 operation-monitoring procedures."""
+    return _rulebook_markers("operation_monitoring")
+
+
+def _input_data_governance_markers() -> tuple[MarkerRule, ...]:
+    """Return minimum markers for Article 26 input-data governance procedures."""
+    return _rulebook_markers("input_data_governance")
+
+
+def _log_retention_markers() -> tuple[MarkerRule, ...]:
+    """Return minimum markers for Article 26 log-retention procedures."""
+    return _rulebook_markers("log_retention")
+
+
+def _worker_notice_markers() -> tuple[MarkerRule, ...]:
+    """Return minimum markers for workplace deployment notices."""
+    return _rulebook_markers("worker_notice")
+
+
+def _affected_person_notice_markers() -> tuple[MarkerRule, ...]:
+    """Return minimum markers for affected-person notices."""
+    return _rulebook_markers("affected_person_notice")
+
+
+def _explanation_request_markers() -> tuple[MarkerRule, ...]:
+    """Return minimum markers for explanation-request procedures."""
+    return _rulebook_markers("explanation_request")
+
+
+def _eu_database_registration_markers() -> tuple[MarkerRule, ...]:
+    """Return minimum markers for EU database registration evidence."""
+    return _rulebook_markers("eu_database_registration")
+
+
 def _build_evidence_manifest_payload(
     evidence_manifest: list[dict[str, object]],
     rulebook: dict[str, str],
@@ -782,6 +1152,160 @@ def _build_evidence_manifest_payload(
         "rulebook": rulebook,
         "manifest_sha256": manifest_sha256,
         "evidence": evidence_manifest,
+    }
+
+
+def _integrity_summary(config: AIActConfig) -> dict[str, object]:
+    """Describe whether bundle signing is enabled for this run."""
+    secret_env = config.bundle_signature_secret_env
+    if secret_env is None:
+        return {
+            "status": "unsigned",
+            "signature_algorithm": "none",
+            "signature_env_var": None,
+        }
+    if os.environ.get(secret_env):
+        return {
+            "status": "signed",
+            "signature_algorithm": "hmac-sha256",
+            "signature_env_var": secret_env,
+        }
+    return {
+        "status": "requested_but_unavailable",
+        "signature_algorithm": "hmac-sha256",
+        "signature_env_var": secret_env,
+    }
+
+
+def _bundle_artifact_payloads(
+    report: dict[str, object],
+    coverage_ledger: dict[str, object],
+    control_library: dict[str, object],
+    evidence_manifest: dict[str, object],
+    controls_matrix: dict[str, object],
+    risk_register: dict[str, object],
+    annex_iii_classification: dict[str, object],
+    fria_prep: dict[str, object],
+    executive_summary_markdown: str,
+    remediation_markdown: str,
+    fria_prep_markdown: str,
+) -> dict[str, object]:
+    """Return the rendered bundle payloads keyed by output filename."""
+    return {
+        "ai_act_readiness_report.json": report,
+        "ai_act_coverage_ledger.json": coverage_ledger,
+        "ai_act_control_library_v1.json": control_library,
+        "ai_act_controls_matrix.json": controls_matrix,
+        "ai_act_annex_iii_classification.json": annex_iii_classification,
+        "ai_act_risk_register.json": risk_register,
+        "ai_act_fria_prep.json": fria_prep,
+        "ai_act_evidence_manifest.json": evidence_manifest,
+        "ai_act_executive_summary.md": executive_summary_markdown,
+        "ai_act_remediation_plan.md": remediation_markdown,
+        "ai_act_fria_prep.md": fria_prep_markdown,
+    }
+
+
+def _bundle_artifact_hashes(
+    artifact_payloads: dict[str, object],
+) -> dict[str, str]:
+    """Return SHA-256 hashes for the rendered bundle artifacts."""
+    hashes: dict[str, str] = {}
+    for filename, payload in artifact_payloads.items():
+        if isinstance(payload, str):
+            hashes[filename] = _sha256_text(payload)
+        else:
+            hashes[filename] = _sha256_text(_render_json(payload))
+    return hashes
+
+
+def _signature_hex(secret: str, payload: object) -> str:
+    """Return an HMAC-SHA256 signature for the canonical JSON payload."""
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        ensure_ascii=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hmac.new(
+        secret.encode("utf-8"),
+        encoded,
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _build_integrity_artifact(
+    config: AIActConfig,
+    *,
+    generated_at: str,
+    rulebook: dict[str, str],
+    evidence_manifest_sha256: str,
+    bundle_fingerprint: str,
+    report: dict[str, object],
+    coverage_ledger: dict[str, object],
+    control_library: dict[str, object],
+    evidence_manifest: dict[str, object],
+    controls_matrix: dict[str, object],
+    risk_register: dict[str, object],
+    annex_iii_classification: dict[str, object],
+    fria_prep: dict[str, object],
+    executive_summary_markdown: str,
+    remediation_markdown: str,
+    fria_prep_markdown: str,
+) -> dict[str, object]:
+    """Build a tamper-evident integrity payload for the bundle."""
+    artifact_payloads = _bundle_artifact_payloads(
+        report,
+        coverage_ledger,
+        control_library,
+        evidence_manifest,
+        controls_matrix,
+        risk_register,
+        annex_iii_classification,
+        fria_prep,
+        executive_summary_markdown,
+        remediation_markdown,
+        fria_prep_markdown,
+    )
+    artifact_hashes = _bundle_artifact_hashes(artifact_payloads)
+    integrity_summary = _integrity_summary(config)
+    signature_input: dict[str, object] = {
+        "bundle_fingerprint": bundle_fingerprint,
+        "rulebook_sha256": rulebook["sha256"],
+        "evidence_manifest_sha256": evidence_manifest_sha256,
+        "artifact_hashes": artifact_hashes,
+    }
+    signature_status = str(integrity_summary["status"])
+    signature_algorithm = str(integrity_summary["signature_algorithm"])
+    signature_env_var = integrity_summary["signature_env_var"]
+    signature: str | None = None
+    if signature_status == "signed" and isinstance(signature_env_var, str):
+        secret = os.environ.get(signature_env_var)
+        if secret:
+            signature = _signature_hex(secret, signature_input)
+
+    return {
+        "integrity_version": "ai_act_bundle_integrity_v1",
+        "generated_at": generated_at,
+        "rulebook": rulebook,
+        "bundle_fingerprint": bundle_fingerprint,
+        "evidence_manifest_sha256": evidence_manifest_sha256,
+        "artifact_hash_algorithm": "sha256",
+        "artifact_hash_basis": (
+            "JSON artifacts are hashed from json.dumps(payload, indent=2)"
+            " output; markdown artifacts are hashed from UTF-8 bytes."
+        ),
+        "artifact_count": len(artifact_hashes),
+        "artifact_hashes": artifact_hashes,
+        "signature_status": signature_status,
+        "signature_algorithm": signature_algorithm,
+        "signature_env_var": signature_env_var,
+        "signature_input_sha256": _json_sha256(signature_input),
+        "signature": signature,
+        "verification_note": (
+            "The integrity artifact excludes ai_act_integrity.json from its"
+            " own hash list to avoid recursive self-hashing."
+        ),
     }
 
 
@@ -1001,6 +1525,7 @@ def _build_annex_iii_classification(
 ) -> dict[str, object]:
     """Build a classification artifact for declared Annex III use cases."""
     use_case_ids = _declared_annex_iii_use_cases(config)
+    article6_3_conditions = _declared_article6_3_conditions(config)
     catalog = _annex_iii_catalog_by_id()
     entries = [catalog[use_case_id] for use_case_id in use_case_ids]
     areas: dict[str, dict[str, object]] = {}
@@ -1045,6 +1570,13 @@ def _build_annex_iii_classification(
         "status": status,
         "declared_use_case_ids": use_case_ids,
         "declared_use_case_titles": _human_readable_trigger_labels(use_case_ids),
+        "article6_3_claimed_conditions": article6_3_conditions,
+        "article6_3_no_material_influence_asserted": (
+            config.annex_iii_does_not_materially_influence_decision_outcome
+        ),
+        "article6_3_blocked_by_profiling": (
+            config.uses_profiling_or_similarly_significant_decision_support
+        ),
         "areas": [areas[key] for key in sorted(areas)],
         "n_declared_use_cases": len(entries),
         "source_catalog": entries,
@@ -1413,6 +1945,7 @@ def _evaluate_article4_literacy(
     present_markers, missing_markers = _document_marker_assessment(
         config.ai_literacy_record,
         _ai_literacy_markers(),
+        schema_name="ai_literacy",
     )
     if not applies:
         return _entry_not_applicable(
@@ -1494,7 +2027,32 @@ def _evaluate_article5_prohibited_practices(
             " operation.",
         )
 
-    triggers: list[str] = []
+    fail_triggers: list[str] = []
+    review_triggers: list[str] = []
+    if config.uses_subliminal_manipulative_or_deceptive_techniques:
+        if config.materially_distorts_behavior_causing_significant_harm:
+            fail_triggers.append(
+                "subliminal_manipulative_or_deceptive_techniques_causing_significant_harm",
+            )
+        else:
+            review_triggers.append(
+                "subliminal_manipulative_or_deceptive_techniques_without_harm_assessment",
+            )
+    if config.exploits_age_disability_or_socioeconomic_vulnerabilities:
+        if config.materially_distorts_behavior_causing_significant_harm:
+            fail_triggers.append(
+                "exploitation_of_vulnerabilities_causing_significant_harm",
+            )
+        else:
+            review_triggers.append(
+                "exploitation_of_vulnerabilities_without_harm_assessment",
+            )
+    if config.social_scoring_leading_to_detrimental_treatment:
+        fail_triggers.append("social_scoring")
+    if config.individual_predictive_policing_based_solely_on_profiling:
+        fail_triggers.append("predictive_policing_based_solely_on_profiling")
+    if config.untargeted_scraping_of_face_images:
+        fail_triggers.append("untargeted_scraping_of_facial_images")
     if (
         config.uses_emotion_recognition
         and (
@@ -1503,14 +2061,88 @@ def _evaluate_article5_prohibited_practices(
         )
         and not config.emotion_recognition_medical_or_safety_exception
     ):
-        triggers.append("emotion_recognition_in_workplace_or_education")
+        fail_triggers.append("emotion_recognition_in_workplace_or_education")
     if (
         config.uses_biometric_categorization
         and config.biometric_categorization_infers_sensitive_traits
     ):
-        triggers.append("biometric_categorization_sensitive_trait_inference")
+        fail_triggers.append("biometric_categorization_sensitive_trait_inference")
+    if config.real_time_remote_biometric_identification_for_law_enforcement:
+        if config.real_time_remote_biometric_identification_exception_claimed:
+            review_triggers.append(
+                "real_time_remote_biometric_identification_exception_claimed",
+            )
+        else:
+            fail_triggers.append(
+                "real_time_remote_biometric_identification_for_law_enforcement",
+            )
 
-    if not triggers:
+    if fail_triggers:
+        return _entry(
+            "ai_act.article5.prohibited_practices_screen",
+            applies=True,
+            status="fail",
+            blocking=True,
+            claim_kind="requires_external_review",
+            rationale=(
+                "Declared facts match an obvious Article 5 prohibited-practice"
+                " scenario: "
+                f"{', '.join(fail_triggers)}."
+            ),
+            evidence_ids=[
+                "fact.eu_market",
+                "fact.uses_emotion_recognition",
+                "fact.uses_biometric_categorization",
+                "fact.biometric_sensitive_trait_inference",
+                "fact.manipulative_or_deceptive_techniques",
+                "fact.behavior_distortion_significant_harm",
+                "fact.exploits_vulnerabilities",
+                "fact.social_scoring",
+                "fact.predictive_policing_solely_on_profiling",
+                "fact.untargeted_face_scraping",
+                "fact.rbi_law_enforcement",
+                "fact.rbi_law_enforcement_exception",
+            ],
+            confidence=0.9,
+            owner_action=(
+                "Stop relying on this report as a clean readiness signal until"
+                " legal/compliance review confirms the use case is outside"
+                " Article 5 or a valid exception applies."
+            ),
+            legal_review_required=True,
+        )
+
+    if review_triggers:
+        return _entry(
+            "ai_act.article5.prohibited_practices_screen",
+            applies=True,
+            status="unknown",
+            blocking=True,
+            claim_kind="requires_external_review",
+            rationale=(
+                "Declared facts touch an Article 5 prohibited-practice area,"
+                " but Vauban cannot confirm whether the narrow legal conditions"
+                " are satisfied: "
+                f"{', '.join(review_triggers)}."
+            ),
+            evidence_ids=[
+                "fact.eu_market",
+                "fact.manipulative_or_deceptive_techniques",
+                "fact.behavior_distortion_significant_harm",
+                "fact.exploits_vulnerabilities",
+                "fact.rbi_law_enforcement",
+                "fact.rbi_law_enforcement_exception",
+            ],
+            confidence=0.8,
+            owner_action=(
+                "Escalate the declared prohibited-practice facts for legal"
+                " review and document the specific exception or harm analysis"
+                " before presenting this report externally."
+            ),
+            legal_review_required=True,
+        )
+
+    if not fail_triggers and not review_triggers:
         return _entry(
             "ai_act.article5.prohibited_practices_screen",
             applies=True,
@@ -1526,35 +2158,18 @@ def _evaluate_article5_prohibited_practices(
                 "fact.uses_emotion_recognition",
                 "fact.uses_biometric_categorization",
                 "fact.biometric_sensitive_trait_inference",
+                "fact.manipulative_or_deceptive_techniques",
+                "fact.behavior_distortion_significant_harm",
+                "fact.exploits_vulnerabilities",
+                "fact.social_scoring",
+                "fact.predictive_policing_solely_on_profiling",
+                "fact.untargeted_face_scraping",
+                "fact.rbi_law_enforcement",
             ],
             confidence=0.7,
         )
-
-    return _entry(
-        "ai_act.article5.prohibited_practices_screen",
-        applies=True,
-        status="fail",
-        blocking=True,
-        claim_kind="requires_external_review",
-        rationale=(
-            "Declared facts match an obvious Article 5 prohibited-practice"
-            " scenario: "
-            f"{', '.join(triggers)}."
-        ),
-        evidence_ids=[
-            "fact.eu_market",
-            "fact.uses_emotion_recognition",
-            "fact.uses_biometric_categorization",
-            "fact.biometric_sensitive_trait_inference",
-        ],
-        confidence=0.9,
-        owner_action=(
-            "Stop relying on this report as a clean readiness signal until"
-            " legal/compliance review confirms the use case is outside"
-            " Article 5 or a valid exception applies."
-        ),
-        legal_review_required=True,
-    )
+    msg = "unreachable Article 5 screening branch"
+    raise AssertionError(msg)
 
 
 def _evaluate_article50_human_interaction(
@@ -2076,6 +2691,7 @@ def _evaluate_high_risk_triage(config: AIActConfig) -> dict[str, object]:
         )
 
     triggers = _high_risk_triggers(config)
+    article6_3_conditions = _declared_article6_3_conditions(config)
     if not triggers:
         return _entry(
             "ai_act.triage.high_risk_annex_iii",
@@ -2101,6 +2717,12 @@ def _evaluate_high_risk_triage(config: AIActConfig) -> dict[str, object]:
             "One or more declared use-context triggers may place the system in"
             " a high-risk or FRIA-sensitive category: "
             f"{', '.join(_human_readable_trigger_labels(triggers))}."
+            + (
+                " A possible Article 6(3) carve-out was also declared and is"
+                " reviewed separately."
+                if article6_3_conditions
+                else ""
+            )
         ),
         evidence_ids=["fact.role", "fact.eu_market", "fact.intended_purpose"],
         confidence=0.8,
@@ -2109,6 +2731,122 @@ def _evaluate_high_risk_triage(config: AIActConfig) -> dict[str, object]:
             "Escalate to legal/compliance review for Annex I / Annex III"
             " analysis before relying on this report as a readiness signal."
         ),
+    )
+
+
+def _evaluate_article6_3_carve_out_triage(
+    config: AIActConfig,
+) -> dict[str, object]:
+    """Evaluate possible Article 6(3) Annex III carve-out claims."""
+    if not config.eu_market or config.role == "research":
+        return _entry_not_applicable(
+            "ai_act.triage.article6_3_annex_iii_carve_out",
+            "Article 6(3) carve-out review is out of scope for non-EU or"
+            " research operation.",
+        )
+
+    annex_iii_use_cases = _declared_annex_iii_use_cases(config)
+    if not annex_iii_use_cases:
+        return _entry_not_applicable(
+            "ai_act.triage.article6_3_annex_iii_carve_out",
+            "No Annex III use case was declared, so Article 6(3) is not in"
+            " scope.",
+        )
+
+    conditions = _declared_article6_3_conditions(config)
+    if not conditions:
+        return _entry(
+            "ai_act.triage.article6_3_annex_iii_carve_out",
+            applies=True,
+            status="pass",
+            blocking=True,
+            claim_kind="derived_by_rule",
+            rationale=(
+                "No Article 6(3) carve-out facts were declared for the current"
+                " Annex III use case(s)."
+            ),
+            evidence_ids=[
+                "fact.annex_iii_use_cases",
+                "fact.article6_3_carve_out_claims",
+                "fact.provides_input_data_for_high_risk_system",
+            ],
+            confidence=0.8,
+        )
+
+    if not config.annex_iii_does_not_materially_influence_decision_outcome:
+        return _entry(
+            "ai_act.triage.article6_3_annex_iii_carve_out",
+            applies=True,
+            status="unknown",
+            blocking=True,
+            claim_kind="requires_external_review",
+            rationale=(
+                "Article 6(3) carve-out conditions were declared, but the"
+                " config does not assert that the AI system avoids materially"
+                " influencing decision outcomes."
+            ),
+            evidence_ids=[
+                "fact.annex_iii_use_cases",
+                "fact.article6_3_carve_out_claims",
+            ],
+            confidence=0.8,
+            owner_action=(
+                "If relying on Article 6(3), document why the AI system does"
+                " not materially influence decision outcomes and obtain legal"
+                " review before treating the use as outside high-risk scope."
+            ),
+            legal_review_required=True,
+        )
+
+    if config.uses_profiling_or_similarly_significant_decision_support:
+        return _entry(
+            "ai_act.triage.article6_3_annex_iii_carve_out",
+            applies=True,
+            status="unknown",
+            blocking=True,
+            claim_kind="requires_external_review",
+            rationale=(
+                "A potential Article 6(3) carve-out was declared, but the"
+                " config also declares profiling or similarly significant"
+                " decision support, which weighs against treating the use as"
+                " outside high-risk scope."
+            ),
+            evidence_ids=[
+                "fact.annex_iii_use_cases",
+                "fact.article6_3_carve_out_claims",
+            ],
+            confidence=0.85,
+            owner_action=(
+                "Escalate the Article 6(3) claim for legal review and obtain"
+                " provider-side assessment evidence before presenting the use"
+                " as carved out of Annex III high-risk scope."
+            ),
+            legal_review_required=True,
+        )
+
+    return _entry(
+        "ai_act.triage.article6_3_annex_iii_carve_out",
+        applies=True,
+        status="unknown",
+        blocking=True,
+        claim_kind="requires_external_review",
+        rationale=(
+            "Declared Annex III facts may fit an Article 6(3) carve-out under"
+            " the following claimed conditions: "
+            f"{', '.join(conditions)}."
+        ),
+        evidence_ids=[
+            "fact.annex_iii_use_cases",
+            "fact.article6_3_carve_out_claims",
+        ],
+        confidence=0.75,
+        owner_action=(
+            "Obtain provider-side documentation for the Article 6(3)"
+            " assessment, including the no-material-influence rationale and"
+            " any required registration evidence, before relying on the"
+            " carve-out."
+        ),
+        legal_review_required=True,
     )
 
 
@@ -2157,6 +2895,492 @@ def _evaluate_fria_triage(config: AIActConfig) -> dict[str, object]:
     )
 
 
+def _evaluate_article26_instructions_monitoring(
+    config: AIActConfig,
+    evidence_manifest: list[dict[str, object]],
+) -> dict[str, object]:
+    """Evaluate Article 26 instructions-of-use and monitoring evidence."""
+    applies = _high_risk_deployer_applies(config)
+    provider_id = "file.provider_documentation"
+    monitoring_id = "file.operation_monitoring_procedure"
+    present_markers, missing_markers = _document_marker_assessment(
+        config.operation_monitoring_procedure,
+        _operation_monitoring_markers(),
+        schema_name="operation_monitoring",
+    )
+    if _evidence_exists(evidence_manifest, provider_id):
+        present_markers = [*present_markers, "provider_documentation"]
+    else:
+        missing_markers = [*missing_markers, "provider_documentation"]
+    if not applies:
+        return _entry_not_applicable(
+            "ai_act.article26.instructions_monitoring",
+            "Article 26 deployer monitoring duties are out of scope unless the"
+            " report declares a high-risk deployer scenario.",
+        )
+    if (
+        _evidence_exists(evidence_manifest, provider_id)
+        and _evidence_exists(evidence_manifest, monitoring_id)
+        and not missing_markers
+    ):
+        return _entry(
+            "ai_act.article26.instructions_monitoring",
+            applies=True,
+            status="pass",
+            blocking=True,
+            claim_kind="observed_by_vauban",
+            rationale=(
+                "Provider documentation and an operation-monitoring procedure"
+                " are both attached for the declared high-risk deployer use."
+            ),
+            evidence_ids=[provider_id, monitoring_id],
+            confidence=1.0,
+            present_markers=present_markers,
+            required_artifacts=[
+                "Provider documentation",
+                "Operation monitoring procedure",
+            ],
+            recheck_hint="Re-run after updating monitoring or provider inputs.",
+        )
+    return _entry(
+        "ai_act.article26.instructions_monitoring",
+        applies=True,
+        status="unknown",
+        blocking=True,
+        claim_kind="observed_by_vauban",
+        rationale=(
+            "High-risk deployer evidence is incomplete for instructions-of-use"
+            " and monitoring. Missing markers:"
+            f" {_format_marker_list(missing_markers)}."
+        ),
+        evidence_ids=[provider_id, monitoring_id],
+        confidence=0.9,
+        owner_action=_marker_ready_action(
+            "[ai_act].operation_monitoring_procedure",
+            missing_markers,
+            extra_note=(
+                "Attach provider instructions via [ai_act].provider_documentation"
+                " if they are missing."
+            ),
+        ),
+        present_markers=present_markers,
+        missing_markers=missing_markers,
+        required_artifacts=[
+            "Provider documentation",
+            "Operation monitoring procedure",
+        ],
+        recheck_hint="Re-run after attaching complete monitoring evidence.",
+    )
+
+
+def _evaluate_article26_human_oversight(
+    config: AIActConfig,
+    evidence_manifest: list[dict[str, object]],
+) -> dict[str, object]:
+    """Evaluate Article 26 human-oversight evidence for high-risk deployers."""
+    applies = _high_risk_deployer_applies(config)
+    evidence_id = "file.human_oversight_procedure"
+    present_markers, missing_markers = _document_marker_assessment(
+        config.human_oversight_procedure,
+        _human_oversight_markers(),
+        schema_name="human_oversight",
+    )
+    if config.risk_owner is not None:
+        present_markers = [*present_markers, "risk_owner"]
+    else:
+        missing_markers = [*missing_markers, "risk_owner"]
+    if not applies:
+        return _entry_not_applicable(
+            "ai_act.article26.human_oversight",
+            "Article 26 human-oversight duties are out of scope unless the"
+            " report declares a high-risk deployer scenario.",
+        )
+    if _evidence_exists(evidence_manifest, evidence_id) and not missing_markers:
+        return _entry(
+            "ai_act.article26.human_oversight",
+            applies=True,
+            status="pass",
+            blocking=True,
+            claim_kind="observed_by_vauban",
+            rationale=(
+                "A human oversight procedure exists and a named owner is"
+                " available for the declared high-risk deployer use."
+            ),
+            evidence_ids=[evidence_id],
+            confidence=1.0,
+            present_markers=present_markers,
+            required_artifacts=["Human oversight procedure", "Named risk owner"],
+            recheck_hint="Re-run after updating the oversight procedure.",
+        )
+    return _entry(
+        "ai_act.article26.human_oversight",
+        applies=True,
+        status="unknown",
+        blocking=True,
+        claim_kind="observed_by_vauban",
+        rationale=(
+            "High-risk deployer human-oversight evidence is incomplete"
+            " because the procedure file and/or named owner is missing."
+        ),
+        evidence_ids=[evidence_id],
+        confidence=0.9,
+        owner_action=(
+            "Attach a human oversight procedure for the high-risk deployment"
+            " and set [ai_act].risk_owner."
+        ),
+        present_markers=present_markers,
+        missing_markers=missing_markers,
+        required_artifacts=["Human oversight procedure", "Named risk owner"],
+        recheck_hint="Re-run after attaching the oversight procedure and owner.",
+    )
+
+
+def _evaluate_article26_input_data_governance(
+    config: AIActConfig,
+    evidence_manifest: list[dict[str, object]],
+) -> dict[str, object]:
+    """Evaluate Article 26 input-data governance evidence."""
+    applies = (
+        _high_risk_deployer_applies(config)
+        and config.provides_input_data_for_high_risk_system
+    )
+    evidence_id = "file.input_data_governance_procedure"
+    present_markers, missing_markers = _document_marker_assessment(
+        config.input_data_governance_procedure,
+        _input_data_governance_markers(),
+        schema_name="input_data_governance",
+    )
+    if not applies:
+        return _entry_not_applicable(
+            "ai_act.article26.input_data_governance",
+            "Article 26 input-data duties only apply when the declared"
+            " high-risk deployer provides input data to the system.",
+        )
+    if _evidence_exists(evidence_manifest, evidence_id) and not missing_markers:
+        return _entry(
+            "ai_act.article26.input_data_governance",
+            applies=True,
+            status="pass",
+            blocking=True,
+            claim_kind="observed_by_vauban",
+            rationale=(
+                "An input-data governance procedure exists for the declared"
+                " high-risk deployer input flow."
+            ),
+            evidence_ids=[evidence_id, "fact.provides_input_data_for_high_risk_system"],
+            confidence=1.0,
+            present_markers=present_markers,
+            required_artifacts=["Input data governance procedure"],
+            recheck_hint="Re-run after updating the input-data procedure.",
+        )
+    return _entry(
+        "ai_act.article26.input_data_governance",
+        applies=True,
+        status="unknown",
+        blocking=True,
+        claim_kind="observed_by_vauban",
+        rationale=(
+            "The config declares deployer-provided input data for a high-risk"
+            " system, but Vauban could not verify relevance and"
+            " representativeness controls."
+        ),
+        evidence_ids=[evidence_id, "fact.provides_input_data_for_high_risk_system"],
+        confidence=0.9,
+        owner_action=_marker_ready_action(
+            "[ai_act].input_data_governance_procedure",
+            missing_markers,
+        ),
+        present_markers=present_markers,
+        missing_markers=missing_markers,
+        required_artifacts=["Input data governance procedure"],
+        recheck_hint="Re-run after attaching the input-data procedure.",
+    )
+
+
+def _evaluate_article26_log_retention(
+    config: AIActConfig,
+    evidence_manifest: list[dict[str, object]],
+) -> dict[str, object]:
+    """Evaluate Article 26 high-risk log-retention evidence."""
+    applies = _high_risk_deployer_applies(config)
+    evidence_id = "file.log_retention_procedure"
+    present_markers, missing_markers = _document_marker_assessment(
+        config.log_retention_procedure,
+        _log_retention_markers(),
+        schema_name="log_retention",
+    )
+    if not applies:
+        return _entry_not_applicable(
+            "ai_act.article26.log_retention",
+            "Article 26 log-retention duties are out of scope unless the"
+            " report declares a high-risk deployer scenario.",
+        )
+    if _evidence_exists(evidence_manifest, evidence_id) and not missing_markers:
+        return _entry(
+            "ai_act.article26.log_retention",
+            applies=True,
+            status="pass",
+            blocking=True,
+            claim_kind="observed_by_vauban",
+            rationale=(
+                "A log-retention procedure exists for the declared high-risk"
+                " deployer use."
+            ),
+            evidence_ids=[evidence_id],
+            confidence=1.0,
+            present_markers=present_markers,
+            required_artifacts=["Log retention procedure"],
+            recheck_hint="Re-run after updating the log-retention procedure.",
+        )
+    return _entry(
+        "ai_act.article26.log_retention",
+        applies=True,
+        status="unknown",
+        blocking=True,
+        claim_kind="observed_by_vauban",
+        rationale=(
+            "No verifiable log-retention evidence was attached for the"
+            " declared high-risk deployer use."
+        ),
+        evidence_ids=[evidence_id],
+        confidence=0.9,
+        owner_action=_marker_ready_action(
+            "[ai_act].log_retention_procedure",
+            missing_markers,
+            extra_note=(
+                "The procedure should cover logs under the deployer's control"
+                " and the six-month minimum retention baseline."
+            ),
+        ),
+        present_markers=present_markers,
+        missing_markers=missing_markers,
+        required_artifacts=["Log retention procedure"],
+        recheck_hint="Re-run after attaching the log-retention procedure.",
+    )
+
+
+def _evaluate_article26_workplace_notice(
+    config: AIActConfig,
+    evidence_manifest: list[dict[str, object]],
+) -> dict[str, object]:
+    """Evaluate workplace information evidence for high-risk deployments."""
+    applies = _high_risk_deployer_applies(config) and config.workplace_deployment
+    evidence_id = "file.employee_or_worker_representative_notice"
+    present_markers, missing_markers = _document_marker_assessment(
+        config.employee_or_worker_representative_notice,
+        _worker_notice_markers(),
+        schema_name="worker_notice",
+    )
+    if not applies:
+        return _entry_not_applicable(
+            "ai_act.article26.workplace_notice",
+            "Workplace notice duties only apply when the declared high-risk"
+            " deployer uses the system in the workplace.",
+        )
+    if _evidence_exists(evidence_manifest, evidence_id) and not missing_markers:
+        return _entry(
+            "ai_act.article26.workplace_notice",
+            applies=True,
+            status="pass",
+            blocking=True,
+            claim_kind="observed_by_vauban",
+            rationale=(
+                "A workplace deployment notice exists for employees and"
+                " workers' representatives."
+            ),
+            evidence_ids=[evidence_id, "fact.workplace_deployment"],
+            confidence=1.0,
+            present_markers=present_markers,
+            required_artifacts=["Employee or worker representative notice"],
+            recheck_hint="Re-run after updating the workplace notice.",
+        )
+    return _entry(
+        "ai_act.article26.workplace_notice",
+        applies=True,
+        status="unknown",
+        blocking=True,
+        claim_kind="observed_by_vauban",
+        rationale=(
+            "The config declares workplace deployment of a high-risk system,"
+            " but Vauban could not verify notice evidence for employees and"
+            " workers' representatives."
+        ),
+        evidence_ids=[evidence_id, "fact.workplace_deployment"],
+        confidence=0.9,
+        owner_action=_marker_ready_action(
+            "[ai_act].employee_or_worker_representative_notice",
+            missing_markers,
+        ),
+        present_markers=present_markers,
+        missing_markers=missing_markers,
+        required_artifacts=["Employee or worker representative notice"],
+        recheck_hint="Re-run after attaching the workplace notice.",
+    )
+
+
+def _evaluate_article26_affected_person_notice(
+    config: AIActConfig,
+    evidence_manifest: list[dict[str, object]],
+) -> dict[str, object]:
+    """Evaluate affected-person notice and explanation readiness."""
+    applies = (
+        _high_risk_deployer_applies(config)
+        and config.makes_or_assists_decisions_about_natural_persons
+    )
+    notice_id = "file.affected_person_notice"
+    explanation_id = "file.explanation_request_procedure"
+    required_artifacts = ["Affected person notice"]
+    evidence_ids = [notice_id]
+    present_markers, missing_markers = _document_marker_assessment(
+        config.affected_person_notice,
+        _affected_person_notice_markers(),
+        schema_name="affected_person_notice",
+    )
+    explanation_present_markers: list[str] = []
+    explanation_missing_markers: list[str] = []
+    if config.decision_with_legal_or_similarly_significant_effects:
+        required_artifacts.append("Explanation request procedure")
+        evidence_ids.append(explanation_id)
+        (
+            explanation_present_markers,
+            explanation_missing_markers,
+        ) = _document_marker_assessment(
+            config.explanation_request_procedure,
+            _explanation_request_markers(),
+            schema_name="explanation_request",
+        )
+        present_markers = [*present_markers, *explanation_present_markers]
+        missing_markers = [*missing_markers, *explanation_missing_markers]
+        if _evidence_exists(evidence_manifest, explanation_id):
+            present_markers = [*present_markers, "explanation_request_procedure"]
+        else:
+            missing_markers = [*missing_markers, "explanation_request_procedure"]
+    if not applies:
+        return _entry_not_applicable(
+            "ai_act.article26.affected_person_notice_and_explanation",
+            "Affected-person notice duties only apply when the declared"
+            " high-risk deployer makes or assists decisions about natural"
+            " persons.",
+        )
+    if (
+        _evidence_exists(evidence_manifest, notice_id)
+        and not missing_markers
+    ):
+        return _entry(
+            "ai_act.article26.affected_person_notice_and_explanation",
+            applies=True,
+            status="pass",
+            blocking=True,
+            claim_kind="observed_by_vauban",
+            rationale=(
+                "Affected-person notice evidence exists for the declared"
+                " high-risk decision-support use."
+            ),
+            evidence_ids=evidence_ids,
+            confidence=1.0,
+            present_markers=present_markers,
+            required_artifacts=required_artifacts,
+            recheck_hint="Re-run after updating notice or explanation evidence.",
+        )
+    return _entry(
+        "ai_act.article26.affected_person_notice_and_explanation",
+        applies=True,
+        status="unknown",
+        blocking=True,
+        claim_kind="observed_by_vauban",
+        rationale=(
+            "The config declares high-risk decision support affecting natural"
+            " persons, but Vauban could not verify notice and explanation"
+            " evidence."
+        ),
+        evidence_ids=evidence_ids,
+        confidence=0.9,
+        owner_action=_marker_ready_action(
+            "[ai_act].affected_person_notice",
+            missing_markers,
+            extra_note=(
+                "Attach [ai_act].explanation_request_procedure as well."
+                if config.decision_with_legal_or_similarly_significant_effects
+                else None
+            ),
+        ),
+        present_markers=present_markers,
+        missing_markers=missing_markers,
+        required_artifacts=required_artifacts,
+        recheck_hint="Re-run after attaching the required notice evidence.",
+    )
+
+
+def _evaluate_article26_public_authority_registration(
+    config: AIActConfig,
+    evidence_manifest: list[dict[str, object]],
+) -> dict[str, object]:
+    """Evaluate EU database registration evidence for public deployments."""
+    annex_iii_use_cases = _declared_annex_iii_use_cases(config)
+    area_ids = _annex_iii_area_ids(annex_iii_use_cases)
+    only_critical_infrastructure = bool(area_ids) and area_ids == {"2"}
+    applies = (
+        _high_risk_deployer_applies(config)
+        and config.public_sector_use
+        and not only_critical_infrastructure
+    )
+    evidence_id = "file.eu_database_registration_record"
+    present_markers, missing_markers = _document_marker_assessment(
+        config.eu_database_registration_record,
+        _eu_database_registration_markers(),
+        schema_name="eu_database_registration",
+    )
+    if not applies:
+        return _entry_not_applicable(
+            "ai_act.article26.public_authority_registration",
+            "Public-authority registration only applies when the declared"
+            " high-risk deployer is in a public-sector context outside the"
+            " critical-infrastructure exception.",
+        )
+    if _evidence_exists(evidence_manifest, evidence_id) and not missing_markers:
+        return _entry(
+            "ai_act.article26.public_authority_registration",
+            applies=True,
+            status="pass",
+            blocking=True,
+            claim_kind="observed_by_vauban",
+            rationale=(
+                "A public-sector registration record exists for the declared"
+                " high-risk deployer use."
+            ),
+            evidence_ids=[evidence_id],
+            confidence=1.0,
+            present_markers=present_markers,
+            required_artifacts=["EU database registration record"],
+            recheck_hint="Re-run after updating the registration record.",
+        )
+    return _entry(
+        "ai_act.article26.public_authority_registration",
+        applies=True,
+        status="unknown",
+        blocking=True,
+        claim_kind="observed_by_vauban",
+        rationale=(
+            "The config declares a public-sector high-risk deployment, but"
+            " Vauban could not verify EU database registration evidence."
+        ),
+        evidence_ids=[evidence_id],
+        confidence=0.9,
+        owner_action=_marker_ready_action(
+            "[ai_act].eu_database_registration_record",
+            missing_markers,
+            extra_note=(
+                "For law-enforcement and migration uses, document the"
+                " non-public registration path instead of a public listing."
+            ),
+        ),
+        present_markers=present_markers,
+        missing_markers=missing_markers,
+        required_artifacts=["EU database registration record"],
+        recheck_hint="Re-run after attaching the registration evidence.",
+    )
+
+
 def _evaluate_provider_documentation(
     config: AIActConfig,
     evidence_manifest: list[dict[str, object]],
@@ -2171,6 +3395,7 @@ def _evaluate_provider_documentation(
     present_markers, missing_markers = _document_marker_assessment(
         config.provider_documentation,
         _provider_document_markers(),
+        schema_name="provider_documentation",
     )
     if not applies:
         return _entry_not_applicable(
@@ -2308,6 +3533,7 @@ def _evaluate_human_oversight(
     present_markers, missing_markers = _document_marker_assessment(
         config.human_oversight_procedure,
         _human_oversight_markers(),
+        schema_name="human_oversight",
     )
     if config.risk_owner is not None:
         present_markers = [*present_markers, "risk_owner"]
@@ -2369,6 +3595,7 @@ def _evaluate_incident_response(
     present_markers, missing_markers = _document_marker_assessment(
         config.incident_response_procedure,
         _incident_response_markers(),
+        schema_name="incident_response",
     )
     if config.compliance_contact is not None:
         present_markers = [*present_markers, "compliance_contact"]
@@ -2496,6 +3723,20 @@ def _evidence_exists(
     return False
 
 
+def _declared_article6_3_conditions(config: AIActConfig) -> list[str]:
+    """Return declared Article 6(3) carve-out condition labels."""
+    conditions: list[str] = []
+    if config.annex_iii_narrow_procedural_task:
+        conditions.append("narrow_procedural_task")
+    if config.annex_iii_improves_completed_human_activity:
+        conditions.append("improves_completed_human_activity")
+    if config.annex_iii_detects_decision_pattern_deviations:
+        conditions.append("detects_decision_pattern_deviations")
+    if config.annex_iii_preparatory_task:
+        conditions.append("preparatory_task")
+    return conditions
+
+
 def _declared_annex_iii_use_cases(config: AIActConfig) -> list[str]:
     """Return declared Annex III use-case identifiers from explicit and legacy flags."""
     use_case_ids = set(config.annex_iii_use_cases)
@@ -2526,6 +3767,47 @@ def _declared_annex_iii_use_cases(config: AIActConfig) -> list[str]:
     return sorted(use_case_ids)
 
 
+def _annex_iii_area_ids(use_case_ids: list[str]) -> set[str]:
+    """Return the distinct Annex III area identifiers for declared use cases."""
+    catalog = _annex_iii_catalog_by_id()
+    area_ids: set[str] = set()
+    for use_case_id in use_case_ids:
+        entry = catalog.get(use_case_id)
+        if entry is None:
+            continue
+        area_ids.add(str(entry["area"]))
+    return area_ids
+
+
+def _annex_i_route_declared(config: AIActConfig) -> bool:
+    """Return whether the Annex I product route is declared."""
+    return (
+        config.annex_i_product_or_safety_component
+        or config.annex_i_third_party_conformity_assessment
+    )
+
+
+def _plausible_article6_3_carve_out(config: AIActConfig) -> bool:
+    """Return whether the config declares a plausible Article 6(3) carve-out."""
+    return (
+        bool(_declared_annex_iii_use_cases(config))
+        and bool(_declared_article6_3_conditions(config))
+        and config.annex_iii_does_not_materially_influence_decision_outcome
+        and not config.uses_profiling_or_similarly_significant_decision_support
+        and not _annex_i_route_declared(config)
+    )
+
+
+def _high_risk_deployer_applies(config: AIActConfig) -> bool:
+    """Return whether deployer-side high-risk duties are in scope."""
+    return (
+        config.eu_market
+        and config.role == "deployer"
+        and bool(_high_risk_triggers(config))
+        and not _plausible_article6_3_carve_out(config)
+    )
+
+
 def _high_risk_triggers(config: AIActConfig) -> list[str]:
     """Return declared high-risk trigger labels."""
     triggers: list[str] = []
@@ -2548,13 +3830,9 @@ def _high_risk_triggers(config: AIActConfig) -> list[str]:
 def _fria_triggers(config: AIActConfig) -> list[str]:
     """Return declared FRIA-sensitive trigger labels."""
     triggers: list[str] = []
-    catalog = _annex_iii_catalog_by_id()
     annex_iii_use_cases = _declared_annex_iii_use_cases(config)
-    has_public_service_relevant_use_case = any(
-        str(catalog[use_case_id]["area"]) != "2"
-        for use_case_id in annex_iii_use_cases
-        if use_case_id in catalog
-    )
+    area_ids = _annex_iii_area_ids(annex_iii_use_cases)
+    has_public_service_relevant_use_case = bool(area_ids - {"2"})
     if (
         (config.public_sector_use or config.provides_public_service)
         and has_public_service_relevant_use_case
@@ -2684,8 +3962,32 @@ def _likely_obligations(config: AIActConfig) -> list[str]:
         )
     if _high_risk_triggers(config):
         obligations.append("High-risk legal triage")
+    if (
+        _declared_annex_iii_use_cases(config)
+        and _declared_article6_3_conditions(config)
+    ):
+        obligations.append("Article 6(3) Annex III carve-out review")
     if _fria_triggers(config):
         obligations.append("Article 27 FRIA legal triage")
+    if _high_risk_deployer_applies(config):
+        obligations.append("Article 26 instructions-of-use and monitoring")
+        obligations.append("Article 26 human oversight")
+        obligations.append("Article 26 log retention")
+        if config.provides_input_data_for_high_risk_system:
+            obligations.append(
+                "Article 26 input-data relevance and representativeness",
+            )
+        if config.workplace_deployment:
+            obligations.append("Article 26 workplace information duty")
+        if config.makes_or_assists_decisions_about_natural_persons:
+            obligations.append("Article 26 affected-person information duty")
+        if config.decision_with_legal_or_similarly_significant_effects:
+            obligations.append("Article 86 explanation readiness")
+        annex_iii_area_ids = _annex_iii_area_ids(
+            _declared_annex_iii_use_cases(config),
+        )
+        if config.public_sector_use and annex_iii_area_ids != {"2"}:
+            obligations.append("EU database registration for public deployments")
     if config.uses_general_purpose_ai and config.role == "deployer":
         obligations.append("Downstream provider documentation retention")
     return obligations

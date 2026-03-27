@@ -269,6 +269,28 @@ def _rule_ai_act_readiness(
             ai_act.incident_response_procedure,
         ),
         ("[ai_act].provider_documentation", ai_act.provider_documentation),
+        (
+            "[ai_act].operation_monitoring_procedure",
+            ai_act.operation_monitoring_procedure,
+        ),
+        (
+            "[ai_act].input_data_governance_procedure",
+            ai_act.input_data_governance_procedure,
+        ),
+        ("[ai_act].log_retention_procedure", ai_act.log_retention_procedure),
+        (
+            "[ai_act].employee_or_worker_representative_notice",
+            ai_act.employee_or_worker_representative_notice,
+        ),
+        ("[ai_act].affected_person_notice", ai_act.affected_person_notice),
+        (
+            "[ai_act].explanation_request_procedure",
+            ai_act.explanation_request_procedure,
+        ),
+        (
+            "[ai_act].eu_database_registration_record",
+            ai_act.eu_database_registration_record,
+        ),
     )
     for key, path in evidence_paths:
         if path is not None and not path.exists():
@@ -439,6 +461,46 @@ def _rule_ai_act_readiness(
         )
 
     if (
+        ai_act.real_time_remote_biometric_identification_exception_claimed
+        and not ai_act.real_time_remote_biometric_identification_for_law_enforcement
+    ):
+        collector.add(
+            "LOW",
+            (
+                "[ai_act].real_time_remote_biometric_identification_exception_claimed"
+                " is set but"
+                " [ai_act].real_time_remote_biometric_identification_for_law_"
+                "enforcement"
+                " is false"
+            ),
+            fix=(
+                "either enable real_time_remote_biometric_identification_for_"
+                "law_enforcement"
+                " or remove the exception claim"
+            ),
+        )
+
+    if (
+        ai_act.materially_distorts_behavior_causing_significant_harm
+        and not (
+            ai_act.uses_subliminal_manipulative_or_deceptive_techniques
+            or ai_act.exploits_age_disability_or_socioeconomic_vulnerabilities
+        )
+    ):
+        collector.add(
+            "LOW",
+            (
+                "[ai_act].materially_distorts_behavior_causing_significant_harm"
+                " is set without a corresponding manipulation or vulnerability"
+                " flag"
+            ),
+            fix=(
+                "either enable the matching prohibited-practice fact or remove"
+                " the harm flag"
+            ),
+        )
+
+    if (
         ai_act.deepfake_creative_satirical_artistic_or_fictional_context
         and not ai_act.deploys_deepfake_or_synthetic_media
     ):
@@ -491,6 +553,61 @@ def _rule_ai_act_readiness(
             ),
         )
 
+    article6_3_claimed = (
+        ai_act.annex_iii_narrow_procedural_task
+        or ai_act.annex_iii_improves_completed_human_activity
+        or ai_act.annex_iii_detects_decision_pattern_deviations
+        or ai_act.annex_iii_preparatory_task
+    )
+    if article6_3_claimed and not ai_act.annex_iii_use_cases:
+        collector.add(
+            "LOW",
+            (
+                "[ai_act] declares Article 6(3) carve-out facts but"
+                " [ai_act].annex_iii_use_cases is empty"
+            ),
+            fix=(
+                "add specific Annex III use-case identifiers so the carve-out"
+                " review is grounded in a declared high-risk use case"
+            ),
+        )
+
+    if (
+        article6_3_claimed
+        and not ai_act.annex_iii_does_not_materially_influence_decision_outcome
+    ):
+        collector.add(
+            "LOW",
+            (
+                "[ai_act] declares Article 6(3) carve-out facts but does not"
+                " assert that the AI system avoids materially influencing"
+                " decision outcomes"
+            ),
+            fix=(
+                "set annex_iii_does_not_materially_influence_decision_outcome"
+                " only if that statement is supportable, or remove the"
+                " Article 6(3) carve-out flags"
+            ),
+        )
+
+    if (
+        ai_act.decision_with_legal_or_similarly_significant_effects
+        and not ai_act.makes_or_assists_decisions_about_natural_persons
+    ):
+        collector.add(
+            "LOW",
+            (
+                "[ai_act].decision_with_legal_or_similarly_significant_effects"
+                " is set but"
+                " [ai_act].makes_or_assists_decisions_about_natural_persons"
+                " is false"
+            ),
+            fix=(
+                "either enable makes_or_assists_decisions_about_natural_persons"
+                " or remove the legal-effects flag"
+            ),
+        )
+
     if (
         ai_act.annex_i_third_party_conformity_assessment
         and not ai_act.annex_i_product_or_safety_component
@@ -529,6 +646,172 @@ def _rule_ai_act_readiness(
                 "add specific Annex III use-case identifiers to"
                 " [ai_act].annex_iii_use_cases for sharper classification"
                 " coverage"
+            ),
+        )
+
+    plausible_article6_3_carve_out = (
+        article6_3_claimed
+        and ai_act.annex_iii_does_not_materially_influence_decision_outcome
+        and not ai_act.uses_profiling_or_similarly_significant_decision_support
+        and not ai_act.annex_i_product_or_safety_component
+        and not ai_act.annex_i_third_party_conformity_assessment
+    )
+
+    declares_high_risk_deployer = (
+        ai_act.eu_market
+        and ai_act.role == "deployer"
+        and (
+            bool(ai_act.annex_iii_use_cases)
+            or ai_act.annex_i_product_or_safety_component
+            or ai_act.annex_i_third_party_conformity_assessment
+            or ai_act.biometric_or_emotion_related_use
+            or ai_act.education_or_vocational_training
+            or ai_act.employment_or_workers_management
+            or ai_act.essential_private_or_public_service
+            or ai_act.law_enforcement_use
+            or ai_act.migration_or_border_management_use
+            or ai_act.administration_of_justice_or_democracy_use
+        )
+        and not plausible_article6_3_carve_out
+    )
+
+    if declares_high_risk_deployer and ai_act.operation_monitoring_procedure is None:
+        collector.add(
+            "MEDIUM",
+            (
+                "[ai_act] declares a high-risk deployer scenario but"
+                " [ai_act].operation_monitoring_procedure is not set"
+            ),
+            fix=(
+                "attach an operation monitoring procedure covering provider"
+                " instructions, monitoring, and risk response"
+            ),
+        )
+
+    if declares_high_risk_deployer and ai_act.human_oversight_procedure is None:
+        collector.add(
+            "MEDIUM",
+            (
+                "[ai_act] declares a high-risk deployer scenario but"
+                " [ai_act].human_oversight_procedure is not set"
+            ),
+            fix=(
+                "attach a human oversight procedure covering review,"
+                " override, and escalation for the high-risk deployment"
+            ),
+        )
+
+    if declares_high_risk_deployer and ai_act.risk_owner is None:
+        collector.add(
+            "MEDIUM",
+            (
+                "[ai_act] declares a high-risk deployer scenario but"
+                " [ai_act].risk_owner is not set"
+            ),
+            fix=(
+                "set [ai_act].risk_owner to the person responsible for"
+                " operational human oversight"
+            ),
+        )
+
+    if declares_high_risk_deployer and ai_act.log_retention_procedure is None:
+        collector.add(
+            "MEDIUM",
+            (
+                "[ai_act] declares a high-risk deployer scenario but"
+                " [ai_act].log_retention_procedure is not set"
+            ),
+            fix=(
+                "attach a log retention procedure covering logs under the"
+                " deployer's control and the retention baseline"
+            ),
+        )
+
+    if (
+        declares_high_risk_deployer
+        and ai_act.provides_input_data_for_high_risk_system
+        and ai_act.input_data_governance_procedure is None
+    ):
+        collector.add(
+            "MEDIUM",
+            (
+                "[ai_act] declares deployer-provided input data for a"
+                " high-risk system but"
+                " [ai_act].input_data_governance_procedure is not set"
+            ),
+            fix=(
+                "attach an input-data governance procedure covering"
+                " relevance, representativeness, and validation"
+            ),
+        )
+
+    if (
+        declares_high_risk_deployer
+        and ai_act.workplace_deployment
+        and ai_act.employee_or_worker_representative_notice is None
+    ):
+        collector.add(
+            "MEDIUM",
+            (
+                "[ai_act] declares workplace deployment of a high-risk system"
+                " but [ai_act].employee_or_worker_representative_notice is not"
+                " set"
+            ),
+            fix=(
+                "attach notice evidence for affected employees and workers'"
+                " representatives"
+            ),
+        )
+
+    if (
+        declares_high_risk_deployer
+        and ai_act.makes_or_assists_decisions_about_natural_persons
+        and ai_act.affected_person_notice is None
+    ):
+        collector.add(
+            "MEDIUM",
+            (
+                "[ai_act] declares high-risk decisions about natural persons"
+                " but [ai_act].affected_person_notice is not set"
+            ),
+            fix=(
+                "attach an affected-person notice covering the intended"
+                " purpose and decision-support context"
+            ),
+        )
+
+    if (
+        declares_high_risk_deployer
+        and ai_act.decision_with_legal_or_similarly_significant_effects
+        and ai_act.explanation_request_procedure is None
+    ):
+        collector.add(
+            "MEDIUM",
+            (
+                "[ai_act] declares legal or similarly significant effects from"
+                " a high-risk decision but"
+                " [ai_act].explanation_request_procedure is not set"
+            ),
+            fix=(
+                "attach an explanation-request procedure for affected persons"
+            ),
+        )
+
+    if (
+        declares_high_risk_deployer
+        and ai_act.public_sector_use
+        and ai_act.eu_database_registration_record is None
+        and set(ai_act.annex_iii_use_cases) != {"annex_iii_2_critical_infrastructure"}
+    ):
+        collector.add(
+            "MEDIUM",
+            (
+                "[ai_act] declares a public-sector high-risk deployment but"
+                " [ai_act].eu_database_registration_record is not set"
+            ),
+            fix=(
+                "attach public or non-public EU database registration evidence"
+                " where the deployment is registrable"
             ),
         )
 
