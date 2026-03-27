@@ -51,6 +51,7 @@ path = "vauban/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["vauban"]
+include = ["vauban/ai_act_rules/*.json"]
 
 [tool.ruff]
 target-version = "py312"

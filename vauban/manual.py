@@ -263,6 +263,345 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
         ),
     ),
     SectionSpec(
+        name="ai_act",
+        description=(
+            "Standalone AI Act deployer-readiness reporting with"
+            " coverage-complete controls, evidence manifests, and"
+            " remediation output."
+        ),
+        early_return=True,
+        config_class="AIActConfig",
+        fields=(
+            FieldSpec(
+                key="company_name",
+                description="Name of the deploying organisation.",
+                constraints="required string; must not be empty.",
+                required=True,
+            ),
+            FieldSpec(
+                key="system_name",
+                description="Name of the AI-enabled service or system.",
+                constraints="required string; must not be empty.",
+                required=True,
+            ),
+            FieldSpec(
+                key="intended_purpose",
+                description="Short statement of the system's intended purpose.",
+                constraints="required string; must not be empty.",
+                required=True,
+            ),
+            FieldSpec(
+                key="role",
+                description=(
+                    "Operator role asserted for the report, with respect to"
+                    " the AI system being assessed rather than the upstream"
+                    " base model."
+                ),
+                constraints=(
+                    'one of: "deployer", "provider", "modifier",'
+                    ' "research".'
+                ),
+            ),
+            FieldSpec(
+                key="report_kind",
+                description="Readiness report flavor.",
+                constraints='currently only: "deployer_readiness".',
+            ),
+            FieldSpec(
+                key="sector",
+                description="Sector label used in the report context.",
+                constraints='string; default: "general".',
+            ),
+            FieldSpec(
+                key="eu_market",
+                description=(
+                    "Whether the system is placed on, used in, or targets"
+                    " the EU market."
+                ),
+                constraints="boolean; default true.",
+            ),
+            FieldSpec(
+                key="uses_general_purpose_ai",
+                description="Whether the service builds on a GPAI model or service.",
+                constraints="boolean; default true.",
+            ),
+            FieldSpec(
+                key="interacts_with_natural_persons",
+                description=(
+                    "Whether the system directly interacts with natural persons"
+                    " in normal operation."
+                ),
+                constraints="boolean; used for Article 50 transparency readiness.",
+            ),
+            FieldSpec(
+                key="interaction_obvious_to_persons",
+                description=(
+                    "Whether it is already obvious to persons that they are"
+                    " interacting with AI rather than a human."
+                ),
+                constraints=(
+                    "boolean; can narrow the human-interaction disclosure"
+                    " scenario."
+                ),
+            ),
+            FieldSpec(
+                key="exposes_emotion_recognition_or_biometric_categorization",
+                description=(
+                    "Whether the system exposes people to emotion recognition"
+                    " or biometric categorization."
+                ),
+                constraints="boolean; drives Article 50 transparency checks.",
+            ),
+            FieldSpec(
+                key="uses_emotion_recognition",
+                description=(
+                    "Whether the declared use actually performs emotion"
+                    " recognition."
+                ),
+                constraints="boolean; used for Article 5 screening.",
+            ),
+            FieldSpec(
+                key="uses_biometric_categorization",
+                description=(
+                    "Whether the declared use actually performs biometric"
+                    " categorization."
+                ),
+                constraints="boolean; used for Article 5 screening.",
+            ),
+            FieldSpec(
+                key="emotion_recognition_medical_or_safety_exception",
+                description=(
+                    "Whether any workplace/education emotion-recognition use"
+                    " is claimed to fall under the medical or safety"
+                    " exception."
+                ),
+                constraints="boolean; used for Article 5 screening.",
+            ),
+            FieldSpec(
+                key="biometric_categorization_infers_sensitive_traits",
+                description=(
+                    "Whether biometric categorization is used to infer"
+                    " sensitive traits such as race or political opinions."
+                ),
+                constraints="boolean; used for Article 5 screening.",
+            ),
+            FieldSpec(
+                key="publishes_text_on_matters_of_public_interest",
+                description=(
+                    "Whether the deployer publishes AI-generated text on"
+                    " matters of public interest."
+                ),
+                constraints="boolean; drives Article 50 deployer disclosure checks.",
+            ),
+            FieldSpec(
+                key="public_interest_text_human_review_or_editorial_control",
+                description=(
+                    "Whether the deployer claims the public-interest text is"
+                    " subject to human review or editorial control."
+                ),
+                constraints=(
+                    "boolean; used for the Article 50 public-interest text"
+                    " exception path."
+                ),
+            ),
+            FieldSpec(
+                key="public_interest_text_editorial_responsibility",
+                description=(
+                    "Whether a natural or legal person is claimed to hold"
+                    " editorial responsibility for the public-interest text."
+                ),
+                constraints=(
+                    "boolean; used for the Article 50 public-interest text"
+                    " exception path."
+                ),
+            ),
+            FieldSpec(
+                key="deploys_deepfake_or_synthetic_media",
+                description=(
+                    "Whether the deployer exposes people to deepfake or"
+                    " synthetic media."
+                ),
+                constraints="boolean; drives Article 50 deployer disclosure checks.",
+            ),
+            FieldSpec(
+                key="deepfake_creative_satirical_artistic_or_fictional_context",
+                description=(
+                    "Whether synthetic media is part of an evidently creative,"
+                    " satirical, artistic, fictional, or analogous context."
+                ),
+                constraints=(
+                    "boolean; narrows the deepfake disclosure path but does"
+                    " not remove the need for some disclosure."
+                ),
+            ),
+            FieldSpec(
+                key="provides_public_service",
+                description="Whether the service is provided as a public service.",
+                constraints="boolean; used for conservative high-risk / FRIA triage.",
+            ),
+            FieldSpec(
+                key="public_sector_use",
+                description="Whether a public-sector deployment context is declared.",
+                constraints="boolean; used for conservative high-risk / FRIA triage.",
+            ),
+            FieldSpec(
+                key="employment_or_workers_management",
+                description="Whether the use touches employment or workers management.",
+                constraints="boolean; used for conservative high-risk / FRIA triage.",
+            ),
+            FieldSpec(
+                key="education_or_vocational_training",
+                description="Whether the use touches education or vocational training.",
+                constraints="boolean; used for conservative high-risk / FRIA triage.",
+            ),
+            FieldSpec(
+                key="essential_private_or_public_service",
+                description=(
+                    "Whether the use touches access to essential private or"
+                    " public services."
+                ),
+                constraints="boolean; used for conservative high-risk / FRIA triage.",
+            ),
+            FieldSpec(
+                key="creditworthiness_or_credit_score_assessment",
+                description=(
+                    "Whether the use evaluates natural-person creditworthiness"
+                    " or establishes a credit score."
+                ),
+                constraints="boolean; used for high-risk and FRIA triage.",
+            ),
+            FieldSpec(
+                key="life_or_health_insurance_risk_pricing",
+                description=(
+                    "Whether the use performs life or health insurance risk"
+                    " assessment and pricing for natural persons."
+                ),
+                constraints="boolean; used for high-risk and FRIA triage.",
+            ),
+            FieldSpec(
+                key="emergency_first_response_dispatch",
+                description=(
+                    "Whether the use evaluates emergency calls or dispatches"
+                    " emergency first-response services."
+                ),
+                constraints="boolean; used for conservative high-risk triage.",
+            ),
+            FieldSpec(
+                key="law_enforcement_use",
+                description="Whether the use touches law-enforcement workflows.",
+                constraints="boolean; used for conservative high-risk / FRIA triage.",
+            ),
+            FieldSpec(
+                key="migration_or_border_management_use",
+                description=(
+                    "Whether the use touches migration or border-management"
+                    " workflows."
+                ),
+                constraints="boolean; used for conservative high-risk / FRIA triage.",
+            ),
+            FieldSpec(
+                key="administration_of_justice_or_democracy_use",
+                description=(
+                    "Whether the use touches justice or democratic-process"
+                    " workflows."
+                ),
+                constraints="boolean; used for conservative high-risk / FRIA triage.",
+            ),
+            FieldSpec(
+                key="biometric_or_emotion_related_use",
+                description=(
+                    "Whether the use touches biometric or emotion-related"
+                    " workflows."
+                ),
+                constraints="boolean; used for conservative high-risk / FRIA triage.",
+            ),
+            FieldSpec(
+                key="uses_profiling_or_similarly_significant_decision_support",
+                description=(
+                    "Whether the system supports similarly significant"
+                    " profiling or decisions."
+                ),
+                constraints="boolean; used for conservative high-risk / FRIA triage.",
+            ),
+            FieldSpec(
+                key="annex_i_product_or_safety_component",
+                description=(
+                    "Whether the AI system is or is embedded as a safety"
+                    " component in an Annex I regulated product."
+                ),
+                constraints="boolean; used for Annex I product-route triage.",
+            ),
+            FieldSpec(
+                key="annex_i_third_party_conformity_assessment",
+                description=(
+                    "Whether the Annex I product route is subject to a"
+                    " third-party conformity assessment."
+                ),
+                constraints="boolean; used for Annex I product-route triage.",
+            ),
+            FieldSpec(
+                key="ai_literacy_record",
+                description="Path to evidence for Article 4 AI literacy measures.",
+                constraints="string path or null.",
+            ),
+            FieldSpec(
+                key="transparency_notice",
+                description=(
+                    "Path to customer-facing disclosure or transparency notice."
+                ),
+                constraints="string path or null.",
+            ),
+            FieldSpec(
+                key="human_oversight_procedure",
+                description="Path to the human oversight procedure used in operations.",
+                constraints="string path or null.",
+            ),
+            FieldSpec(
+                key="incident_response_procedure",
+                description="Path to the incident response or escalation procedure.",
+                constraints="string path or null.",
+            ),
+            FieldSpec(
+                key="provider_documentation",
+                description="Path to retained third-party provider documentation.",
+                constraints="string path or null.",
+            ),
+            FieldSpec(
+                key="technical_report_paths",
+                description=(
+                    "Paths to technical evidence reports to include in the"
+                    " readiness pack."
+                ),
+                constraints="list of string paths.",
+            ),
+            FieldSpec(
+                key="risk_owner",
+                description="Named owner for operational AI risk management.",
+                constraints="string or null.",
+            ),
+            FieldSpec(
+                key="compliance_contact",
+                description="Named compliance or legal contact for escalation.",
+                constraints="string or null.",
+            ),
+        ),
+        notes=(
+            (
+                "This section is intentionally conservative: Vauban emits a"
+                " readiness report, not an automated declaration of legal"
+                " compliance."
+            ),
+            (
+                "Every applicable control terminates as pass, fail, or"
+                " unknown; non-passing controls get a remediation action."
+            ),
+            (
+                "Use this section by itself for a standalone report:"
+                " vauban readiness.toml"
+            ),
+        ),
+    ),
+    SectionSpec(
         name="measure",
         description="Behavioral direction extraction settings.",
         config_class="MeasureConfig",
@@ -3461,7 +3800,7 @@ def _render_datasets_topic() -> str:
         lines.append(f"    description: {ds.description}")
         if ds.has_categories:
             # Show taxonomy coverage for categorized datasets
-            coverage = coverage_report(ds.categories)
+            coverage = coverage_report(set(ds.categories))
             lines.append(
                 f"    taxonomy:   {len(coverage.present)}/{len(canonical)}"
                 f" categories ({coverage.coverage_ratio:.0%})",

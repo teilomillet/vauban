@@ -4,6 +4,7 @@ import json
 import sys
 import tomllib
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -11,44 +12,44 @@ import vauban
 from vauban.config import generate_config_schema, write_config_schema
 
 
+def _object_dict(value: object) -> dict[str, object]:
+    """Narrow a JSON-like object to a string-keyed dict for tests."""
+    assert isinstance(value, dict)
+    return cast("dict[str, object]", value)
+
+
 def test_generate_config_schema_contains_core_sections() -> None:
     schema = generate_config_schema()
 
     assert schema["type"] == "object"
-    properties = schema["properties"]
-    assert isinstance(properties, dict)
+    properties = _object_dict(schema["properties"])
     assert "model" in properties
     assert "data" in properties
     assert "measure" in properties
+    assert "ai_act" in properties
     assert "softprompt" in properties
     assert "backend" in properties
 
 
 def test_generate_config_schema_uses_toml_key_aliases() -> None:
     schema = generate_config_schema()
-    properties = schema["properties"]
-    assert isinstance(properties, dict)
+    properties = _object_dict(schema["properties"])
 
-    eval_schema = properties["eval"]
-    assert isinstance(eval_schema, dict)
-    eval_properties = eval_schema["properties"]
-    assert isinstance(eval_properties, dict)
+    eval_schema = _object_dict(properties["eval"])
+    eval_properties = _object_dict(eval_schema["properties"])
     assert "prompts" in eval_properties
     assert "prompts_path" not in eval_properties
     assert "refusal_phrases" in eval_properties
 
-    surface_schema = properties["surface"]
-    assert isinstance(surface_schema, dict)
-    surface_properties = surface_schema["properties"]
-    assert isinstance(surface_properties, dict)
+    surface_schema = _object_dict(properties["surface"])
+    surface_properties = _object_dict(surface_schema["properties"])
     assert "prompts" in surface_properties
     assert "prompts_path" not in surface_properties
 
 
 def test_generate_config_schema_contains_nested_defs() -> None:
     schema = generate_config_schema()
-    defs = schema["$defs"]
-    assert isinstance(defs, dict)
+    defs = _object_dict(schema["$defs"])
     assert "ApiEvalEndpoint" in defs
     assert "AlphaTier" in defs
     assert "PolicyRule" in defs

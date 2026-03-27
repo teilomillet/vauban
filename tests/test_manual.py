@@ -30,6 +30,7 @@ def test_topics_include_quickstart_and_sections() -> None:
     assert "quick" in topics
     assert "examples" in topics
     assert "print" in topics
+    assert "ai_act" in topics
     assert "cut" in topics
     assert "softprompt" in topics
 
@@ -86,6 +87,13 @@ def test_section_topic_renders_only_requested_section() -> None:
     assert text.count("SECTION [") == 1
     assert "default: 1.0" in text
     assert "[cut].alpha" in text
+
+
+def test_ai_act_topic_mentions_readiness() -> None:
+    text = render_manual("ai_act")
+    assert "SECTION [ai_act]" in text
+    assert "readiness report" in text.lower()
+    assert "company_name" in text
 
 
 def test_unknown_topic_raises() -> None:

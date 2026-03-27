@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from vauban._pipeline._context import EarlyModeContext
+from vauban._pipeline._mode_ai_act import _run_ai_act_mode
 from vauban._pipeline._mode_api_eval import _run_api_eval_mode
 from vauban._pipeline._mode_awareness import _run_awareness_mode
 from vauban._pipeline._mode_cast import _run_cast_mode
@@ -38,6 +39,7 @@ type EarlyModeRunner = Callable[[EarlyModeContext], None]
 EARLY_MODE_RUNNERS: dict[str, EarlyModeRunner] = {
     "remote": _run_remote_mode,
     "api_eval": _run_api_eval_mode,
+    "ai_act": _run_ai_act_mode,
     "depth": _run_depth_mode,
     "svf": _run_svf_mode,
     "features": _run_features_mode,

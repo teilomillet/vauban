@@ -13,6 +13,7 @@ from vauban.config._mode_registry import (
 )
 from vauban.config._validation import VALIDATION_RULE_SPECS, validate_config
 from vauban.types import (
+    AIActConfig,
     ApiEvalConfig,
     ApiEvalEndpoint,
     AwarenessConfig,
@@ -47,6 +48,7 @@ _EXPECTED_RULE_ORDER: list[str] = [
     "refusal_phrases",
     "surface_prompts",
     "output_dir",
+    "ai_act_readiness",
     "early_mode_conflicts",
     "depth_extract_direction",
     "eval_without_prompts",
@@ -56,6 +58,7 @@ _EXPECTED_RULE_ORDER: list[str] = [
 _EXPECTED_EARLY_MODE_ORDER: list[str] = [
     "[remote]",
     "[api_eval]",
+    "[ai_act]",
     "[depth]",
     "[svf]",
     "[features]",
@@ -165,7 +168,7 @@ def test_validation_warning_content_and_order_for_conflict_fixture(
         (
             "[HIGH] Multiple early-return modes active: [depth], [probe]"
             " — only the first will run (precedence: remote"
-            " > api_eval > depth > svf > features"
+            " > api_eval > ai_act > depth > svf > features"
             " > probe > steer > sss > awareness > cast > sic"
             " > optimize > compose_optimize"
             " > softprompt > jailbreak > defend > circuit > linear_probe > fusion"
@@ -217,6 +220,11 @@ def test_active_early_modes_precedence_matches_legacy_behavior() -> None:
             )],
             token_text="tokens",
             prompts=["prompt"],
+        ),
+        ai_act=AIActConfig(
+            company_name="Example Energy",
+            system_name="Customer Assistant",
+            intended_purpose="Answers customer questions.",
         ),
         depth=DepthConfig(prompts=["a", "b"]),
         svf=SVFConfig(

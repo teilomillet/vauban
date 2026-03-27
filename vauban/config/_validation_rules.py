@@ -248,6 +248,266 @@ def _rule_output_dir(
         )
 
 
+def _rule_ai_act_readiness(
+    context: ValidationContext,
+    collector: ValidationCollector,
+) -> None:
+    """Validate [ai_act] evidence paths and obvious readiness gaps."""
+    ai_act = context.config.ai_act
+    if ai_act is None:
+        return
+
+    evidence_paths: tuple[tuple[str, Path | None], ...] = (
+        ("[ai_act].ai_literacy_record", ai_act.ai_literacy_record),
+        ("[ai_act].transparency_notice", ai_act.transparency_notice),
+        (
+            "[ai_act].human_oversight_procedure",
+            ai_act.human_oversight_procedure,
+        ),
+        (
+            "[ai_act].incident_response_procedure",
+            ai_act.incident_response_procedure,
+        ),
+        ("[ai_act].provider_documentation", ai_act.provider_documentation),
+    )
+    for key, path in evidence_paths:
+        if path is not None and not path.exists():
+            collector.add(
+                "HIGH",
+                f"{key} file not found: {path}",
+                fix=f"set {key} to an existing file path or remove it",
+            )
+
+    for index, path in enumerate(ai_act.technical_report_paths):
+        if not path.exists():
+            collector.add(
+                "MEDIUM",
+                (
+                    f"[ai_act].technical_report_paths[{index}] file not found:"
+                    f" {path}"
+                ),
+                fix=(
+                    "attach an existing report artifact or remove the missing"
+                    " entry"
+                ),
+            )
+
+    if (
+        ai_act.eu_market
+        and ai_act.role != "research"
+        and ai_act.ai_literacy_record is None
+    ):
+        collector.add(
+            "MEDIUM",
+            (
+                "[ai_act] targets an EU deployer/provider workflow but"
+                " [ai_act].ai_literacy_record is not set"
+            ),
+            fix=(
+                "attach an internal AI literacy record so the readiness report"
+                " can verify Article 4 evidence"
+            ),
+        )
+
+    if (
+        ai_act.eu_market
+        and (
+            (
+                ai_act.role in {"provider", "modifier"}
+                and ai_act.interacts_with_natural_persons
+                and not ai_act.interaction_obvious_to_persons
+            )
+            or ai_act.exposes_emotion_recognition_or_biometric_categorization
+            or ai_act.deploys_deepfake_or_synthetic_media
+            or ai_act.publishes_text_on_matters_of_public_interest
+        )
+        and ai_act.transparency_notice is None
+    ):
+        collector.add(
+            "MEDIUM",
+            (
+                "[ai_act] declares an Article 50 transparency scenario but"
+                " [ai_act].transparency_notice is not set"
+            ),
+            fix=(
+                "attach a disclosure notice or exception evidence so the"
+                " readiness report can verify Article 50 coverage"
+            ),
+        )
+
+    if (
+        ai_act.role not in {"provider", "modifier"}
+        and ai_act.interacts_with_natural_persons
+        and not ai_act.interaction_obvious_to_persons
+    ):
+        collector.add(
+            "LOW",
+            (
+                "[ai_act] declares non-obvious human interaction while"
+                f" [ai_act].role is {ai_act.role!r}"
+            ),
+            fix=(
+                "if you supply the user-facing AI system, set [ai_act].role"
+                " to \"provider\" or \"modifier\"; otherwise keep the current"
+                " role and treat the Article 50 interaction notice as"
+                " provider-side"
+            ),
+        )
+
+    if (
+        ai_act.interaction_obvious_to_persons
+        and not ai_act.interacts_with_natural_persons
+    ):
+        collector.add(
+            "LOW",
+            (
+                "[ai_act].interaction_obvious_to_persons is set but"
+                " [ai_act].interacts_with_natural_persons is false"
+            ),
+            fix=(
+                "either enable interacts_with_natural_persons or remove the"
+                " interaction_obvious_to_persons flag"
+            ),
+        )
+
+    if (
+        ai_act.uses_emotion_recognition
+        and not ai_act.exposes_emotion_recognition_or_biometric_categorization
+    ):
+        collector.add(
+            "LOW",
+            (
+                "[ai_act].uses_emotion_recognition is true but"
+                " [ai_act].exposes_emotion_recognition_or_biometric_categorization"
+                " is false"
+            ),
+            fix=(
+                "enable exposes_emotion_recognition_or_biometric_categorization"
+                " so Article 50 coverage matches the declared emotion-"
+                " recognition use"
+            ),
+        )
+
+    if (
+        ai_act.uses_biometric_categorization
+        and not ai_act.exposes_emotion_recognition_or_biometric_categorization
+    ):
+        collector.add(
+            "LOW",
+            (
+                "[ai_act].uses_biometric_categorization is true but"
+                " [ai_act].exposes_emotion_recognition_or_biometric_categorization"
+                " is false"
+            ),
+            fix=(
+                "enable exposes_emotion_recognition_or_biometric_categorization"
+                " so Article 50 coverage matches the declared biometric-"
+                " categorization use"
+            ),
+        )
+
+    if (
+        ai_act.emotion_recognition_medical_or_safety_exception
+        and not ai_act.uses_emotion_recognition
+    ):
+        collector.add(
+            "LOW",
+            (
+                "[ai_act].emotion_recognition_medical_or_safety_exception is"
+                " set but [ai_act].uses_emotion_recognition is false"
+            ),
+            fix=(
+                "either enable uses_emotion_recognition or remove the"
+                " exception flag"
+            ),
+        )
+
+    if (
+        ai_act.biometric_categorization_infers_sensitive_traits
+        and not ai_act.uses_biometric_categorization
+    ):
+        collector.add(
+            "LOW",
+            (
+                "[ai_act].biometric_categorization_infers_sensitive_traits is"
+                " set but [ai_act].uses_biometric_categorization is false"
+            ),
+            fix=(
+                "either enable uses_biometric_categorization or remove the"
+                " sensitive-trait inference flag"
+            ),
+        )
+
+    if (
+        ai_act.deepfake_creative_satirical_artistic_or_fictional_context
+        and not ai_act.deploys_deepfake_or_synthetic_media
+    ):
+        collector.add(
+            "LOW",
+            (
+                "[ai_act].deepfake_creative_satirical_artistic_or_fictional_context"
+                " is set but [ai_act].deploys_deepfake_or_synthetic_media is"
+                " false"
+            ),
+            fix=(
+                "either enable deploys_deepfake_or_synthetic_media or remove"
+                " the creative/satirical context flag"
+            ),
+        )
+
+    if (
+        ai_act.public_interest_text_editorial_responsibility
+        and not ai_act.public_interest_text_human_review_or_editorial_control
+    ):
+        collector.add(
+            "LOW",
+            (
+                "[ai_act].public_interest_text_editorial_responsibility is"
+                " set but"
+                " [ai_act].public_interest_text_human_review_or_editorial_control"
+                " is false"
+            ),
+            fix=(
+                "either enable public_interest_text_human_review_or_editorial_control"
+                " or remove the editorial responsibility flag"
+            ),
+        )
+
+    if (
+        ai_act.public_interest_text_human_review_or_editorial_control
+        and not ai_act.publishes_text_on_matters_of_public_interest
+    ):
+        collector.add(
+            "LOW",
+            (
+                "[ai_act].public_interest_text_human_review_or_editorial_control"
+                " is set but"
+                " [ai_act].publishes_text_on_matters_of_public_interest is"
+                " false"
+            ),
+            fix=(
+                "either enable publishes_text_on_matters_of_public_interest or"
+                " remove the public-interest exception flag"
+            ),
+        )
+
+    if (
+        ai_act.annex_i_third_party_conformity_assessment
+        and not ai_act.annex_i_product_or_safety_component
+    ):
+        collector.add(
+            "LOW",
+            (
+                "[ai_act].annex_i_third_party_conformity_assessment is set"
+                " but [ai_act].annex_i_product_or_safety_component is false"
+            ),
+            fix=(
+                "either enable annex_i_product_or_safety_component or remove"
+                " the Annex I conformity flag"
+            ),
+        )
+
+
 def _rule_early_mode_conflicts(
     context: ValidationContext,
     collector: ValidationCollector,
@@ -365,6 +625,7 @@ VALIDATION_RULE_SPECS: tuple[ValidationRuleSpec, ...] = (
     ValidationRuleSpec("refusal_phrases", 40, _rule_refusal_phrases),
     ValidationRuleSpec("surface_prompts", 50, _rule_surface_prompts),
     ValidationRuleSpec("output_dir", 60, _rule_output_dir),
+    ValidationRuleSpec("ai_act_readiness", 65, _rule_ai_act_readiness),
     ValidationRuleSpec("early_mode_conflicts", 70, _rule_early_mode_conflicts),
     ValidationRuleSpec("depth_extract_direction", 80, _rule_depth_extract_direction),
     ValidationRuleSpec("eval_without_prompts", 90, _rule_eval_without_prompts),

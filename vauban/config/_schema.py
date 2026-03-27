@@ -18,6 +18,7 @@ from typing import (
 
 from vauban._backend import SUPPORTED_BACKENDS
 from vauban.types import (
+    AIActConfig,
     ApiEvalConfig,
     AwarenessConfig,
     CastConfig,
@@ -91,6 +92,7 @@ _DATACLASS_SECTION_SPECS: tuple[_DataclassSectionSpec, ...] = (
     _DataclassSectionSpec("softprompt", SoftPromptConfig, {}),
     _DataclassSectionSpec("sic", SICConfig, {}),
     _DataclassSectionSpec("depth", DepthConfig, {}),
+    _DataclassSectionSpec("ai_act", AIActConfig, {}),
     _DataclassSectionSpec("probe", ProbeConfig, {}),
     _DataclassSectionSpec("steer", SteerConfig, {}),
     _DataclassSectionSpec("sss", SSSConfig, {}),

@@ -69,6 +69,20 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "api_eval_report.json.",
     ),
     EarlyModeSpec(
+        "[ai_act]",
+        "ai_act",
+        "standalone",
+        False,
+        _field_is_set("ai_act"),
+        "Generate an AI Act deployer-readiness report and coverage ledger.",
+        "AI Act readiness report",
+        "[ai_act] section present.",
+        (
+            "ai_act_readiness_report.json + ai_act_coverage_ledger.json +"
+            " ai_act_controls_matrix.json + ai_act_risk_register.json."
+        ),
+    ),
+    EarlyModeSpec(
         "[depth]",
         "depth",
         "before_prompts",

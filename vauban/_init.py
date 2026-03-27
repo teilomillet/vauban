@@ -211,6 +211,69 @@ convergence_window = 3
 
 # Standalone templates that don't need [model] or [data].
 _STANDALONE_TEMPLATES: dict[str, str] = {
+    "ai_act": """\
+# Standalone AI Act deployer-readiness report.
+# No local model needed unless you want to attach technical evidence from
+# separate Vauban runs.
+
+[output]
+dir = "output"
+
+[ai_act]
+company_name = "Example Energy"
+system_name = "Customer Support Assistant"
+intended_purpose = "Answers customer questions using a third-party GPAI service."
+# Role is with respect to the AI system being assessed, not the upstream model.
+# If you build and supply the assistant on top of an API, you are often the
+# provider of the AI system even if you did not train the base model.
+role = "provider"
+sector = "energy"
+eu_market = true
+uses_general_purpose_ai = true
+
+# Article 50 deployer disclosures:
+interacts_with_natural_persons = true
+interaction_obvious_to_persons = false
+exposes_emotion_recognition_or_biometric_categorization = false
+uses_emotion_recognition = false
+uses_biometric_categorization = false
+emotion_recognition_medical_or_safety_exception = false
+biometric_categorization_infers_sensitive_traits = false
+publishes_text_on_matters_of_public_interest = false
+public_interest_text_human_review_or_editorial_control = false
+public_interest_text_editorial_responsibility = false
+deploys_deepfake_or_synthetic_media = false
+deepfake_creative_satirical_artistic_or_fictional_context = false
+
+# Conservative high-risk / FRIA triage flags:
+provides_public_service = false
+public_sector_use = false
+employment_or_workers_management = false
+education_or_vocational_training = false
+essential_private_or_public_service = false
+creditworthiness_or_credit_score_assessment = false
+life_or_health_insurance_risk_pricing = false
+emergency_first_response_dispatch = false
+law_enforcement_use = false
+migration_or_border_management_use = false
+administration_of_justice_or_democracy_use = false
+biometric_or_emotion_related_use = false
+uses_profiling_or_similarly_significant_decision_support = false
+annex_i_product_or_safety_component = false
+annex_i_third_party_conformity_assessment = false
+
+# Evidence paths:
+# ai_literacy_record = "evidence/ai_literacy.md"
+# transparency_notice = "evidence/transparency_notice.md"
+# human_oversight_procedure = "evidence/human_oversight.md"
+# incident_response_procedure = "evidence/incident_response.md"
+# provider_documentation = "evidence/provider_docs.md"
+# technical_report_paths = ["evidence/red_team_report.json"]
+
+# Owners:
+# risk_owner = "AI Risk Lead"
+# compliance_contact = "compliance@example.com"
+""",
     "api_eval": """\
 # Standalone API eval — tests pre-optimized tokens against remote endpoints.
 # No local model needed.

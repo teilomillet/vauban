@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
 
+from vauban.config._parse_ai_act import _parse_ai_act
 from vauban.config._parse_api_eval import _parse_api_eval
 from vauban.config._parse_awareness import _parse_awareness
 from vauban.config._parse_cast import _parse_cast
@@ -40,6 +41,7 @@ from vauban.config._parse_surface import _parse_surface
 from vauban.config._parse_svf import _parse_svf
 from vauban.config._types import TomlDict
 from vauban.types import (
+    AIActConfig,
     ApiEvalConfig,
     AwarenessConfig,
     CastConfig,
@@ -88,6 +90,7 @@ type _SectionParserResult = (
     DepthConfig
     | None
     | ApiEvalConfig
+    | AIActConfig
     | CastConfig
     | CircuitConfig
     | ComposeOptimizeConfig
@@ -148,6 +151,7 @@ class ParsedSectionValues:
     """All parsed config sections assembled from the parser registry."""
 
     depth: DepthConfig | None
+    ai_act: AIActConfig | None
     cast: CastConfig | None
     cut: CutConfig
     measure: MeasureConfig
@@ -200,7 +204,13 @@ def _call_parser(
     on the registry module works in tests.
     """
     # Resolve through module globals to support monkeypatching.
-    parser = globals().get(spec.parser.__name__, spec.parser)
+    parser_name = getattr(spec.parser, "__name__", None)
+    parser = spec.parser
+    if isinstance(parser_name, str):
+        parser = cast(
+            "SectionParser[_SectionParserResult]",
+            globals().get(parser_name, spec.parser),
+        )
     if spec.call == "raw":
         return parser(context.raw)
     if spec.call == "base_dir_raw":
@@ -220,6 +230,7 @@ def _call_parser(
 SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     SectionParseSpec("lora", "lora_load", _parse_lora_load, 5),
     SectionParseSpec("depth", "depth", _parse_depth, 10),
+    SectionParseSpec("ai_act", "ai_act", _parse_ai_act, 15, call="base_dir_raw"),
     SectionParseSpec("cast", "cast", _parse_cast, 20),
     SectionParseSpec("cut", "cut", _parse_cut, 30, call="section_table"),
     SectionParseSpec("measure", "measure", _parse_measure, 40, call="section_table"),

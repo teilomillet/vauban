@@ -33,7 +33,11 @@ def load_config(path: str | Path) -> PipelineConfig:
 
     # Detect standalone modes that need no local model.
     # [model] and [data] are optional for these.
-    _standalone = _is_standalone_api_eval(raw) or _is_standalone_remote(raw)
+    _standalone = (
+        _is_standalone_api_eval(raw)
+        or _is_standalone_remote(raw)
+        or _is_standalone_ai_act(raw)
+    )
 
     model_section = raw.get("model")
     if _standalone:
@@ -284,3 +288,8 @@ def _is_standalone_api_eval(raw: TomlDict) -> bool:
     api_eval = cast("TomlDict", sec)
     token_text = api_eval.get("token_text")
     return isinstance(token_text, str) and bool(token_text)
+
+
+def _is_standalone_ai_act(raw: TomlDict) -> bool:
+    """Check whether the raw TOML represents a standalone AI Act report."""
+    return "ai_act" in raw

@@ -9,6 +9,7 @@ from vauban.config._mode_registry import (
     active_early_modes,
 )
 from vauban.types import (
+    AIActConfig,
     CastConfig,
     ComposeOptimizeConfig,
     CutConfig,
@@ -45,6 +46,16 @@ class TestEarlyModePredicates:
     def test_has_depth(self) -> None:
         config = _minimal_config(depth=DepthConfig(prompts=["test"]))
         assert active_early_modes(config) == ["[depth]"]
+
+    def test_has_ai_act(self) -> None:
+        config = _minimal_config(
+            ai_act=AIActConfig(
+                company_name="Example",
+                system_name="Assistant",
+                intended_purpose="Answer questions.",
+            ),
+        )
+        assert active_early_modes(config) == ["[ai_act]"]
 
     def test_has_probe(self) -> None:
         config = _minimal_config(probe=ProbeConfig(prompts=["test"]))
@@ -126,6 +137,18 @@ class TestActiveEarlyModeForPhase:
         assert spec is not None
         assert spec.mode == "depth"
 
+    def test_standalone_returns_ai_act(self) -> None:
+        config = _minimal_config(
+            ai_act=AIActConfig(
+                company_name="Example",
+                system_name="Assistant",
+                intended_purpose="Answer questions.",
+            ),
+        )
+        spec = active_early_mode_for_phase(config, "standalone")
+        assert spec is not None
+        assert spec.mode == "ai_act"
+
     def test_before_prompts_returns_svf(self) -> None:
         config = _minimal_config(
             svf=SVFConfig(
@@ -188,6 +211,7 @@ class TestEarlyModeSpecs:
     def test_requires_direction_flags(self) -> None:
         spec_map = {s.section: s for s in EARLY_MODE_SPECS}
         assert spec_map["[depth]"].requires_direction is False
+        assert spec_map["[ai_act]"].requires_direction is False
         assert spec_map["[svf]"].requires_direction is False
         assert spec_map["[features]"].requires_direction is False
         assert spec_map["[probe]"].requires_direction is True
@@ -202,6 +226,7 @@ class TestEarlyModeSpecs:
 
     def test_phase_assignments(self) -> None:
         spec_map = {s.section: s for s in EARLY_MODE_SPECS}
+        assert spec_map["[ai_act]"].phase == "standalone"
         assert spec_map["[depth]"].phase == "before_prompts"
         assert spec_map["[svf]"].phase == "before_prompts"
         assert spec_map["[features]"].phase == "before_prompts"

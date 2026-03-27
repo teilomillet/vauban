@@ -1,0 +1,130 @@
+"""Standalone AI Act deployer-readiness report runner."""
+
+from __future__ import annotations
+
+import time
+from typing import cast
+
+from vauban._pipeline._context import EarlyModeContext, log
+from vauban._pipeline._mode_common import (
+    ModeReport,
+    finish_mode_run,
+    write_mode_report,
+)
+
+
+def _run_ai_act_mode(context: EarlyModeContext) -> None:
+    """Run standalone [ai_act] mode and write its report bundle."""
+    config = context.config
+    ai_act_cfg = config.ai_act
+    if ai_act_cfg is None:
+        msg = "[ai_act] section is required for AI Act readiness mode"
+        raise ValueError(msg)
+
+    log(
+        (
+            "AI Act readiness report"
+            f" — role={ai_act_cfg.role},"
+            f" system={ai_act_cfg.system_name!r}"
+        ),
+        verbose=config.verbose,
+        elapsed=time.monotonic() - context.t0,
+    )
+
+    from vauban.ai_act import generate_deployer_readiness_artifacts
+
+    artifacts = generate_deployer_readiness_artifacts(ai_act_cfg)
+
+    report_path = write_mode_report(
+        config.output_dir,
+        ModeReport(
+            filename="ai_act_readiness_report.json",
+            payload=artifacts.report,
+        ),
+    )
+    ledger_path = write_mode_report(
+        config.output_dir,
+        ModeReport(
+            filename="ai_act_coverage_ledger.json",
+            payload=artifacts.coverage_ledger,
+        ),
+    )
+    library_path = write_mode_report(
+        config.output_dir,
+        ModeReport(
+            filename="ai_act_control_library_v1.json",
+            payload=artifacts.control_library,
+        ),
+    )
+    controls_matrix_path = write_mode_report(
+        config.output_dir,
+        ModeReport(
+            filename="ai_act_controls_matrix.json",
+            payload=artifacts.controls_matrix,
+        ),
+    )
+    risk_register_path = write_mode_report(
+        config.output_dir,
+        ModeReport(
+            filename="ai_act_risk_register.json",
+            payload=artifacts.risk_register,
+        ),
+    )
+    evidence_manifest_path = write_mode_report(
+        config.output_dir,
+        ModeReport(
+            filename="ai_act_evidence_manifest.json",
+            payload=artifacts.evidence_manifest,
+        ),
+    )
+    executive_summary_path = config.output_dir / "ai_act_executive_summary.md"
+    executive_summary_path.parent.mkdir(parents=True, exist_ok=True)
+    executive_summary_path.write_text(artifacts.executive_summary_markdown)
+    remediation_path = config.output_dir / "ai_act_remediation_plan.md"
+    remediation_path.parent.mkdir(parents=True, exist_ok=True)
+    remediation_path.write_text(artifacts.remediation_markdown)
+
+    log(
+        f"AI Act readiness bundle written to {config.output_dir}",
+        verbose=config.verbose,
+        elapsed=time.monotonic() - context.t0,
+    )
+
+    controls_overview = artifacts.report.get("controls_overview")
+    if not isinstance(controls_overview, dict):
+        msg = "ai_act report is missing controls_overview"
+        raise TypeError(msg)
+    controls_overview_dict = cast("dict[str, object]", controls_overview)
+
+    finish_mode_run(
+        context,
+        "ai_act",
+        [
+            str(report_path),
+            str(ledger_path),
+            str(library_path),
+            str(controls_matrix_path),
+            str(risk_register_path),
+            str(evidence_manifest_path),
+            str(executive_summary_path),
+            str(remediation_path),
+        ],
+        {
+            "n_pass": _metric_count(controls_overview_dict, "pass"),
+            "n_fail": _metric_count(controls_overview_dict, "fail"),
+            "n_unknown": _metric_count(controls_overview_dict, "unknown"),
+            "n_not_applicable": _metric_count(
+                controls_overview_dict,
+                "not_applicable",
+            ),
+        },
+    )
+
+
+def _metric_count(overview: dict[str, object], key: str) -> int:
+    """Extract one integer metric from the controls overview."""
+    raw = overview.get(key, 0)
+    if isinstance(raw, int):
+        return raw
+    msg = f"controls_overview[{key!r}] must be an int, got {type(raw).__name__}"
+    raise TypeError(msg)

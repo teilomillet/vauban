@@ -39,6 +39,7 @@ from vauban.types import (
 _EXPECTED_SECTION_ORDER: list[str] = [
     "lora",
     "depth",
+    "ai_act",
     "cast",
     "cut",
     "measure",
@@ -219,7 +220,7 @@ def test_call_parser_base_dir_raw(tmp_path: Path) -> None:
     spec = SectionParseSpec("test", "test", fake, 999, call="base_dir_raw")
     raw: TomlDict = {"key": "val"}
     ctx = ConfigParseContext(base_dir=tmp_path, raw=raw)
-    result = _call_parser(spec, ctx)  # type: ignore[arg-type]
+    result = _call_parser(spec, ctx)
 
     assert result == "ok"
     assert calls == [(tmp_path, raw)]
@@ -236,7 +237,7 @@ def test_call_parser_raw_base_dir(tmp_path: Path) -> None:
     spec = SectionParseSpec("test", "test", fake, 999, call="raw_base_dir")
     raw: TomlDict = {"key": "val"}
     ctx = ConfigParseContext(base_dir=tmp_path, raw=raw)
-    result = _call_parser(spec, ctx)  # type: ignore[arg-type]
+    result = _call_parser(spec, ctx)
 
     assert result == "ok"
     assert calls == [(raw, tmp_path)]
@@ -253,7 +254,7 @@ def test_call_parser_section_table(tmp_path: Path) -> None:
     spec = SectionParseSpec("mysec", "mysec", fake, 999, call="section_table")
     raw: TomlDict = {"mysec": {"alpha": 0.25}}
     ctx = ConfigParseContext(base_dir=tmp_path, raw=raw)
-    _call_parser(spec, ctx)  # type: ignore[arg-type]
+    _call_parser(spec, ctx)
 
     assert calls == [cast("TomlDict", {"alpha": 0.25})]
 
@@ -270,7 +271,7 @@ def test_call_parser_section_table_missing_defaults_empty(
 
     spec = SectionParseSpec("mysec", "mysec", fake, 999, call="section_table")
     ctx = ConfigParseContext(base_dir=tmp_path, raw={})
-    _call_parser(spec, ctx)  # type: ignore[arg-type]
+    _call_parser(spec, ctx)
 
     assert calls == [cast("TomlDict", {})]
 

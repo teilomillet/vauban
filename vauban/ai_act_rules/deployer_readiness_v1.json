@@ -1,0 +1,371 @@
+{
+  "rulebook_version": "deployer_readiness_v1",
+  "source_snapshot_date": "2026-03-27",
+  "rulebook_purpose": "Conservative AI Act deployer-readiness reporting for companies building or operating AI-enabled systems.",
+  "sources": [
+    {
+      "title": "Navigating the AI Act",
+      "url": "https://digital-strategy.ec.europa.eu/en/faqs/navigating-ai-act",
+      "publisher": "European Commission",
+      "relevance": "scope, deployers, high-risk systems, GPAI overview"
+    },
+    {
+      "title": "AI Literacy - Questions & Answers",
+      "url": "https://digital-strategy.ec.europa.eu/en/faqs/ai-literacy-questions-answers",
+      "publisher": "European Commission",
+      "relevance": "Article 4 deployer/provider literacy obligation"
+    },
+    {
+      "title": "AI talent, skills and literacy",
+      "url": "https://digital-strategy.ec.europa.eu/en/policies/ai-talent-skills-and-literacy",
+      "publisher": "European Commission",
+      "relevance": "Article 4 literacy context and implementation guidance"
+    },
+    {
+      "title": "Guidelines and Code of Practice on Transparent AI Systems",
+      "url": "https://digital-strategy.ec.europa.eu/en/faqs/guidelines-and-code-practice-transparent-ai-systems",
+      "publisher": "European Commission",
+      "relevance": "Article 50 transparency obligations for providers and deployers"
+    },
+    {
+      "title": "Commission launches consultation to develop guidelines and Code of Practice on transparent AI systems",
+      "url": "https://digital-strategy.ec.europa.eu/en/news/commission-launches-consultation-develop-guidelines-and-code-practice-transparent-ai-systems",
+      "publisher": "European Commission",
+      "relevance": "Article 50 applicability date and transparency scenarios for interaction, biometric exposure, and AI-generated content"
+    }
+  ],
+  "controls": [
+    {
+      "control_id": "scope.minimum_facts",
+      "title": "Minimum factual scope for the report",
+      "source_type": "vauban_readiness",
+      "source_ref": "Vauban readiness v1",
+      "description": "The customer supplied enough facts to avoid a fabricated scope.",
+      "applies_when": "Always.",
+      "evidence_required": ["company_name", "system_name", "intended_purpose"],
+      "check_method": "Config presence check.",
+      "blocking": true
+    },
+    {
+      "control_id": "ai_act.article4.ai_literacy_record",
+      "title": "Article 4 AI literacy evidence",
+      "source_type": "ai_act",
+      "source_ref": "Article 4 AI Act",
+      "description": "A sufficient AI literacy record exists for staff or persons operating the system on the deployer's behalf.",
+      "applies_when": "EU-market operation outside research-only scope.",
+      "evidence_required": [
+        "AI literacy record",
+        "owner/contact",
+        "target roles or persons",
+        "organisation role in relation to the AI system",
+        "system or use-context coverage",
+        "risk or limitation coverage",
+        "training date or recency",
+        "scope or materials",
+        "refresh cadence"
+      ],
+      "check_method": "File presence plus minimum content markers.",
+      "blocking": true
+    },
+    {
+      "control_id": "ai_act.article5.prohibited_practices_screen",
+      "title": "Article 5 prohibited-practices screen",
+      "source_type": "ai_act",
+      "source_ref": "Article 5 AI Act",
+      "description": "Screen declared facts for obvious prohibited-practice scenarios such as emotion recognition in workplace/education without the medical or safety exception, or biometric categorisation inferring sensitive traits.",
+      "applies_when": "EU-market operation outside research-only scope.",
+      "evidence_required": [
+        "Declared emotion-recognition or biometric-categorisation facts",
+        "declared workplace/education context",
+        "declared exception facts where relevant"
+      ],
+      "check_method": "Rule-based screen from customer assertions.",
+      "blocking": true
+    },
+    {
+      "control_id": "ai_act.article50.human_interaction_notice",
+      "title": "Article 50 transparency for human interaction",
+      "source_type": "ai_act",
+      "source_ref": "Article 50 AI Act",
+      "description": "When the system interacts with natural persons and the AI nature is not obvious, transparency evidence should exist.",
+      "applies_when": "EU-market operation with declared provider/modifier role and direct human interaction that is not obvious to exposed persons.",
+      "evidence_required": [
+        "Transparency notice",
+        "AI/automated origin statement",
+        "interaction context marker",
+        "not-human or bot disclosure"
+      ],
+      "check_method": "File presence plus minimum content markers.",
+      "blocking": true
+    },
+    {
+      "control_id": "ai_act.article50.emotion_biometric_notice",
+      "title": "Article 50 transparency for emotion or biometric exposure",
+      "source_type": "ai_act",
+      "source_ref": "Article 50 AI Act",
+      "description": "When people are exposed to emotion recognition or biometric categorization, transparency evidence should exist.",
+      "applies_when": "EU-market operation with declared emotion-recognition or biometric-categorization exposure.",
+      "evidence_required": [
+        "Transparency notice",
+        "emotion or biometric terminology",
+        "notification/disclosure language"
+      ],
+      "check_method": "File presence plus minimum content markers.",
+      "blocking": true
+    },
+    {
+      "control_id": "ai_act.article50.deepfake_disclosure",
+      "title": "Article 50 deployer disclosure for deepfake or synthetic media",
+      "source_type": "ai_act",
+      "source_ref": "Article 50 AI Act",
+      "description": "When deployers expose people to deepfake or synthetic media, disclosure evidence must exist.",
+      "applies_when": "EU-market operation with declared synthetic-media exposure.",
+      "evidence_required": [
+        "Transparency notice",
+        "AI/automated origin statement",
+        "deepfake/synthetic/manipulated content marker",
+        "if relying on the creative/satirical/artistic/fictional context, appropriate existence disclosure"
+      ],
+      "check_method": "File presence plus minimum content markers.",
+      "blocking": true
+    },
+    {
+      "control_id": "ai_act.article50.public_interest_text_disclosure",
+      "title": "Article 50 deployer disclosure for public-interest text",
+      "source_type": "ai_act",
+      "source_ref": "Article 50 AI Act",
+      "description": "When deployers publish AI-generated text on matters of public interest, disclosure evidence must exist.",
+      "applies_when": "EU-market operation with declared public-interest text publication.",
+      "evidence_required": [
+        "Transparency notice",
+        "AI/automated origin statement",
+        "public-facing publication marker",
+        "or evidence of human review/editorial control plus editorial responsibility when relying on the Article 50 exception"
+      ],
+      "check_method": "File presence plus minimum content markers.",
+      "blocking": true
+    },
+    {
+      "control_id": "ai_act.triage.high_risk_annex_iii",
+      "title": "High-risk and FRIA triage",
+      "source_type": "ai_act",
+      "source_ref": "Article 6 / Annex I / Annex III",
+      "description": "Flag likely Annex I product-route or Annex III high-risk uses for legal review. Vauban does not auto-classify these as legally settled facts.",
+      "applies_when": "EU-market operation outside research-only scope.",
+      "evidence_required": [
+        "Declared intended purpose",
+        "declared sector and use-context flags"
+      ],
+      "check_method": "Rule-based triage from customer assertions.",
+      "blocking": true
+    },
+    {
+      "control_id": "ai_act.triage.fria_requirement",
+      "title": "FRIA triage",
+      "source_type": "ai_act",
+      "source_ref": "Article 27 AI Act",
+      "description": "Flag declared scenarios that may trigger a deployer fundamental-rights impact assessment.",
+      "applies_when": "EU-market operation outside research-only scope.",
+      "evidence_required": [
+        "Declared public-sector or public-service context",
+        "declared Annex III point 5(b)/(c) facts where relevant"
+      ],
+      "check_method": "Rule-based triage from customer assertions.",
+      "blocking": true
+    },
+    {
+      "control_id": "vauban.readiness.provider_documentation",
+      "title": "Provider documentation available",
+      "source_type": "vauban_readiness",
+      "source_ref": "Vauban readiness v1",
+      "description": "Downstream deployers should retain provider-side documentation when building on third-party GPAI systems.",
+      "applies_when": "EU-market deployer building on third-party GPAI.",
+      "evidence_required": [
+        "Provider or model identification",
+        "version or release marker",
+        "limitations or constraints"
+      ],
+      "check_method": "File presence plus minimum content markers.",
+      "blocking": false
+    },
+    {
+      "control_id": "vauban.readiness.technical_evidence",
+      "title": "Technical test evidence retained",
+      "source_type": "vauban_readiness",
+      "source_ref": "Vauban readiness v1",
+      "description": "The readiness pack should include technical evidence such as attack, evaluation, or red-team reports.",
+      "applies_when": "AI deployment in scope for readiness reporting.",
+      "evidence_required": ["At least one technical report artifact"],
+      "check_method": "File presence check across attached technical artifacts.",
+      "blocking": false
+    },
+    {
+      "control_id": "vauban.readiness.human_oversight",
+      "title": "Human oversight procedure available",
+      "source_type": "vauban_readiness",
+      "source_ref": "Vauban readiness v1",
+      "description": "The deployer should document how humans supervise or override the system in operation.",
+      "applies_when": "EU-market operation outside research-only scope.",
+      "evidence_required": [
+        "Human oversight procedure",
+        "review or override step",
+        "handoff/escalation trigger",
+        "named risk owner"
+      ],
+      "check_method": "File presence plus minimum content markers.",
+      "blocking": false
+    },
+    {
+      "control_id": "vauban.readiness.incident_response",
+      "title": "Incident response procedure available",
+      "source_type": "vauban_readiness",
+      "source_ref": "Vauban readiness v1",
+      "description": "The deployer should document how incidents are escalated, owned, and re-reviewed.",
+      "applies_when": "EU-market operation outside research-only scope.",
+      "evidence_required": [
+        "Incident response procedure",
+        "incident or misuse terminology",
+        "escalation/reporting step",
+        "named compliance contact"
+      ],
+      "check_method": "File presence plus minimum content markers.",
+      "blocking": false
+    }
+  ],
+  "markers": {
+    "ai_literacy": [
+      {
+        "label": "organisation_role",
+        "patterns": ["\\b(provider|deployer|operator|role)\\b"]
+      },
+      {
+        "label": "system_or_use_context",
+        "patterns": ["\\b(system|service|assistant|use case|intended purpose|workflow)\\b"]
+      },
+      {
+        "label": "risk_or_limitations",
+        "patterns": ["\\b(risk|risks|limitation|limitations|misuse|impact|oversight)\\b"]
+      },
+      {
+        "label": "owner_or_contact",
+        "patterns": ["\\b(owner|responsible|lead|contact)\\b"]
+      },
+      {
+        "label": "target_roles_or_persons",
+        "patterns": ["\\b(role|roles|staff|operator|operators|team|audience|persons)\\b"]
+      },
+      {
+        "label": "training_date_or_recency",
+        "patterns": ["\\b(date|last updated|completed|training date|trained)\\b"]
+      },
+      {
+        "label": "scope_or_materials",
+        "patterns": ["\\b(scope|materials?|topics|coverage|curriculum|knowledge)\\b"]
+      },
+      {
+        "label": "refresh_or_review_cadence",
+        "patterns": ["\\b(refresh|cadence|review|renewal|annual|annually|periodic)\\b"]
+      }
+    ],
+    "human_interaction_notice": [
+      {
+        "label": "ai_or_automated_origin",
+        "patterns": ["\\b(ai|artificial intelligence|automated system|virtual assistant)\\b"]
+      },
+      {
+        "label": "interaction_context",
+        "patterns": ["\\b(interact|interaction|chatbot|assistant|conversation)\\b"]
+      },
+      {
+        "label": "not_human_disclosure",
+        "patterns": ["\\b(not a human|not human|bot|automated assistant)\\b"]
+      }
+    ],
+    "emotion_biometric_notice": [
+      {
+        "label": "emotion_or_biometric_scope",
+        "patterns": ["\\b(emotion|biometric|categori[sz]ation)\\b"]
+      },
+      {
+        "label": "notification_or_disclosure",
+        "patterns": ["\\b(notice|disclosure|informed|notify|label)\\b"]
+      }
+    ],
+    "synthetic_media_notice": [
+      {
+        "label": "ai_or_automated_origin",
+        "patterns": ["\\b(ai|artificial intelligence|automated system|generated by ai)\\b"]
+      },
+      {
+        "label": "synthetic_or_manipulated_content",
+        "patterns": ["\\b(deepfake|synthetic|generated|manipulated)\\b"]
+      }
+    ],
+    "public_interest_notice": [
+      {
+        "label": "ai_or_automated_origin",
+        "patterns": ["\\b(ai|artificial intelligence|automated system|generated by ai)\\b"]
+      },
+      {
+        "label": "public_facing_publication_context",
+        "patterns": ["\\b(public|publication|public interest|inform the public|news)\\b"]
+      }
+    ],
+    "public_interest_exception": [
+      {
+        "label": "human_review_or_editorial_control",
+        "patterns": ["\\b(human review|editorial control|editor review|reviewed by|approved by editor|approved by a human)\\b"]
+      },
+      {
+        "label": "editorial_responsibility",
+        "patterns": ["\\b(editorial responsibility|responsible editor|publisher responsible|legal responsibility|natural or legal person)\\b"]
+      }
+    ],
+    "provider_documentation": [
+      {
+        "label": "provider_or_model",
+        "patterns": ["\\b(provider|vendor|model|service)\\b"]
+      },
+      {
+        "label": "version_or_release",
+        "patterns": ["\\b(version|release|snapshot|date)\\b"]
+      },
+      {
+        "label": "limitations_or_constraints",
+        "patterns": ["\\b(limitations?|constraints?|not suitable|do not use|prohibited)\\b"]
+      }
+    ],
+    "human_oversight": [
+      {
+        "label": "review_or_override_step",
+        "patterns": ["\\b(review|override|approve|reject|human in the loop|human review)\\b"]
+      },
+      {
+        "label": "handoff_or_escalation_trigger",
+        "patterns": ["\\b(handoff|escalat|trigger|threshold|fallback)\\b"]
+      }
+    ],
+    "incident_response": [
+      {
+        "label": "incident_or_misuse_scope",
+        "patterns": ["\\b(incident|misuse|breach|failure)\\b"]
+      },
+      {
+        "label": "escalation_or_reporting_step",
+        "patterns": ["\\b(escalat|report|notify|containment|severity)\\b"]
+      }
+    ]
+  },
+  "technical_metric_rules": [
+    {
+      "kind": "attack_or_jailbreak",
+      "match_any": ["attack", "jailbreak", "asr", "evade"],
+      "high_threshold": 0.2
+    },
+    {
+      "kind": "unsafe_or_harm",
+      "match_any": ["unsafe", "harm", "toxicity", "violation"],
+      "high_threshold": 0.05
+    }
+  ]
+}

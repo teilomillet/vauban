@@ -238,3 +238,102 @@ def test_validate_output_dir_file_warns_with_fix(tmp_path: Path) -> None:
         "[output].dir points to a file" in w and "fix:" in w
         for w in warnings
     )
+
+
+def test_validate_ai_act_missing_literacy_record_warns(tmp_path: Path) -> None:
+    toml_file = tmp_path / "readiness.toml"
+    toml_file.write_text(
+        "[ai_act]\n"
+        'company_name = "Example Energy"\n'
+        'system_name = "Customer Assistant"\n'
+        'intended_purpose = "Answers customer questions."\n'
+        'role = "deployer"\n'
+        "eu_market = true\n"
+    )
+
+    warnings = validate(toml_file)
+    assert any(
+        "[ai_act].ai_literacy_record is not set" in w and "fix:" in w
+        for w in warnings
+    )
+
+
+def test_validate_ai_act_missing_notice_warns(tmp_path: Path) -> None:
+    literacy = tmp_path / "literacy.md"
+    literacy.write_text("ok\n")
+    toml_file = tmp_path / "readiness.toml"
+    toml_file.write_text(
+        "[ai_act]\n"
+        'company_name = "Example Energy"\n'
+        'system_name = "Publisher Assistant"\n'
+        'intended_purpose = "Publishes AI-generated text."\n'
+        'ai_literacy_record = "literacy.md"\n'
+        "publishes_text_on_matters_of_public_interest = true\n"
+    )
+
+    warnings = validate(toml_file)
+    assert any(
+        "[ai_act] declares an Article 50 transparency scenario" in w
+        and "fix:" in w
+        for w in warnings
+    )
+
+
+def test_validate_ai_act_inconsistent_obvious_interaction_warns(
+    tmp_path: Path,
+) -> None:
+    toml_file = tmp_path / "readiness.toml"
+    toml_file.write_text(
+        "[ai_act]\n"
+        'company_name = "Example Energy"\n'
+        'system_name = "Customer Assistant"\n'
+        'intended_purpose = "Answers customer questions."\n'
+        "interaction_obvious_to_persons = true\n"
+        "interacts_with_natural_persons = false\n"
+    )
+
+    warnings = validate(toml_file)
+    assert any(
+        "[ai_act].interaction_obvious_to_persons is set" in w and "fix:" in w
+        for w in warnings
+    )
+
+
+def test_validate_ai_act_editorial_exception_inconsistency_warns(
+    tmp_path: Path,
+) -> None:
+    toml_file = tmp_path / "readiness.toml"
+    toml_file.write_text(
+        "[ai_act]\n"
+        'company_name = "Example Energy"\n'
+        'system_name = "Publisher Assistant"\n'
+        'intended_purpose = "Drafts public-interest text."\n'
+        "public_interest_text_editorial_responsibility = true\n"
+    )
+
+    warnings = validate(toml_file)
+    assert any(
+        "[ai_act].public_interest_text_editorial_responsibility is" in w
+        and "fix:" in w
+        for w in warnings
+    )
+
+
+def test_validate_ai_act_annex_i_conformity_without_product_warns(
+    tmp_path: Path,
+) -> None:
+    toml_file = tmp_path / "readiness.toml"
+    toml_file.write_text(
+        "[ai_act]\n"
+        'company_name = "Example Energy"\n'
+        'system_name = "Safety Helper"\n'
+        'intended_purpose = "Supports a regulated product."\n'
+        "annex_i_third_party_conformity_assessment = true\n"
+    )
+
+    warnings = validate(toml_file)
+    assert any(
+        "[ai_act].annex_i_third_party_conformity_assessment is set" in w
+        and "fix:" in w
+        for w in warnings
+    )

@@ -76,6 +76,10 @@ def check_unknown_keys(raw: TomlDict) -> list[str]:
 # ---------------------------------------------------------------------------
 
 _KNOWN_VALUES: dict[tuple[str, str], frozenset[str]] = {
+    ("ai_act", "report_kind"): frozenset({"deployer_readiness"}),
+    ("ai_act", "role"): frozenset({
+        "deployer", "provider", "modifier", "research",
+    }),
     ("measure", "mode"): frozenset({"direction", "subspace", "dbdi", "diff"}),
     ("cut", "layer_strategy"): frozenset({"all", "above_median", "top_k"}),
     ("cut", "dbdi_target"): frozenset({"red", "hdd", "both"}),

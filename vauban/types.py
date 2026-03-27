@@ -1256,6 +1256,60 @@ class MetaConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class AIActConfig:
+    """Configuration for an AI Act deployer-readiness report.
+
+    This mode is intentionally conservative. It does not declare legal
+    compliance; it assembles evidence, coverage, and remediation for a
+    deployer-facing readiness assessment.
+    """
+
+    company_name: str
+    system_name: str
+    intended_purpose: str
+    report_kind: Literal["deployer_readiness"] = "deployer_readiness"
+    role: Literal["deployer", "provider", "modifier", "research"] = "deployer"
+    sector: str = "general"
+    eu_market: bool = True
+    uses_general_purpose_ai: bool = True
+    interacts_with_natural_persons: bool = False
+    interaction_obvious_to_persons: bool = False
+    exposes_emotion_recognition_or_biometric_categorization: bool = False
+    uses_emotion_recognition: bool = False
+    uses_biometric_categorization: bool = False
+    emotion_recognition_medical_or_safety_exception: bool = False
+    biometric_categorization_infers_sensitive_traits: bool = False
+    publishes_text_on_matters_of_public_interest: bool = False
+    public_interest_text_human_review_or_editorial_control: bool = False
+    public_interest_text_editorial_responsibility: bool = False
+    deploys_deepfake_or_synthetic_media: bool = False
+    deepfake_creative_satirical_artistic_or_fictional_context: bool = False
+    provides_public_service: bool = False
+    public_sector_use: bool = False
+    employment_or_workers_management: bool = False
+    education_or_vocational_training: bool = False
+    essential_private_or_public_service: bool = False
+    creditworthiness_or_credit_score_assessment: bool = False
+    life_or_health_insurance_risk_pricing: bool = False
+    emergency_first_response_dispatch: bool = False
+    law_enforcement_use: bool = False
+    migration_or_border_management_use: bool = False
+    administration_of_justice_or_democracy_use: bool = False
+    biometric_or_emotion_related_use: bool = False
+    uses_profiling_or_similarly_significant_decision_support: bool = False
+    annex_i_product_or_safety_component: bool = False
+    annex_i_third_party_conformity_assessment: bool = False
+    ai_literacy_record: Path | None = None
+    transparency_notice: Path | None = None
+    human_oversight_procedure: Path | None = None
+    incident_response_procedure: Path | None = None
+    provider_documentation: Path | None = None
+    technical_report_paths: list[Path] = field(default_factory=list)
+    risk_owner: str | None = None
+    compliance_contact: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class SVFConfig:
     """Configuration for Steering Vector Field boundary training.
 
@@ -2265,6 +2319,7 @@ class PipelineConfig:
     backend: str = "mlx"
     cut: CutConfig = field(default_factory=CutConfig)
     measure: MeasureConfig = field(default_factory=MeasureConfig)
+    ai_act: AIActConfig | None = None
     surface: SurfaceConfig | None = None
     detect: DetectConfig | None = None
     optimize: OptimizeConfig | None = None
