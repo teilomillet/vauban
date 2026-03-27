@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Runtime backend selection — follows the Keras KERAS_BACKEND pattern.
 
 Set ``VAUBAN_BACKEND`` environment variable before importing vauban,

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Array type alias — single point of change for tensor backend."""
 
 from typing import TYPE_CHECKING

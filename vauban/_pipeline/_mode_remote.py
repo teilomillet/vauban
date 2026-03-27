@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Remote model probing early-mode runner.
 
 Sends prompts to remote batch APIs (e.g. jsinfer) and collects

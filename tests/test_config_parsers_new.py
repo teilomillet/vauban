@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for config parsers: api_eval, compose_optimize, svf."""
 
 from pathlib import Path

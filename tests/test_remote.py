@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for the [remote] config parser, mode runner, and probe orchestrator."""
 
 from __future__ import annotations

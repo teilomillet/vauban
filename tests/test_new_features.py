@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for the four high-impact features: per-layer alpha, activation clipping,
 magnitude sparsification, and Welford streaming mean."""
 

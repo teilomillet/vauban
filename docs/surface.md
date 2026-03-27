@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Teilo Millet -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Refusal Surface Mapping
 
 Map the territory of a model's refusal behavior — before and after abliteration surgery.

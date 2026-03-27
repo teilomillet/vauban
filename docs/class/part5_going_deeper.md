@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Teilo Millet -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Part 5: Going Deeper
 
 This part extends the single-direction framework from Parts 1–3 into richer territory: depth analysis (how deeply does the model think?), subspace geometry (when one direction is not enough), DBDI (separating detection from execution), defense detection, and direction transfer across models.

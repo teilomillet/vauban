@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Teilo Millet -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Part 8 — Model Diffing and Enhanced Defense
 
 In Parts 1–7 we extracted refusal directions from a *single* model's activations, removed them, and defended against attacks. This part introduces three techniques that extend the toolkit:

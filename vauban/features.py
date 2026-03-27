@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Sparse Autoencoder (SAE) for feature decomposition.
 
 Trains per-layer sparse autoencoders on transformer activations to

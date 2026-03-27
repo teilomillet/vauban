@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """AmpleGCG collection phase: run GCG internally and harvest successful suffixes.
 
 Runs multiple GCG restarts and collects any suffix whose loss falls below

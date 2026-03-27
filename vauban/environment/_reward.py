@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Reward computation from tool calls vs environment target."""
 
 from vauban.types import EnvironmentTarget, ToolCall

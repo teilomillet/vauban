@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Defense stack composition — fail-fast pipeline of all defense layers.
 
 Composes scan (Layer 0), SIC (Layer 1), CAST (Layer 2), policy (Layer 3),

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Layer selection, cut application, export, and modified-model loading."""
 
 from __future__ import annotations

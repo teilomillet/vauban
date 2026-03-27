@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Surface-mapping phases before and after model cutting."""
 
 from __future__ import annotations

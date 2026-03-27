@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Teilo Millet -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Part 4: The Refusal Surface
 
 This part moves beyond aggregate refusal rates. A model that refuses 5% of harmful prompts overall may refuse 80% in a specific category or language. Surface mapping reveals where refusal lives — and where it hides.

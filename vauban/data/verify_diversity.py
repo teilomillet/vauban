@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Semantic diversity verification for prompt datasets.
 
 Uses a sentence-transformer model to embed all prompts, then computes

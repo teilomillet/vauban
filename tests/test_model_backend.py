@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for vauban._model_io, _model_torch, and _nn lazy dispatch."""
 
 import pytest

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Parse the [optimize] section of a TOML config."""
 
 from vauban.config._parse_helpers import SectionReader, require_toml_table

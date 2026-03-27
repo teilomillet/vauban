@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Teilo Millet -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Getting Started
 
 Vauban is an MLX-native toolkit for understanding and reshaping how language models behave — from removing refusal directions to adding guardrails, modifying personas, and steering generation in real time. It operates directly on a model's activation geometry: measure a behavioral direction, cut it from the weights, probe it at inference, or steer around it (including conditional CAST steering).

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for [meta] section parsing, loader integration, and suggestions."""
 
 from __future__ import annotations

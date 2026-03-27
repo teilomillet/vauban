@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for vauban._serializers: JSON serialization helpers."""
 
 from vauban import _ops as ops

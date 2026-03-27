@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Unit tests for vauban.benchmarks — no network calls."""
 
 from __future__ import annotations

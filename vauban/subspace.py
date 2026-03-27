@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Subspace geometry tools for analyzing refusal subspaces.
 
 Pure ops.array linear algebra — no model dependency. Implements the

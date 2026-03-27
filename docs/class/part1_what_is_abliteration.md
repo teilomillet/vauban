@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Teilo Millet -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Part 1: What is Abliteration?
 
 This part builds geometric intuition for abliteration — the discovery that safety refusal in language models is controlled by a single direction in activation space, and that removing it is a linear algebra operation. There is no code here; Part 2 runs your first abliteration, and Part 3 derives every step.

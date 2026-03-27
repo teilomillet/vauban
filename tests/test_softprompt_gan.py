@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for vauban.softprompt GAN orchestration and escalation behavior."""
 
 from __future__ import annotations

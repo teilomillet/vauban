@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Layer type detection and target layer selection."""
 
 from vauban._forward import get_transformer

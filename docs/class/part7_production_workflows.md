@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Teilo Millet -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Part 7: Production Workflows
 
 This part brings everything together. Vauban's production interface is a single CLI command — `vauban config.toml` — that reads a declarative TOML configuration and runs the appropriate pipeline. No flags, no subcommands, no interactive prompts.

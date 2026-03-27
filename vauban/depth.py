@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Deep-thinking token analysis: DTR metric and depth direction extraction.
 
 Based on Chen et al. 2026 ("Think Deep, Not Just Long", arxiv 2602.13517).

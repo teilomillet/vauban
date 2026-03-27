@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Latent fusion: blend harmful + benign hidden states and generate.
 
 Implements the Latent Fusion Jailbreak (arxiv 2508.10029) — the

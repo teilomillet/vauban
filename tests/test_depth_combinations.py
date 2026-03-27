@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for [depth] TOML combinations, orderings, and edge cases.
 
 Ensures depth mode works correctly with every other section and that

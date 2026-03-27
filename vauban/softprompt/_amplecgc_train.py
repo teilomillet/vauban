@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """AmpleGCG generator training: fit an MLP on collected GCG suffixes.
 
 Trains a 2-layer MLP that maps a prompt embedding to suffix token logits.

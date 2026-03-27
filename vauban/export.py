@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Export modified model weights as a loadable mlx-lm model directory.
 
 The bare ``save_weights()`` in ``cut.py`` writes a single safetensors

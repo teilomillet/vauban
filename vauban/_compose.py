@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Subspace bank composition for Steer2Adapt composed steering.
 
 Loads named subspace bases from a safetensors bank file and computes

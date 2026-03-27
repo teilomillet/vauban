@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Teilo Millet -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Part 3: Under the Hood
 
 This part opens every black box from Part 2. We walk through the full pipeline — measure, cut, evaluate — using vauban's low-level API, with full mathematical derivations. By the end, you will understand exactly what every function does, why, and how.

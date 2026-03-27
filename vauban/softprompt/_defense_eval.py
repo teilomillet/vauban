@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Post-attack defense evaluation: test suffixes against SIC and CAST."""
 
 from vauban._array import Array

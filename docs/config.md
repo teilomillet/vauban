@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Teilo Millet -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Configuration Reference
 
 Vauban is configured entirely through TOML files. The only CLI is `vauban config.toml`.

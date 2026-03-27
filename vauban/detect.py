@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Defense detection: determine if a model is hardened against abliteration.
 
 Runs a layered detection pipeline from fast geometry checks to full

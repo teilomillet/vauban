@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Config scaffolding for `vauban init`.
 
 Generates minimal, opinionated TOML starter configs for each pipeline mode.

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """GAN-related field parsing for the [softprompt] config section."""
 
 from __future__ import annotations

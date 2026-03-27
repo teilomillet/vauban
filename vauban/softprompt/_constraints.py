@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Token-constraint helpers for soft prompt attacks.
 
 Includes embedding-based glitch token detection per "Fishing for Magikarp"

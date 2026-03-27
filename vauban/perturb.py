@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Character-level text perturbation for defense robustness testing.
 
 Six techniques obfuscate text at the character level to test whether

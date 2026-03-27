@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """TOML configuration loader and schema helpers for vauban pipelines."""
 
 from vauban.config._loader import load_config

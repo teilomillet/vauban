@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """RepBend: contrastive fine-tuning to separate harmful/safe representations.
 
 Implements the defense dual of abliteration (RepBend, arxiv 2504.01550).

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Adversarial invariants for AI Act deployer-readiness reporting."""
 
 from __future__ import annotations

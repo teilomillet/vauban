@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Multi-objective optimization of cut hyperparameters using Optuna.
 
 Searches over alpha, sparsity, norm_preserve, layer strategy, and layer_top_k.

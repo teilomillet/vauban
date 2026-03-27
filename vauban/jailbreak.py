@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Jailbreak prompt template bank for defense evaluation.
 
 Loads bundled (or custom) jailbreak prompt templates and applies them to

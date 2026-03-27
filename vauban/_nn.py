@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Backend-dispatched neural network utilities (PEP 562 + backend locking).
 
 Consumer code::

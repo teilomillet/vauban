@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Architecture auto-detection for transformer models.
 
 Probes model objects at load time using ordered fallback lists to

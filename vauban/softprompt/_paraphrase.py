@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Prompt paraphrasing strategies for circuit breaker evasion.
 
 Expands harmful prompts into narrative-framed variants that keep circuit

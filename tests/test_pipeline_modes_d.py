@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for mode runners D: svf, features, circuit, linear_probe,
 fusion, repbend, api_eval."""
 

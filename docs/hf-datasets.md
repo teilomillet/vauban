@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Teilo Millet -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # HuggingFace Dataset Support
 
 Use well-known HF datasets as prompt sources — no `datasets` library needed, zero new dependencies.

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Vauban - MLX-native abliteration toolkit for Apple Silicon.
 
 All public symbols are lazily loaded on first access (PEP 562).

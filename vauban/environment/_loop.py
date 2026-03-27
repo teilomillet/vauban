@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Core agent simulation loop — multi-turn tool-use conversation.
 
 Builds messages, generates responses, parses tool calls, injects

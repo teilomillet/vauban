@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Integration tests against a real model (Qwen2.5-0.5B-Instruct-bf16).
 
 These tests are skipped by default. Run with:

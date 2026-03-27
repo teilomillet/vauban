@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Injection content scanner — per-token projection-based detection.
 
 Extends the SIC direction projection to all tokens (not just last),

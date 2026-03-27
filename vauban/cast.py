@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Conditional Activation Steering (CAST) runtime generation."""
 
 from typing import TYPE_CHECKING

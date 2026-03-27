@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for the tool-call policy engine."""
 
 from vauban.policy import evaluate_data_flow, evaluate_tool_call

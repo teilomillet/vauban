@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """SSS (Sensitivity-Scaled Steering) early-mode runner."""
 
 from __future__ import annotations

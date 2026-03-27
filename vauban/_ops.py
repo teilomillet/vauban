@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Backend-dispatched tensor operations (PEP 562 + backend locking).
 
 Consumer code::

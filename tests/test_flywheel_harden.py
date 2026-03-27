@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for flywheel defense hardening."""
 
 from vauban.flywheel._harden import harden_defense

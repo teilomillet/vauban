@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """ToolCallPolicy enforcement for the environment harness."""
 
 from vauban.types import ToolCall, ToolCallPolicy

@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Teilo Millet -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Tokenizer Embedding Analysis
 
 Methodology and findings from the tokenizer anomaly detection research that led to the `exclude_glitch` constraint in the softprompt module.

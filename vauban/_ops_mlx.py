@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """MLX tensor operations backend.
 
 Exports exactly the symbols listed in ``_ops_contract.OPS_CONTRACT``.

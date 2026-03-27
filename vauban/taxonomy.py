@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Canonical harm category taxonomy with regex-based classification.
 
 A two-level tree: *domains* group related *categories*.  The taxonomy is a

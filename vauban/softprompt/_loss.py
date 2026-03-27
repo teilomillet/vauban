@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Compatibility facade for soft prompt loss helpers and objectives."""
 
 from vauban.softprompt._loss_common import (

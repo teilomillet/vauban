@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Circuit tracing via activation patching.
 
 Implements causal tracing to identify which model components (layers,

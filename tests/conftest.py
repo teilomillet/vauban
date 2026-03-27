@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Shared test fixtures: tiny mock model conforming to vauban protocols.
 
 Mock classes dispatch to backend-specific implementations:

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """REPL convenience API for interactive exploration.
 
 Import as ``from vauban import quick`` — not in ``__all__``.

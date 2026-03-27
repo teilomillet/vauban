@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Transfer and rollout reranking helpers for GCG."""
 
 from __future__ import annotations

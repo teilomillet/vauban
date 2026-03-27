@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Teilo Millet -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # References
 
 A consolidated bibliography of all papers, tooling repositories, and blog posts cited across the Spinning Up in Abliteration series. Entries are organized by topic and listed alphabetically within each section.

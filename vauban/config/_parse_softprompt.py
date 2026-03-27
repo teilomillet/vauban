@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Parse the [softprompt] section of a TOML config."""
 
 from __future__ import annotations

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Experiment tech tree viewer.
 
 Discovers ``[meta]`` sections in TOML configs and renders the

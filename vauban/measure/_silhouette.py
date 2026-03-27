@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Silhouette scoring for harmful/harmless activation separation."""
 
 from vauban import _ops as ops

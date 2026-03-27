@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Teilo Millet -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # vauban
 
 An MLX-native toolkit for understanding and reshaping how language models behave on Apple Silicon.

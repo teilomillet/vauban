@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Refusal surface mapping APIs."""
 
 from vauban.surface._aggregate import (

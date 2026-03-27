@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for vauban._backend, _ops, _ops_mlx, _nn, and _array."""
 
 import mlx.core as mx

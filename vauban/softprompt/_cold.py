@@ -1,4 +1,6 @@
 """COLD-Attack: Constrained decoding via Langevin dynamics.
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
 
 Energy-based optimization over logit space with Gaussian noise for
 exploration. Produces more natural adversarial prompts than GCG/EGD

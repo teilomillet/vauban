@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """MLX mock model classes for testing.
 
 Extracted from conftest.py — these are intentionally MLX-specific

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Dequantize quantized model layers for weight surgery.
 
 Most mlx-community models ship as 4-bit or 8-bit quantized weights

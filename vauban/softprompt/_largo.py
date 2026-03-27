@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """LARGO: Latent Adversarial Reflection through Gradient Optimization.
 
 Outer loop around continuous embedding optimization. Each round:

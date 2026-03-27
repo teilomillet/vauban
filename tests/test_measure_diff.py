@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for vauban.measure._diff: weight-diff direction extraction."""
 
 from tests.conftest import D_MODEL, NUM_HEADS, NUM_LAYERS, VOCAB_SIZE, MockCausalLM

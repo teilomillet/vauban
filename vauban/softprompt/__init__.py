@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Soft prompt attack: continuous, GCG, EGD, COLD, and AmpleGCG modes."""
 
 from vauban._forward import make_cache as _make_cache

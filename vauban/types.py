@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Shared types for the vauban pipeline."""
 
 from dataclasses import dataclass, field

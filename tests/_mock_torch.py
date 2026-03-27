@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """PyTorch mock model classes for testing.
 
 Parallel to _mock_mlx.py — same API surface, torch.nn.Module based.

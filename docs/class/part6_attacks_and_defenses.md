@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Teilo Millet -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Part 6: Attacks and Defenses
 
 This part covers the other side of abliteration: soft prompt attacks that bypass safety alignment through the embedding space, and the SIC defense that detects and sanitizes adversarial inputs. Where Parts 1–5 modify the model's weights, this part operates on the model's inputs.

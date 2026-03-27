@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Composite multi-axis response scoring for evaluation.
 
 Scores model responses on 5 axes:

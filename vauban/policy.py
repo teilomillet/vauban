@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Tool-call policy engine — pure Python rule evaluation.
 
 Evaluates tool calls against declarative policy rules, data flow

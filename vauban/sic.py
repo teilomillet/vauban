@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """SIC (Soft Instruction Control) — iterative input sanitization defense.
 
 Detect adversarial content in prompts, rewrite to remove it, repeat until

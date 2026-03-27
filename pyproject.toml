@@ -1,9 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 [project]
 name = "vauban"
 dynamic = ["version"]
 description = "LLM red-teaming and adversarial testing framework"
 readme = "README.md"
 license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [
     { name = "Teïlo Millet", email = "teilomillet@gmail.com" }
 ]

@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Teilo Millet -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Mechanistic Interpretability of Reasoning in LLMs — Research Brief
 
 **Date:** 2026-02-27

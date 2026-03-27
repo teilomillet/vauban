@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Measure the refusal direction from a model's activation space."""
 
 from vauban.measure._activations import (

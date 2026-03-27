@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Direction algebra — closed operations on directional subspaces.
 
 Pure functions operating on DirectionSpace. Every algebraic operation

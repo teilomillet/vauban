@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for CAST entry points, forward pass steering, and SVF-aware CAST."""
 
 import pytest

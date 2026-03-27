@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Teilo Millet -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Glossary
 
 Quick-reference definitions for terms used throughout the Spinning Up in Abliteration series. Each entry notes which Part introduces the concept.

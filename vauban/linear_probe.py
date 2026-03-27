@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Linear probe: per-layer binary classifiers on activations.
 
 Tests whether refused knowledge remains linearly decodable

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Remote model probing via pluggable inference backends.
 
 Backends are registered in ``_registry`` and resolved by name from

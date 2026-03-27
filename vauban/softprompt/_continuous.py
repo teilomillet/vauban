@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Continuous soft prompt optimization via Adam."""
 
 from vauban import _ops as ops

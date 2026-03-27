@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Steering awareness detection via Jacobian sensitivity comparison.
 
 Paper 2 in the sensitivity analysis series.  SSS (paper 1) uses Jacobian

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Direction transfer testing — test a direction from model A on model B."""
 
 from vauban._array import Array

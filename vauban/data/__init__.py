@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Dataset registry for bundled JSONL prompt files.
 
 Static metadata — no filesystem scanning at import time.  Every bundled

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Flywheel: closed-loop attack-defense co-evolution."""
 
 from vauban.flywheel._convergence import check_convergence

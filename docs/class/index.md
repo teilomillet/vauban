@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Teilo Millet -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Spinning Up in Abliteration
 
 A progressive, hands-on curriculum for understanding and applying refusal-direction manipulation in large language models — built on [vauban](https://github.com/teilomillet/vauban) and Apple Silicon via MLX.

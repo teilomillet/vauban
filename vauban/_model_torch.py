@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """HuggingFace Transformers model wrappers for PyTorch backend.
 
 Wraps HF ``AutoModelForCausalLM`` objects so they satisfy the same

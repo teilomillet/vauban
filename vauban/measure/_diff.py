@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Weight-diff measurement between base and aligned models.
 
 Extracts safety directions by SVD of the weight difference

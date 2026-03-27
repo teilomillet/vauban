@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Agent environment harness for indirect prompt injection simulation.
 
 Simulates tool-use workflows locally, defining success as tool-call

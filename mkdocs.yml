@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 site_name: Vauban
 site_description: MLX-native toolkit for understanding and reshaping how language models behave
 site_url: https://vauban.readthedocs.io/

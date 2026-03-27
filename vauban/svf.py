@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Steering Vector Fields — context-dependent boundary MLP.
 
 Trains a differentiable boundary f(h) → scalar whose gradient gives

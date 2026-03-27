@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Jacobian sensitivity analysis for transformer layers.
 
 Provides finite-difference JVP, directional gain, dominant singular

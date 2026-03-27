@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Shared early-return mode metadata for run, docs, and validation flows."""
 
 from collections.abc import Callable

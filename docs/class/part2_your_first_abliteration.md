@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Teilo Millet -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Part 2: Your First Abliteration
 
 This part gets you running. You will load a model, measure its refusal direction, probe activations, abliterate the model, evaluate the result, and steer generation — all with the `quick` API. Part 3 opens the hood on what each step does under the surface.

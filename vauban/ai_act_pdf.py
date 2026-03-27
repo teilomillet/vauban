@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """PDF rendering for AI Act readiness bundles."""
 
 from __future__ import annotations

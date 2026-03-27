@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Shared forward-pass primitives — single point of change for MLX-specific APIs.
 
 Consolidates boilerplate that was duplicated across probe, cast, evaluate,

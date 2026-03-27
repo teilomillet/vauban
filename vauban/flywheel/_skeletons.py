@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Built-in skeleton definitions for flywheel world generation."""
 
 from dataclasses import dataclass

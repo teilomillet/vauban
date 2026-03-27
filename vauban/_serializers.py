@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """JSON serialization helpers for pipeline result types."""
 
 from dataclasses import asdict

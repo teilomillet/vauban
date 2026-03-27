@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Integration test: soft prompt attack on a real model.
 
 Verifies the attack actually works by:
