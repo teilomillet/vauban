@@ -337,3 +337,22 @@ def test_validate_ai_act_annex_i_conformity_without_product_warns(
         and "fix:" in w
         for w in warnings
     )
+
+
+def test_validate_ai_act_legacy_high_risk_flags_warn_without_annex_iii_ids(
+    tmp_path: Path,
+) -> None:
+    toml_file = tmp_path / "readiness.toml"
+    toml_file.write_text(
+        "[ai_act]\n"
+        'company_name = "Example Energy"\n'
+        'system_name = "Hiring Assistant"\n'
+        'intended_purpose = "Ranks applicants."\n'
+        "employment_or_workers_management = true\n"
+    )
+
+    warnings = validate(toml_file)
+    assert any(
+        "[ai_act] uses legacy high-risk area flags but" in w and "fix:" in w
+        for w in warnings
+    )

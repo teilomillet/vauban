@@ -4,34 +4,46 @@
   "rulebook_purpose": "Conservative AI Act deployer-readiness reporting for companies building or operating AI-enabled systems.",
   "sources": [
     {
+      "source_id": "commission_navigating_ai_act",
       "title": "Navigating the AI Act",
       "url": "https://digital-strategy.ec.europa.eu/en/faqs/navigating-ai-act",
       "publisher": "European Commission",
       "relevance": "scope, deployers, high-risk systems, GPAI overview"
     },
     {
+      "source_id": "commission_ai_literacy_qa",
       "title": "AI Literacy - Questions & Answers",
       "url": "https://digital-strategy.ec.europa.eu/en/faqs/ai-literacy-questions-answers",
       "publisher": "European Commission",
       "relevance": "Article 4 deployer/provider literacy obligation"
     },
     {
+      "source_id": "commission_ai_literacy_policy",
       "title": "AI talent, skills and literacy",
       "url": "https://digital-strategy.ec.europa.eu/en/policies/ai-talent-skills-and-literacy",
       "publisher": "European Commission",
       "relevance": "Article 4 literacy context and implementation guidance"
     },
     {
+      "source_id": "commission_transparent_ai_qa",
       "title": "Guidelines and Code of Practice on Transparent AI Systems",
       "url": "https://digital-strategy.ec.europa.eu/en/faqs/guidelines-and-code-practice-transparent-ai-systems",
       "publisher": "European Commission",
       "relevance": "Article 50 transparency obligations for providers and deployers"
     },
     {
+      "source_id": "commission_transparent_ai_consultation",
       "title": "Commission launches consultation to develop guidelines and Code of Practice on transparent AI systems",
       "url": "https://digital-strategy.ec.europa.eu/en/news/commission-launches-consultation-develop-guidelines-and-code-practice-transparent-ai-systems",
       "publisher": "European Commission",
       "relevance": "Article 50 applicability date and transparency scenarios for interaction, biometric exposure, and AI-generated content"
+    },
+    {
+      "source_id": "eurlex_ai_act_regulation",
+      "title": "Regulation (EU) 2024/1689",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX%3A32024R1689",
+      "publisher": "EUR-Lex",
+      "relevance": "Legal text for Articles 5, 6, 27, 50 and Annex I/III use-case triggers"
     }
   ],
   "controls": [
@@ -42,6 +54,7 @@
       "source_ref": "Vauban readiness v1",
       "description": "The customer supplied enough facts to avoid a fabricated scope.",
       "applies_when": "Always.",
+      "source_ids": [],
       "evidence_required": ["company_name", "system_name", "intended_purpose"],
       "check_method": "Config presence check.",
       "blocking": true
@@ -53,6 +66,11 @@
       "source_ref": "Article 4 AI Act",
       "description": "A sufficient AI literacy record exists for staff or persons operating the system on the deployer's behalf.",
       "applies_when": "EU-market operation outside research-only scope.",
+      "source_ids": [
+        "commission_ai_literacy_qa",
+        "commission_ai_literacy_policy",
+        "eurlex_ai_act_regulation"
+      ],
       "evidence_required": [
         "AI literacy record",
         "owner/contact",
@@ -74,6 +92,10 @@
       "source_ref": "Article 5 AI Act",
       "description": "Screen declared facts for obvious prohibited-practice scenarios such as emotion recognition in workplace/education without the medical or safety exception, or biometric categorisation inferring sensitive traits.",
       "applies_when": "EU-market operation outside research-only scope.",
+      "source_ids": [
+        "eurlex_ai_act_regulation",
+        "commission_navigating_ai_act"
+      ],
       "evidence_required": [
         "Declared emotion-recognition or biometric-categorisation facts",
         "declared workplace/education context",
@@ -89,6 +111,11 @@
       "source_ref": "Article 50 AI Act",
       "description": "When the system interacts with natural persons and the AI nature is not obvious, transparency evidence should exist.",
       "applies_when": "EU-market operation with declared provider/modifier role and direct human interaction that is not obvious to exposed persons.",
+      "source_ids": [
+        "commission_transparent_ai_qa",
+        "commission_navigating_ai_act",
+        "eurlex_ai_act_regulation"
+      ],
       "evidence_required": [
         "Transparency notice",
         "AI/automated origin statement",
@@ -105,6 +132,11 @@
       "source_ref": "Article 50 AI Act",
       "description": "When people are exposed to emotion recognition or biometric categorization, transparency evidence should exist.",
       "applies_when": "EU-market operation with declared emotion-recognition or biometric-categorization exposure.",
+      "source_ids": [
+        "commission_transparent_ai_qa",
+        "commission_navigating_ai_act",
+        "eurlex_ai_act_regulation"
+      ],
       "evidence_required": [
         "Transparency notice",
         "emotion or biometric terminology",
@@ -120,6 +152,11 @@
       "source_ref": "Article 50 AI Act",
       "description": "When deployers expose people to deepfake or synthetic media, disclosure evidence must exist.",
       "applies_when": "EU-market operation with declared synthetic-media exposure.",
+      "source_ids": [
+        "commission_transparent_ai_qa",
+        "commission_transparent_ai_consultation",
+        "eurlex_ai_act_regulation"
+      ],
       "evidence_required": [
         "Transparency notice",
         "AI/automated origin statement",
@@ -136,6 +173,11 @@
       "source_ref": "Article 50 AI Act",
       "description": "When deployers publish AI-generated text on matters of public interest, disclosure evidence must exist.",
       "applies_when": "EU-market operation with declared public-interest text publication.",
+      "source_ids": [
+        "commission_transparent_ai_qa",
+        "commission_transparent_ai_consultation",
+        "eurlex_ai_act_regulation"
+      ],
       "evidence_required": [
         "Transparency notice",
         "AI/automated origin statement",
@@ -152,6 +194,10 @@
       "source_ref": "Article 6 / Annex I / Annex III",
       "description": "Flag likely Annex I product-route or Annex III high-risk uses for legal review. Vauban does not auto-classify these as legally settled facts.",
       "applies_when": "EU-market operation outside research-only scope.",
+      "source_ids": [
+        "commission_navigating_ai_act",
+        "eurlex_ai_act_regulation"
+      ],
       "evidence_required": [
         "Declared intended purpose",
         "declared sector and use-context flags"
@@ -166,6 +212,10 @@
       "source_ref": "Article 27 AI Act",
       "description": "Flag declared scenarios that may trigger a deployer fundamental-rights impact assessment.",
       "applies_when": "EU-market operation outside research-only scope.",
+      "source_ids": [
+        "commission_navigating_ai_act",
+        "eurlex_ai_act_regulation"
+      ],
       "evidence_required": [
         "Declared public-sector or public-service context",
         "declared Annex III point 5(b)/(c) facts where relevant"
@@ -180,6 +230,7 @@
       "source_ref": "Vauban readiness v1",
       "description": "Downstream deployers should retain provider-side documentation when building on third-party GPAI systems.",
       "applies_when": "EU-market deployer building on third-party GPAI.",
+      "source_ids": [],
       "evidence_required": [
         "Provider or model identification",
         "version or release marker",
@@ -195,6 +246,7 @@
       "source_ref": "Vauban readiness v1",
       "description": "The readiness pack should include technical evidence such as attack, evaluation, or red-team reports.",
       "applies_when": "AI deployment in scope for readiness reporting.",
+      "source_ids": [],
       "evidence_required": ["At least one technical report artifact"],
       "check_method": "File presence check across attached technical artifacts.",
       "blocking": false
@@ -206,6 +258,7 @@
       "source_ref": "Vauban readiness v1",
       "description": "The deployer should document how humans supervise or override the system in operation.",
       "applies_when": "EU-market operation outside research-only scope.",
+      "source_ids": [],
       "evidence_required": [
         "Human oversight procedure",
         "review or override step",
@@ -222,6 +275,7 @@
       "source_ref": "Vauban readiness v1",
       "description": "The deployer should document how incidents are escalated, owned, and re-reviewed.",
       "applies_when": "EU-market operation outside research-only scope.",
+      "source_ids": [],
       "evidence_required": [
         "Incident response procedure",
         "incident or misuse terminology",
@@ -230,6 +284,215 @@
       ],
       "check_method": "File presence plus minimum content markers.",
       "blocking": false
+    }
+  ],
+  "annex_iii_catalog": [
+    {
+      "use_case_id": "annex_iii_1_biometrics_generic",
+      "area": "1",
+      "area_title": "Biometrics",
+      "title": "Generic biometrics / emotion-recognition context",
+      "generic": true,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_1_remote_biometric_identification",
+      "area": "1",
+      "area_title": "Biometrics",
+      "title": "Remote biometric identification",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_1_biometric_categorisation",
+      "area": "1",
+      "area_title": "Biometrics",
+      "title": "Biometric categorisation",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_1_emotion_recognition",
+      "area": "1",
+      "area_title": "Biometrics",
+      "title": "Emotion recognition",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_2_critical_infrastructure",
+      "area": "2",
+      "area_title": "Critical infrastructure",
+      "title": "Critical infrastructure safety component",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_3_education_generic",
+      "area": "3",
+      "area_title": "Education and vocational training",
+      "title": "Generic education or vocational-training context",
+      "generic": true,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_3_education_access_assignment",
+      "area": "3",
+      "area_title": "Education and vocational training",
+      "title": "Education access or assignment",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_3_learning_outcome_evaluation",
+      "area": "3",
+      "area_title": "Education and vocational training",
+      "title": "Learning-outcome evaluation",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_3_education_level_assessment",
+      "area": "3",
+      "area_title": "Education and vocational training",
+      "title": "Education-level assessment",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_3_student_test_monitoring",
+      "area": "3",
+      "area_title": "Education and vocational training",
+      "title": "Student test monitoring or cheating detection",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_4_employment_generic",
+      "area": "4",
+      "area_title": "Employment and workers management",
+      "title": "Generic employment or workers-management context",
+      "generic": true,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_4_recruitment_selection",
+      "area": "4",
+      "area_title": "Employment and workers management",
+      "title": "Recruitment or selection",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_4_work_relationship_decisions",
+      "area": "4",
+      "area_title": "Employment and workers management",
+      "title": "Work-relationship decisions, task allocation, or monitoring",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_5_essential_services_generic",
+      "area": "5",
+      "area_title": "Essential private and public services",
+      "title": "Generic essential-services context",
+      "generic": true,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_5_public_assistance_benefits",
+      "area": "5",
+      "area_title": "Essential private and public services",
+      "title": "Public assistance, healthcare, or essential-benefits eligibility",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_5_creditworthiness_or_credit_score",
+      "area": "5",
+      "area_title": "Essential private and public services",
+      "title": "Creditworthiness or credit score",
+      "generic": false,
+      "fria_relevant": true,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_5_life_or_health_insurance",
+      "area": "5",
+      "area_title": "Essential private and public services",
+      "title": "Life or health insurance risk pricing",
+      "generic": false,
+      "fria_relevant": true,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_5_emergency_dispatch",
+      "area": "5",
+      "area_title": "Essential private and public services",
+      "title": "Emergency call evaluation or emergency-dispatch prioritisation",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_6_law_enforcement_generic",
+      "area": "6",
+      "area_title": "Law enforcement",
+      "title": "Generic law-enforcement context",
+      "generic": true,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_7_migration_asylum_border_generic",
+      "area": "7",
+      "area_title": "Migration, asylum, and border control",
+      "title": "Generic migration, asylum, or border-control context",
+      "generic": true,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_8_justice_democracy_generic",
+      "area": "8",
+      "area_title": "Administration of justice and democratic processes",
+      "title": "Generic justice or democratic-process context",
+      "generic": true,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_8_justice_support",
+      "area": "8",
+      "area_title": "Administration of justice and democratic processes",
+      "title": "Administration of justice support",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
+    },
+    {
+      "use_case_id": "annex_iii_8_democratic_process_influence",
+      "area": "8",
+      "area_title": "Administration of justice and democratic processes",
+      "title": "Democratic-process or voter-influence support",
+      "generic": false,
+      "fria_relevant": false,
+      "source_ids": ["commission_navigating_ai_act", "eurlex_ai_act_regulation"]
     }
   ],
   "markers": {

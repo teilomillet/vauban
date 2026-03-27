@@ -63,11 +63,25 @@ def _run_ai_act_mode(context: EarlyModeContext) -> None:
             payload=artifacts.controls_matrix,
         ),
     )
+    annex_iii_classification_path = write_mode_report(
+        config.output_dir,
+        ModeReport(
+            filename="ai_act_annex_iii_classification.json",
+            payload=artifacts.annex_iii_classification,
+        ),
+    )
     risk_register_path = write_mode_report(
         config.output_dir,
         ModeReport(
             filename="ai_act_risk_register.json",
             payload=artifacts.risk_register,
+        ),
+    )
+    fria_prep_path = write_mode_report(
+        config.output_dir,
+        ModeReport(
+            filename="ai_act_fria_prep.json",
+            payload=artifacts.fria_prep,
         ),
     )
     evidence_manifest_path = write_mode_report(
@@ -83,6 +97,9 @@ def _run_ai_act_mode(context: EarlyModeContext) -> None:
     remediation_path = config.output_dir / "ai_act_remediation_plan.md"
     remediation_path.parent.mkdir(parents=True, exist_ok=True)
     remediation_path.write_text(artifacts.remediation_markdown)
+    fria_prep_markdown_path = config.output_dir / "ai_act_fria_prep.md"
+    fria_prep_markdown_path.parent.mkdir(parents=True, exist_ok=True)
+    fria_prep_markdown_path.write_text(artifacts.fria_prep_markdown)
 
     log(
         f"AI Act readiness bundle written to {config.output_dir}",
@@ -104,10 +121,13 @@ def _run_ai_act_mode(context: EarlyModeContext) -> None:
             str(ledger_path),
             str(library_path),
             str(controls_matrix_path),
+            str(annex_iii_classification_path),
             str(risk_register_path),
+            str(fria_prep_path),
             str(evidence_manifest_path),
             str(executive_summary_path),
             str(remediation_path),
+            str(fria_prep_markdown_path),
         ],
         {
             "n_pass": _metric_count(controls_overview_dict, "pass"),

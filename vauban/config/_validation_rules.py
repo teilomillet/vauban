@@ -507,6 +507,31 @@ def _rule_ai_act_readiness(
             ),
         )
 
+    if (
+        not ai_act.annex_iii_use_cases
+        and (
+            ai_act.biometric_or_emotion_related_use
+            or ai_act.education_or_vocational_training
+            or ai_act.employment_or_workers_management
+            or ai_act.essential_private_or_public_service
+            or ai_act.law_enforcement_use
+            or ai_act.migration_or_border_management_use
+            or ai_act.administration_of_justice_or_democracy_use
+        )
+    ):
+        collector.add(
+            "LOW",
+            (
+                "[ai_act] uses legacy high-risk area flags but"
+                " [ai_act].annex_iii_use_cases is empty"
+            ),
+            fix=(
+                "add specific Annex III use-case identifiers to"
+                " [ai_act].annex_iii_use_cases for sharper classification"
+                " coverage"
+            ),
+        )
+
 
 def _rule_early_mode_conflicts(
     context: ValidationContext,

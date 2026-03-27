@@ -1286,6 +1286,7 @@ class AIActConfig:
     deepfake_creative_satirical_artistic_or_fictional_context: bool = False
     provides_public_service: bool = False
     public_sector_use: bool = False
+    annex_iii_use_cases: list[str] = field(default_factory=list)
     employment_or_workers_management: bool = False
     education_or_vocational_training: bool = False
     essential_private_or_public_service: bool = False

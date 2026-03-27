@@ -12,6 +12,35 @@ if TYPE_CHECKING:
     from vauban.config._types import TomlDict
 
 
+_AI_ACT_ANNEX_III_USE_CASES: frozenset[str] = frozenset(
+    {
+        "annex_iii_1_biometrics_generic",
+        "annex_iii_1_remote_biometric_identification",
+        "annex_iii_1_biometric_categorisation",
+        "annex_iii_1_emotion_recognition",
+        "annex_iii_2_critical_infrastructure",
+        "annex_iii_3_education_generic",
+        "annex_iii_3_education_access_assignment",
+        "annex_iii_3_learning_outcome_evaluation",
+        "annex_iii_3_education_level_assessment",
+        "annex_iii_3_student_test_monitoring",
+        "annex_iii_4_employment_generic",
+        "annex_iii_4_recruitment_selection",
+        "annex_iii_4_work_relationship_decisions",
+        "annex_iii_5_essential_services_generic",
+        "annex_iii_5_public_assistance_benefits",
+        "annex_iii_5_creditworthiness_or_credit_score",
+        "annex_iii_5_life_or_health_insurance",
+        "annex_iii_5_emergency_dispatch",
+        "annex_iii_6_law_enforcement_generic",
+        "annex_iii_7_migration_asylum_border_generic",
+        "annex_iii_8_justice_democracy_generic",
+        "annex_iii_8_justice_support",
+        "annex_iii_8_democratic_process_influence",
+    },
+)
+
+
 def _resolve_optional_path(base_dir: Path, raw: str | None) -> Path | None:
     """Resolve an optional TOML path relative to *base_dir*."""
     if raw is None:
@@ -148,6 +177,16 @@ def _parse_ai_act(base_dir: Path, raw: TomlDict) -> AIActConfig | None:
         default=False,
     )
     public_sector_use = reader.boolean("public_sector_use", default=False)
+    annex_iii_use_cases = reader.string_list("annex_iii_use_cases", default=[])
+    unknown_annex_iii_use_cases = sorted(
+        set(annex_iii_use_cases) - _AI_ACT_ANNEX_III_USE_CASES,
+    )
+    if unknown_annex_iii_use_cases:
+        msg = (
+            "[ai_act].annex_iii_use_cases contains unknown values: "
+            f"{', '.join(unknown_annex_iii_use_cases)}"
+        )
+        raise ValueError(msg)
     employment_use = reader.boolean(
         "employment_or_workers_management",
         default=False,
@@ -268,6 +307,7 @@ def _parse_ai_act(base_dir: Path, raw: TomlDict) -> AIActConfig | None:
         ),
         provides_public_service=provides_public_service,
         public_sector_use=public_sector_use,
+        annex_iii_use_cases=annex_iii_use_cases,
         employment_or_workers_management=employment_use,
         education_or_vocational_training=education_use,
         essential_private_or_public_service=essential_service,

@@ -46,7 +46,10 @@ class AIActArtifacts:
     evidence_manifest: dict[str, object]
     controls_matrix: dict[str, object]
     risk_register: dict[str, object]
+    annex_iii_classification: dict[str, object]
+    fria_prep: dict[str, object]
     executive_summary_markdown: str
+    fria_prep_markdown: str
 
 
 def generate_deployer_readiness_bundle(
@@ -108,6 +111,16 @@ def generate_deployer_readiness_artifacts(
         technical_findings,
         rulebook,
     )
+    annex_iii_classification = _build_annex_iii_classification(
+        config,
+        rulebook,
+    )
+    fria_prep = _build_fria_prep(
+        config,
+        coverage,
+        controls,
+        rulebook,
+    )
     evidence_manifest_sha256 = str(evidence_manifest_payload["manifest_sha256"])
     bundle_fingerprint = _json_sha256(
         {
@@ -115,11 +128,15 @@ def generate_deployer_readiness_artifacts(
             "coverage": coverage,
             "technical_findings": technical_findings,
             "evidence_manifest_sha256": evidence_manifest_sha256,
+            "annex_iii_classification": annex_iii_classification,
+            "fria_prep": fria_prep,
         },
     )
     evidence_manifest_payload["bundle_fingerprint"] = bundle_fingerprint
     controls_matrix["bundle_fingerprint"] = bundle_fingerprint
     risk_register["bundle_fingerprint"] = bundle_fingerprint
+    annex_iii_classification["bundle_fingerprint"] = bundle_fingerprint
+    fria_prep["bundle_fingerprint"] = bundle_fingerprint
 
     report: dict[str, object] = {
         "report_version": "ai_act_deployer_readiness_v1",
@@ -189,6 +206,14 @@ def generate_deployer_readiness_artifacts(
             "artifacts": technical_artifacts,
         },
         "technical_findings": technical_findings,
+        "annex_iii_classification": annex_iii_classification,
+        "fria_prep": {
+            "status": fria_prep["status"],
+            "required": fria_prep["required"],
+            "trigger_labels": fria_prep["trigger_labels"],
+            "next_action": fria_prep["next_action"],
+            "source_citations": fria_prep["source_citations"],
+        },
         "required_client_actions": remediation_items,
         "sources": _sources(),
     }
@@ -222,6 +247,7 @@ def generate_deployer_readiness_artifacts(
         report,
         risk_register,
     )
+    fria_prep_markdown = _render_fria_prep_markdown(fria_prep)
     return AIActArtifacts(
         report=report,
         coverage_ledger=coverage_ledger,
@@ -230,7 +256,10 @@ def generate_deployer_readiness_artifacts(
         evidence_manifest=evidence_manifest_payload,
         controls_matrix=controls_matrix,
         risk_register=risk_register,
+        annex_iii_classification=annex_iii_classification,
+        fria_prep=fria_prep,
         executive_summary_markdown=executive_summary_markdown,
+        fria_prep_markdown=fria_prep_markdown,
     )
 
 
@@ -283,6 +312,67 @@ def _rulebook_controls() -> list[dict[str, object]]:
             raise TypeError(msg)
         controls.append(cast("dict[str, object]", entry))
     return controls
+
+
+def _control_with_citations(control: dict[str, object]) -> dict[str, object]:
+    """Attach resolved source citations to one control definition."""
+    return {
+        **control,
+        "source_citations": _control_source_citations(control),
+    }
+
+
+def _control_source_citations(control: dict[str, object]) -> list[dict[str, str]]:
+    """Resolve source citations for one control definition."""
+    raw_source_ids = control.get("source_ids", [])
+    if not isinstance(raw_source_ids, list):
+        msg = "AI Act rulebook control source_ids must be a list"
+        raise TypeError(msg)
+    source_ids = [value for value in raw_source_ids if isinstance(value, str)]
+    if len(source_ids) != len(raw_source_ids):
+        msg = "AI Act rulebook control source_ids must be strings"
+        raise TypeError(msg)
+    sources_by_id = _sources_by_id()
+    citations: list[dict[str, str]] = []
+    for source_id in source_ids:
+        citation = sources_by_id.get(source_id)
+        if citation is None:
+            msg = f"AI Act rulebook control references unknown source_id {source_id!r}"
+            raise TypeError(msg)
+        citations.append(citation)
+    return citations
+
+
+def _annex_iii_catalog() -> list[dict[str, object]]:
+    """Return the versioned Annex III use-case catalog from the rulebook."""
+    raw_catalog = _rulebook_v1().get("annex_iii_catalog")
+    if not isinstance(raw_catalog, list):
+        msg = "AI Act rulebook annex_iii_catalog must be a list"
+        raise TypeError(msg)
+    catalog: list[dict[str, object]] = []
+    for entry in raw_catalog:
+        if not isinstance(entry, dict):
+            msg = "AI Act Annex III catalog entries must be objects"
+            raise TypeError(msg)
+        entry_dict = cast("dict[str, object]", entry)
+        entry_with_citations = {
+            **entry_dict,
+            "source_citations": _control_source_citations(entry_dict),
+        }
+        catalog.append(entry_with_citations)
+    return catalog
+
+
+def _annex_iii_catalog_by_id() -> dict[str, dict[str, object]]:
+    """Return the Annex III catalog keyed by use_case_id."""
+    catalog_by_id: dict[str, dict[str, object]] = {}
+    for entry in _annex_iii_catalog():
+        use_case_id = entry.get("use_case_id")
+        if not isinstance(use_case_id, str):
+            msg = "AI Act Annex III catalog entry is missing use_case_id"
+            raise TypeError(msg)
+        catalog_by_id[use_case_id] = entry
+    return catalog_by_id
 
 
 def _rulebook_markers(name: str) -> tuple[MarkerRule, ...]:
@@ -367,7 +457,7 @@ def _path_size_bytes(path: Path) -> int | None:
 
 def _control_library_v1() -> list[dict[str, object]]:
     """Return the deployer-readiness control library for v1."""
-    return _rulebook_controls()
+    return [_control_with_citations(control) for control in _rulebook_controls()]
 
 
 def _control_definition(
@@ -419,6 +509,13 @@ def _build_evidence_manifest(config: AIActConfig) -> list[dict[str, object]]:
             "claim_kind": "asserted_by_client",
             "label": "Declared intended purpose",
             "value": config.intended_purpose,
+        },
+        {
+            "evidence_id": "fact.annex_iii_use_cases",
+            "kind": "config_fact",
+            "claim_kind": "asserted_by_client",
+            "label": "Declared Annex III use cases",
+            "value": config.annex_iii_use_cases,
         },
         {
             "evidence_id": "fact.uses_general_purpose_ai",
@@ -767,6 +864,7 @@ def _build_risk_register(
                 "next_action": entry["owner_action"],
                 "recheck_hint": entry["recheck_hint"],
                 "legal_review_required": entry["legal_review_required"],
+                "source_citations": control.get("source_citations", []),
             },
         )
     items.extend(technical_findings)
@@ -781,6 +879,175 @@ def _build_risk_register(
             "n_medium": severity_counts.get("medium", 0),
             "n_low": severity_counts.get("low", 0),
         },
+    }
+
+
+def _build_fria_prep(
+    config: AIActConfig,
+    coverage: list[dict[str, object]],
+    controls: list[dict[str, object]],
+    rulebook: dict[str, str],
+) -> dict[str, object]:
+    """Build a FRIA preparation artifact from the current triage state."""
+    control_lookup = {
+        str(control["control_id"]): control
+        for control in controls
+    }
+    coverage_lookup = {
+        str(entry["control_id"]): entry
+        for entry in coverage
+    }
+    fria_control_id = "ai_act.triage.fria_requirement"
+    fria_control = control_lookup[fria_control_id]
+    fria_entry = coverage_lookup[fria_control_id]
+    trigger_labels = _fria_triggers(config)
+    status_raw = str(fria_entry["status"])
+    if status_raw == "not_applicable":
+        prep_status = "out_of_scope"
+        required = False
+    elif status_raw == "unknown":
+        prep_status = "review_needed"
+        required = True
+    else:
+        prep_status = "not_required"
+        required = False
+
+    questionnaire: list[dict[str, object]] = [
+        {
+            "question_id": "context_of_use",
+            "prompt": (
+                "Describe the specific context of use, affected persons or"
+                " groups, and any decisions or recommendations supported by"
+                " the AI system."
+            ),
+            "why_it_matters": "FRIA depends on the concrete deployment context.",
+        },
+        {
+            "question_id": "provider_materials",
+            "prompt": (
+                "Attach provider instructions for use, intended purpose,"
+                " limitations, and relevant technical documentation."
+            ),
+            "why_it_matters": "Article 27 expects deployers to use provider inputs.",
+        },
+        {
+            "question_id": "fundamental_rights_risks",
+            "prompt": (
+                "List the specific risks of harm to fundamental rights,"
+                " health, or safety for affected persons."
+            ),
+            "why_it_matters": "This is the core substantive FRIA input.",
+        },
+        {
+            "question_id": "human_oversight_and_redress",
+            "prompt": (
+                "Document human oversight, complaint handling, redress, and"
+                " escalation arrangements for this deployment."
+            ),
+            "why_it_matters": "Mitigations and governance are part of FRIA prep.",
+        },
+        {
+            "question_id": "authority_notification",
+            "prompt": (
+                "Confirm the internal owner for any authority notification or"
+                " registration step if FRIA is confirmed as required."
+            ),
+            "why_it_matters": "The deployer must operationalize follow-through.",
+        },
+    ]
+    checklist: list[str] = [
+        "Deployment-specific intended purpose and workflow description",
+        "Affected persons and groups, including vulnerable populations",
+        "Provider instructions for use, limitations, and model/service version",
+        "Concrete fundamental-rights, health, and safety risk register",
+        "Human oversight, complaint handling, and redress procedures",
+        "Mitigation measures, monitoring plan, and incident escalation owner",
+    ]
+    return {
+        "prep_version": "ai_act_fria_prep_v1",
+        "rulebook": rulebook,
+        "required": required,
+        "status": prep_status,
+        "control_id": fria_control_id,
+        "control_title": fria_control["title"],
+        "control_status": status_raw,
+        "source_citations": fria_control.get("source_citations", []),
+        "trigger_labels": trigger_labels,
+        "trigger_titles": _human_readable_trigger_labels(trigger_labels),
+        "next_action": fria_entry["owner_action"],
+        "legal_review_required": fria_entry["legal_review_required"],
+        "known_inputs": {
+            "company_name": config.company_name,
+            "system_name": config.system_name,
+            "role": config.role,
+            "sector": config.sector,
+            "public_sector_use": config.public_sector_use,
+            "provides_public_service": config.provides_public_service,
+            "creditworthiness_or_credit_score_assessment": (
+                config.creditworthiness_or_credit_score_assessment
+            ),
+            "life_or_health_insurance_risk_pricing": (
+                config.life_or_health_insurance_risk_pricing
+            ),
+        },
+        "questionnaire": questionnaire,
+        "evidence_checklist": checklist,
+    }
+
+
+def _build_annex_iii_classification(
+    config: AIActConfig,
+    rulebook: dict[str, str],
+) -> dict[str, object]:
+    """Build a classification artifact for declared Annex III use cases."""
+    use_case_ids = _declared_annex_iii_use_cases(config)
+    catalog = _annex_iii_catalog_by_id()
+    entries = [catalog[use_case_id] for use_case_id in use_case_ids]
+    areas: dict[str, dict[str, object]] = {}
+    for entry in entries:
+        area = str(entry["area"])
+        area_bucket = areas.get(area)
+        if area_bucket is None:
+            area_bucket = {
+                "area": area,
+                "area_title": entry["area_title"],
+                "use_cases": [],
+                "has_generic_use_case": False,
+            }
+            areas[area] = area_bucket
+        raw_use_cases = area_bucket.get("use_cases")
+        if not isinstance(raw_use_cases, list):
+            msg = "annex_iii classification use_cases must be a list"
+            raise TypeError(msg)
+        use_cases = cast("list[dict[str, object]]", raw_use_cases)
+        use_case_entry: dict[str, object] = {
+            "use_case_id": entry["use_case_id"],
+            "title": entry["title"],
+            "generic": entry["generic"],
+            "source_citations": entry["source_citations"],
+        }
+        use_cases.append(use_case_entry)
+        area_bucket["use_cases"] = use_cases
+        if bool(entry["generic"]):
+            area_bucket["has_generic_use_case"] = True
+    status = (
+        "no_use_cases_declared"
+        if not entries
+        else (
+            "generic_use_cases_declared"
+            if any(bool(entry["generic"]) for entry in entries)
+            else "specific_use_cases_declared"
+        )
+    )
+    return {
+        "classification_version": "ai_act_annex_iii_classification_v1",
+        "rulebook": rulebook,
+        "status": status,
+        "declared_use_case_ids": use_case_ids,
+        "declared_use_case_titles": _human_readable_trigger_labels(use_case_ids),
+        "areas": [areas[key] for key in sorted(areas)],
+        "n_declared_use_cases": len(entries),
+        "source_catalog": entries,
     }
 
 
@@ -1005,6 +1272,7 @@ def _render_executive_summary_markdown(
     likely_obligations = _coerce_str_list(report.get("likely_obligations"))
     unresolved_controls = _coerce_str_list(report.get("unresolved_controls"))
     risk_summary = report.get("risk_level")
+    annex_iii_classification = report.get("annex_iii_classification")
     rulebook = report.get("rulebook")
     bundle_fingerprint = report.get("bundle_fingerprint")
     lines = [
@@ -1024,6 +1292,11 @@ def _render_executive_summary_markdown(
             lines.append(f"- Rulebook version: {version}")
         if isinstance(snapshot, str):
             lines.append(f"- Rulebook snapshot date: {snapshot}")
+    if isinstance(annex_iii_classification, dict):
+        classification_dict = cast("dict[str, object]", annex_iii_classification)
+        classification_status = classification_dict.get("status")
+        if isinstance(classification_status, str):
+            lines.append(f"- Annex III classification: {classification_status}")
     lines.extend(["", "## Likely Obligations", ""])
     if likely_obligations:
         lines.extend(f"- {item}" for item in likely_obligations)
@@ -1038,6 +1311,51 @@ def _render_executive_summary_markdown(
     lines.extend(["", "## Risk Register Size", ""])
     if isinstance(items_raw, list):
         lines.append(f"- Total risk items: {len(items_raw)}")
+    return "\n".join(lines) + "\n"
+
+
+def _render_fria_prep_markdown(fria_prep: dict[str, object]) -> str:
+    """Render a markdown FRIA preparation artifact."""
+    trigger_labels = _coerce_str_list(fria_prep.get("trigger_titles"))
+    checklist_raw = fria_prep.get("evidence_checklist")
+    checklist = _coerce_str_list(checklist_raw)
+    questionnaire_raw = fria_prep.get("questionnaire")
+    lines = [
+        "# FRIA Preparation Pack",
+        "",
+        f"- Status: {fria_prep['status']}",
+        f"- Required: {fria_prep['required']}",
+        f"- Control: {fria_prep['control_id']}",
+        "",
+        "## Trigger Labels",
+        "",
+    ]
+    if trigger_labels:
+        lines.extend(f"- {label}" for label in trigger_labels)
+    else:
+        lines.append("- No FRIA trigger labels were identified.")
+    lines.extend(["", "## Evidence Checklist", ""])
+    if checklist:
+        lines.extend(f"- {item}" for item in checklist)
+    else:
+        lines.append("- No checklist items were generated.")
+    lines.extend(["", "## Questionnaire", ""])
+    if isinstance(questionnaire_raw, list):
+        for item in questionnaire_raw:
+            if not isinstance(item, dict):
+                continue
+            item_dict = cast("dict[str, object]", item)
+            prompt = item_dict.get("prompt")
+            why_it_matters = item_dict.get("why_it_matters")
+            if isinstance(prompt, str):
+                lines.append(f"- {prompt}")
+            if isinstance(why_it_matters, str):
+                lines.append(f"  Why it matters: {why_it_matters}")
+    else:
+        lines.append("- No questionnaire items were generated.")
+    next_action = fria_prep.get("next_action")
+    if isinstance(next_action, str):
+        lines.extend(["", "## Next Action", "", f"- {next_action}"])
     return "\n".join(lines) + "\n"
 
 
@@ -1782,7 +2100,7 @@ def _evaluate_high_risk_triage(config: AIActConfig) -> dict[str, object]:
         rationale=(
             "One or more declared use-context triggers may place the system in"
             " a high-risk or FRIA-sensitive category: "
-            f"{', '.join(triggers)}."
+            f"{', '.join(_human_readable_trigger_labels(triggers))}."
         ),
         evidence_ids=["fact.role", "fact.eu_market", "fact.intended_purpose"],
         confidence=0.8,
@@ -2178,8 +2496,38 @@ def _evidence_exists(
     return False
 
 
+def _declared_annex_iii_use_cases(config: AIActConfig) -> list[str]:
+    """Return declared Annex III use-case identifiers from explicit and legacy flags."""
+    use_case_ids = set(config.annex_iii_use_cases)
+    if config.uses_emotion_recognition:
+        use_case_ids.add("annex_iii_1_emotion_recognition")
+    if config.uses_biometric_categorization:
+        use_case_ids.add("annex_iii_1_biometric_categorisation")
+    if config.biometric_or_emotion_related_use:
+        use_case_ids.add("annex_iii_1_biometrics_generic")
+    if config.education_or_vocational_training:
+        use_case_ids.add("annex_iii_3_education_generic")
+    if config.employment_or_workers_management:
+        use_case_ids.add("annex_iii_4_employment_generic")
+    if config.essential_private_or_public_service:
+        use_case_ids.add("annex_iii_5_essential_services_generic")
+    if config.creditworthiness_or_credit_score_assessment:
+        use_case_ids.add("annex_iii_5_creditworthiness_or_credit_score")
+    if config.life_or_health_insurance_risk_pricing:
+        use_case_ids.add("annex_iii_5_life_or_health_insurance")
+    if config.emergency_first_response_dispatch:
+        use_case_ids.add("annex_iii_5_emergency_dispatch")
+    if config.law_enforcement_use:
+        use_case_ids.add("annex_iii_6_law_enforcement_generic")
+    if config.migration_or_border_management_use:
+        use_case_ids.add("annex_iii_7_migration_asylum_border_generic")
+    if config.administration_of_justice_or_democracy_use:
+        use_case_ids.add("annex_iii_8_justice_democracy_generic")
+    return sorted(use_case_ids)
+
+
 def _high_risk_triggers(config: AIActConfig) -> list[str]:
-    """Return declared high-risk or FRIA-sensitive trigger labels."""
+    """Return declared high-risk trigger labels."""
     triggers: list[str] = []
     if (
         config.annex_i_product_or_safety_component
@@ -2191,26 +2539,7 @@ def _high_risk_triggers(config: AIActConfig) -> list[str]:
         or config.annex_i_third_party_conformity_assessment
     ):
         triggers.append("potential_annex_i_product_route")
-    if config.employment_or_workers_management:
-        triggers.append("employment_or_workers_management")
-    if config.education_or_vocational_training:
-        triggers.append("education_or_vocational_training")
-    if config.essential_private_or_public_service:
-        triggers.append("essential_private_or_public_service")
-    if config.creditworthiness_or_credit_score_assessment:
-        triggers.append("creditworthiness_or_credit_score_assessment")
-    if config.life_or_health_insurance_risk_pricing:
-        triggers.append("life_or_health_insurance_risk_pricing")
-    if config.emergency_first_response_dispatch:
-        triggers.append("emergency_first_response_dispatch")
-    if config.law_enforcement_use:
-        triggers.append("law_enforcement_use")
-    if config.migration_or_border_management_use:
-        triggers.append("migration_or_border_management_use")
-    if config.administration_of_justice_or_democracy_use:
-        triggers.append("administration_of_justice_or_democracy_use")
-    if config.biometric_or_emotion_related_use:
-        triggers.append("biometric_or_emotion_related_use")
+    triggers.extend(_declared_annex_iii_use_cases(config))
     if config.uses_profiling_or_similarly_significant_decision_support:
         triggers.append("similarly_significant_decision_support")
     return triggers
@@ -2219,14 +2548,16 @@ def _high_risk_triggers(config: AIActConfig) -> list[str]:
 def _fria_triggers(config: AIActConfig) -> list[str]:
     """Return declared FRIA-sensitive trigger labels."""
     triggers: list[str] = []
-    high_risk_triggers = _high_risk_triggers(config)
-    has_non_education_high_risk = any(
-        trigger != "education_or_vocational_training"
-        for trigger in high_risk_triggers
+    catalog = _annex_iii_catalog_by_id()
+    annex_iii_use_cases = _declared_annex_iii_use_cases(config)
+    has_public_service_relevant_use_case = any(
+        str(catalog[use_case_id]["area"]) != "2"
+        for use_case_id in annex_iii_use_cases
+        if use_case_id in catalog
     )
     if (
         (config.public_sector_use or config.provides_public_service)
-        and has_non_education_high_risk
+        and has_public_service_relevant_use_case
     ):
         triggers.append("public_sector_or_public_service_high_risk_use")
     if config.creditworthiness_or_credit_score_assessment:
@@ -2234,6 +2565,23 @@ def _fria_triggers(config: AIActConfig) -> list[str]:
     if config.life_or_health_insurance_risk_pricing:
         triggers.append("annex_iii_5_c_life_or_health_insurance")
     return triggers
+
+
+def _human_readable_trigger_labels(triggers: list[str]) -> list[str]:
+    """Resolve trigger identifiers to readable labels where the catalog knows them."""
+    catalog = _annex_iii_catalog_by_id()
+    labels: list[str] = []
+    for trigger in triggers:
+        catalog_entry = catalog.get(trigger)
+        if catalog_entry is None:
+            labels.append(trigger)
+            continue
+        title = catalog_entry.get("title")
+        if isinstance(title, str):
+            labels.append(title)
+        else:
+            labels.append(trigger)
+    return labels
 
 
 def _ensure_coverage_complete(
@@ -2472,7 +2820,7 @@ def _sources() -> list[dict[str, str]]:
             raise TypeError(msg)
         entry_dict = cast("dict[str, object]", entry)
         source: dict[str, str] = {}
-        for key in ("title", "url", "publisher", "relevance"):
+        for key in ("source_id", "title", "url", "publisher", "relevance"):
             value = entry_dict.get(key)
             if not isinstance(value, str):
                 msg = f"AI Act rulebook source entry is missing {key!r}"
@@ -2480,3 +2828,8 @@ def _sources() -> list[dict[str, str]]:
             source[key] = value
         sources.append(source)
     return sources
+
+
+def _sources_by_id() -> dict[str, dict[str, str]]:
+    """Return rulebook sources keyed by source_id."""
+    return {source["source_id"]: source for source in _sources()}

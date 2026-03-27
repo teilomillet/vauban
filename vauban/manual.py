@@ -445,6 +445,18 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 constraints="boolean; used for conservative high-risk / FRIA triage.",
             ),
             FieldSpec(
+                key="annex_iii_use_cases",
+                description=(
+                    "Optional explicit Annex III use-case identifiers for"
+                    " sharper high-risk classification coverage."
+                ),
+                constraints=(
+                    "list[string]; use the built-in Annex III IDs such as"
+                    " annex_iii_4_recruitment_selection or"
+                    " annex_iii_5_creditworthiness_or_credit_score."
+                ),
+            ),
+            FieldSpec(
                 key="employment_or_workers_management",
                 description="Whether the use touches employment or workers management.",
                 constraints="boolean; used for conservative high-risk / FRIA triage.",

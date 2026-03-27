@@ -248,6 +248,11 @@ deepfake_creative_satirical_artistic_or_fictional_context = false
 # Conservative high-risk / FRIA triage flags:
 provides_public_service = false
 public_sector_use = false
+# Prefer setting exact Annex III use cases when known:
+# annex_iii_use_cases = [
+#   "annex_iii_4_recruitment_selection",
+#   "annex_iii_5_creditworthiness_or_credit_score",
+# ]
 employment_or_workers_management = false
 education_or_vocational_training = false
 essential_private_or_public_service = false
