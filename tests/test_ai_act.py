@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 from unittest.mock import patch
 
@@ -93,8 +94,11 @@ class TestReadinessBundle:
         (tmp_path / "oversight.md").write_text(
             "\n".join(
                 [
-                    "Human review is required for escalated cases.",
-                    "Operators can override automated suggestions.",
+                    "Review step: human review is required for escalated cases.",
+                    (
+                        "Override capability: operators can override automated"
+                        " suggestions."
+                    ),
                     "Escalation trigger: uncertainty or customer complaint.",
                 ],
             )
@@ -104,8 +108,8 @@ class TestReadinessBundle:
             "\n".join(
                 [
                     "Incident scope: misuse, failure, or data breach.",
-                    "Escalation and reporting follow the severity matrix.",
-                    "Notify compliance within one business day.",
+                    "Escalation or reporting: follow the severity matrix.",
+                    "Contact owner: compliance@example.com.",
                 ],
             )
             + "\n",
@@ -151,7 +155,7 @@ class TestReadinessBundle:
             "\n".join(
                 [
                     "Logging scope: automated system logs and audit trail records.",
-                    "Retention: keep logs for at least six months.",
+                    "Retention period: keep logs for at least six months.",
                     "Access control: logs remain under the deployer's control.",
                 ],
             )
@@ -160,9 +164,12 @@ class TestReadinessBundle:
         (tmp_path / "worker_notice.md").write_text(
             "\n".join(
                 [
-                    "Employees and workers will be informed before deployment.",
-                    "Workers' representatives receive the same notice.",
-                    "The notice applies before the system is put into use.",
+                    "Employee scope: employees and workers in the covered teams.",
+                    (
+                        "Representative notice: workers' representatives"
+                        " receive the same notice."
+                    ),
+                    "Before use: the notice applies before the system is put into use.",
                 ],
             )
             + "\n",
@@ -171,8 +178,8 @@ class TestReadinessBundle:
             "\n".join(
                 [
                     (
-                        "Affected persons are informed that they are subject"
-                        " to the use of a high-risk AI system."
+                        "Affected person scope: natural persons subject to the"
+                        " use of the high-risk AI system."
                     ),
                     "Intended purpose: support credit decisions for natural persons.",
                     "Decision support context: recommendations assist decision-making.",
@@ -198,9 +205,12 @@ class TestReadinessBundle:
         (tmp_path / "eu_registration.md").write_text(
             "\n".join(
                 [
-                    "EU database registration record for the deployed system.",
-                    "Competent authority reference: EUA-12345.",
-                    "System ID: high-risk-credit-01.",
+                    (
+                        "Registration scope: EU database registration record"
+                        " for the deployed system."
+                    ),
+                    "Authority reference: EUA-12345.",
+                    "System identifier: high-risk-credit-01.",
                 ],
             )
             + "\n",
@@ -211,6 +221,10 @@ class TestReadinessBundle:
                 [
                     "This AI assistant is an automated system.",
                     "You are interacting with an AI assistant, not a human agent.",
+                    (
+                        "This notice also covers emotion recognition or"
+                        " biometric categorization exposure."
+                    ),
                 ],
             )
             + "\n",
@@ -273,6 +287,8 @@ class TestReadinessBundle:
         rulebook = _object_dict(report["rulebook"])
         assert rulebook["version"] == "deployer_readiness_v1"
         assert isinstance(report["bundle_fingerprint"], str)
+        integrity = _object_dict(report["integrity"])
+        assert integrity["status"] == "unsigned"
         overview = _object_dict(report["controls_overview"])
         assert overview["fail"] == 0
         assert overview["unknown"] == 0
@@ -721,6 +737,45 @@ class TestReadinessBundle:
             control_ids["ai_act.article26.public_authority_registration"] == "pass"
         )
 
+    def test_integrity_artifact_is_signed_when_secret_env_is_available(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        self._write_complete_evidence(tmp_path)
+        monkeypatch.setenv("VAUBAN_AI_ACT_SIGNING_SECRET", "super-secret")
+        config = replace(
+            self._config(tmp_path),
+            bundle_signature_secret_env="VAUBAN_AI_ACT_SIGNING_SECRET",
+        )
+
+        artifacts = generate_deployer_readiness_artifacts(config)
+
+        assert artifacts.integrity["signature_status"] == "signed"
+        assert artifacts.integrity["signature_algorithm"] == "hmac-sha256"
+        signature = artifacts.integrity["signature"]
+        assert isinstance(signature, str)
+        assert signature != ""
+        artifact_hashes = artifacts.integrity["artifact_hashes"]
+        assert isinstance(artifact_hashes, dict)
+        assert "ai_act_readiness_report.json" in artifact_hashes
+        evidence = artifacts.evidence_manifest["evidence"]
+        assert isinstance(evidence, list)
+        evidence_entries = [
+            _object_dict(entry)
+            for entry in evidence
+            if isinstance(entry, dict)
+        ]
+        literacy_entry = next(
+            entry
+            for entry in evidence_entries
+            if entry["evidence_id"] == "file.ai_literacy_record"
+        )
+        detected_fields = literacy_entry["structured_fields_detected"]
+        assert isinstance(detected_fields, list)
+        assert "owner" in detected_fields
+        assert "refresh_cadence" in detected_fields
+
     def test_high_risk_deployer_missing_monitoring_blocks_article26(
         self,
         tmp_path: Path,
@@ -1046,6 +1101,7 @@ class TestAIActMode:
             assert (tmp_path / "ai_act_risk_register.json").exists()
             assert (tmp_path / "ai_act_fria_prep.json").exists()
             assert (tmp_path / "ai_act_evidence_manifest.json").exists()
+            assert (tmp_path / "ai_act_integrity.json").exists()
             assert (tmp_path / "ai_act_executive_summary.md").exists()
             assert (tmp_path / "ai_act_remediation_plan.md").exists()
             assert (tmp_path / "ai_act_fria_prep.md").exists()

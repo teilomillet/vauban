@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from vauban import validate
 
 
@@ -275,6 +277,30 @@ def test_validate_ai_act_missing_notice_warns(tmp_path: Path) -> None:
     assert any(
         "[ai_act] declares an Article 50 transparency scenario" in w
         and "fix:" in w
+        for w in warnings
+    )
+
+
+def test_validate_ai_act_missing_signing_secret_warns(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("VAUBAN_AI_ACT_SIGNING_SECRET", raising=False)
+    literacy = tmp_path / "literacy.md"
+    literacy.write_text("ok\n")
+    toml_file = tmp_path / "readiness.toml"
+    toml_file.write_text(
+        "[ai_act]\n"
+        'company_name = "Example Energy"\n'
+        'system_name = "Customer Assistant"\n'
+        'intended_purpose = "Answers customer questions."\n'
+        'ai_literacy_record = "literacy.md"\n'
+        'bundle_signature_secret_env = "VAUBAN_AI_ACT_SIGNING_SECRET"\n'
+    )
+
+    warnings = validate(toml_file)
+    assert any(
+        "[ai_act].bundle_signature_secret_env is set" in w and "fix:" in w
         for w in warnings
     )
 

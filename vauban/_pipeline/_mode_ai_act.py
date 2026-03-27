@@ -91,6 +91,13 @@ def _run_ai_act_mode(context: EarlyModeContext) -> None:
             payload=artifacts.evidence_manifest,
         ),
     )
+    integrity_path = write_mode_report(
+        config.output_dir,
+        ModeReport(
+            filename="ai_act_integrity.json",
+            payload=artifacts.integrity,
+        ),
+    )
     executive_summary_path = config.output_dir / "ai_act_executive_summary.md"
     executive_summary_path.parent.mkdir(parents=True, exist_ok=True)
     executive_summary_path.write_text(artifacts.executive_summary_markdown)
@@ -125,6 +132,7 @@ def _run_ai_act_mode(context: EarlyModeContext) -> None:
             str(risk_register_path),
             str(fria_prep_path),
             str(evidence_manifest_path),
+            str(integrity_path),
             str(executive_summary_path),
             str(remediation_path),
             str(fria_prep_markdown_path),

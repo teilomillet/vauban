@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from vauban._suggestions import (
@@ -313,6 +314,24 @@ def _rule_ai_act_readiness(
                     " entry"
                 ),
             )
+
+    if (
+        ai_act.bundle_signature_secret_env is not None
+        and os.environ.get(ai_act.bundle_signature_secret_env) is None
+    ):
+        collector.add(
+            "LOW",
+            (
+                "[ai_act].bundle_signature_secret_env is set but the"
+                f" environment variable {ai_act.bundle_signature_secret_env!r}"
+                " is not available"
+            ),
+            fix=(
+                "export the signing secret before running Vauban, or remove"
+                " [ai_act].bundle_signature_secret_env to emit an unsigned"
+                " bundle intentionally"
+            ),
+        )
 
     if (
         ai_act.eu_market
