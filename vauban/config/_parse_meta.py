@@ -3,7 +3,7 @@
 import datetime
 from pathlib import Path
 
-from vauban.config._parse_helpers import SectionReader
+from vauban.config._parse_helpers import SectionReader, require_toml_table
 from vauban.config._types import TomlDict
 from vauban.types import MetaConfig, MetaDocRef
 
@@ -21,11 +21,7 @@ def parse_meta(raw: TomlDict, config_path: Path) -> MetaConfig | None:
     sec = raw.get("meta")
     if sec is None:
         return None
-    if not isinstance(sec, dict):
-        msg = f"[meta] must be a table, got {type(sec).__name__}"
-        raise TypeError(msg)
-
-    reader = SectionReader("[meta]", sec)
+    reader = SectionReader("[meta]", require_toml_table("[meta]", sec))
 
     # -- id (optional, defaults to filename stem) --
     id_raw = reader.optional_string("id")
@@ -92,13 +88,8 @@ def parse_meta(raw: TomlDict, config_path: Path) -> MetaConfig | None:
             )
             raise TypeError(msg)
         for i, doc in enumerate(docs_raw):
-            if not isinstance(doc, dict):
-                msg = (
-                    f"[[meta.docs]][{i}] must be a table,"
-                    f" got {type(doc).__name__}"
-                )
-                raise TypeError(msg)
-            path_val = doc.get("path")
+            doc_table = require_toml_table(f"[[meta.docs]][{i}]", doc)
+            path_val = doc_table.get("path")
             if path_val is None:
                 msg = f"[[meta.docs]][{i}] requires 'path'"
                 raise ValueError(msg)
@@ -108,7 +99,7 @@ def parse_meta(raw: TomlDict, config_path: Path) -> MetaConfig | None:
                     f" got {type(path_val).__name__}"
                 )
                 raise TypeError(msg)
-            label_val = doc.get("label", "")
+            label_val = doc_table.get("label", "")
             if not isinstance(label_val, str):
                 msg = (
                     f"[[meta.docs]][{i}].label must be a string,"

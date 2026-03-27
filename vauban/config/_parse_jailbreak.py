@@ -1,6 +1,6 @@
 """Parse the [jailbreak] section of a TOML config."""
 
-from vauban.config._parse_helpers import SectionReader
+from vauban.config._parse_helpers import SectionReader, require_toml_table
 from vauban.config._types import TomlDict
 from vauban.jailbreak import ALL_STRATEGIES
 from vauban.types import JailbreakConfig
@@ -14,11 +14,9 @@ def _parse_jailbreak(raw: TomlDict) -> JailbreakConfig | None:
     sec = raw.get("jailbreak")
     if sec is None:
         return None
-    if not isinstance(sec, dict):
-        msg = f"[jailbreak] must be a table, got {type(sec).__name__}"
-        raise TypeError(msg)
-
-    reader = SectionReader("[jailbreak]", sec)
+    reader = SectionReader(
+        "[jailbreak]", require_toml_table("[jailbreak]", sec),
+    )
 
     # -- strategies (optional list, empty = all) --
     strategies = reader.string_list("strategies", default=[])

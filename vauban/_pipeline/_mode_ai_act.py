@@ -101,12 +101,24 @@ def _run_ai_act_mode(context: EarlyModeContext) -> None:
     executive_summary_path = config.output_dir / "ai_act_executive_summary.md"
     executive_summary_path.parent.mkdir(parents=True, exist_ok=True)
     executive_summary_path.write_text(artifacts.executive_summary_markdown)
+    auditor_appendix_path = config.output_dir / "ai_act_auditor_appendix.md"
+    auditor_appendix_path.parent.mkdir(parents=True, exist_ok=True)
+    auditor_appendix_path.write_text(artifacts.auditor_appendix_markdown)
     remediation_path = config.output_dir / "ai_act_remediation_plan.md"
     remediation_path.parent.mkdir(parents=True, exist_ok=True)
     remediation_path.write_text(artifacts.remediation_markdown)
     fria_prep_markdown_path = config.output_dir / "ai_act_fria_prep.md"
     fria_prep_markdown_path.parent.mkdir(parents=True, exist_ok=True)
     fria_prep_markdown_path.write_text(artifacts.fria_prep_markdown)
+    pdf_report_path: str | None = None
+    if (
+        artifacts.pdf_report_bytes is not None
+        and artifacts.pdf_report_filename is not None
+    ):
+        pdf_output_path = config.output_dir / artifacts.pdf_report_filename
+        pdf_output_path.parent.mkdir(parents=True, exist_ok=True)
+        pdf_output_path.write_bytes(artifacts.pdf_report_bytes)
+        pdf_report_path = str(pdf_output_path)
 
     log(
         f"AI Act readiness bundle written to {config.output_dir}",
@@ -119,24 +131,28 @@ def _run_ai_act_mode(context: EarlyModeContext) -> None:
         msg = "ai_act report is missing controls_overview"
         raise TypeError(msg)
     controls_overview_dict = cast("dict[str, object]", controls_overview)
+    report_files = [
+        str(report_path),
+        str(ledger_path),
+        str(library_path),
+        str(controls_matrix_path),
+        str(annex_iii_classification_path),
+        str(risk_register_path),
+        str(fria_prep_path),
+        str(evidence_manifest_path),
+        str(integrity_path),
+        str(executive_summary_path),
+        str(auditor_appendix_path),
+        str(remediation_path),
+        str(fria_prep_markdown_path),
+    ]
+    if pdf_report_path is not None:
+        report_files.append(pdf_report_path)
 
     finish_mode_run(
         context,
         "ai_act",
-        [
-            str(report_path),
-            str(ledger_path),
-            str(library_path),
-            str(controls_matrix_path),
-            str(annex_iii_classification_path),
-            str(risk_register_path),
-            str(fria_prep_path),
-            str(evidence_manifest_path),
-            str(integrity_path),
-            str(executive_summary_path),
-            str(remediation_path),
-            str(fria_prep_markdown_path),
-        ],
+        report_files,
         {
             "n_pass": _metric_count(controls_overview_dict, "pass"),
             "n_fail": _metric_count(controls_overview_dict, "fail"),

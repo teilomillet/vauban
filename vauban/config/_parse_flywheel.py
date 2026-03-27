@@ -1,6 +1,6 @@
 """Parse the [flywheel] section of a TOML config."""
 
-from vauban.config._parse_helpers import SectionReader
+from vauban.config._parse_helpers import SectionReader, require_toml_table
 from vauban.config._types import TomlDict
 from vauban.types import FlywheelConfig
 
@@ -16,11 +16,7 @@ def _parse_flywheel(raw: TomlDict) -> FlywheelConfig | None:
     sec = raw.get("flywheel")
     if sec is None:
         return None
-    if not isinstance(sec, dict):
-        msg = f"[flywheel] must be a table, got {type(sec).__name__}"
-        raise TypeError(msg)
-
-    reader = SectionReader("[flywheel]", sec)
+    reader = SectionReader("[flywheel]", require_toml_table("[flywheel]", sec))
 
     # -- cycle counts --
     n_cycles = reader.integer("n_cycles", default=10)

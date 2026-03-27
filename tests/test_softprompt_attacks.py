@@ -835,6 +835,23 @@ class TestGcgBeamSearch:
         assert result.token_ids is not None
         assert len(result.token_ids) == 4
 
+    def test_zero_steps_falls_back_to_initial_tokens(self) -> None:
+        """Zero-step GCG should still return a valid initialized suffix."""
+        model = MockCausalLM(VOCAB_SIZE, D_MODEL, NUM_LAYERS, NUM_HEADS)
+        tokenizer = MockTokenizer(VOCAB_SIZE)
+        config = SoftPromptConfig(
+            mode="gcg",
+            n_tokens=4,
+            n_steps=0,
+            batch_size=8,
+            top_k=8,
+            beam_width=3,
+        )
+        result = _gcg_attack(model, tokenizer, ["Hello"], config, None)
+        assert result.mode == "gcg"
+        assert result.token_ids is not None
+        assert len(result.token_ids) == 4
+
 
 class TestWriteArenaCard:
     def test_basic_card_written(self, tmp_path: Path) -> None:

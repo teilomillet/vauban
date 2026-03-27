@@ -1,6 +1,6 @@
 """Parse the [repbend] section of a TOML config."""
 
-from vauban.config._parse_helpers import SectionReader
+from vauban.config._parse_helpers import SectionReader, require_toml_table
 from vauban.config._types import TomlDict
 from vauban.types import RepBendConfig
 
@@ -13,11 +13,7 @@ def _parse_repbend(raw: TomlDict) -> RepBendConfig | None:
     sec = raw.get("repbend")
     if sec is None:
         return None
-    if not isinstance(sec, dict):
-        msg = f"[repbend] must be a table, got {type(sec).__name__}"
-        raise TypeError(msg)
-
-    reader = SectionReader("[repbend]", sec)
+    reader = SectionReader("[repbend]", require_toml_table("[repbend]", sec))
 
     # -- layers (required) --
     layers = reader.int_list("layers")

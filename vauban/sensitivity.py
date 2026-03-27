@@ -10,19 +10,22 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from vauban import _ops as ops
 from vauban._forward import (
+    LayerModule,
     force_eval,
     get_transformer,
     make_ssm_mask,
     select_mask,
+    svd_stable,
 )
 from vauban.subspace import effective_rank
 
 if TYPE_CHECKING:
     from vauban._array import Array
+    from vauban.types import CausalLM
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +147,7 @@ def dominant_singular_vector(
     # Stack into (n_iter, D) matrix and SVD
     mat = ops.stack(responses)  # (n_iter, D)
     force_eval(mat)
-    _u, s, _vt = ops.linalg.svd(mat, stream=ops.cpu)
+    _u, s, _vt = svd_stable(mat)
     sv_list = [float(s[k].item()) for k in range(s.shape[0])]
     # First right singular vector = dominant direction
     dominant = _vt[0]  # (D,)
@@ -189,7 +192,7 @@ def find_compression_valleys(
 
 
 def compute_sensitivity_profile(
-    model: object,
+    model: CausalLM,
     h: Array,
     mask: Array,
     direction: Array,
@@ -228,13 +231,14 @@ def compute_sensitivity_profile(
 
         # Build a closure that captures the current hidden state context
         def _make_layer_fn(
-            _layer: object, _mask: Array | None,
+            _layer: LayerModule, _mask: Array | None,
         ) -> LayerFn:
             def fn(x: Array) -> Array:
-                return _layer(x, _mask)  # type: ignore[operator]
+                return _layer(x, _mask)
             return fn
 
-        layer_fn = _make_layer_fn(layer, layer_mask)
+        typed_layer = cast("LayerModule", layer)
+        layer_fn = _make_layer_fn(typed_layer, layer_mask)
 
         # Directional gain
         gain = directional_gain(layer_fn, h_cur, direction, fd_epsilon)
@@ -258,7 +262,7 @@ def compute_sensitivity_profile(
         ))
 
         # Advance hidden state through this layer
-        h_cur = layer(h_cur, layer_mask)
+        h_cur = typed_layer(h_cur, layer_mask)
 
     valley_layers = find_compression_valleys(ranks, valley_window, top_k_valleys)
 

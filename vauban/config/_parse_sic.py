@@ -1,6 +1,6 @@
 """Parse the [sic] section of a TOML config."""
 
-from vauban.config._parse_helpers import SectionReader
+from vauban.config._parse_helpers import SectionReader, require_toml_table
 from vauban.config._types import TomlDict
 from vauban.types import SICConfig
 
@@ -13,11 +13,7 @@ def _parse_sic(raw: TomlDict) -> SICConfig | None:
     sec = raw.get("sic")
     if sec is None:
         return None
-    if not isinstance(sec, dict):
-        msg = f"[sic] must be a table, got {type(sec).__name__}"
-        raise TypeError(msg)
-
-    reader = SectionReader("[sic]", sec)
+    reader = SectionReader("[sic]", require_toml_table("[sic]", sec))
 
     # -- mode --
     mode = reader.literal(

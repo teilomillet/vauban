@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from vauban.config._parse_helpers import SectionReader
+from vauban.config._parse_helpers import SectionReader, require_toml_table
 from vauban.types import AwarenessConfig
 
 if TYPE_CHECKING:
@@ -19,11 +19,7 @@ def _parse_awareness(raw: TomlDict) -> AwarenessConfig | None:
     sec = raw.get("awareness")
     if sec is None:
         return None
-    if not isinstance(sec, dict):
-        msg = f"[awareness] must be a table, got {type(sec).__name__}"
-        raise TypeError(msg)
-
-    reader = SectionReader("[awareness]", sec)
+    reader = SectionReader("[awareness]", require_toml_table("[awareness]", sec))
 
     # -- prompts (required) --
     prompts = reader.string_list("prompts")
@@ -40,10 +36,7 @@ def _parse_awareness(raw: TomlDict) -> AwarenessConfig | None:
         raise ValueError(msg)
 
     # -- mode (optional, default "full") --
-    mode = reader.string("mode", default="full")
-    if mode not in {"fast", "full"}:
-        msg = f"[awareness].mode must be 'fast' or 'full', got {mode!r}"
-        raise ValueError(msg)
+    mode = reader.literal("mode", ("fast", "full"), default="full")
 
     # -- n_power_iterations (optional, default 5) --
     n_power_iterations = reader.integer("n_power_iterations", default=5)

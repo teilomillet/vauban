@@ -44,6 +44,9 @@ Options:
 _INIT_USAGE = (
     "Usage: vauban init [--mode MODE] [--model PATH]"
     " [--output FILE] [--force]\n"
+    "\n"
+    "Notes:\n"
+    "  ai_act mode also scaffolds draft evidence templates in ./evidence/\n"
 )
 
 _DIFF_USAGE = (
@@ -133,6 +136,16 @@ def _run_init(args: list[str]) -> None:
 
     label = mode if mode != "default" else "measure → cut → export"
     sys.stderr.write(f"Created {output_path} ({label} mode)\n")
+    if mode == "ai_act":
+        sys.stderr.write(
+            (
+                "Scaffolded draft AI Act evidence templates in"
+                f" {output_path.parent / 'evidence'}\n"
+            ),
+        )
+        sys.stderr.write(
+            "Replace draft fields before treating those documents as evidence.\n",
+        )
     sys.stderr.write(f"Next: vauban --validate {output_path}\n")
 
 
@@ -354,13 +367,14 @@ def main() -> None:
     # Peek at backend before importing vauban (sets env var for import-time dispatch)
     _set_backend_from_config(config_path)
 
-    import vauban
+    from vauban._pipeline._run import run as run_pipeline
+    from vauban.config._validation import validate_config
 
     try:
         if validate_mode:
-            warnings = vauban.validate(config_path)
+            warnings = validate_config(config_path)
             raise SystemExit(1 if warnings else 0)
-        vauban.run(config_path)
+        run_pipeline(config_path)
     except SystemExit:
         raise
     except Exception as exc:

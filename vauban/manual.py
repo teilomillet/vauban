@@ -798,6 +798,22 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 ),
                 constraints="string or null.",
             ),
+            FieldSpec(
+                key="pdf_report",
+                description=(
+                    "Whether to emit a combined PDF report artifact alongside"
+                    " the JSON and Markdown bundle."
+                ),
+                constraints="boolean; true by default.",
+            ),
+            FieldSpec(
+                key="pdf_report_filename",
+                description=(
+                    "Filename for the generated PDF report inside"
+                    " [output].dir."
+                ),
+                constraints="string filename ending in .pdf.",
+            ),
         ),
         notes=(
             (
@@ -817,6 +833,16 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
             (
                 "Use this section by itself for a standalone report:"
                 " vauban readiness.toml"
+            ),
+            (
+                "`vauban init --mode ai_act --output readiness.toml` also"
+                " scaffolds draft evidence templates in `./evidence/`."
+                " Draft templates do not count as evidence until you replace"
+                " the placeholders."
+            ),
+            (
+                "When [ai_act].pdf_report = true, Vauban emits a combined PDF"
+                " report for executive and auditor review inside [output].dir."
             ),
         ),
     ),

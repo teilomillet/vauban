@@ -240,11 +240,11 @@ def _gcg_attack(
                 restart_best_ids = list(beam[0])
                 steps_without_improvement = 0
 
-        if restart_best_loss < overall_best_loss:
+        if not overall_best_ids or restart_best_loss < overall_best_loss:
             overall_best_loss = restart_best_loss
             overall_best_ids = restart_best_ids
 
-    final_token_array = ops.array(overall_best_ids)[None, :]
+    final_token_array = ops.array(overall_best_ids, dtype=ops.int32)[None, :]
     final_embeds = transformer.embed_tokens(final_token_array)
     force_eval(final_embeds)
 

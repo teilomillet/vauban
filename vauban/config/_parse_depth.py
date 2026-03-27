@@ -1,6 +1,6 @@
 """Parse the [depth] section of a TOML config."""
 
-from vauban.config._parse_helpers import SectionReader
+from vauban.config._parse_helpers import SectionReader, require_toml_table
 from vauban.config._types import TomlDict
 from vauban.types import DepthConfig
 
@@ -13,11 +13,7 @@ def _parse_depth(raw: TomlDict) -> DepthConfig | None:
     sec = raw.get("depth")
     if sec is None:
         return None
-    if not isinstance(sec, dict):
-        msg = f"[depth] must be a table, got {type(sec).__name__}"
-        raise TypeError(msg)
-
-    reader = SectionReader("[depth]", sec)
+    reader = SectionReader("[depth]", require_toml_table("[depth]", sec))
 
     # -- prompts (required) --
     prompts = reader.string_list("prompts")

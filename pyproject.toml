@@ -11,6 +11,8 @@ requires-python = ">=3.12"
 dependencies = [
     "mlx>=0.22",
     "mlx-lm>=0.21",
+    "pypdf>=6.9.2",
+    "reportlab>=4.4.10",
 ]
 
 [project.scripts]
@@ -36,9 +38,18 @@ dev = [
     "ty",
 ]
 
+[tool.ty.src]
+exclude = [".claude/**", "tests/**", "tmp/**"]
+
 # Torch backend: suppress unresolved-import for envs without torch installed.
 [[tool.ty.overrides]]
 include = ["vauban/_ops_torch.py", "vauban/_nn_torch.py", "vauban/_model_torch.py"]
+[tool.ty.overrides.rules]
+unresolved-import = "ignore"
+
+# Optional CLI scripts: sentence-transformers is loaded dynamically.
+[[tool.ty.overrides]]
+include = ["vauban/data/verify_diversity.py", "vauban/data/verify_diversity_model.py"]
 [tool.ty.overrides.rules]
 unresolved-import = "ignore"
 

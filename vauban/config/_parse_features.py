@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from vauban.config._parse_helpers import SectionReader
+from vauban.config._parse_helpers import SectionReader, require_toml_table
 from vauban.config._types import TomlDict
 from vauban.types import FeaturesConfig
 
@@ -15,11 +15,7 @@ def _parse_features(base_dir: Path, raw: TomlDict) -> FeaturesConfig | None:
     sec = raw.get("features")
     if sec is None:
         return None
-    if not isinstance(sec, dict):
-        msg = f"[features] must be a table, got {type(sec).__name__}"
-        raise TypeError(msg)
-
-    reader = SectionReader("[features]", sec)
+    reader = SectionReader("[features]", require_toml_table("[features]", sec))
 
     # -- prompts_path (required) --
     prompts_path_str = reader.string("prompts_path")

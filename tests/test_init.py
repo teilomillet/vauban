@@ -2,10 +2,18 @@
 
 import sys
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from vauban._init import _STANDALONE_TEMPLATES, KNOWN_MODES, init_config
+from vauban.ai_act import generate_deployer_readiness_bundle
+
+
+def _object_dict(value: object) -> dict[str, object]:
+    """Narrow a JSON-like object to a string-keyed dict for tests."""
+    assert isinstance(value, dict)
+    return cast("dict[str, object]", value)
 
 
 class TestInitConfig:
@@ -73,6 +81,27 @@ class TestInitConfig:
         init_config("default", output_path=out)
         assert out.exists()
 
+    def test_ai_act_scaffolds_draft_evidence_templates(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        out = tmp_path / "readiness.toml"
+        content = init_config("ai_act", output_path=out)
+
+        assert out.exists()
+        assert "pdf_report = true" in content
+        assert 'ai_literacy_record = "evidence/ai_literacy.md"' in content
+        evidence_dir = tmp_path / "evidence"
+        assert (evidence_dir / "ai_literacy.md").exists()
+        assert (evidence_dir / "transparency_notice.md").exists()
+        assert (evidence_dir / "human_oversight.md").exists()
+        assert (evidence_dir / "incident_response.md").exists()
+        assert (evidence_dir / "provider_docs.md").exists()
+        assert (evidence_dir / "README.md").exists()
+        assert "Template status: draft scaffold" in (
+            evidence_dir / "ai_literacy.md"
+        ).read_text()
+
 
 class TestInitRoundtrip:
     @pytest.mark.parametrize("mode", sorted(KNOWN_MODES))
@@ -90,6 +119,39 @@ class TestInitRoundtrip:
             assert isinstance(config.model_path, str)
         else:
             assert config.model_path == "mlx-community/Llama-3.2-3B-Instruct-4bit"
+
+    def test_ai_act_scaffold_roundtrips_but_stays_blocked_until_filled(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from vauban.config import load_config
+
+        out = tmp_path / "readiness.toml"
+        init_config("ai_act", output_path=out)
+        config = load_config(out)
+        assert config.ai_act is not None
+
+        report, ledger, _library, _remediation = generate_deployer_readiness_bundle(
+            config.ai_act,
+        )
+
+        assert report["overall_status"] == "blocked"
+        controls = ledger["controls"]
+        assert isinstance(controls, list)
+        control_entries = [
+            _object_dict(entry)
+            for entry in controls
+            if isinstance(entry, dict)
+        ]
+        article4 = next(
+            entry
+            for entry in control_entries
+            if entry["control_id"] == "ai_act.article4.ai_literacy_record"
+        )
+        assert article4["status"] == "unknown"
+        missing_markers = article4["missing_markers"]
+        assert isinstance(missing_markers, list)
+        assert "replace_scaffold_placeholders" in missing_markers
 
 
 class TestInitCli:
@@ -129,6 +191,27 @@ class TestInitCli:
             main()
         assert exc.value.code == 0
         assert "[probe]" in out.read_text()
+
+    def test_init_ai_act_mentions_scaffold(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        tmp_path: Path,
+    ) -> None:
+        out = tmp_path / "readiness.toml"
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["vauban", "init", "--mode", "ai_act", "--output", str(out)],
+        )
+        from vauban.__main__ import main
+
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        captured = capsys.readouterr()
+        assert "Scaffolded draft AI Act evidence templates" in captured.err
+        assert (tmp_path / "evidence" / "ai_literacy.md").exists()
 
     def test_init_bad_mode_fails(
         self,

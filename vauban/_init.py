@@ -8,6 +8,153 @@ from pathlib import Path
 from vauban.config._mode_registry import EARLY_MODE_DESCRIPTION_BY_MODE
 
 _DEFAULT_MODEL = "mlx-community/Llama-3.2-3B-Instruct-4bit"
+_AI_ACT_EVIDENCE_DIR = "evidence"
+
+_AI_ACT_EVIDENCE_TEMPLATES: dict[str, str] = {
+    "ai_literacy.md": """\
+# AI Literacy Record
+Template status: draft scaffold
+Replace before use: yes
+
+Role: [TODO: provider or deployer role for this AI system]
+System context: [TODO: workflow, product, or business process covered]
+Risk topics: [TODO: misuse risks, limits, escalation, and operator duties]
+Owner: [TODO: named owner or training lead]
+Target roles: [TODO: staff, operators, reviewers, or teams covered]
+Last updated: [TODO: YYYY-MM-DD]
+Scope: [TODO: materials, systems, and teams in scope]
+Refresh cadence: [TODO: annual, quarterly, or event-driven]
+""",
+    "transparency_notice.md": """\
+# Transparency Notice
+Template status: draft scaffold
+Replace before use: yes
+
+Notice type: [TODO: human interaction, biometric exposure, synthetic media]
+AI or automated origin: [TODO: explicit disclosure statement]
+Interaction context: [TODO: where the notice appears]
+Not human disclosure: [TODO: say that users interact with AI, not a human]
+Audience: [TODO: affected users or exposed persons]
+Exception basis: [TODO: if relying on an Article 50 exception, explain it]
+""",
+    "human_oversight.md": """\
+# Human Oversight Procedure
+Template status: draft scaffold
+Replace before use: yes
+
+Review step: [TODO: when a human reviews or approves outputs]
+Override capability: [TODO: how operators can override or stop the system]
+Escalation trigger: [TODO: uncertainty, complaint, incident, or threshold]
+Owner: [TODO: named responsible person]
+""",
+    "incident_response.md": """\
+# Incident Response Procedure
+Template status: draft scaffold
+Replace before use: yes
+
+Incident scope: [TODO: misuse, failure, breach, or serious incident types]
+Escalation or reporting: [TODO: who is notified, when, and how]
+Contact owner: [TODO: compliance or legal contact]
+Evidence retention: [TODO: where records are stored]
+""",
+    "provider_docs.md": """\
+# Provider Documentation Summary
+Template status: draft scaffold
+Replace before use: yes
+
+Provider: [TODO: upstream API or model provider]
+Model: [TODO: model or service name]
+Version: [TODO: release or snapshot]
+Limitations: [TODO: provider limitations and prohibited uses]
+""",
+    "operation_monitoring.md": """\
+# Operation Monitoring Procedure
+Template status: draft scaffold
+Replace before use: yes
+
+Provider instructions: [TODO: operating instructions or intended use]
+Monitoring plan: [TODO: log review, incident review, drift review cadence]
+Responsible operator: [TODO: named operator or team]
+Risk review trigger: [TODO: what causes escalation or re-review]
+""",
+    "input_data_governance.md": """\
+# Input Data Governance Procedure
+Template status: draft scaffold
+Replace before use: yes
+
+Input data scope: [TODO: which inputs the deployer provides]
+Relevance criteria: [TODO: how inputs stay relevant and fit for purpose]
+Representativeness validation: [TODO: quality, bias, or coverage checks]
+Owner: [TODO: responsible team or reviewer]
+""",
+    "log_retention.md": """\
+# Log Retention Procedure
+Template status: draft scaffold
+Replace before use: yes
+
+Logging scope: [TODO: what logs or audit trails are retained]
+Retention period: [TODO: retention window, including six-month baseline]
+Access control: [TODO: who controls and can access retained logs]
+Storage location: [TODO: where logs are stored]
+""",
+    "worker_notice.md": """\
+# Worker Notice
+Template status: draft scaffold
+Replace before use: yes
+
+Employee scope: [TODO: employees or workers affected]
+Representative notice: [TODO: works council, union, or representatives]
+Before use: [TODO: when the notice is delivered]
+Notice channel: [TODO: email, handbook, meeting, or portal]
+""",
+    "affected_person_notice.md": """\
+# Affected Person Notice
+Template status: draft scaffold
+Replace before use: yes
+
+Affected person scope: [TODO: natural persons affected by the system]
+Intended purpose: [TODO: what the system does in this decision flow]
+Decision support context: [TODO: whether outputs assist or inform decisions]
+Notice channel: [TODO: how affected persons receive the notice]
+""",
+    "explanation_request.md": """\
+# Explanation Request Procedure
+Template status: draft scaffold
+Replace before use: yes
+
+Right to an explanation: [TODO: intake channel and who can request]
+Response process: [TODO: triage, review, response timeline, ownership]
+Escalation trigger: [TODO: when legal or compliance review is required]
+""",
+    "eu_database_registration.md": """\
+# EU Database Registration Record
+Template status: draft scaffold
+Replace before use: yes
+
+Registration scope: [TODO: public or non-public registration path]
+Authority reference: [TODO: authority, registry, or case reference]
+System identifier: [TODO: internal or external system identifier]
+Registration owner: [TODO: team responsible for registration upkeep]
+""",
+    "README.md": """\
+# AI Act Evidence Templates
+
+These files are draft scaffolds created by `vauban init --mode ai_act`.
+They are intentionally treated as placeholders by the readiness engine until
+you replace the draft fields and remove the draft status lines.
+
+Start with:
+- `ai_literacy.md`
+- `transparency_notice.md`
+- `human_oversight.md`
+- `incident_response.md`
+- `provider_docs.md`
+
+Add or complete the high-risk templates only when the use case needs them.
+Do not point `technical_report_paths` at placeholder files; attach real attack,
+evaluation, or red-team artifacts instead.
+""",
+}
 
 _BASE = """\
 # backend = "mlx"  # compute backend: "mlx" (default) or "torch"
@@ -285,24 +432,26 @@ annex_i_product_or_safety_component = false
 annex_i_third_party_conformity_assessment = false
 
 # Evidence paths:
-# ai_literacy_record = "evidence/ai_literacy.md"
-# transparency_notice = "evidence/transparency_notice.md"
-# human_oversight_procedure = "evidence/human_oversight.md"
-# incident_response_procedure = "evidence/incident_response.md"
-# provider_documentation = "evidence/provider_docs.md"
-# operation_monitoring_procedure = "evidence/operation_monitoring.md"
-# input_data_governance_procedure = "evidence/input_data_governance.md"
-# log_retention_procedure = "evidence/log_retention.md"
-# employee_or_worker_representative_notice = "evidence/worker_notice.md"
-# affected_person_notice = "evidence/affected_person_notice.md"
-# explanation_request_procedure = "evidence/explanation_request.md"
-# eu_database_registration_record = "evidence/eu_database_registration.md"
+ai_literacy_record = "evidence/ai_literacy.md"
+transparency_notice = "evidence/transparency_notice.md"
+human_oversight_procedure = "evidence/human_oversight.md"
+incident_response_procedure = "evidence/incident_response.md"
+provider_documentation = "evidence/provider_docs.md"
+operation_monitoring_procedure = "evidence/operation_monitoring.md"
+input_data_governance_procedure = "evidence/input_data_governance.md"
+log_retention_procedure = "evidence/log_retention.md"
+employee_or_worker_representative_notice = "evidence/worker_notice.md"
+affected_person_notice = "evidence/affected_person_notice.md"
+explanation_request_procedure = "evidence/explanation_request.md"
+eu_database_registration_record = "evidence/eu_database_registration.md"
 # technical_report_paths = ["evidence/red_team_report.json"]
 
 # Owners:
 # risk_owner = "AI Risk Lead"
 # compliance_contact = "compliance@example.com"
 # bundle_signature_secret_env = "VAUBAN_AI_ACT_SIGNING_SECRET"
+pdf_report = true
+# pdf_report_filename = "ai_act_report.pdf"
 """,
     "api_eval": """\
 # Standalone API eval — tests pre-optimized tokens against remote endpoints.
@@ -374,6 +523,24 @@ if _missing:
 del _missing
 
 
+def _write_ai_act_supporting_files(
+    output_path: Path,
+    *,
+    force: bool,
+) -> list[Path]:
+    """Write draft AI Act evidence templates beside the scaffolded config."""
+    evidence_dir = output_path.parent / _AI_ACT_EVIDENCE_DIR
+    written_paths: list[Path] = []
+    for relative_name, content in _AI_ACT_EVIDENCE_TEMPLATES.items():
+        path = evidence_dir / relative_name
+        if path.exists() and not force:
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+        written_paths.append(path)
+    return written_paths
+
+
 def init_config(
     mode: str = "default",
     model: str = _DEFAULT_MODEL,
@@ -431,5 +598,7 @@ def init_config(
             raise FileExistsError(msg)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(content)
+        if mode == "ai_act":
+            _write_ai_act_supporting_files(output_path, force=force)
 
     return content

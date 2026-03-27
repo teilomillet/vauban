@@ -15,9 +15,10 @@ Algorithm:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from vauban._forward import (
+    LayerModule,
     embed_and_mask,
     encode_user_prompt,
     get_transformer,
@@ -68,7 +69,8 @@ def awareness_calibrate(
         Baseline sensitivity profile for all layers.
     """
     ids = encode_user_prompt(tokenizer, calibration_prompt)
-    h, mask = embed_and_mask(model, ids)
+    transformer = get_transformer(model)
+    h, mask = embed_and_mask(transformer, ids)
 
     if config.mode == "fast":
         return _fast_gain_profile(model, h, mask, direction, config)
@@ -115,16 +117,17 @@ def _fast_gain_profile(
     layer_results: list[LayerSensitivity] = []
 
     def _make_layer_fn(
-        _layer: object, _mask: Array | None,
+        _layer: LayerModule, _mask: Array | None,
     ) -> Callable[[Array], Array]:
         def fn(x: Array) -> Array:
-            return _layer(x, _mask)  # type: ignore[operator]
+            return _layer(x, _mask)
         return fn
 
     h_cur = h
     for i, layer in enumerate(transformer.layers):
+        typed_layer = cast("LayerModule", layer)
         layer_mask = select_mask(layer, mask, ssm_mask)
-        layer_fn = _make_layer_fn(layer, layer_mask)
+        layer_fn = _make_layer_fn(typed_layer, layer_mask)
 
         gain = directional_gain(layer_fn, h_cur, direction, config.fd_epsilon)
 
@@ -135,7 +138,7 @@ def _fast_gain_profile(
             effective_rank=1.0,  # sentinel — not computed in fast mode
         ))
 
-        h_cur = layer(h_cur, layer_mask)  # type: ignore[operator]
+        h_cur = typed_layer(h_cur, layer_mask)
 
     return SensitivityProfile(layers=layer_results, valley_layers=[])
 
@@ -233,7 +236,8 @@ def awareness_detect(
 
     # Compute test profile
     ids = encode_user_prompt(tokenizer, prompt)
-    h, mask = embed_and_mask(model, ids)
+    transformer = get_transformer(model)
+    h, mask = embed_and_mask(transformer, ids)
 
     if config.mode == "fast":
         test_profile = _fast_gain_profile(model, h, mask, direction, config)

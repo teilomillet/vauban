@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, NoReturn
+from typing import TYPE_CHECKING, NoReturn, TypeVar, cast
 
 if TYPE_CHECKING:
     from vauban.config._types import TomlDict
+
+
+LiteralStringT = TypeVar("LiteralStringT", bound=str)
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,6 +18,23 @@ class _Missing:
 
 
 _MISSING = _Missing()
+
+
+def require_toml_table(section: str, raw: object) -> TomlDict:
+    """Validate a TOML table and return it with a concrete dictionary type."""
+    if not isinstance(raw, dict):
+        msg = f"{section} must be a table, got {type(raw).__name__}"
+        raise TypeError(msg)
+    table: TomlDict = {}
+    for key, value in raw.items():
+        if not isinstance(key, str):
+            msg = (
+                f"{section} keys must be strings,"
+                f" got {type(key).__name__}"
+            )
+            raise TypeError(msg)
+        table[key] = value
+    return table
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,10 +47,10 @@ class SectionReader:
     def literal(
         self,
         key: str,
-        choices: tuple[str, ...],
+        choices: tuple[LiteralStringT, ...],
         *,
-        default: str | _Missing = _MISSING,
-    ) -> str:
+        default: LiteralStringT | _Missing = _MISSING,
+    ) -> LiteralStringT:
         """Read a required or defaulted literal string."""
         raw = self._raw(key, default)
         if not isinstance(raw, str):
@@ -41,13 +61,13 @@ class SectionReader:
                 f" got {raw!r}"
             )
             raise ValueError(msg)
-        return raw
+        return cast("LiteralStringT", raw)
 
     def optional_literal(
         self,
         key: str,
-        choices: tuple[str, ...],
-    ) -> str | None:
+        choices: tuple[LiteralStringT, ...],
+    ) -> LiteralStringT | None:
         """Read an optional literal string."""
         raw = self._raw_optional(key)
         if raw is None:
@@ -60,7 +80,7 @@ class SectionReader:
                 f" got {raw!r}"
             )
             raise ValueError(msg)
-        return raw
+        return cast("LiteralStringT", raw)
 
     def string(
         self,

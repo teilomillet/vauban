@@ -331,7 +331,7 @@ def test_case_library_replays_stable_outcomes(
 
     assert artifacts.report["overall_status"] == expectation.expected_overall_status
     assert artifacts.report["risk_level"] == expectation.expected_risk_level
-    assert artifacts.integrity["artifact_count"] == 11
+    assert artifacts.integrity["artifact_count"] == 13
 
     rows = artifacts.controls_matrix["rows"]
     assert isinstance(rows, list)

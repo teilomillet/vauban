@@ -1,6 +1,6 @@
 """Parse the [optimize] section of a TOML config."""
 
-from vauban.config._parse_helpers import SectionReader
+from vauban.config._parse_helpers import SectionReader, require_toml_table
 from vauban.config._types import TomlDict
 from vauban.types import OptimizeConfig
 
@@ -13,11 +13,7 @@ def _parse_optimize(raw: TomlDict) -> OptimizeConfig | None:
     sec = raw.get("optimize")
     if sec is None:
         return None
-    if not isinstance(sec, dict):
-        msg = f"[optimize] must be a table, got {type(sec).__name__}"
-        raise TypeError(msg)
-
-    reader = SectionReader("[optimize]", sec)
+    reader = SectionReader("[optimize]", require_toml_table("[optimize]", sec))
 
     n_trials = reader.integer("n_trials", default=50)
     if n_trials < 1:

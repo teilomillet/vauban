@@ -19,6 +19,12 @@ from pathlib import Path
 
 import numpy as np
 
+type DuplicatePair = tuple[int, int, float]
+type DiversityMetric = float | int | list[DuplicatePair]
+type DiversityStats = dict[str, DiversityMetric]
+type SerializedDiversityMetric = float | int | list[list[int | float]]
+type SerializedDiversityStats = dict[str, SerializedDiversityMetric]
+
 
 def load_jsonl(path: Path) -> list[dict[str, str]]:
     """Load a JSONL file into a list of dicts."""
@@ -44,7 +50,7 @@ def report_pairwise_stats(
     prompts: list[str],
     embeddings: np.ndarray,
     threshold: float,
-) -> dict[str, float | int | list[tuple[int, int, float]]]:
+) -> DiversityStats:
     """Compute and report pairwise similarity statistics for a prompt set."""
     sim = cosine_similarity_matrix(embeddings)
     n = len(prompts)
@@ -53,7 +59,7 @@ def report_pairwise_stats(
     upper_idx = np.triu_indices(n, k=1)
     pairwise = sim[upper_idx]
 
-    stats: dict[str, float | int | list[tuple[int, int, float]]] = {
+    stats: DiversityStats = {
         "n_prompts": n,
         "mean_similarity": float(np.mean(pairwise)),
         "median_similarity": float(np.median(pairwise)),
@@ -63,7 +69,7 @@ def report_pairwise_stats(
     }
 
     # Flag near-duplicates
-    near_dupes: list[tuple[int, int, float]] = []
+    near_dupes: list[DuplicatePair] = []
     dup_i, dup_j = np.where(sim > threshold)
     for i, j in zip(dup_i, dup_j, strict=True):
         if i < j:
@@ -194,7 +200,7 @@ def report_cross_set(
     prompts_a: list[str],
     prompts_b: list[str],
     threshold: float,
-) -> dict[str, float | int]:
+) -> DiversityStats:
     """Compare two prompt sets for cross-set overlap."""
     # Normalize
     norm_a = emb_a / np.maximum(
@@ -333,10 +339,7 @@ def main() -> None:
         all_embeddings[name] = emb
         print("done.")
 
-    report: dict[
-        str,
-        dict[str, float | int | list[tuple[int, int, float]]],
-    ] = {}
+    report: dict[str, DiversityStats] = {}
 
     # Per-set diversity analysis
     for name in loaded:
@@ -400,29 +403,22 @@ def main() -> None:
         output_path = Path(args.output)
 
         def _serialize(
-            obj: dict[
-                str,
-                float | int | list[tuple[int, int, float]],
-            ],
-        ) -> dict[str, float | int | list[list[float | int]]]:
+            obj: DiversityStats,
+        ) -> SerializedDiversityStats:
             """Convert tuples to lists for JSON serialization."""
-            result: dict[
-                str, float | int | list[list[float | int]],
-            ] = {}
+            result: SerializedDiversityStats = {}
             for k, v in obj.items():
-                if (
-                    isinstance(v, list)
-                    and v
-                    and isinstance(v[0], tuple)
-                ):
-                    result[k] = [list(t) for t in v]
+                if isinstance(v, list):
+                    result[k] = [
+                        [int(i), int(j), float(score)]
+                        for i, j, score in v
+                    ]
                 else:
                     result[k] = v
             return result
 
-        serializable = {
-            k: _serialize(v) if isinstance(v, dict) else v
-            for k, v in report.items()
+        serializable: dict[str, SerializedDiversityStats] = {
+            k: _serialize(v) for k, v in report.items()
         }
         with open(output_path, "w") as f:
             json.dump(serializable, f, indent=2)

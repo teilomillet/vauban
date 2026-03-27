@@ -1,6 +1,6 @@
 """Parse the [detect] section of a TOML config."""
 
-from vauban.config._parse_helpers import SectionReader
+from vauban.config._parse_helpers import SectionReader, require_toml_table
 from vauban.config._types import TomlDict
 from vauban.types import DetectConfig
 
@@ -13,11 +13,7 @@ def _parse_detect(raw: TomlDict) -> DetectConfig | None:
     sec = raw.get("detect")
     if sec is None:
         return None
-    if not isinstance(sec, dict):
-        msg = f"[detect] must be a table, got {type(sec).__name__}"
-        raise TypeError(msg)
-
-    reader = SectionReader("[detect]", sec)
+    reader = SectionReader("[detect]", require_toml_table("[detect]", sec))
 
     mode = reader.literal(
         "mode", ("fast", "probe", "full", "margin"), default="full",

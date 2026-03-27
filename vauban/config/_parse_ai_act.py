@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
 from vauban.config._parse_helpers import SectionReader
-from vauban.types import AIActConfig
+from vauban.types import AIActConfig, validate_ai_act_pdf_report_filename
 
 if TYPE_CHECKING:
     from vauban.config._types import TomlDict
@@ -368,6 +368,15 @@ def _parse_ai_act(base_dir: Path, raw: TomlDict) -> AIActConfig | None:
     bundle_signature_secret_env = reader.optional_string(
         "bundle_signature_secret_env",
     )
+    pdf_report = reader.boolean("pdf_report", default=True)
+    raw_pdf_report_filename = reader.optional_string("pdf_report_filename")
+    if raw_pdf_report_filename is None:
+        pdf_report_filename = "ai_act_report.pdf"
+    else:
+        pdf_report_filename = validate_ai_act_pdf_report_filename(
+            raw_pdf_report_filename,
+            field_label="[ai_act].pdf_report_filename",
+        )
     technical_report_paths = _resolve_path_list(
         base_dir,
         reader.string_list("technical_report_paths", default=[]),
@@ -501,4 +510,6 @@ def _parse_ai_act(base_dir: Path, raw: TomlDict) -> AIActConfig | None:
         risk_owner=risk_owner,
         compliance_contact=compliance_contact,
         bundle_signature_secret_env=bundle_signature_secret_env,
+        pdf_report=pdf_report,
+        pdf_report_filename=pdf_report_filename,
     )

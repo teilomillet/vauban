@@ -72,7 +72,7 @@ class AmpleGCGGenerator:
                 # Gumbel-max trick for categorical sampling
                 gumbel_noise = -ops.log(
                     -ops.log(
-                        ops.random.uniform(logits.shape) + 1e-10,
+                        ops.random.uniform(shape=logits.shape) + 1e-10,
                     ) + 1e-10,
                 )
                 token_ids = ops.argmax(

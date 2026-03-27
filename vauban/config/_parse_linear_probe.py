@@ -1,6 +1,6 @@
 """Parse the [linear_probe] section of a TOML config."""
 
-from vauban.config._parse_helpers import SectionReader
+from vauban.config._parse_helpers import SectionReader, require_toml_table
 from vauban.config._types import TomlDict
 from vauban.types import LinearProbeConfig
 
@@ -13,11 +13,10 @@ def _parse_linear_probe(raw: TomlDict) -> LinearProbeConfig | None:
     sec = raw.get("linear_probe")
     if sec is None:
         return None
-    if not isinstance(sec, dict):
-        msg = f"[linear_probe] must be a table, got {type(sec).__name__}"
-        raise TypeError(msg)
-
-    reader = SectionReader("[linear_probe]", sec)
+    reader = SectionReader(
+        "[linear_probe]",
+        require_toml_table("[linear_probe]", sec),
+    )
 
     # -- layers (required) --
     layers = reader.int_list("layers")

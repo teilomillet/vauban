@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from vauban.config._parse_helpers import SectionReader
+from vauban.config._parse_helpers import SectionReader, require_toml_table
 from vauban.types import SSSConfig
 
 if TYPE_CHECKING:
@@ -19,11 +19,7 @@ def _parse_sss(raw: TomlDict) -> SSSConfig | None:
     sec = raw.get("sss")
     if sec is None:
         return None
-    if not isinstance(sec, dict):
-        msg = f"[sss] must be a table, got {type(sec).__name__}"
-        raise TypeError(msg)
-
-    reader = SectionReader("[sss]", sec)
+    reader = SectionReader("[sss]", require_toml_table("[sss]", sec))
 
     # -- prompts (required) --
     prompts = reader.string_list("prompts")

@@ -1,23 +1,21 @@
 """Parse the [eval] section of a TOML config."""
 
 from pathlib import Path
-from typing import cast
 
-from vauban.config._parse_helpers import SectionReader
+from vauban.config._parse_helpers import SectionReader, require_toml_table
 from vauban.config._types import TomlDict
 from vauban.types import EvalConfig, ResponseScoreWeights
 
 
-def _parse_scoring_weights(sec: dict[str, object]) -> ResponseScoreWeights | None:
+def _parse_scoring_weights(sec: TomlDict) -> ResponseScoreWeights | None:
     """Parse the optional [eval.scoring] sub-table."""
     scoring_raw = sec.get("scoring")
     if scoring_raw is None:
         return None
-    if not isinstance(scoring_raw, dict):
-        msg = f"[eval.scoring] must be a table, got {type(scoring_raw).__name__}"
-        raise TypeError(msg)
-
-    reader = SectionReader("[eval.scoring]", cast("TomlDict", scoring_raw))
+    reader = SectionReader(
+        "[eval.scoring]",
+        require_toml_table("[eval.scoring]", scoring_raw),
+    )
     return ResponseScoreWeights(
         length=reader.number("length", default=0.15),
         structure=reader.number("structure", default=0.15),
@@ -35,11 +33,8 @@ def _parse_eval(base_dir: Path, raw: TomlDict) -> EvalConfig:
     sec = raw.get("eval")
     if sec is None:
         return EvalConfig()
-    if not isinstance(sec, dict):
-        msg = f"[eval] must be a table, got {type(sec).__name__}"
-        raise TypeError(msg)
-
-    reader = SectionReader("[eval]", sec)
+    section = require_toml_table("[eval]", sec)
+    reader = SectionReader("[eval]", section)
 
     # prompts (optional string path)
     prompts_str = reader.optional_string("prompts")
@@ -67,7 +62,7 @@ def _parse_eval(base_dir: Path, raw: TomlDict) -> EvalConfig:
     )
 
     # scoring weights (optional sub-table)
-    scoring_weights = _parse_scoring_weights(cast("dict[str, object]", sec))
+    scoring_weights = _parse_scoring_weights(section)
 
     return EvalConfig(
         prompts_path=prompts_path,

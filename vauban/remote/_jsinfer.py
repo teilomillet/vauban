@@ -99,4 +99,4 @@ def create_jsinfer_backend(api_key: str) -> RemoteBackend:
     Returns:
         A ``JsinferBackend`` instance.
     """
-    return JsinferBackend(api_key)  # type: ignore[return-value]
+    return JsinferBackend(api_key)

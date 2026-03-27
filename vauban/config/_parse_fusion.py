@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from vauban.config._parse_helpers import SectionReader
+from vauban.config._parse_helpers import SectionReader, require_toml_table
 from vauban.config._types import TomlDict
 from vauban.types import FusionConfig
 
@@ -15,11 +15,7 @@ def _parse_fusion(base_dir: Path, raw: TomlDict) -> FusionConfig | None:
     sec = raw.get("fusion")
     if sec is None:
         return None
-    if not isinstance(sec, dict):
-        msg = f"[fusion] must be a table, got {type(sec).__name__}"
-        raise TypeError(msg)
-
-    reader = SectionReader("[fusion]", sec)
+    reader = SectionReader("[fusion]", require_toml_table("[fusion]", sec))
 
     # -- harmful_prompts (required) --
     harmful_prompts = reader.string_list("harmful_prompts")

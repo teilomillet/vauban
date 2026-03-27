@@ -36,6 +36,7 @@ type ClaimKind = Literal[
 ]
 type MarkerRule = tuple[str, tuple[str, ...]]
 type StructuredFieldRule = tuple[str, tuple[str, ...]]
+type ArtifactPayload = dict[str, object] | str | bytes
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,7 +54,10 @@ class AIActArtifacts:
     fria_prep: dict[str, object]
     integrity: dict[str, object]
     executive_summary_markdown: str
+    auditor_appendix_markdown: str
     fria_prep_markdown: str
+    pdf_report_bytes: bytes | None
+    pdf_report_filename: str | None
 
 
 def generate_deployer_readiness_bundle(
@@ -265,7 +269,32 @@ def generate_deployer_readiness_artifacts(
         report,
         risk_register,
     )
+    auditor_appendix_markdown = _render_auditor_appendix_markdown(
+        config,
+        report,
+        controls_matrix,
+        risk_register,
+        evidence_manifest_payload,
+    )
     fria_prep_markdown = _render_fria_prep_markdown(fria_prep)
+    pdf_report_bytes: bytes | None = None
+    pdf_report_filename: str | None = None
+    if config.pdf_report:
+        from vauban.ai_act_pdf import render_ai_act_report_pdf
+
+        pdf_report_bytes = render_ai_act_report_pdf(
+            company_name=config.company_name,
+            system_name=config.system_name,
+            generated_at=generated_at,
+            overall_status=overall_status,
+            risk_level=risk_level,
+            bundle_fingerprint=bundle_fingerprint,
+            executive_summary_markdown=executive_summary_markdown,
+            remediation_markdown=remediation_markdown,
+            auditor_appendix_markdown=auditor_appendix_markdown,
+            fria_prep_markdown=fria_prep_markdown,
+        )
+        pdf_report_filename = config.pdf_report_filename
     integrity = _build_integrity_artifact(
         config,
         generated_at=generated_at,
@@ -281,8 +310,11 @@ def generate_deployer_readiness_artifacts(
         annex_iii_classification=annex_iii_classification,
         fria_prep=fria_prep,
         executive_summary_markdown=executive_summary_markdown,
+        auditor_appendix_markdown=auditor_appendix_markdown,
         remediation_markdown=remediation_markdown,
         fria_prep_markdown=fria_prep_markdown,
+        pdf_report_bytes=pdf_report_bytes,
+        pdf_report_filename=pdf_report_filename,
     )
     return AIActArtifacts(
         report=report,
@@ -296,7 +328,10 @@ def generate_deployer_readiness_artifacts(
         fria_prep=fria_prep,
         integrity=integrity,
         executive_summary_markdown=executive_summary_markdown,
+        auditor_appendix_markdown=auditor_appendix_markdown,
         fria_prep_markdown=fria_prep_markdown,
+        pdf_report_bytes=pdf_report_bytes,
+        pdf_report_filename=pdf_report_filename,
     )
 
 
@@ -904,10 +939,12 @@ def _path_evidence(
     sha256: str | None = None
     size_bytes: int | None = None
     structured_fields_detected: list[str] = []
+    template_placeholder = False
     if path is not None and exists:
         sha256 = _path_sha256(path)
         size_bytes = _path_size_bytes(path)
         if schema_name is not None:
+            template_placeholder = _document_has_draft_placeholders(path)
             structured_fields_detected = sorted(
                 _extract_structured_field_names(path),
             )
@@ -922,6 +959,7 @@ def _path_evidence(
         "size_bytes": size_bytes,
         "structured_schema": schema_name,
         "structured_fields_detected": structured_fields_detected,
+        "template_placeholder": template_placeholder,
     }
 
 
@@ -989,6 +1027,24 @@ def _extract_structured_field_names(path: Path | None) -> set[str]:
     return detected_fields
 
 
+def _document_has_draft_placeholders(path: Path | None) -> bool:
+    """Return whether a text evidence file still looks like a draft scaffold."""
+    if path is None or not path.exists():
+        return False
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore").lower()
+    except OSError:
+        return False
+    placeholder_patterns = (
+        r"template status:\s*(draft|placeholder|template)",
+        r"replace before use:\s*yes",
+        r"\[todo:",
+        r"<fill",
+        r"\btbd\b",
+    )
+    return any(re.search(pattern, text) is not None for pattern in placeholder_patterns)
+
+
 def _document_marker_assessment(
     path: Path | None,
     markers: tuple[MarkerRule, ...],
@@ -1003,6 +1059,12 @@ def _document_marker_assessment(
     )
     if path is None or not path.exists():
         return [], [
+            *[label for label, _patterns in markers],
+            *[f"field:{label}" for label, _aliases in structured_fields],
+        ]
+    if _document_has_draft_placeholders(path):
+        return [], [
+            "replace_scaffold_placeholders",
             *[label for label, _patterns in markers],
             *[f"field:{label}" for label, _aliases in structured_fields],
         ]
@@ -1187,11 +1249,14 @@ def _bundle_artifact_payloads(
     annex_iii_classification: dict[str, object],
     fria_prep: dict[str, object],
     executive_summary_markdown: str,
+    auditor_appendix_markdown: str,
     remediation_markdown: str,
     fria_prep_markdown: str,
-) -> dict[str, object]:
+    pdf_report_bytes: bytes | None,
+    pdf_report_filename: str | None,
+) -> dict[str, ArtifactPayload]:
     """Return the rendered bundle payloads keyed by output filename."""
-    return {
+    payloads: dict[str, ArtifactPayload] = {
         "ai_act_readiness_report.json": report,
         "ai_act_coverage_ledger.json": coverage_ledger,
         "ai_act_control_library_v1.json": control_library,
@@ -1201,18 +1266,24 @@ def _bundle_artifact_payloads(
         "ai_act_fria_prep.json": fria_prep,
         "ai_act_evidence_manifest.json": evidence_manifest,
         "ai_act_executive_summary.md": executive_summary_markdown,
+        "ai_act_auditor_appendix.md": auditor_appendix_markdown,
         "ai_act_remediation_plan.md": remediation_markdown,
         "ai_act_fria_prep.md": fria_prep_markdown,
     }
+    if pdf_report_bytes is not None and pdf_report_filename is not None:
+        payloads[pdf_report_filename] = pdf_report_bytes
+    return payloads
 
 
 def _bundle_artifact_hashes(
-    artifact_payloads: dict[str, object],
+    artifact_payloads: dict[str, ArtifactPayload],
 ) -> dict[str, str]:
     """Return SHA-256 hashes for the rendered bundle artifacts."""
     hashes: dict[str, str] = {}
     for filename, payload in artifact_payloads.items():
-        if isinstance(payload, str):
+        if isinstance(payload, bytes):
+            hashes[filename] = _sha256_bytes(payload)
+        elif isinstance(payload, str):
             hashes[filename] = _sha256_text(payload)
         else:
             hashes[filename] = _sha256_text(_render_json(payload))
@@ -1250,8 +1321,11 @@ def _build_integrity_artifact(
     annex_iii_classification: dict[str, object],
     fria_prep: dict[str, object],
     executive_summary_markdown: str,
+    auditor_appendix_markdown: str,
     remediation_markdown: str,
     fria_prep_markdown: str,
+    pdf_report_bytes: bytes | None,
+    pdf_report_filename: str | None,
 ) -> dict[str, object]:
     """Build a tamper-evident integrity payload for the bundle."""
     artifact_payloads = _bundle_artifact_payloads(
@@ -1264,8 +1338,11 @@ def _build_integrity_artifact(
         annex_iii_classification,
         fria_prep,
         executive_summary_markdown,
+        auditor_appendix_markdown,
         remediation_markdown,
         fria_prep_markdown,
+        pdf_report_bytes,
+        pdf_report_filename,
     )
     artifact_hashes = _bundle_artifact_hashes(artifact_payloads)
     integrity_summary = _integrity_summary(config)
@@ -1293,7 +1370,8 @@ def _build_integrity_artifact(
         "artifact_hash_algorithm": "sha256",
         "artifact_hash_basis": (
             "JSON artifacts are hashed from json.dumps(payload, indent=2)"
-            " output; markdown artifacts are hashed from UTF-8 bytes."
+            " output; markdown artifacts are hashed from UTF-8 bytes; PDF"
+            " artifacts are hashed from raw bytes."
         ),
         "artifact_count": len(artifact_hashes),
         "artifact_hashes": artifact_hashes,
@@ -1795,23 +1873,99 @@ def _technical_findings_from_metrics(
     return findings
 
 
+def _coerce_object_list(value: object) -> list[dict[str, object]]:
+    """Return only dict entries from a JSON-like list."""
+    if not isinstance(value, list):
+        return []
+    return [
+        cast("dict[str, object]", item)
+        for item in value
+        if isinstance(item, dict)
+    ]
+
+
+def _format_bool(value: object) -> str:
+    """Render a JSON-like boolean as yes/no/unknown text."""
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    return "unknown"
+
+
+def _format_source_citations(value: object) -> str:
+    """Render source citations as a compact reviewer-facing string."""
+    citations = _coerce_object_list(value)
+    if not citations:
+        return "none"
+    rendered: list[str] = []
+    for citation in citations:
+        title = citation.get("title")
+        url = citation.get("url")
+        if isinstance(title, str) and isinstance(url, str):
+            rendered.append(f"{title} ({url})")
+    return "; ".join(rendered) if rendered else "none"
+
+
+def _priority_actions(
+    report: dict[str, object],
+    *,
+    limit: int,
+) -> list[str]:
+    """Return de-duplicated priority actions from the remediation list."""
+    items = _coerce_object_list(report.get("required_client_actions"))
+    actions: list[str] = []
+    for item in items:
+        action = item.get("owner_action")
+        if not isinstance(action, str):
+            continue
+        if action in actions:
+            continue
+        actions.append(action)
+        if len(actions) >= limit:
+            break
+    return actions
+
+
+def _top_risk_items(
+    risk_register: dict[str, object],
+    *,
+    limit: int,
+) -> list[dict[str, object]]:
+    """Return the highest-severity risk-register items first."""
+    severity_rank = {"high": 0, "medium": 1, "low": 2}
+    items = _coerce_object_list(risk_register.get("items"))
+    return sorted(
+        items,
+        key=lambda item: (
+            severity_rank.get(str(item.get("severity")), 3),
+            str(item.get("risk_id")),
+        ),
+    )[:limit]
+
+
 def _render_executive_summary_markdown(
     config: AIActConfig,
     report: dict[str, object],
     risk_register: dict[str, object],
 ) -> str:
-    """Render a concise executive summary for external review."""
+    """Render a buyer-facing executive report for external review."""
     likely_obligations = _coerce_str_list(report.get("likely_obligations"))
     unresolved_controls = _coerce_str_list(report.get("unresolved_controls"))
+    blocking_controls = _coerce_str_list(report.get("blocking_controls"))
+    required_actions = _priority_actions(report, limit=5)
+    top_risks = _top_risk_items(risk_register, limit=5)
     risk_summary = report.get("risk_level")
     annex_iii_classification = report.get("annex_iii_classification")
     rulebook = report.get("rulebook")
+    controls_overview = report.get("controls_overview")
+    integrity_summary = report.get("integrity")
     bundle_fingerprint = report.get("bundle_fingerprint")
     lines = [
-        "# AI Act Executive Summary",
+        "# AI Act Executive Report",
         "",
         f"- Company: {config.company_name}",
         f"- System: {config.system_name}",
+        f"- Role: {config.role}",
+        f"- Sector: {config.sector}",
         f"- Overall status: {report['overall_status']}",
         f"- Risk level: {risk_summary}",
         f"- Bundle fingerprint: {bundle_fingerprint}",
@@ -1829,20 +1983,297 @@ def _render_executive_summary_markdown(
         classification_status = classification_dict.get("status")
         if isinstance(classification_status, str):
             lines.append(f"- Annex III classification: {classification_status}")
+    if isinstance(integrity_summary, dict):
+        integrity_dict = cast("dict[str, object]", integrity_summary)
+        signature_status = integrity_dict.get("status")
+        if isinstance(signature_status, str):
+            lines.append(f"- Integrity status: {signature_status}")
+    lines.extend(["", "## Decision", ""])
+    lines.append(
+        "- This bundle is a readiness and evidence pack, not an automated"
+        " declaration of legal compliance.",
+    )
+    lines.append(
+        "- Vauban reports only what it observed, derived, or could not"
+        " verify in the supplied scope.",
+    )
+    if isinstance(controls_overview, dict):
+        controls_overview_dict = cast("dict[str, object]", controls_overview)
+        lines.append(
+            "- Control outcomes:"
+            f" pass={controls_overview_dict.get('pass', 0)},"
+            f" fail={controls_overview_dict.get('fail', 0)},"
+            f" unknown={controls_overview_dict.get('unknown', 0)},"
+            f" not_applicable={controls_overview_dict.get('not_applicable', 0)}",
+        )
+    lines.append(
+        f"- Blocking controls: {len(blocking_controls)}; unresolved controls:"
+        f" {len(unresolved_controls)}.",
+    )
     lines.extend(["", "## Likely Obligations", ""])
     if likely_obligations:
         lines.extend(f"- {item}" for item in likely_obligations)
     else:
         lines.append("- No likely obligations were identified in the current scope.")
+    lines.extend(["", "## Priority Actions", ""])
+    if required_actions:
+        lines.extend(f"- {item}" for item in required_actions)
+    elif unresolved_controls:
+        lines.append(
+            "- Review the unresolved controls in the controls matrix and"
+            " remediation plan.",
+        )
+    else:
+        lines.append("- No immediate client actions remain in the current scope.")
+    lines.extend(["", "## Highest-Risk Findings", ""])
+    if top_risks:
+        for item in top_risks:
+            risk_id = item.get("risk_id")
+            severity = item.get("severity")
+            summary = item.get("summary")
+            next_action = item.get("next_action")
+            if isinstance(risk_id, str) and isinstance(severity, str):
+                lines.append(f"- {risk_id} [{severity}]: {summary}")
+                if isinstance(next_action, str):
+                    lines.append(f"  Next action: {next_action}")
+    else:
+        lines.append("- No open risk-register items remain in the current scope.")
     lines.extend(["", "## Key Gaps", ""])
     if unresolved_controls:
         lines.extend(f"- {item}" for item in unresolved_controls)
     else:
         lines.append("- No unresolved controls remain in the current scope.")
-    items_raw = risk_register.get("items")
-    lines.extend(["", "## Risk Register Size", ""])
-    if isinstance(items_raw, list):
-        lines.append(f"- Total risk items: {len(items_raw)}")
+    risk_summary_payload = risk_register.get("summary")
+    lines.extend(["", "## Risk Register", ""])
+    if isinstance(risk_summary_payload, dict):
+        risk_summary_dict = cast("dict[str, object]", risk_summary_payload)
+        lines.append(
+            "- Open items:"
+            f" total={risk_summary_dict.get('n_items', 0)},"
+            f" high={risk_summary_dict.get('n_high', 0)},"
+            f" medium={risk_summary_dict.get('n_medium', 0)},"
+            f" low={risk_summary_dict.get('n_low', 0)}",
+        )
+    else:
+        lines.append("- Risk register summary was unavailable.")
+    return "\n".join(lines) + "\n"
+
+
+def _render_auditor_appendix_markdown(
+    config: AIActConfig,
+    report: dict[str, object],
+    controls_matrix: dict[str, object],
+    risk_register: dict[str, object],
+    evidence_manifest: dict[str, object],
+) -> str:
+    """Render a reviewer-facing appendix from the generated bundle."""
+    system = report.get("system")
+    system_dict = (
+        cast("dict[str, object]", system)
+        if isinstance(system, dict)
+        else {}
+    )
+    rulebook = report.get("rulebook")
+    rulebook_dict = (
+        cast("dict[str, object]", rulebook)
+        if isinstance(rulebook, dict)
+        else {}
+    )
+    integrity = report.get("integrity")
+    integrity_dict = (
+        cast("dict[str, object]", integrity)
+        if isinstance(integrity, dict)
+        else {}
+    )
+    controls = _coerce_object_list(controls_matrix.get("rows"))
+    evidence_entries = _coerce_object_list(evidence_manifest.get("evidence"))
+    technical_artifacts = report.get("technical_artifacts")
+    technical_artifacts_dict = (
+        cast("dict[str, object]", technical_artifacts)
+        if isinstance(technical_artifacts, dict)
+        else {}
+    )
+    technical_findings = _coerce_object_list(report.get("technical_findings"))
+    top_risks = _top_risk_items(risk_register, limit=10)
+    sources = _coerce_object_list(report.get("sources"))
+    claim_kinds = _coerce_str_list(
+        cast("dict[str, object]", report.get("epistemic_policy", {})).get(
+            "claim_kinds",
+        )
+        if isinstance(report.get("epistemic_policy"), dict)
+        else []
+    )
+
+    lines = [
+        "# AI Act Auditor Appendix",
+        "",
+        "## Scope and Inputs",
+        "",
+        f"- Company: {config.company_name}",
+        f"- System: {config.system_name}",
+        f"- Role: {system_dict.get('role', config.role)}",
+        f"- Sector: {system_dict.get('sector', config.sector)}",
+        f"- EU market: {_format_bool(system_dict.get('eu_market', config.eu_market))}",
+        (
+            "- Intended purpose:"
+            f" {system_dict.get('intended_purpose', config.intended_purpose)}"
+        ),
+        f"- Overall status: {report.get('overall_status')}",
+        f"- Risk level: {report.get('risk_level')}",
+        f"- Bundle fingerprint: {report.get('bundle_fingerprint')}",
+        (
+            "- Rulebook:"
+            f" {rulebook_dict.get('version', 'unknown')} /"
+            f" snapshot {rulebook_dict.get('source_snapshot_date', 'unknown')}"
+        ),
+        "",
+        "## Epistemic Policy",
+        "",
+        (
+            "- Goal: readiness evidence and gap reporting; not an automated"
+            " declaration of legal compliance."
+        ),
+        (
+            "- Claim kinds:"
+            f" {', '.join(claim_kinds) if claim_kinds else 'not reported'}"
+        ),
+        (
+            "- Completion rule:"
+            " every applicable control terminates as pass, fail, or unknown."
+        ),
+        "",
+        "## Control Outcomes",
+        "",
+    ]
+    if controls:
+        for row in controls:
+            control_id = row.get("control_id")
+            title = row.get("title")
+            status = row.get("status")
+            applies = row.get("applies")
+            blocking = row.get("blocking")
+            claim_kind = row.get("claim_kind")
+            rationale = row.get("rationale")
+            evidence_ids = _coerce_str_list(row.get("evidence_ids"))
+            missing_markers = _coerce_str_list(row.get("missing_markers"))
+            lines.append(
+                (
+                    f"- {control_id}: {status}; applies={applies};"
+                    f" blocking={blocking}; claim_kind={claim_kind};"
+                    f" title={title}"
+                ),
+            )
+            if isinstance(rationale, str):
+                lines.append(f"  Rationale: {rationale}")
+            if evidence_ids:
+                lines.append(f"  Evidence IDs: {', '.join(evidence_ids)}")
+            if missing_markers:
+                lines.append(
+                    "  Missing markers:"
+                    f" {_format_marker_list(missing_markers)}"
+                )
+            lines.append(
+                "  Sources:"
+                f" {_format_source_citations(row.get('source_citations'))}"
+            )
+    else:
+        lines.append("- No control rows were available.")
+
+    lines.extend(["", "## Evidence Inventory", ""])
+    if evidence_entries:
+        for entry in evidence_entries:
+            evidence_id = entry.get("evidence_id")
+            path = entry.get("path")
+            exists = entry.get("exists")
+            sha256 = entry.get("sha256")
+            placeholder = entry.get("template_placeholder")
+            structured_fields = _coerce_str_list(
+                entry.get("structured_fields_detected"),
+            )
+            lines.append(
+                (
+                    f"- {evidence_id}: exists={exists};"
+                    f" placeholder={placeholder}; path={path}; sha256={sha256}"
+                ),
+            )
+            if structured_fields:
+                lines.append(
+                    "  Structured fields: " + ", ".join(structured_fields),
+                )
+    else:
+        lines.append("- No evidence entries were recorded.")
+
+    lines.extend(["", "## Technical Evidence", ""])
+    lines.append(
+        (
+            "- Attached artifacts:"
+            f" {technical_artifacts_dict.get('n_attached', 0)};"
+            f" existing={technical_artifacts_dict.get('n_existing', 0)};"
+            " interpreted_json="
+            f"{technical_artifacts_dict.get('n_interpreted_json', 0)};"
+            f" findings={technical_artifacts_dict.get('n_findings', 0)}"
+        ),
+    )
+    if technical_findings:
+        for finding in technical_findings:
+            risk_id = finding.get("risk_id")
+            severity = finding.get("severity")
+            summary = finding.get("summary")
+            lines.append(f"- {risk_id} [{severity}]: {summary}")
+    else:
+        lines.append(
+            "- No technical findings were interpreted from attached artifacts.",
+        )
+
+    lines.extend(["", "## Open Risk Register Items", ""])
+    if top_risks:
+        for item in top_risks:
+            risk_id = item.get("risk_id")
+            severity = item.get("severity")
+            summary = item.get("summary")
+            next_action = item.get("next_action")
+            lines.append(f"- {risk_id} [{severity}]: {summary}")
+            if isinstance(next_action, str):
+                lines.append(f"  Next action: {next_action}")
+            lines.append(
+                "  Sources:"
+                f" {_format_source_citations(item.get('source_citations'))}"
+            )
+    else:
+        lines.append("- No open risk-register items remain in the current scope.")
+
+    lines.extend(
+        [
+            "",
+            "## Integrity and Reproducibility",
+            "",
+            (
+                "- Evidence manifest SHA-256:"
+                f" {report.get('evidence_manifest_sha256')}"
+            ),
+            f"- Signature status: {integrity_dict.get('status', 'unknown')}",
+            (
+                "- Signature algorithm:"
+                f" {integrity_dict.get('signature_algorithm', 'unknown')}"
+            ),
+            (
+                "- Signature env var:"
+                f" {integrity_dict.get('signature_env_var', 'none')}"
+            ),
+            "",
+            "## Official Sources",
+            "",
+        ],
+    )
+    if sources:
+        for source in sources:
+            title = source.get("title")
+            url = source.get("url")
+            publisher = source.get("publisher")
+            if isinstance(title, str) and isinstance(url, str):
+                lines.append(f"- {title} ({publisher}): {url}")
+    else:
+        lines.append("- No official sources were attached.")
     return "\n".join(lines) + "\n"
 
 

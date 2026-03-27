@@ -27,7 +27,7 @@ from vauban.sensitivity import SensitivityProfile, compute_sensitivity_profile
 
 if TYPE_CHECKING:
     from vauban._array import Array
-    from vauban.types import CausalLM, SSSConfig, SSSResult, Tokenizer
+    from vauban.types import CausalLM, LayerCache, SSSConfig, SSSResult, Tokenizer
 
 
 # ---------------------------------------------------------------------------
@@ -71,13 +71,6 @@ def _sss_calibrate(
         valley_window=valley_window,
         top_k_valleys=top_k_valleys,
     )
-
-
-# ---------------------------------------------------------------------------
-# Forward passes
-# ---------------------------------------------------------------------------
-
-type LayerCache = object
 
 
 def _sss_seed_forward(

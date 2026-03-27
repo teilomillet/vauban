@@ -1,6 +1,6 @@
 """Parse the [circuit] section of a TOML config."""
 
-from vauban.config._parse_helpers import SectionReader
+from vauban.config._parse_helpers import SectionReader, require_toml_table
 from vauban.config._types import TomlDict
 from vauban.types import CircuitConfig
 
@@ -13,11 +13,7 @@ def _parse_circuit(raw: TomlDict) -> CircuitConfig | None:
     sec = raw.get("circuit")
     if sec is None:
         return None
-    if not isinstance(sec, dict):
-        msg = f"[circuit] must be a table, got {type(sec).__name__}"
-        raise TypeError(msg)
-
-    reader = SectionReader("[circuit]", sec)
+    reader = SectionReader("[circuit]", require_toml_table("[circuit]", sec))
 
     # -- clean_prompts (required) --
     clean_prompts = reader.string_list("clean_prompts")

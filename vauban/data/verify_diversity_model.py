@@ -23,6 +23,10 @@ from pathlib import Path
 
 import numpy as np
 
+type ModelMetric = float | int | list[float]
+type ModelSection = dict[str, ModelMetric]
+type ModelReportEntry = ModelSection | str | int | float | list[float] | bool
+
 
 def load_jsonl(path: Path) -> list[dict[str, str]]:
     """Load a JSONL file into a list of dicts."""
@@ -170,7 +174,7 @@ def analyze_set(
     activations: np.ndarray,
     projections: np.ndarray,
     threshold: float,
-) -> dict[str, float | int | list[float]]:
+) -> ModelSection:
     """Analyze diversity of a prompt set in model activation space."""
     n = len(entries)
     prompts = [e["prompt"] for e in entries]
@@ -184,7 +188,7 @@ def analyze_set(
     upper_idx = np.triu_indices(n, k=1)
     pairwise = sim[upper_idx]
 
-    stats: dict[str, float | int | list[float]] = {
+    stats: ModelSection = {
         "n_prompts": n,
         "act_mean_sim": float(np.mean(pairwise)),
         "act_median_sim": float(np.median(pairwise)),
@@ -297,7 +301,7 @@ def compare_spaces(
     act_sim: np.ndarray,
     st_sim: np.ndarray,
     n: int,
-) -> dict[str, float]:
+) -> ModelSection:
     """Compare activation-space and sentence-transformer similarity."""
     upper_idx = np.triu_indices(n, k=1)
     act_pairwise = act_sim[upper_idx]
@@ -396,10 +400,7 @@ def main() -> None:
         f" for {len(all_prompts)} prompts",
     )
 
-    report: dict[
-        str,
-        dict[str, float | int | list[float]] | float | int,
-    ] = {
+    report: dict[str, ModelReportEntry] = {
         "model": args.model,
         "best_layer": best_layer,
         "cosine_scores": cosine_scores,
@@ -601,10 +602,10 @@ def main() -> None:
         output_path = Path(args.output)
 
         def _serialize(
-            obj: dict[str, float | int | list[float]],
-        ) -> dict[str, float | int | list[float]]:
+            obj: ModelSection,
+        ) -> ModelSection:
             """Ensure JSON-serializable types."""
-            result: dict[str, float | int | list[float]] = {}
+            result: ModelSection = {}
             for k, v in obj.items():
                 if isinstance(v, np.floating):
                     result[k] = float(v)
@@ -621,7 +622,7 @@ def main() -> None:
                     result[k] = v
             return result
 
-        serializable = {}
+        serializable: dict[str, ModelReportEntry] = {}
         for k, v in report.items():
             if isinstance(v, dict):
                 serializable[k] = _serialize(v)

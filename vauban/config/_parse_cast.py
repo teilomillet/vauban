@@ -1,6 +1,6 @@
 """Parse the [cast] section of a TOML config."""
 
-from vauban.config._parse_helpers import SectionReader
+from vauban.config._parse_helpers import SectionReader, require_toml_table
 from vauban.config._types import TomlDict
 from vauban.types import AlphaTier, CastConfig
 
@@ -13,11 +13,7 @@ def _parse_cast(raw: TomlDict) -> CastConfig | None:
     sec = raw.get("cast")
     if sec is None:
         return None
-    if not isinstance(sec, dict):
-        msg = f"[cast] must be a table, got {type(sec).__name__}"
-        raise TypeError(msg)
-
-    reader = SectionReader("[cast]", sec)
+    reader = SectionReader("[cast]", require_toml_table("[cast]", sec))
 
     # -- prompts (required) --
     prompts = reader.string_list("prompts")
@@ -111,14 +107,9 @@ def _parse_alpha_tiers(reader: SectionReader) -> list[AlphaTier] | None:
         raise TypeError(msg)
     alpha_tiers: list[AlphaTier] = []
     for i, tier_raw in enumerate(alpha_tiers_raw):
-        if not isinstance(tier_raw, dict):
-            msg = (
-                f"[cast].alpha_tiers[{i}] must be a table,"
-                f" got {type(tier_raw).__name__}"
-            )
-            raise TypeError(msg)
-        t_threshold = tier_raw.get("threshold")
-        t_alpha = tier_raw.get("alpha")
+        tier = require_toml_table(f"[cast].alpha_tiers[{i}]", tier_raw)
+        t_threshold = tier.get("threshold")
+        t_alpha = tier.get("alpha")
         if t_threshold is None or t_alpha is None:
             msg = (
                 f"[cast].alpha_tiers[{i}] must have 'threshold'"

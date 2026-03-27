@@ -76,6 +76,25 @@ class LayerCache(Protocol):
 # ---------------------------------------------------------------------------
 
 
+def validate_ai_act_pdf_report_filename(
+    pdf_report_filename: str,
+    *,
+    field_label: str = "pdf_report_filename",
+) -> str:
+    """Validate the configured AI Act PDF artifact filename."""
+    if not pdf_report_filename.strip():
+        msg = f"{field_label} must not be empty when set"
+        raise ValueError(msg)
+    pdf_filename_path = Path(pdf_report_filename)
+    if pdf_filename_path.name != pdf_report_filename:
+        msg = f"{field_label} must be a filename, not a path"
+        raise ValueError(msg)
+    if pdf_filename_path.suffix.lower() != ".pdf":
+        msg = f"{field_label} must end with .pdf"
+        raise ValueError(msg)
+    return pdf_report_filename
+
+
 @dataclass(frozen=True, slots=True)
 class DirectionResult:
     """Output of the measure step: a refusal direction vector."""
@@ -1333,6 +1352,12 @@ class AIActConfig:
     risk_owner: str | None = None
     compliance_contact: str | None = None
     bundle_signature_secret_env: str | None = None
+    pdf_report: bool = True
+    pdf_report_filename: str = "ai_act_report.pdf"
+
+    def __post_init__(self) -> None:
+        """Validate filename invariants for generated report artifacts."""
+        validate_ai_act_pdf_report_filename(self.pdf_report_filename)
 
 
 @dataclass(frozen=True, slots=True)

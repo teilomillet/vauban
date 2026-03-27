@@ -5,7 +5,7 @@ surface, depth, sic, and softprompt modules: KV cache creation, embed + mask
 setup, LM head application, and logit extraction.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, cast
 
 from vauban._array import Array
 from vauban.types import CausalLM, LayerCache, Tokenizer, TransformerModel
@@ -18,6 +18,18 @@ else:
     from vauban._backend import get_backend
 
     _BACKEND = get_backend()
+
+
+class LayerModule(Protocol):
+    """Callable transformer layer interface used by the forward helpers."""
+
+    def __call__(
+        self,
+        h: Array,
+        mask: Array | None,
+        *,
+        cache: LayerCache | None = None,
+    ) -> Array: ...
 
 
 def get_transformer(model: CausalLM) -> TransformerModel:
@@ -111,17 +123,20 @@ def run_transformer_layers(
 
     ssm_mask = make_ssm_mask(transformer, h)
     for i, layer in enumerate(transformer.layers):
+        typed_layer = cast("LayerModule", layer)
         if differentiable:
-            h = ste_layer_forward(layer, h, mask, ssm_mask)
+            h = ste_layer_forward(typed_layer, h, mask, ssm_mask)
         elif cache is not None:
-            h = layer(h, select_mask(layer, mask, ssm_mask), cache=cache[i])
+            h = typed_layer(
+                h, select_mask(layer, mask, ssm_mask), cache=cache[i],
+            )
         else:
-            h = layer(h, select_mask(layer, mask, ssm_mask))
+            h = typed_layer(h, select_mask(layer, mask, ssm_mask))
     return h
 
 
 def ste_layer_forward(
-    layer: object,
+    layer: LayerModule,
     h: Array,
     mask: Array,
     ssm_mask: Array | None,

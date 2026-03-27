@@ -1,8 +1,6 @@
 """Parse the [defend] section of a TOML config."""
 
-from typing import cast
-
-from vauban.config._parse_helpers import SectionReader
+from vauban.config._parse_helpers import SectionReader, require_toml_table
 from vauban.config._parse_intent import _parse_intent
 from vauban.config._parse_policy import _parse_policy
 from vauban.config._parse_scan import _parse_scan
@@ -20,11 +18,7 @@ def _parse_perturb(raw: TomlDict) -> PerturbConfig | None:
     sec = raw.get("perturb")
     if sec is None:
         return None
-    if not isinstance(sec, dict):
-        msg = f"[perturb] must be a table, got {type(sec).__name__}"
-        raise TypeError(msg)
-
-    reader = SectionReader("[perturb]", sec)
+    reader = SectionReader("[perturb]", require_toml_table("[perturb]", sec))
     technique = reader.literal(
         "technique", _PERTURB_TECHNIQUES, default="random",
     )
@@ -55,11 +49,7 @@ def _parse_defend(raw: TomlDict) -> DefenseStackConfig | None:
     sec = raw.get("defend")
     if sec is None:
         return None
-    if not isinstance(sec, dict):
-        msg = f"[defend] must be a table, got {type(sec).__name__}"
-        raise TypeError(msg)
-
-    defend_dict = cast("dict[str, object]", sec)
+    defend_dict = require_toml_table("[defend]", sec)
 
     # -- fail_fast --
     fail_fast_raw = defend_dict.get("fail_fast", True)

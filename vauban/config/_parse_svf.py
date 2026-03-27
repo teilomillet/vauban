@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from vauban.config._parse_helpers import SectionReader
+from vauban.config._parse_helpers import SectionReader, require_toml_table
 from vauban.config._types import TomlDict
 from vauban.types import SVFConfig
 
@@ -15,11 +15,7 @@ def _parse_svf(base_dir: Path, raw: TomlDict) -> SVFConfig | None:
     sec = raw.get("svf")
     if sec is None:
         return None
-    if not isinstance(sec, dict):
-        msg = f"[svf] must be a table, got {type(sec).__name__}"
-        raise TypeError(msg)
-
-    reader = SectionReader("[svf]", sec)
+    reader = SectionReader("[svf]", require_toml_table("[svf]", sec))
 
     # -- prompts_target (required) --
     target_str = reader.string("prompts_target")

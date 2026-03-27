@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from io import BytesIO
 from typing import TYPE_CHECKING, cast
 from unittest.mock import patch
 
 import pytest
+from pypdf import PdfReader
 
+import vauban.ai_act as ai_act_module
 from tests.conftest import make_early_mode_context
 from vauban._pipeline._mode_ai_act import _run_ai_act_mode
 from vauban.ai_act import (
@@ -59,6 +62,34 @@ class TestParseAIAct:
             tmp_path / "reports/one.json",
             tmp_path / "reports/two.json",
         ]
+        assert cfg.pdf_report is True
+        assert cfg.pdf_report_filename == "ai_act_report.pdf"
+
+    def test_invalid_pdf_report_filename_raises(self, tmp_path: Path) -> None:
+        raw = {
+            "ai_act": {
+                "company_name": "Example",
+                "system_name": "Assistant",
+                "intended_purpose": "Answer customer questions.",
+                "pdf_report_filename": "reports/output.txt",
+            },
+        }
+
+        with pytest.raises(ValueError, match="pdf_report_filename"):
+            _parse_ai_act(tmp_path, raw)
+
+    def test_empty_pdf_report_filename_raises(self, tmp_path: Path) -> None:
+        raw = {
+            "ai_act": {
+                "company_name": "Example",
+                "system_name": "Assistant",
+                "intended_purpose": "Answer customer questions.",
+                "pdf_report_filename": "",
+            },
+        }
+
+        with pytest.raises(ValueError, match="pdf_report_filename"):
+            _parse_ai_act(tmp_path, raw)
 
     def test_empty_company_name_raises(self, tmp_path: Path) -> None:
         raw = {
@@ -737,6 +768,48 @@ class TestReadinessBundle:
             control_ids["ai_act.article26.public_authority_registration"] == "pass"
         )
 
+    def test_markdown_report_artifacts_include_reviewer_sections(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        self._write_complete_evidence(tmp_path)
+        artifacts = generate_deployer_readiness_artifacts(self._config(tmp_path))
+
+        executive = artifacts.executive_summary_markdown
+        appendix = artifacts.auditor_appendix_markdown
+
+        assert "# AI Act Executive Report" in executive
+        assert "## Priority Actions" in executive
+        assert "## Highest-Risk Findings" in executive
+        assert "# AI Act Auditor Appendix" in appendix
+        assert "## Control Outcomes" in appendix
+        assert "## Evidence Inventory" in appendix
+        assert "## Integrity and Reproducibility" in appendix
+
+    def test_pdf_report_artifact_is_generated_and_extractable(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        self._write_complete_evidence(tmp_path)
+        artifacts = generate_deployer_readiness_artifacts(self._config(tmp_path))
+
+        assert artifacts.pdf_report_bytes is not None
+        assert artifacts.pdf_report_filename == "ai_act_report.pdf"
+        reader = PdfReader(BytesIO(artifacts.pdf_report_bytes))
+        extracted = "\n".join(page.extract_text() or "" for page in reader.pages)
+        assert "AI Act Readiness Report" in extracted
+        assert "Executive Report" in extracted
+        assert "Auditor Appendix" in extracted
+
+    def test_programmatic_invalid_pdf_report_filename_raises(self) -> None:
+        with pytest.raises(ValueError, match="pdf_report_filename"):
+            AIActConfig(
+                company_name="Example Energy",
+                system_name="Customer Assistant",
+                intended_purpose="Answers customer questions.",
+                pdf_report_filename="ai_act_executive_summary.md",
+            )
+
     def test_integrity_artifact_is_signed_when_secret_env_is_available(
         self,
         tmp_path: Path,
@@ -759,6 +832,9 @@ class TestReadinessBundle:
         artifact_hashes = artifacts.integrity["artifact_hashes"]
         assert isinstance(artifact_hashes, dict)
         assert "ai_act_readiness_report.json" in artifact_hashes
+        assert "ai_act_auditor_appendix.md" in artifact_hashes
+        assert "ai_act_report.pdf" in artifact_hashes
+        assert artifacts.integrity["artifact_count"] == 13
         evidence = artifacts.evidence_manifest["evidence"]
         assert isinstance(evidence, list)
         evidence_entries = [
@@ -775,6 +851,27 @@ class TestReadinessBundle:
         assert isinstance(detected_fields, list)
         assert "owner" in detected_fields
         assert "refresh_cadence" in detected_fields
+
+    def test_technical_reports_skip_scaffold_placeholder_detection(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        self._write_complete_evidence(tmp_path)
+
+        with patch.object(
+            ai_act_module,
+            "_document_has_draft_placeholders",
+            wraps=ai_act_module._document_has_draft_placeholders,
+        ) as mock_placeholder:
+            generate_deployer_readiness_artifacts(self._config(tmp_path))
+
+        scanned_paths = {
+            call.args[0]
+            for call in mock_placeholder.call_args_list
+            if call.args
+        }
+        assert tmp_path / "ai_literacy.md" in scanned_paths
+        assert tmp_path / "red_team.json" not in scanned_paths
 
     def test_high_risk_deployer_missing_monitoring_blocks_article26(
         self,
@@ -1103,6 +1200,8 @@ class TestAIActMode:
             assert (tmp_path / "ai_act_evidence_manifest.json").exists()
             assert (tmp_path / "ai_act_integrity.json").exists()
             assert (tmp_path / "ai_act_executive_summary.md").exists()
+            assert (tmp_path / "ai_act_auditor_appendix.md").exists()
+            assert (tmp_path / "ai_act_report.pdf").exists()
             assert (tmp_path / "ai_act_remediation_plan.md").exists()
             assert (tmp_path / "ai_act_fria_prep.md").exists()
             metadata = mock_finish.call_args[0][3]

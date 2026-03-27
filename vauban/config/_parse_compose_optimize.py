@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from vauban.config._parse_helpers import SectionReader
+from vauban.config._parse_helpers import SectionReader, require_toml_table
 from vauban.config._types import TomlDict
 from vauban.types import ComposeOptimizeConfig
 
@@ -17,14 +17,10 @@ def _parse_compose_optimize(
     sec = raw.get("compose_optimize")
     if sec is None:
         return None
-    if not isinstance(sec, dict):
-        msg = (
-            f"[compose_optimize] must be a table,"
-            f" got {type(sec).__name__}"
-        )
-        raise TypeError(msg)
-
-    reader = SectionReader("[compose_optimize]", sec)
+    reader = SectionReader(
+        "[compose_optimize]",
+        require_toml_table("[compose_optimize]", sec),
+    )
 
     # -- bank_path (required) --
     bank_path_str = reader.string("bank_path")
