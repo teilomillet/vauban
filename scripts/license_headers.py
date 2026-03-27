@@ -6,12 +6,11 @@
 from __future__ import annotations
 
 import argparse
-import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-DEFAULT_COPYRIGHT_OWNER = "Teilo Millet"
-DEFAULT_COPYRIGHT_YEAR = "2026"
+COPYRIGHT_OWNER = "Teilo Millet"
+COPYRIGHT_YEAR = "2026"
 LICENSE_IDENTIFIER = "Apache-2.0"
 HASH_COMMENT_SUFFIXES: frozenset[str] = frozenset({
     ".py",
@@ -44,65 +43,9 @@ class HeaderResult:
     missing: list[Path]
 
 
-@dataclass(frozen=True, slots=True)
-class HeaderConfig:
-    """Copyright settings used to build SPDX file headers."""
-
-    copyright_owner: str
-    copyright_year: str
-
-
 def repo_root() -> Path:
     """Return the repository root for this script."""
     return Path(__file__).resolve().parents[1]
-
-
-def _dict_value(value: object) -> dict[str, object] | None:
-    """Narrow a parsed TOML value to a string-keyed dict when possible."""
-    if isinstance(value, dict):
-        return {
-            str(key): item
-            for key, item in value.items()
-        }
-    return None
-
-
-def load_header_config(root: Path) -> HeaderConfig:
-    """Load header settings from ``pyproject.toml`` when configured."""
-    config = HeaderConfig(
-        copyright_owner=DEFAULT_COPYRIGHT_OWNER,
-        copyright_year=DEFAULT_COPYRIGHT_YEAR,
-    )
-    pyproject_path = root / "pyproject.toml"
-    if not pyproject_path.exists():
-        return config
-    with pyproject_path.open("rb") as handle:
-        parsed = tomllib.load(handle)
-    tool = _dict_value(parsed.get("tool"))
-    if tool is None:
-        return config
-    vauban = _dict_value(tool.get("vauban"))
-    if vauban is None:
-        return config
-    headers = _dict_value(vauban.get("license_headers"))
-    if headers is None:
-        return config
-    owner = headers.get("owner")
-    year = headers.get("year")
-    copyright_owner = (
-        owner
-        if isinstance(owner, str) and owner
-        else config.copyright_owner
-    )
-    copyright_year = (
-        year
-        if isinstance(year, str) and year
-        else config.copyright_year
-    )
-    return HeaderConfig(
-        copyright_owner=copyright_owner,
-        copyright_year=copyright_year,
-    )
 
 
 def target_files(root: Path) -> list[Path]:
@@ -117,20 +60,20 @@ def target_files(root: Path) -> list[Path]:
     ]
 
 
-def spdx_lines(config: HeaderConfig) -> tuple[str, str]:
-    """Return the raw SPDX lines for the active header configuration."""
+def spdx_lines() -> tuple[str, str]:
+    """Return the raw SPDX lines for the maintainer-controlled header policy."""
     return (
         (
             "SPDX-FileCopyrightText: "
-            f"{config.copyright_year} {config.copyright_owner}"
+            f"{COPYRIGHT_YEAR} {COPYRIGHT_OWNER}"
         ),
         f"SPDX-License-Identifier: {LICENSE_IDENTIFIER}",
     )
 
 
-def header_lines_for_path(path: Path, config: HeaderConfig) -> tuple[str, str]:
+def header_lines_for_path(path: Path) -> tuple[str, str]:
     """Return the correctly formatted SPDX lines for a path."""
-    line_a, line_b = spdx_lines(config)
+    line_a, line_b = spdx_lines()
     if path.suffix in HASH_COMMENT_SUFFIXES:
         return (f"# {line_a}", f"# {line_b}")
     if path.suffix in MARKDOWN_SUFFIXES:
@@ -139,35 +82,23 @@ def header_lines_for_path(path: Path, config: HeaderConfig) -> tuple[str, str]:
     raise ValueError(msg)
 
 
-def header_block_for_path(path: Path, config: HeaderConfig) -> str:
+def header_block_for_path(path: Path) -> str:
     """Return the correctly formatted SPDX block for a path."""
-    return "\n".join((*header_lines_for_path(path, config), "", ""))
+    return "\n".join((*header_lines_for_path(path), "", ""))
 
 
-def has_required_header(
-    text: str,
-    path: Path,
-    config: HeaderConfig | None = None,
-) -> bool:
+def has_required_header(text: str, path: Path) -> bool:
     """Return whether text already starts with the required SPDX header."""
-    active_config = config if config is not None else load_header_config(repo_root())
     first_lines = text.splitlines()[:6]
-    return all(
-        line in first_lines for line in header_lines_for_path(path, active_config)
-    )
+    return all(line in first_lines for line in header_lines_for_path(path))
 
 
-def insert_header(
-    text: str,
-    path: Path,
-    config: HeaderConfig | None = None,
-) -> str:
+def insert_header(text: str, path: Path) -> str:
     """Insert the SPDX header after a shebang or encoding line when present."""
-    active_config = config if config is not None else load_header_config(repo_root())
-    if has_required_header(text, path, active_config):
+    if has_required_header(text, path):
         return text
 
-    header_block = header_block_for_path(path, active_config)
+    header_block = header_block_for_path(path)
     if path.suffix in MARKDOWN_SUFFIXES:
         suffix = text[1:] if text.startswith("\n") else text
         return f"{header_block}{suffix}"
@@ -189,12 +120,11 @@ def insert_header(
 def apply_headers(*, write: bool) -> HeaderResult:
     """Apply or validate SPDX headers across the managed source set."""
     root = repo_root()
-    config = load_header_config(root)
     updated: list[Path] = []
     missing: list[Path] = []
     for path in target_files(root):
         original = path.read_text(encoding="utf-8")
-        rewritten = insert_header(original, path, config)
+        rewritten = insert_header(original, path)
         if rewritten == original:
             continue
         rel_path = path.relative_to(root)

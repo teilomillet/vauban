@@ -28,6 +28,8 @@ will fail the build.
 ## SPDX Header Policy
 
 Managed files receive short SPDX headers, not full license banners.
+The copyright owner and license metadata are maintainer-controlled; contributors
+should not edit those values.
 
 Current scope:
 
@@ -50,10 +52,9 @@ Comment style is chosen by file type:
 
 ## Changing Copyright Owner Or Year
 
-Do not hand-edit hundreds of file headers.
-
-Update the values in `pyproject.toml` under `[tool.vauban.license_headers]`,
-then re-run:
+Do not hand-edit hundreds of file headers. If ownership metadata ever changes,
+that is a maintainer action and should be done by editing
+`scripts/license_headers.py`, then re-running:
 
 ```bash
 uv run python scripts/license_headers.py --write
