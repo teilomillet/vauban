@@ -86,3 +86,17 @@ def test_insert_header_for_toml_uses_hash_comments() -> None:
         "# SPDX-License-Identifier: Apache-2.0\n\n"
         "[project]\n",
     )
+
+
+def test_load_header_config_reads_pyproject_values(tmp_path: Path) -> None:
+    """The script should read owner/year overrides from ``pyproject.toml``."""
+    module = _load_script_module()
+    (tmp_path / "pyproject.toml").write_text(
+        "[tool.vauban.license_headers]\n"
+        'owner = "Vauban Labs"\n'
+        'year = "2026-present"\n',
+        encoding="utf-8",
+    )
+    config = module.load_header_config(tmp_path)
+    assert config.copyright_owner == "Vauban Labs"
+    assert config.copyright_year == "2026-present"

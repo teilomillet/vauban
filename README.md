@@ -58,6 +58,8 @@ For development from this repo:
 uv tool install --editable .
 ```
 
+Contributor workflow and repo policy live in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Quick Start
 
 Pick a goal — the manual will tell you which sections to use:

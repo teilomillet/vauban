@@ -57,6 +57,10 @@ include = ["vauban/data/verify_diversity.py", "vauban/data/verify_diversity_mode
 [tool.ty.overrides.rules]
 unresolved-import = "ignore"
 
+[tool.vauban.license_headers]
+owner = "Teilo Millet"
+year = "2026"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
