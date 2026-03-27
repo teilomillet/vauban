@@ -9,30 +9,29 @@ A (foundation) enables C (composability) enables B (defense expansion).
 
 | Metric | Value |
 |--------|-------|
-| Core LOC | 26,233 across 88 modules |
-| Test LOC | 20,313 (0.77x ratio) |
-| Types | 75 frozen dataclasses, 5 protocols, 0 `Any` |
-| Config | 34 TOML sections, 140+ keys, all validated |
-| Public API | 60 standalone functions, 10 mode handlers |
-| Papers | 15 implemented, 5 referenced but missing |
+| Core LOC | 51,837 across 220 Python modules |
+| Test LOC | 42,431 (0.82x ratio) |
+| Types | 171 frozen dataclasses, 9 protocols, 0 `Any` in typed code |
+| Mode handlers | 24 early-mode handlers plus the default pipeline |
+| Experiment logging | `[meta]` lineage + per-run `experiment_log.jsonl` |
 | Backends | MLX (primary), PyTorch (secondary) |
+| Local gates | `ruff`, `ty`, and `pytest` all green |
 
 ### Strengths
 - Every tool is typed, immutable, and deterministic
-- 87% of public API works standalone (no pipeline dependency)
 - Weight I/O is decoupled from model objects
 - Backend abstraction (MLX/torch) is clean — duck typing via protocols
 - Config validation catches typos and invalid values before model load
+- Real-model integration coverage exists for the core pipeline and is opt-in via `VAUBAN_INTEGRATION=1`
+- Experiment lineage and per-run metrics are already recorded via `[meta]` and `experiment_log.jsonl`
 
 ### Weaknesses
-- 16 core modules have zero dedicated tests (35% of surface)
-- Softprompt subpackage: 4,540 LOC with 0.19x test ratio
-- Pipeline orchestrator (`run()`, 1,977 LOC) has no integration tests
-- No experiment tracking backend (manual TOML `[meta]` + hand analysis)
-- Sequential everywhere — transfer re-ranking, GAN rounds, API eval
-- Softprompt exports 50+ internal helpers that should be private
-- Mixed calling convention: some functions take config objects, others take direct args
-- 5 papers from AGENTS.md not implemented (RepBend, COLD-Attack, LARGO, AmpleGCG, Latent Fusion)
+- Real-model integration tests are opt-in and not part of the default gate
+- Tracking is append-only JSONL, not a queryable experiment store
+- Sequential hotspots remain in transfer re-ranking, GAN rounds, and API eval
+- Softprompt still re-exports many internal helpers that should be private
+- Mixed calling convention persists: some functions take config objects, others take direct args
+- Paper-inspired modules exist for RepBend, COLD, LARGO, AmpleGCG, and Fusion, but maturity and benchmark coverage are still uneven
 
 ---
 
@@ -43,21 +42,30 @@ Every experiment should be trackable, every result reproducible, every module te
 
 ### A.1 Test Coverage Hardening
 
-**Target**: 0.9x test/code ratio across all modules. Zero untested public surface.
+**Target**: Keep the suite near 0.9x test/code ratio while promoting more
+coverage from "exists locally" to "enforced automatically."
 
-#### Priority 1 — Pipeline Integration Tests
-The pipeline orchestrator is the highest-risk untested code.
+#### Priority 1 — CI Enforcement And Integration Promotion
+The repository now has fast unit coverage plus opt-in real-model integration
+tests. The next step is to tighten the gate, not to invent it from scratch.
 
 ```
-tests/test_pipeline_integration.py
-├── test_measure_cut_eval_roundtrip    # full pipeline, tiny model
-├── test_early_mode_dispatch           # each mode fires correctly
-├── test_config_to_output_determinism  # same config → same output
-└── test_validate_then_run             # validation catches real errors
+.github/workflows/ci.yml
+├── uv run ruff check .
+├── uv run ty check
+└── uv run pytest -q
+
+tests/test_integration.py
+├── measure → probe → cut → evaluate on a real model
+├── harmful vs harmless projection contrast
+├── weight modification and projection shrinkage
+└── perplexity/refusal sanity checks
 ```
 
-Use the 135M SmolLM2 model for fast integration tests (already available locally).
-Each test runs the full pipeline with a specific config and checks the output structure.
+Next up:
+- keep the default CI path fast on macOS runners
+- split real-model coverage into smoke vs. full integration tiers
+- decide which integration slice should run on every PR versus scheduled/manual
 
 #### Priority 2 — Module-Level Test Coverage
 
@@ -92,7 +100,8 @@ tests/softprompt/
 
 ### A.2 Experiment Tracking
 
-Replace manual TOML `[meta]` + hand analysis with structured tracking.
+Extend the current TOML `[meta]` + `experiment_log.jsonl` flow into structured,
+queryable tracking.
 
 #### Local Tracking (SQLite)
 
