@@ -29,6 +29,8 @@ _LAZY_IMPORTS: dict[str, str | tuple[str, str]] = {
     "ApiEvalEndpoint": "vauban.types",
     "AIActArtifacts": "vauban.ai_act",
     "AIActConfig": "vauban.types",
+    "AuditConfig": "vauban.types",
+    "AuditResult": "vauban.types",
     "AwarenessConfig": "vauban.types",
     "AwarenessLayerResult": "vauban.types",
     "AwarenessResult": "vauban.types",

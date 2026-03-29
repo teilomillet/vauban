@@ -19,6 +19,7 @@ from vauban.types import (
     AIActConfig,
     ApiEvalConfig,
     ApiEvalEndpoint,
+    AuditConfig,
     AwarenessConfig,
     CastConfig,
     CircuitConfig,
@@ -70,6 +71,7 @@ _EXPECTED_EARLY_MODE_ORDER: list[str] = [
     "[steer]",
     "[sss]",
     "[awareness]",
+    "[audit]",
     "[guard]",
     "[cast]",
     "[sic]",
@@ -174,7 +176,7 @@ def test_validation_warning_content_and_order_for_conflict_fixture(
             "[HIGH] Multiple early-return modes active: [depth], [probe]"
             " — only the first will run (precedence: remote"
             " > api_eval > ai_act > depth > svf > features"
-            " > probe > steer > sss > awareness > guard > cast > sic"
+            " > probe > steer > sss > awareness > audit > guard > cast > sic"
             " > optimize > compose_optimize"
             " > softprompt > jailbreak > defend > circuit > linear_probe > fusion"
             " > repbend > lora_export > lora_analysis > flywheel)"
@@ -231,6 +233,7 @@ def test_active_early_modes_precedence_matches_legacy_behavior() -> None:
             system_name="Customer Assistant",
             intended_purpose="Answers customer questions.",
         ),
+        audit=AuditConfig(company_name="Test", system_name="Test"),
         depth=DepthConfig(prompts=["a", "b"]),
         svf=SVFConfig(
             prompts_target=Path("target.jsonl"),

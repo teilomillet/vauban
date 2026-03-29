@@ -2457,6 +2457,58 @@ class RemoteBackend(Protocol):
         ...
 
 
+# ---------------------------------------------------------------------------
+# Audit — automated red-team assessment
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class AuditConfig:
+    """Configuration for the [audit] automated red-team assessment."""
+
+    company_name: str
+    system_name: str
+    thoroughness: str = "standard"  # "quick", "standard", "deep"
+    pdf_report: bool = True
+    pdf_report_filename: str = "audit_report.pdf"
+    attacks: list[str] | None = None
+    softprompt_steps: int | None = None
+    jailbreak_strategies: list[str] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AuditFinding:
+    """A single finding from the red-team audit."""
+
+    category: str
+    severity: str  # "critical", "high", "medium", "low", "info"
+    title: str
+    description: str
+    evidence: str
+    remediation: str
+
+
+@dataclass(frozen=True, slots=True)
+class AuditResult:
+    """Output of the automated red-team audit."""
+
+    company_name: str
+    system_name: str
+    model_path: str
+    thoroughness: str
+    overall_risk: str  # "critical", "high", "medium", "low"
+    findings: list[AuditFinding]
+    detect_hardened: bool | None
+    detect_confidence: float | None
+    jailbreak_success_rate: float
+    jailbreak_total: int
+    softprompt_success_rate: float | None
+    bijection_success_rate: float | None
+    surface_refusal_rate: float | None
+    surface_coverage: float | None
+    guard_circuit_break_rate: float | None
+
+
 @dataclass(frozen=True, slots=True)
 class PipelineConfig:
     """Full pipeline configuration loaded from TOML."""
@@ -2480,6 +2532,7 @@ class PipelineConfig:
     awareness: AwarenessConfig | None = None
     cast: CastConfig | None = None
     guard: GuardConfig | None = None
+    audit: AuditConfig | None = None
     svf: SVFConfig | None = None
     compose_optimize: ComposeOptimizeConfig | None = None
     environment: EnvironmentConfig | None = None

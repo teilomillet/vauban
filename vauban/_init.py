@@ -226,6 +226,14 @@ max_tokens = 100
 max_rewinds = 3
 calibrate = true
 """,
+    "audit": """\
+
+[audit]
+company_name = "Your Company"
+system_name = "Your AI System"
+thoroughness = "standard"
+pdf_report = true
+""",
     "depth": """\
 
 [depth]

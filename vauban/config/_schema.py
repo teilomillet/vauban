@@ -23,6 +23,7 @@ from vauban._backend import SUPPORTED_BACKENDS
 from vauban.types import (
     AIActConfig,
     ApiEvalConfig,
+    AuditConfig,
     AwarenessConfig,
     CastConfig,
     CircuitConfig,
@@ -102,6 +103,7 @@ _DATACLASS_SECTION_SPECS: tuple[_DataclassSectionSpec, ...] = (
     _DataclassSectionSpec("sss", SSSConfig, {}),
     _DataclassSectionSpec("awareness", AwarenessConfig, {}),
     _DataclassSectionSpec("cast", CastConfig, {}),
+    _DataclassSectionSpec("audit", AuditConfig, {}),
     _DataclassSectionSpec("guard", GuardConfig, {}),
     _DataclassSectionSpec("svf", SVFConfig, {}),
     _DataclassSectionSpec("api_eval", ApiEvalConfig, {}),

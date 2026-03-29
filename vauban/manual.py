@@ -2077,6 +2077,56 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
         ),
     ),
     SectionSpec(
+        name="audit",
+        description="Automated red-team safety assessment with PDF report.",
+        early_return=True,
+        config_class="AuditConfig",
+        fields=(
+            FieldSpec(
+                key="company_name",
+                description="Company name for the report header.",
+                constraints="required string.",
+                required=True,
+            ),
+            FieldSpec(
+                key="system_name",
+                description="AI system name for the report header.",
+                constraints="required string.",
+                required=True,
+            ),
+            FieldSpec(
+                key="thoroughness",
+                description="Assessment depth level.",
+                constraints='one of: "quick", "standard", "deep".',
+            ),
+            FieldSpec(
+                key="pdf_report",
+                description="Generate PDF audit report.",
+                constraints="boolean.",
+            ),
+            FieldSpec(
+                key="pdf_report_filename",
+                description="Custom PDF filename.",
+                constraints="string ending with .pdf.",
+            ),
+            FieldSpec(
+                key="attacks",
+                description="Override which attack methods to run.",
+                constraints="list of strings or null.",
+            ),
+            FieldSpec(
+                key="softprompt_steps",
+                description="Override GCG optimization steps.",
+                constraints="integer >= 1 or null.",
+            ),
+            FieldSpec(
+                key="jailbreak_strategies",
+                description="Restrict jailbreak templates to specific strategies.",
+                constraints="list of strings or null.",
+            ),
+        ),
+    ),
+    SectionSpec(
         name="guard",
         description="Runtime circuit breaker with tiered response and KV cache rewind.",
         early_return=True,
@@ -3676,7 +3726,7 @@ _WORKFLOW_SECTIONS: dict[str, tuple[str, ...]] = {
         "guard", "cast", "sic", "defend", "repbend",
     ),
     "Test adversarial robustness": (
-        "softprompt", "api_eval", "flywheel", "jailbreak",
+        "audit", "softprompt", "api_eval", "flywheel", "jailbreak",
     ),
     "Analyze model internals": (
         "circuit", "features", "depth", "awareness",

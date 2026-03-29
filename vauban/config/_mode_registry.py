@@ -163,6 +163,17 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "awareness_report.json.",
     ),
     EarlyModeSpec(
+        "[audit]",
+        "audit",
+        "before_prompts",
+        False,
+        _field_is_set("audit"),
+        "Automated red-team safety assessment with PDF report.",
+        "red-team audit",
+        "[audit] section present.",
+        "audit_report.json + audit_report.md + audit_report.pdf.",
+    ),
+    EarlyModeSpec(
         "[guard]",
         "guard",
         "after_measure",
