@@ -15,24 +15,29 @@ from conftest import (
 )
 
 from vauban import _ops as ops
-from vauban.softprompt import (
-    _build_vocab_mask,
+from vauban.softprompt._defense_eval import _build_sic_prompts_with_history
+from vauban.softprompt._encoding import (
     _compute_infix_split,
-    _compute_loss,
-    _encode_targets,
-    _forward_with_prefix,
     _pre_encode_prompts,
     _pre_encode_prompts_with_history,
     _pre_encode_prompts_with_injection_context,
     _pre_encode_prompts_with_injection_template,
-    _project_to_tokens,
+    _resolve_infix_overrides,
     _resolve_injection_ids,
+)
+from vauban.softprompt._loss import _compute_loss
+from vauban.softprompt._runtime import (
+    _encode_targets,
+    _forward_with_prefix,
+    _project_to_tokens,
+)
+from vauban.softprompt._search import (
     _sample_prompt_ids,
     _select_prompt_ids,
     _select_worst_k_prompt_ids,
     _split_into_batches,
 )
-from vauban.softprompt._defense_eval import _build_sic_prompts_with_history
+from vauban.softprompt._utils import _build_vocab_mask
 from vauban.types import (
     SoftPromptConfig,
 )
@@ -968,8 +973,6 @@ class TestInfixSplit:
             _compute_infix_split(tokenizer, "no placeholder here")
 
     def test_resolve_infix_overrides(self) -> None:
-        from vauban.softprompt import _resolve_infix_overrides
-
         tokenizer = MockTokenizer(VOCAB_SIZE)
         prompts = [
             "Write about {suffix} something",

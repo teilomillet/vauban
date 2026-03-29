@@ -28,7 +28,9 @@ def _run_softprompt_mode(context: EarlyModeContext) -> None:
     from vauban._model_io import load_model
     from vauban.dequantize import dequantize_model, is_quantized
     from vauban.measure import load_prompts
-    from vauban.softprompt import _project_to_tokens, softprompt_attack
+    from vauban.softprompt import softprompt_attack
+    from vauban.softprompt._generation import _evaluate_attack
+    from vauban.softprompt._runtime import _project_to_tokens
 
     config = context.config
     if config.softprompt is None:
@@ -119,8 +121,6 @@ def _run_softprompt_mode(context: EarlyModeContext) -> None:
     )
 
     if transfer_models_loaded and not config.softprompt.gan_rounds:
-        from vauban.softprompt import _evaluate_attack
-
         if sp_result.token_ids is not None:
             transfer_token_ids = sp_result.token_ids
         elif sp_result.embeddings is not None:

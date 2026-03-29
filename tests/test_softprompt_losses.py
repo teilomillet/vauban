@@ -18,20 +18,24 @@ from conftest import (
 )
 
 from vauban import _ops as ops
-from vauban.softprompt import (
+from vauban.softprompt import softprompt_attack
+from vauban.softprompt._continuous import _continuous_attack
+from vauban.softprompt._egd import _egd_attack
+from vauban.softprompt._gcg import _gcg_attack
+from vauban.softprompt._loss import (
+    _add_perplexity_term,
+    _compute_eos_loss,
+    _compute_kl_collision_loss,
+    _compute_loss,
+    _compute_perplexity_loss,
+    _compute_untargeted_loss,
+)
+from vauban.softprompt._utils import (
     _build_vocab_mask,
     _compute_accessibility_score,
     _compute_embed_regularization,
-    _compute_eos_loss,
-    _compute_kl_collision_loss,
     _compute_learning_rate,
-    _compute_loss,
-    _compute_untargeted_loss,
-    _continuous_attack,
-    _egd_attack,
     _encode_refusal_tokens,
-    _gcg_attack,
-    softprompt_attack,
 )
 from vauban.types import (
     SoftPromptConfig,
@@ -1050,8 +1054,6 @@ class TestPerplexityLoss:
         assert cfg.perplexity_weight == 0.0
 
     def test_compute_perplexity_loss_basic(self) -> None:
-        from vauban.softprompt import _compute_perplexity_loss
-
         # logits: (1, 4, 32), suffix_token_ids: (1, 4)
         logits = ops.random.normal((1, 4, VOCAB_SIZE))
         suffix_ids = ops.array([[1, 2, 3, 4]])
@@ -1063,8 +1065,6 @@ class TestPerplexityLoss:
         assert float(loss.item()) > 0.0
 
     def test_perplexity_loss_single_token_returns_zero(self) -> None:
-        from vauban.softprompt import _compute_perplexity_loss
-
         logits = ops.random.normal((1, 2, VOCAB_SIZE))
         suffix_ids = ops.array([[1]])
         loss = _compute_perplexity_loss(
@@ -1098,8 +1098,6 @@ class TestPerplexityLoss:
 
 class TestPerplexityWithOffset:
     def test_perplexity_suffix_offset(self) -> None:
-        from vauban.softprompt import _compute_perplexity_loss
-
         # 3 prompt tokens + 4 soft tokens = logits at positions 3..5
         logits = ops.random.normal((1, 10, VOCAB_SIZE))
         suffix_ids = ops.array([[1, 2, 3, 4]])
@@ -1111,8 +1109,6 @@ class TestPerplexityWithOffset:
         assert float(loss.item()) > 0.0
 
     def test_perplexity_infix_offset(self) -> None:
-        from vauban.softprompt import _compute_perplexity_loss
-
         # infix_split=2: soft tokens start at position 2
         logits = ops.random.normal((1, 12, VOCAB_SIZE))
         suffix_ids = ops.array([[1, 2, 3, 4]])
@@ -1124,8 +1120,6 @@ class TestPerplexityWithOffset:
         assert float(loss.item()) > 0.0
 
     def test_add_perplexity_term_disabled(self) -> None:
-        from vauban.softprompt import _add_perplexity_term
-
         logits = ops.random.normal((1, 8, VOCAB_SIZE))
         base_loss = ops.array(1.5)
         result = _add_perplexity_term(
@@ -1138,8 +1132,6 @@ class TestPerplexityWithOffset:
         assert float(result.item()) == float(base_loss.item())
 
     def test_add_perplexity_term_suffix(self) -> None:
-        from vauban.softprompt import _add_perplexity_term
-
         logits = ops.random.normal((1, 10, VOCAB_SIZE))
         base_loss = ops.array(1.0)
         suffix_ids = ops.array([[1, 2, 3, 4]])
@@ -1153,8 +1145,6 @@ class TestPerplexityWithOffset:
         assert float(result.item()) >= float(base_loss.item()) - 1e-6
 
     def test_add_perplexity_term_infix(self) -> None:
-        from vauban.softprompt import _add_perplexity_term
-
         logits = ops.random.normal((1, 12, VOCAB_SIZE))
         base_loss = ops.array(1.0)
         suffix_ids = ops.array([[1, 2, 3, 4]])

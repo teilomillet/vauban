@@ -19,16 +19,16 @@ from conftest import (
 )
 
 from vauban import _ops as ops
-from vauban.softprompt import (
-    _compute_loss,
-    _continuous_attack,
-    _egd_attack,
-    _encode_targets,
+from vauban.softprompt import softprompt_attack
+from vauban.softprompt._continuous import _continuous_attack
+from vauban.softprompt._egd import _egd_attack
+from vauban.softprompt._gcg import _gcg_attack
+from vauban.softprompt._generation import (
     _evaluate_attack,
     _evaluate_attack_with_history,
-    _gcg_attack,
-    softprompt_attack,
 )
+from vauban.softprompt._loss import _compute_loss
+from vauban.softprompt._utils import _encode_targets
 from vauban.types import (
     EnvironmentConfig,
     EnvironmentResult,
@@ -979,7 +979,8 @@ class TestInjectionContextDispatch:
 class TestThreeFeaturesIntegration:
     def test_loss_with_all_features(self) -> None:
         """Compute loss with perplexity + infix position + paraphrased prompts."""
-        from vauban.softprompt import _compute_loss, paraphrase_prompts
+        from vauban.softprompt import paraphrase_prompts
+        from vauban.softprompt._loss import _compute_loss
 
         model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
         ops.eval(model.parameters())

@@ -1,17 +1,15 @@
 # SPDX-FileCopyrightText: 2026 Teilo Millet
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for vauban.softprompt dataclasses, defaults, and compatibility exports."""
+"""Tests for vauban.softprompt dataclasses, defaults, and public API."""
 
 from __future__ import annotations
 
 import pytest
 
 from vauban import _ops as ops
-from vauban.softprompt import (
-    _compute_infix_split,
-    _compute_loss,
-)
+from vauban.softprompt._encoding import _compute_infix_split
+from vauban.softprompt._loss import _compute_loss
 from vauban.types import (
     DefenseEvalResult,
     SoftPromptConfig,
@@ -441,16 +439,31 @@ class TestSoftPromptConfigNewFields:
         assert cfg.beam_width == 4
 
 
-class TestCompatibilityExports:
-    """Explicit compatibility checks for retained re-export surfaces."""
+class TestPublicApiSurface:
+    """Explicit checks for the reduced package-level public surface."""
 
-    def test_public_re_exports_exist(self) -> None:
+    def test_high_level_exports_only(self) -> None:
+        import vauban.softprompt as softprompt
+
+        assert softprompt.__all__ == [
+            "evaluate_against_defenses",
+            "evaluate_against_defenses_multiturn",
+            "gan_loop",
+            "largo_loop",
+            "paraphrase_prompts",
+            "softprompt_attack",
+        ]
+        assert callable(softprompt.softprompt_attack)
+        assert callable(softprompt.gan_loop)
+        assert callable(softprompt.largo_loop)
+        assert callable(softprompt.paraphrase_prompts)
+        assert not hasattr(softprompt, "_compute_loss")
+        assert not hasattr(softprompt, "_compute_infix_split")
+
+    def test_private_helper_facades_still_exist(self) -> None:
+        from vauban.softprompt._utils import _encode_targets, _resolve_injection_ids
 
         assert callable(_compute_infix_split)
         assert callable(_compute_loss)
-
-    def test_utils_shim_exports_exist(self) -> None:
-        from vauban.softprompt._utils import _encode_targets, _resolve_injection_ids
-
         assert callable(_encode_targets)
         assert callable(_resolve_injection_ids)

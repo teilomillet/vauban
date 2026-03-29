@@ -29,17 +29,19 @@ import mlx_lm  # noqa: E402
 from mlx_lm.tokenizer_utils import TokenizerWrapper  # noqa: E402
 from transformers import PreTrainedTokenizer  # noqa: E402
 
+from vauban._forward import make_cache as _make_cache  # noqa: E402
 from vauban.dequantize import dequantize_model, is_quantized  # noqa: E402
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES  # noqa: E402
 from vauban.measure import measure  # noqa: E402
-from vauban.softprompt import (  # noqa: E402
-    _compute_loss,
+from vauban.softprompt import softprompt_attack  # noqa: E402
+from vauban.softprompt._generation import (  # noqa: E402
     _decode_step,
+    _prefill_with_cache,
+)
+from vauban.softprompt._loss import _compute_loss  # noqa: E402
+from vauban.softprompt._runtime import (  # noqa: E402
     _encode_targets,
     _forward_with_prefix,
-    _make_cache,
-    _prefill_with_cache,
-    softprompt_attack,
 )
 from vauban.types import SoftPromptConfig  # noqa: E402
 
