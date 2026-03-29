@@ -84,6 +84,23 @@ This project builds upon abliteration research — the discovery that refusal in
 - **Latent Space Discontinuities** — "Exploiting Latent Space Discontinuities for Building Universal LLM Jailbreaks" — Identifies poorly-conditioned latent regions associated with low-frequency training data. Geometric complement to refusal-direction analysis. — arxiv.org/abs/2511.00346
 - **Linearly Decoding Refused Knowledge** — Shrivastava & Holtzman (2025) — Refused information remains linearly decodable from hidden states via simple probes. Probes transfer from base to instruction-tuned models. Validates that refusal is a linear gate. — arxiv.org/abs/2507.00239
 
+### Encoding-Based Attacks
+- **Bijection Learning** — Huang, Li & Tang (2024) — "Endless Jailbreaks with Bijection Learning" — Teaches LLMs random in-context ciphers (bijective mappings) to encode harmful queries and decode harmful responses, bypassing token-level safety filters entirely. More capable models are MORE vulnerable (need fewer mappings). Demonstrates that safety mechanisms fail against abstraction-level attacks — the encoded tokens never trigger refusal because the harmful semantics exist only after decoding. — arxiv.org/abs/2410.01294
+
+#### Vauban coverage and gaps
+
+**What catches it today:**
+- **SIC** can detect and strip encoding instructions from the prompt before the model processes them (sanitization rewrites the "here is a cipher" preamble).
+- **Guard** monitors activations during response generation — if the model decodes to plaintext internally before re-encoding the output, the refusal direction fires mid-forward-pass.
+- **Scan** flags unusual activation signatures in prompts that contain encoding instruction patterns.
+- **Defend stack** layers all three: scan → SIC → guard, so even partial detection at one layer blocks the attack.
+
+**Gaps to close:**
+1. **Encoding-aware direction measurement.** Measure a direction from `(encoded-harmful, encoded-harmless)` pairs — not just plaintext pairs. If the model represents "harmful intent through a cipher" in a linearly separable subspace (likely, per Shrivastava & Holtzman's linearly-decodable-refused-knowledge result), this direction catches bijection attacks at the activation level even when surface tokens are gibberish.
+2. **Output decoding probe.** After generation, decode the response through detected ciphers and re-run the guard on the decoded text. Catches the case where the model responds entirely in cipher.
+3. **Cipher detection classifier.** A lightweight linear probe trained on (normal prompt, cipher-containing prompt) activations. Runs as a pre-guard scan layer — if cipher patterns are detected, escalate to SIC sanitization before generation begins.
+4. **Multi-direction guard.** Extend `GuardSession.check()` to monitor multiple directions simultaneously: the standard refusal direction + an encoding-aware direction. Zone classification uses the max projection across all directions.
+
 ### Defense Duals
 - **CAST** — "Programming Refusal with Conditional Activation Steering" — Context-dependent steering rules at inference time without weight modification. ICLR 2025 Spotlight. Code: github.com/IBM/activation-steering — arxiv.org/abs/2409.05907
 - **RepBend** — "Representation Bending for Large Language Model Safety" — Loss-based fine-tuning to push harmful activations apart from safe ones. The defense dual of abliteration. ACL 2025. — arxiv.org/abs/2504.01550
