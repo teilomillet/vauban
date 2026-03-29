@@ -549,12 +549,14 @@ class GuardSession:
         max_rewinds: int = 3,
         checkpoint_interval: int = 1,
         condition_direction: Array | None = None,
+        extra_directions: list[Array] | None = None,
     ) -> None:
         from vauban.types import _DEFAULT_GUARD_TIERS
 
         self._direction = direction
         self._tiers = tiers if tiers is not None else list(_DEFAULT_GUARD_TIERS)
         self._condition_direction = condition_direction
+        self._extra_directions = extra_directions or []
         self._max_rewinds = max_rewinds
         self._checkpoint_interval = checkpoint_interval
 
@@ -573,14 +575,20 @@ class GuardSession:
         cls,
         direction_path: str,
         tiers_path: str | None = None,
+        *,
+        extra_direction_paths: list[str] | None = None,
         **kwargs: object,
     ) -> GuardSession:
-        """Load direction from .npy and optional tiers from JSON.
+        """Load direction(s) from .npy and optional tiers from JSON.
 
         Args:
-            direction_path: Path to a ``.npy`` direction vector.
+            direction_path: Path to the primary direction ``.npy``.
             tiers_path: Optional path to a JSON file with tier specs.
                 Each entry must have ``threshold``, ``zone``, ``alpha``.
+            extra_direction_paths: Additional direction ``.npy`` files
+                (e.g. an encoding-aware direction measured from
+                cipher-wrapped prompts).  The guard projects onto all
+                directions and classifies using the max projection.
             **kwargs: Forwarded to ``__init__`` (max_rewinds, etc.).
         """
         import json
@@ -602,7 +610,13 @@ class GuardSession:
                 for t in raw
             ]
 
-        return cls(direction, tiers, **kwargs)  # type: ignore[arg-type]
+        extra: list[Array] = []
+        if extra_direction_paths:
+            extra = [
+                ops.array(np.load(p)) for p in extra_direction_paths
+            ]
+
+        return cls(direction, tiers, extra_directions=extra, **kwargs)  # type: ignore[arg-type]
 
     # -- Core API -----------------------------------------------------------
 
@@ -631,13 +645,17 @@ class GuardSession:
             self._events.append(verdict)
             return verdict
 
-        # Detection projection
+        # Detection projection — max across all monitored directions
         detect_dir = (
             self._condition_direction
             if self._condition_direction is not None
             else self._direction
         )
         projection = float(ops.sum(activation * detect_dir).item())
+        for extra_dir in self._extra_directions:
+            extra_proj = float(ops.sum(activation * extra_dir).item())
+            if extra_proj > projection:
+                projection = extra_proj
 
         # Classify
         zone, alpha = _classify_zone(projection, self._tiers)
