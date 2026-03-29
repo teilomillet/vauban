@@ -323,9 +323,14 @@ def run_audit(
     if preset["surface_enabled"]:
         _log("Running refusal surface mapping")
         try:
+            from pathlib import Path
+
             from vauban.surface import load_surface_prompts, map_surface
 
-            surface_prompts = load_surface_prompts()
+            surface_data = (
+                Path(__file__).parent / "data" / "surface.jsonl"
+            )
+            surface_prompts = load_surface_prompts(surface_data)
             surface_result = map_surface(
                 model, tokenizer, surface_prompts,
                 direction.direction, direction.layer_index,
