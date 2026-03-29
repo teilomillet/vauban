@@ -34,6 +34,7 @@ torch = [
 
 [dependency-groups]
 dev = [
+    "hypothesis>=6.100",
     "matplotlib>=3.10.8",
     "pytest",
     "pytest-asyncio",
@@ -96,6 +97,7 @@ known-first-party = ["vauban"]
 [tool.pytest.ini_options]
 markers = [
     "integration: requires real model (~1GB), skipped unless VAUBAN_INTEGRATION=1",
+    "battle: property-based battle tests (hypothesis). Run with: pytest -m battle",
 ]
 filterwarnings = [
     "ignore:builtin type SwigPyPacked has no __module__ attribute:DeprecationWarning",
