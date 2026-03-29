@@ -2077,6 +2077,74 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
         ),
     ),
     SectionSpec(
+        name="guard",
+        description="Runtime circuit breaker with tiered response and KV cache rewind.",
+        early_return=True,
+        config_class="GuardConfig",
+        fields=(
+            FieldSpec(
+                key="prompts",
+                description="Prompts to generate with guard monitoring.",
+                constraints="required non-empty list of strings.",
+                required=True,
+            ),
+            FieldSpec(
+                key="layers",
+                description="Layer subset to monitor.",
+                constraints="list of integers or null (null means all layers).",
+            ),
+            FieldSpec(
+                key="max_tokens",
+                description="Generation cap per prompt.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="tiers",
+                description="Zone tier definitions sorted by ascending threshold.",
+                constraints=(
+                    "list of tables with 'threshold', 'zone', and 'alpha' keys."
+                    " Zones: green, yellow, orange, red."
+                ),
+            ),
+            FieldSpec(
+                key="max_rewinds",
+                description="Maximum rewind attempts before circuit break.",
+                constraints="integer >= 0.",
+            ),
+            FieldSpec(
+                key="checkpoint_interval",
+                description="Checkpoint KV cache every N consecutive green tokens.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="calibrate",
+                description="Auto-calibrate tier thresholds from clean prompts.",
+                constraints="boolean.",
+            ),
+            FieldSpec(
+                key="calibrate_prompts",
+                description="Which prompt set to calibrate from.",
+                constraints='one of: "harmless", "harmful".',
+            ),
+            FieldSpec(
+                key="defensive_prompt",
+                description="Text prepended on rewind for safety steering.",
+                constraints="string or null.",
+            ),
+            FieldSpec(
+                key="defensive_embeddings_path",
+                description="Pre-computed defensive embeddings (.npy).",
+                constraints="string path or null.",
+            ),
+            FieldSpec(
+                key="condition_direction",
+                attr="condition_direction_path",
+                description="Separate detection direction (AdaSteer dual-direction).",
+                constraints="string path or null.",
+            ),
+        ),
+    ),
+    SectionSpec(
         name="defend",
         description="Composed defense stack that layers scan, SIC, policy, and intent.",
         early_return=True,
@@ -3605,7 +3673,7 @@ _WORKFLOW_SECTIONS: dict[str, tuple[str, ...]] = {
         "measure", "cut", "eval", "optimize",
     ),
     "Defend a model at inference time": (
-        "cast", "sic", "defend", "repbend",
+        "guard", "cast", "sic", "defend", "repbend",
     ),
     "Test adversarial robustness": (
         "softprompt", "api_eval", "flywheel", "jailbreak",
@@ -3726,7 +3794,7 @@ def _known_quick_functions() -> tuple[str, ...]:
 _MODE_CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Core Pipeline", ("default", "optimize", "lora_export", "lora_analysis")),
     ("Runtime Inspection", ("probe", "steer", "depth")),
-    ("Defense", ("cast", "sic", "defend", "repbend")),
+    ("Defense", ("guard", "cast", "sic", "defend", "repbend")),
     ("Adversarial", ("softprompt", "fusion", "sss", "flywheel")),
     ("Analysis", (
         "circuit", "features", "linear_probe", "svf",

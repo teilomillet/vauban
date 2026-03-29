@@ -44,6 +44,7 @@ _EXPECTED_SECTION_ORDER: list[str] = [
     "depth",
     "ai_act",
     "cast",
+    "guard",
     "cut",
     "measure",
     "surface",

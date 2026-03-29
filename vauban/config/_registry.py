@@ -23,6 +23,7 @@ from vauban.config._parse_eval import _parse_eval
 from vauban.config._parse_features import _parse_features
 from vauban.config._parse_flywheel import _parse_flywheel
 from vauban.config._parse_fusion import _parse_fusion
+from vauban.config._parse_guard import _parse_guard
 from vauban.config._parse_intent import _parse_intent
 from vauban.config._parse_jailbreak import _parse_jailbreak
 from vauban.config._parse_linear_probe import _parse_linear_probe
@@ -59,6 +60,7 @@ from vauban.types import (
     FeaturesConfig,
     FlywheelConfig,
     FusionConfig,
+    GuardConfig,
     IntentConfig,
     JailbreakConfig,
     LinearProbeConfig,
@@ -96,6 +98,7 @@ type _SectionParserResult = (
     | AIActConfig
     | CastConfig
     | CircuitConfig
+    | GuardConfig
     | ComposeOptimizeConfig
     | CutConfig
     | DefenseStackConfig
@@ -156,6 +159,7 @@ class ParsedSectionValues:
     depth: DepthConfig | None
     ai_act: AIActConfig | None
     cast: CastConfig | None
+    guard: GuardConfig | None
     cut: CutConfig
     measure: MeasureConfig
     surface: SurfaceConfig | None
@@ -235,6 +239,7 @@ SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     SectionParseSpec("depth", "depth", _parse_depth, 10),
     SectionParseSpec("ai_act", "ai_act", _parse_ai_act, 15, call="base_dir_raw"),
     SectionParseSpec("cast", "cast", _parse_cast, 20),
+    SectionParseSpec("guard", "guard", _parse_guard, 22),
     SectionParseSpec("cut", "cut", _parse_cut, 30, call="section_table"),
     SectionParseSpec("measure", "measure", _parse_measure, 40, call="section_table"),
     SectionParseSpec("surface", "surface", _parse_surface, 50, call="base_dir_raw"),

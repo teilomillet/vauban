@@ -1132,6 +1132,100 @@ class CastConfig:
     baseline_activations_path: str | None = None
 
 
+# ---------------------------------------------------------------------------
+# Guard — runtime circuit breaker
+# ---------------------------------------------------------------------------
+
+type GuardZone = Literal["green", "yellow", "orange", "red"]
+type GuardAction = Literal["pass", "steer", "rewind", "break"]
+
+
+@dataclass(frozen=True, slots=True)
+class GuardTierSpec:
+    """Maps a projection threshold to a guard response zone.
+
+    Tiers are sorted ascending by threshold.  The active zone is the
+    highest tier where ``projection >= threshold``.
+    """
+
+    threshold: float
+    zone: GuardZone
+    alpha: float  # steering strength applied in this zone
+
+
+@dataclass(frozen=True, slots=True)
+class GuardEvent:
+    """Single token-level decision in the guard audit log."""
+
+    token_index: int
+    token_id: int
+    token_str: str
+    projection: float
+    zone: GuardZone
+    action: GuardAction
+    alpha_applied: float
+    rewind_count: int  # cumulative rewinds at this point
+    checkpoint_offset: int  # KV cache offset of current checkpoint
+
+
+@dataclass(frozen=True, slots=True)
+class GuardResult:
+    """Output of guard-monitored generation for a single prompt."""
+
+    prompt: str
+    text: str
+    events: list[GuardEvent]
+    total_rewinds: int
+    circuit_broken: bool
+    tokens_generated: int
+    tokens_rewound: int
+    final_zone_counts: dict[str, int]
+
+
+@dataclass(frozen=True, slots=True)
+class GuardVerdict:
+    """Result of a single GuardSession.check() call.
+
+    Returned to the caller's inference loop so they can decide
+    what to do with their KV cache / generation state.
+    """
+
+    zone: GuardZone
+    action: GuardAction
+    projection: float
+    alpha: float
+    step: int
+    rewind_count: int
+    checkpoint_offset: int
+
+
+_DEFAULT_GUARD_TIERS: list[GuardTierSpec] = [
+    GuardTierSpec(threshold=0.0, zone="green", alpha=0.0),
+    GuardTierSpec(threshold=0.3, zone="yellow", alpha=0.5),
+    GuardTierSpec(threshold=0.6, zone="orange", alpha=1.5),
+    GuardTierSpec(threshold=0.9, zone="red", alpha=3.0),
+]
+
+
+@dataclass(frozen=True, slots=True)
+class GuardConfig:
+    """Configuration for the [guard] runtime circuit breaker."""
+
+    prompts: list[str]
+    layers: list[int] | None = None
+    max_tokens: int = 100
+    tiers: list[GuardTierSpec] = field(
+        default_factory=lambda: list(_DEFAULT_GUARD_TIERS),
+    )
+    max_rewinds: int = 3
+    checkpoint_interval: int = 1
+    defensive_prompt: str | None = None
+    defensive_embeddings_path: str | None = None
+    calibrate: bool = False
+    calibrate_prompts: str = "harmless"
+    condition_direction_path: str | None = None
+
+
 @dataclass(frozen=True, slots=True)
 class DetectConfig:
     """Configuration for the defense detection step."""
@@ -2385,6 +2479,7 @@ class PipelineConfig:
     sss: SSSConfig | None = None
     awareness: AwarenessConfig | None = None
     cast: CastConfig | None = None
+    guard: GuardConfig | None = None
     svf: SVFConfig | None = None
     compose_optimize: ComposeOptimizeConfig | None = None
     environment: EnvironmentConfig | None = None

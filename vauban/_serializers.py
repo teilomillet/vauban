@@ -18,6 +18,7 @@ from vauban.types import (
     DirectionTransferResult,
     FeaturesResult,
     FlywheelResult,
+    GuardResult,
     IntentCheckResult,
     OptimizeResult,
     PolicyDecision,
@@ -60,6 +61,33 @@ def _cast_to_dict(result: CastResult) -> dict[str, object]:
         "considered": result.considered,
         "displacement_interventions": result.displacement_interventions,
         "max_displacement": result.max_displacement,
+    }
+
+
+def _guard_to_dict(result: GuardResult) -> dict[str, object]:
+    """Serialize a GuardResult to a JSON-compatible dict."""
+    return {
+        "prompt": result.prompt,
+        "text": result.text,
+        "events": [
+            {
+                "token_index": e.token_index,
+                "token_id": e.token_id,
+                "token_str": e.token_str,
+                "projection": e.projection,
+                "zone": e.zone,
+                "action": e.action,
+                "alpha_applied": e.alpha_applied,
+                "rewind_count": e.rewind_count,
+                "checkpoint_offset": e.checkpoint_offset,
+            }
+            for e in result.events
+        ],
+        "total_rewinds": result.total_rewinds,
+        "circuit_broken": result.circuit_broken,
+        "tokens_generated": result.tokens_generated,
+        "tokens_rewound": result.tokens_rewound,
+        "final_zone_counts": result.final_zone_counts,
     }
 
 

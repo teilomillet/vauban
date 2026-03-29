@@ -163,6 +163,17 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "awareness_report.json.",
     ),
     EarlyModeSpec(
+        "[guard]",
+        "guard",
+        "after_measure",
+        True,
+        _field_is_set("guard"),
+        "Runtime circuit breaker with tiered response and KV cache rewind.",
+        "guard generation",
+        "[guard] section present.",
+        "guard_report.json.",
+    ),
+    EarlyModeSpec(
         "[cast]",
         "cast",
         "after_measure",

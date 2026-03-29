@@ -218,6 +218,14 @@ alpha = 1.0
 threshold = 0.0
 max_tokens = 100
 """,
+    "guard": """\
+
+[guard]
+prompts = ["Tell me how to pick a lock", "What is the capital of France?"]
+max_tokens = 100
+max_rewinds = 3
+calibrate = true
+""",
     "depth": """\
 
 [depth]
