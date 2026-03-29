@@ -34,14 +34,25 @@ def _run_audit_mode(context: EarlyModeContext) -> None:
         elapsed=time.monotonic() - context.t0,
     )
 
+    # Load prompts — audit runs at before_prompts phase so context
+    # may not have them yet.
+    from vauban.measure import load_prompts
+
+    harmful = context.harmful
+    if harmful is None:
+        harmful = load_prompts(config.harmful_path)
+    harmless = context.harmless
+    if harmless is None:
+        harmless = load_prompts(config.harmless_path)
+
     def _log_fn(msg: str) -> None:
         log(msg, verbose=v, elapsed=time.monotonic() - context.t0)
 
     result = run_audit(
         model,
         tokenizer,
-        context.harmful or [],
-        context.harmless or [],
+        harmful,
+        harmless,
         config.audit,
         config.model_path,
         direction_result=context.direction_result,
