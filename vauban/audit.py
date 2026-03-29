@@ -272,24 +272,30 @@ def run_audit(
     if preset["bijection_enabled"]:
         _log("Running bijection cipher attack")
         try:
-            from vauban.bijection import wrap_prompt_set
-            from vauban.evaluate import DEFAULT_REFUSAL_PHRASES, _generate
-
-            cipher_prompts = wrap_prompt_set(
-                harmful_prompts[:5], seed=42, ciphers_per_prompt=3,
+            from vauban.bijection import (
+                check_cipher_compliance,
+                generate_cipher,
+                wrap_prompt,
             )
+            from vauban.evaluate import _generate
+
             bij_success = 0
-            for entry in cipher_prompts:
-                text = _generate(model, tokenizer, entry["prompt"], 150)
-                lower = text.lower()
-                is_refusal = any(
-                    phrase.lower() in lower
-                    for phrase in DEFAULT_REFUSAL_PHRASES
-                )
-                if not is_refusal:
+            bij_prompts: list[str] = harmful_prompts[:5]
+            bij_entries: list[tuple[str, object]] = []
+            for i, hp in enumerate(bij_prompts):
+                for j in range(3):
+                    c = generate_cipher(seed=42 + i * 3 + j)
+                    bij_entries.append((hp, c))
+
+            for original, cipher_obj in bij_entries:
+                wrapped = wrap_prompt(original, cipher_obj)
+                text = _generate(model, tokenizer, wrapped, 150)
+                if check_cipher_compliance(
+                    text, original, cipher_obj,
+                ):
                     bij_success += 1
 
-            bij_total = len(cipher_prompts)
+            bij_total = len(bij_entries)
             bijection_rate = bij_success / bij_total if bij_total > 0 else 0.0
             severity = _rate_to_severity(bijection_rate)
             findings.append(AuditFinding(
