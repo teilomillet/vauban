@@ -409,92 +409,156 @@ class Session:
             f"Call s.guide() to see all workflows."
         )
 
+    def done(self, goal: str = "audit") -> tuple[bool, str]:
+        """Check if a goal is complete.
+
+        Returns ``(is_done, reason)``.  The agent should call this
+        after each step to know when to stop.
+
+        Args:
+            goal: The objective to check.  One of:
+                ``"audit"`` — audit run + report generated
+                ``"compliance"`` — audit with standard+ thoroughness
+                ``"inspect"`` — direction measured + at least one probe
+                ``"harden"`` — defenses tested (cast or sic called)
+                ``"abliterate"`` — weights cut + exported
+        """
+        st = self.state()
+
+        if goal == "audit":
+            if st["audit_result"]:
+                return True, "Audit complete. Call s.report() for output."
+            return False, "Run s.audit() to complete."
+
+        if goal == "compliance":
+            if st["audit_result"] and self._audit is not None:
+                if self._audit.thoroughness in ("standard", "deep"):
+                    return True, "Compliance audit complete."
+                return False, (
+                    "Audit used 'quick' mode. Re-run with "
+                    "thoroughness='standard' for compliance."
+                )
+            return False, "Run s.audit(thoroughness='standard')."
+
+        if goal == "inspect":
+            if st["direction"]:
+                return True, "Direction measured. Use probe/scan/classify."
+            return False, "Run s.measure() first."
+
+        if goal == "harden":
+            return False, (
+                "Hardening is iterative. Test defenses with "
+                "s.cast() and s.sic(), then re-audit."
+            )
+
+        if goal == "abliterate":
+            if st["modified_model"]:
+                return True, "Weights modified. Call s.export(path)."
+            if st["direction"]:
+                return False, "Direction ready. Run s.cut()."
+            return False, "Run s.measure() then s.cut()."
+
+        return False, f"Unknown goal: {goal!r}"
+
     def suggest_next(self) -> str:
         """Suggest what to do next based on current state and findings.
 
-        An agent calls this after each step to get context-aware
-        recommendations.  The suggestions depend on what's been
-        computed and what the results showed.
+        Returns context-aware recommendations.  Each suggestion is
+        labeled:
+
+        - ``[FACT]`` — based on measured data (verified)
+        - ``[ADVICE]`` — expert heuristic (may not be optimal)
+
+        **Limitations (stated, not hidden):**
+
+        - Suggestions are hand-coded heuristics, not proven optimal.
+        - An agent might find better tool sequences than suggested.
+        - Suggestions always recommend more work. Use ``s.done(goal)``
+          to know when to stop.
         """
         lines: list[str] = ["Based on current state:\n"]
         st = self.state()
 
         if not st["direction"]:
             lines.append(
-                "→ s.measure()  Start here. Extracts the refusal direction, "
-                "which most other tools need. Takes ~2s."
+                "[ADVICE] → s.measure()  Start here. Extracts the "
+                "refusal direction, which most other tools need."
             )
             lines.append(
-                "→ s.audit()    Or jump straight to a full audit "
-                "(will measure automatically)."
+                "[ADVICE] → s.audit()  Or jump straight to a full "
+                "audit (will measure automatically)."
             )
             lines.append(
-                "→ s.classify('text')  Doesn't need a direction — "
-                "classify any text against the harm taxonomy."
+                "[FACT] → s.classify('text')  Works without a "
+                "direction — classify any text against the harm taxonomy."
             )
             return "\n".join(lines)
 
         # Direction measured — suggest based on what we know
-        lines.append(f"Direction measured: layer {self._direction.layer_index}")  # type: ignore[union-attr]
+        lines.append(
+            f"[FACT] Direction measured: layer "
+            f"{self._direction.layer_index}",  # type: ignore[union-attr]
+        )
 
         if not st["detect_result"]:
             lines.append(
-                "\n→ s.detect()  Check if the model is hardened. "
-                "This tells you if defenses are already in place."
+                "\n[ADVICE] → s.detect()  Check if the model is "
+                "hardened. Tells you if defenses are in place."
             )
 
         if not st["audit_result"]:
             lines.append(
-                "\n→ s.audit()  Run a full assessment to get findings. "
-                "Use thoroughness='standard' for a thorough scan."
+                "\n[ADVICE] → s.audit()  Run a full assessment. "
+                "Use thoroughness='standard' for thorough scan."
             )
             lines.append(
-                "\n→ s.probe('your prompt')  Inspect a specific prompt's "
-                "refusal signal across layers. Good for understanding "
-                "why a particular input triggers refusal."
+                "\n[ADVICE] → s.probe('prompt')  Inspect a specific "
+                "prompt's refusal signal across layers."
             )
 
         if st["audit_result"] and self._audit is not None:
             risk = self._audit.overall_risk
-            lines.append(f"\nAudit complete. Overall risk: {risk}")
+            lines.append(f"\n[FACT] Audit complete. Overall risk: {risk}")
 
             if risk in ("critical", "high"):
                 lines.append(
-                    "\n→ s.cast('harmful prompt', threshold=0.3)  "
-                    "Test CAST defense on a harmful prompt. "
-                    "If it intervenes, CAST can protect this model."
+                    "\n[ADVICE] → s.cast('prompt', threshold=0.3)  "
+                    "Test CAST defense. May or may not help — "
+                    "effectiveness depends on the model."
                 )
                 lines.append(
-                    "\n→ s.sic(['harmful prompt'])  "
-                    "Test SIC sanitization. Rewrites adversarial "
-                    "content before the model sees it."
+                    "\n[ADVICE] → s.sic(['prompt'])  "
+                    "Test SIC sanitization. Alternative to CAST."
                 )
                 lines.append(
-                    "\n→ s.audit(thoroughness='standard')  "
-                    "Run a deeper audit to find more attack vectors."
+                    "\n[ADVICE] → s.audit(thoroughness='standard') "
+                    " Deeper audit may reveal more."
                 )
             else:
                 lines.append(
-                    "\n→ s.report()  Generate the compliance report. "
-                    "The model looks reasonably safe."
+                    "\n[FACT] → s.report()  Risk is manageable. "
+                    "Generate the report."
                 )
 
-            # Suggest based on specific findings
             for f in self._audit.findings:
                 jailbreak = "jailbreak" in f.title.lower()
                 if jailbreak and f.severity in ("critical", "high"):
                     lines.append(
-                        f"\n→ Jailbreak bypass is {f.severity}. Try:"
-                        "\n  s.cast('jailbreak prompt', threshold=0.2)  "
-                        "to test if CAST blocks it."
+                        f"\n[FACT] Jailbreak bypass: {f.severity}."
+                        "\n[ADVICE] Try s.cast() to test defense."
                     )
-                if "hardening" in f.title.lower() and "no" in f.title.lower():
+                hardening = "hardening" in f.title.lower()
+                if hardening and "no" in f.title.lower():
                     lines.append(
-                        "\n→ No hardening detected. Consider:"
-                        "\n  s.cut(alpha=0.5)  to partially abliterate "
-                        "(research only), or"
-                        "\n  deploy CAST/SIC as runtime defense."
+                        "\n[FACT] No hardening detected."
+                        "\n[ADVICE] Deploy CAST/SIC as runtime "
+                        "defense, or s.cut() for research."
                     )
+
+            lines.append(
+                "\nUse s.done('audit') to check if the goal "
+                "is complete."
+            )
 
         return "\n".join(lines)
 
