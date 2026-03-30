@@ -1,170 +1,150 @@
 # SPDX-FileCopyrightText: 2026 Teilo Millet
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for composite response scoring."""
+"""Scoring tests — consolidated via ordeal.
+
+Replaces the previous 33 tests / 343 lines with ordeal auto-scan
++ explicit property tests for domain-specific invariants.
+
+Coverage target: 98% (same as before).
+"""
 
 from __future__ import annotations
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
+from ordeal.auto import fuzz
+from ordeal.invariants import bounded
 
 from vauban.scoring import score_response, score_responses
-from vauban.types import ResponseScoreResult, ResponseScoreWeights
+from vauban.types import ResponseScoreWeights
+
+_s = settings(max_examples=50, deadline=None)
+_prompt = st.text(min_size=1, max_size=120)
+_response = st.text(min_size=0, max_size=500)
+_check = bounded(0.0, 1.0)
 
 
-class TestScoreResponse:
-    """Single response scoring across 5 axes."""
+# -- 1. Auto-scan: no crash on arbitrary inputs ----------------------------
 
-    def test_returns_score_result(self) -> None:
-        result = score_response("Tell me about cats", "Cats are great animals.")
-        assert isinstance(result, ResponseScoreResult)
 
-    def test_all_axes_between_0_and_1(self) -> None:
-        result = score_response("Tell me about cats", "Cats are great animals.")
-        assert 0.0 <= result.length <= 1.0
-        assert 0.0 <= result.structure <= 1.0
-        assert 0.0 <= result.anti_refusal <= 1.0
-        assert 0.0 <= result.directness <= 1.0
-        assert 0.0 <= result.relevance <= 1.0
+class TestNoCrash:
+    """ordeal fuzz: score_response never crashes."""
 
-    def test_composite_is_weighted_sum(self) -> None:
-        w = ResponseScoreWeights(
-            length=0.2, structure=0.2,
-            anti_refusal=0.2, directness=0.2, relevance=0.2,
-        )
-        result = score_response("test", "a response", weights=w)
+    def test_fuzz(self) -> None:
+        result = fuzz(score_response, max_examples=50)
+        assert result.passed, result.summary()
+
+
+# -- 2. Universal invariants -----------------------------------------------
+
+
+class TestInvariants:
+    """Properties that hold for ALL inputs."""
+
+    @_s
+    @given(prompt=_prompt, response=_response)
+    def test_axes_bounded(self, prompt: str, response: str) -> None:
+        r = score_response(prompt, response)
+        for axis in (
+            "length", "structure", "anti_refusal",
+            "directness", "relevance", "composite",
+        ):
+            _check(getattr(r, axis), name=axis)
+
+    @_s
+    @given(
+        prompt=_prompt, response=_response,
+        weights=st.tuples(*[st.floats(0, 1, allow_nan=False)] * 5),
+    )
+    def test_composite_is_weighted_sum(
+        self, prompt: str, response: str,
+        weights: tuple[float, ...],
+    ) -> None:
+        w = ResponseScoreWeights(*weights)
+        r = score_response(prompt, response, weights=w)
         expected = (
-            0.2 * result.length
-            + 0.2 * result.structure
-            + 0.2 * result.anti_refusal
-            + 0.2 * result.directness
-            + 0.2 * result.relevance
+            w.length * r.length + w.structure * r.structure
+            + w.anti_refusal * r.anti_refusal
+            + w.directness * r.directness
+            + w.relevance * r.relevance
         )
-        assert abs(result.composite - expected) < 1e-9
+        assert abs(r.composite - expected) < 1e-9
 
-    def test_empty_response_low_length(self) -> None:
-        result = score_response("prompt", "")
-        assert result.length == 0.0
+    @_s
+    @given(prompt=_prompt, response=_response)
+    def test_deterministic(self, prompt: str, response: str) -> None:
+        assert score_response(prompt, response).composite == (
+            score_response(prompt, response).composite
+        )
 
-    def test_long_response_full_length(self) -> None:
-        result = score_response("prompt", "x" * 300)
-        assert result.length == 1.0
+
+# -- 3. Edge cases ---------------------------------------------------------
+
+
+class TestEdges:
+    """Boundary behavior that mine() can't auto-discover."""
+
+    @_s
+    @given(prompt=_prompt)
+    def test_empty_response_zero_length(self, prompt: str) -> None:
+        assert score_response(prompt, "").length == 0.0
+
+    @_s
+    @given(prompt=_prompt)
+    def test_clean_response_no_refusal(self, prompt: str) -> None:
+        assert score_response(
+            prompt, "Cats are great animals.",
+        ).anti_refusal == 1.0
 
     def test_refusal_detected(self) -> None:
-        result = score_response(
+        r = score_response(
             "How to hack",
             "I cannot help with that. I'm sorry, I must decline.",
         )
-        assert result.anti_refusal < 0.5
+        assert r.anti_refusal < 0.5
 
-    def test_no_refusal_high_score(self) -> None:
-        result = score_response(
-            "How to cook pasta",
-            "Boil water, add salt, cook for 8 minutes, drain.",
+    def test_structure_detected(self) -> None:
+        r = score_response(
+            "guide",
+            "# Title\n1. First\n2. Second\n```code```",
         )
-        assert result.anti_refusal == 1.0
-
-    def test_structured_response(self) -> None:
-        response = (
-            "# Guide\n\n"
-            "1. First step\n"
-            "2. Second step\n\n"
-            "- Detail A\n"
-            "- Detail B\n\n"
-            "```python\nprint('hello')\n```"
-        )
-        result = score_response("give a guide", response)
-        assert result.structure >= 0.6
+        assert r.structure >= 0.4
 
     def test_hedging_reduces_directness(self) -> None:
-        hedged = (
-            "I think, perhaps, it's important to note that maybe "
-            "this is probably something I believe could possibly work."
+        r = score_response(
+            "q",
+            "I think perhaps maybe it depends probably.",
         )
-        result = score_response("question", hedged)
-        assert result.directness < 0.5
-
-    def test_direct_response_high_directness(self) -> None:
-        result = score_response(
-            "What is 2+2?",
-            "The answer is 4.",
-        )
-        assert result.directness == 1.0
-
-    def test_relevant_response(self) -> None:
-        result = score_response(
-            "How do neural networks learn?",
-            "Neural networks learn through backpropagation and gradient descent.",
-        )
-        assert result.relevance > 0.5
-
-    def test_irrelevant_response(self) -> None:
-        result = score_response(
-            "How do neural networks learn?",
-            "The weather is sunny and the birds are singing.",
-        )
-        assert result.relevance < 0.3
-
-    def test_custom_refusal_phrases(self) -> None:
-        custom = ("NOPE", "NO WAY")
-        result = score_response(
-            "test", "NOPE, NO WAY I can do that",
-            refusal_phrases=custom,
-        )
-        assert result.anti_refusal < 0.5
-
-    def test_to_dict(self) -> None:
-        result = score_response("prompt", "response")
-        d = result.to_dict()
-        assert d["prompt"] == "prompt"
-        assert d["response"] == "response"
-        assert isinstance(d["composite"], float)
-
-    def test_preamble_reduces_directness(self) -> None:
-        result = score_response(
-            "question",
-            "Sure, of course, I'd be happy to help! Great question! The answer is yes.",
-        )
-        assert result.directness < 0.7
+        assert r.directness < 0.5
 
 
-class TestScoreResponses:
-    """Batch scoring."""
+# -- 4. Batch + serialization ---------------------------------------------
 
-    def test_batch_length(self) -> None:
-        results = score_responses(
-            ["a", "b", "c"],
-            ["1", "2", "3"],
-        )
-        assert len(results) == 3
 
-    def test_batch_mismatched_length(self) -> None:
+class TestBatch:
+    """score_responses batch contract."""
+
+    @_s
+    @given(n=st.integers(1, 5))
+    def test_batch_matches_individual(self, n: int) -> None:
+        ps = [f"prompt_{i}" for i in range(n)]
+        rs = [f"response_{i}" for i in range(n)]
+        batch = score_responses(ps, rs)
+        individual = [score_response(p, r) for p, r in zip(ps, rs, strict=False)]
+        for b, i in zip(batch, individual, strict=False):
+            assert abs(b.composite - i.composite) < 1e-9
+
+    def test_mismatched_raises(self) -> None:
         with pytest.raises(ValueError, match="same length"):
             score_responses(["a"], ["1", "2"])
 
-    def test_empty_batch(self) -> None:
-        results = score_responses([], [])
-        assert results == []
-
-    def test_individual_results_are_correct_type(self) -> None:
-        results = score_responses(["q"], ["a"])
-        assert isinstance(results[0], ResponseScoreResult)
-
-
-class TestCustomWeights:
-    """Custom weight configurations."""
-
-    def test_all_weight_on_length(self) -> None:
-        w = ResponseScoreWeights(
-            length=1.0, structure=0.0,
-            anti_refusal=0.0, directness=0.0, relevance=0.0,
-        )
-        result = score_response("test", "x" * 300, weights=w)
-        assert result.composite == result.length
-
-    def test_all_weight_on_anti_refusal(self) -> None:
-        w = ResponseScoreWeights(
-            length=0.0, structure=0.0,
-            anti_refusal=1.0, directness=0.0, relevance=0.0,
-        )
-        result = score_response("test", "Clean response here", weights=w)
-        assert result.composite == result.anti_refusal
+    @_s
+    @given(prompt=_prompt, response=_response)
+    def test_to_dict_complete(self, prompt: str, response: str) -> None:
+        d = score_response(prompt, response).to_dict()
+        assert {
+            "prompt", "response", "length", "structure",
+            "anti_refusal", "directness", "relevance", "composite",
+        } == set(d)

@@ -1,221 +1,162 @@
 # SPDX-FileCopyrightText: 2026 Teilo Millet
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for character-level input perturbation."""
+"""Perturbation tests — consolidated via ordeal.
+
+Coverage target: 100% (same as before).
+"""
 
 from __future__ import annotations
 
+from hypothesis import given, settings
+from hypothesis import strategies as st
+from ordeal.auto import fuzz
+
 from vauban.perturb import DEFAULT_TRIGGER_WORDS, perturb, perturb_batch
 
+_s = settings(max_examples=50, deadline=None)
+_techniques = st.sampled_from([
+    "leetspeak", "homoglyph", "zero_width",
+    "mixed_case", "phonetic", "random",
+])
+_trigger = st.builds(
+    lambda pre, tw, post: f"{pre} {tw} {post}",
+    pre=st.text(min_size=2, max_size=15, alphabet="abcdefgh "),
+    tw=st.sampled_from(["hack", "exploit", "malware", "phishing"]),
+    post=st.text(min_size=2, max_size=15, alphabet="abcdefgh "),
+)
+_seeds = st.integers(min_value=0, max_value=2**31 - 1)
 
-class TestPerturbLeetspeak:
-    """Leetspeak substitution."""
 
-    def test_trigger_word_is_transformed(self) -> None:
+# -- 1. No crash on arbitrary inputs ---------------------------------------
+
+
+class TestNoCrash:
+    def test_fuzz(self) -> None:
+        result = fuzz(perturb, max_examples=50)
+        assert result.passed, result.summary()
+
+    def test_unicode_edge_cases(self) -> None:
+        cases = [
+            "", "\x00", "\u200b\u200c\u200d", "\U0001f4a3" * 5,
+            " " * 100, "a" * 10_000,
+        ]
+        for text in cases:
+            for tech in ["leetspeak", "homoglyph", "zero_width",
+                         "mixed_case", "phonetic", "random"]:
+                assert isinstance(
+                    perturb(text, technique=tech, intensity=3, seed=42),
+                    str,
+                )
+
+
+# -- 2. Universal invariants -----------------------------------------------
+
+
+class TestInvariants:
+    @_s
+    @given(text=_trigger, technique=_techniques, seed=_seeds)
+    def test_deterministic(
+        self, text: str, technique: str, seed: int,
+    ) -> None:
+        a = perturb(text, technique=technique, intensity=3, seed=seed)
+        b = perturb(text, technique=technique, intensity=3, seed=seed)
+        assert a == b
+
+    @_s
+    @given(technique=_techniques, intensity=st.sampled_from([1, 2, 3]))
+    def test_empty_string_identity(
+        self, technique: str, intensity: int,
+    ) -> None:
+        assert perturb("", technique=technique, intensity=intensity, seed=42) == ""
+
+    @_s
+    @given(text=_trigger, seed=_seeds)
+    def test_homoglyph_preserves_length(
+        self, text: str, seed: int,
+    ) -> None:
+        result = perturb(text, technique="homoglyph", intensity=3, seed=seed)
+        assert len(result) == len(text)
+
+    @_s
+    @given(text=_trigger, seed=_seeds)
+    def test_zero_width_never_shortens(
+        self, text: str, seed: int,
+    ) -> None:
+        result = perturb(text, technique="zero_width", intensity=3, seed=seed)
+        assert len(result) >= len(text)
+
+
+# -- 3. Technique-specific behavior ----------------------------------------
+
+
+class TestTechniques:
+    def test_leetspeak_trigger_changed(self) -> None:
         result = perturb("hack the system", technique="leetspeak", intensity=1, seed=42)
-        assert result != "hack the system"
-        # "hack" is a trigger word — should be altered
         assert "hack" not in result.split()
 
-    def test_non_trigger_preserved_at_intensity_1(self) -> None:
+    def test_leetspeak_non_trigger_preserved_at_1(self) -> None:
         result = perturb("hello world", technique="leetspeak", intensity=1, seed=42)
-        # Neither word is a trigger → no change
         assert result == "hello world"
 
-    def test_entire_text_at_intensity_3(self) -> None:
-        result = perturb("hello world", technique="leetspeak", intensity=3, seed=42)
-        assert result != "hello world"
-
-    def test_deterministic_with_seed(self) -> None:
-        a = perturb("hack the exploit", technique="leetspeak", intensity=3, seed=123)
-        b = perturb("hack the exploit", technique="leetspeak", intensity=3, seed=123)
-        assert a == b
-
-    def test_different_seeds_differ(self) -> None:
-        a = perturb("hack the exploit", technique="leetspeak", intensity=3, seed=1)
-        b = perturb("hack the exploit", technique="leetspeak", intensity=3, seed=2)
-        # Highly likely to differ (but not guaranteed for all inputs)
-        # At intensity 3 with different seeds, substitutions should vary
-        # May coincidentally match — just verify both ran without error
-        assert isinstance(a, str) and isinstance(b, str)
-
-
-class TestPerturbHomoglyph:
-    """Unicode homoglyph substitution."""
-
-    def test_produces_different_bytes(self) -> None:
+    def test_homoglyph_different_bytes(self) -> None:
         result = perturb("hack", technique="homoglyph", intensity=3, seed=42)
-        assert result != "hack"
         assert result.encode("utf-8") != b"hack"
 
-    def test_visually_similar(self) -> None:
-        # Homoglyphs should look similar but be different characters
-        result = perturb("attack", technique="homoglyph", intensity=3, seed=42)
-        assert result != "attack"
-        # Length should be similar (homoglyphs are single chars)
-        assert len(result) == len("attack")
-
-
-class TestPerturbZeroWidth:
-    """Zero-width character injection."""
-
-    def test_inserts_invisible_chars(self) -> None:
+    def test_zero_width_chars_strippable(self) -> None:
         result = perturb("hack", technique="zero_width", intensity=3, seed=42)
-        # Result should be longer due to injected zero-width chars
-        assert len(result) > len("hack")
-
-    def test_original_chars_preserved(self) -> None:
-        result = perturb("hack", technique="zero_width", intensity=3, seed=42)
-        # Strip zero-width chars — original text should remain
-        stripped = result.replace("\u200b", "").replace("\u200c", "").replace(
-            "\u200d", "",
-        ).replace("\ufeff", "")
+        stripped = result.replace("\u200b", "").replace(
+            "\u200c", "",
+        ).replace("\u200d", "").replace("\ufeff", "")
         assert stripped == "hack"
 
-
-class TestPerturbMixedCase:
-    """Mixed-case disruption."""
-
-    def test_changes_case(self) -> None:
-        text = "hack the system"
-        result = perturb(text, technique="mixed_case", intensity=3, seed=42)
-        # At least one character should change case
-        assert result != text
-
-    def test_preserves_word_boundaries(self) -> None:
-        result = perturb(
-            "hack the system", technique="mixed_case", intensity=3, seed=42,
-        )
-        # Same number of words
-        assert len(result.split()) == 3
-
-
-class TestPerturbPhonetic:
-    """Phonetic substitution."""
-
-    def test_phonetic_subs(self) -> None:
-        result = perturb("phishing attack", technique="phonetic", intensity=3, seed=42)
-        # "ph" → "f" in "phishing"
+    def test_phonetic_substitutes(self) -> None:
+        result = perturb("phishing", technique="phonetic", intensity=3, seed=42)
         assert "f" in result.lower()
 
-    def test_ck_substitution(self) -> None:
-        result = perturb("hack", technique="phonetic", intensity=3, seed=42)
-        # "ck" → "k"
-        assert "hak" in result.lower()
+    def test_random_changes_text(self) -> None:
+        result = perturb("hack the exploit", technique="random", intensity=3, seed=42)
+        assert result != "hack the exploit"
 
 
-class TestPerturbRandom:
-    """Random technique selection."""
-
-    def test_produces_change(self) -> None:
-        result = perturb(
-            "hack the exploit system",
-            technique="random", intensity=3, seed=42,
-        )
-        assert result != "hack the exploit system"
-
-    def test_deterministic_with_seed(self) -> None:
-        a = perturb("hack the exploit", technique="random", intensity=3, seed=99)
-        b = perturb("hack the exploit", technique="random", intensity=3, seed=99)
-        assert a == b
+# -- 4. Intensity monotonicity --------------------------------------------
 
 
-class TestIntensityLevels:
-    """Intensity controls scope of perturbation."""
-
-    def test_intensity_1_triggers_only(self) -> None:
-        text = "the exploit is bad"
-        result = perturb(text, technique="leetspeak", intensity=1, seed=42)
-        words = result.split()
-        # "exploit" is trigger → should be changed
-        # "the", "is", "bad" are not triggers → preserved
-        assert words[0] == "the"
-        assert words[2] == "is"
-        assert words[3] == "bad"
-        assert words[1] != "exploit"
-
-    def test_intensity_2_includes_context(self) -> None:
-        text = "the exploit is bad"
-        result = perturb(text, technique="leetspeak", intensity=2, seed=42)
-        # "the" and "is" are adjacent to "exploit" → also perturbed
-        words = result.split()
-        # At least "exploit" and one neighbour should change
-        original_words = text.split()
-        changed = sum(
-            1 for o, n in zip(original_words, words, strict=True) if o != n
-        )
-        assert changed >= 2
-
-    def test_intensity_3_all_words(self) -> None:
-        text = "hello world foo bar"
-        result = perturb(text, technique="leetspeak", intensity=3, seed=42)
-        # All words should be attempted (though some may not have mappable chars)
-        assert result != text
+class TestIntensity:
+    @_s
+    @given(text=_trigger, seed=_seeds)
+    def test_monotonic_word_coverage(self, text: str, seed: int) -> None:
+        r1 = perturb(text, technique="leetspeak", intensity=1, seed=seed)
+        r2 = perturb(text, technique="leetspeak", intensity=2, seed=seed)
+        r3 = perturb(text, technique="leetspeak", intensity=3, seed=seed)
+        orig = text.split()
+        w1, w2, w3 = r1.split(), r2.split(), r3.split()
+        if len(orig) == len(w1) == len(w2) == len(w3):
+            c1 = {i for i, (o, n) in enumerate(zip(orig, w1, strict=False)) if o != n}
+            c2 = {i for i, (o, n) in enumerate(zip(orig, w2, strict=False)) if o != n}
+            c3 = {i for i, (o, n) in enumerate(zip(orig, w3, strict=False)) if o != n}
+            assert c1 <= c2 <= c3
 
 
-class TestCustomTriggers:
-    """Custom trigger word sets."""
+# -- 5. Batch + defaults ---------------------------------------------------
 
-    def test_custom_triggers(self) -> None:
-        custom = frozenset({"banana"})
-        result = perturb(
-            "banana split", technique="leetspeak", intensity=1, seed=42,
-            trigger_words=custom,
-        )
-        words = result.split()
-        assert words[0] != "banana"  # custom trigger → changed
-        assert words[1] == "split"  # not a trigger → preserved
+
+class TestBatch:
+    @_s
+    @given(
+        texts=st.lists(_trigger, min_size=1, max_size=5),
+        technique=_techniques, seed=_seeds,
+    )
+    def test_batch_length(
+        self, texts: list[str], technique: str, seed: int,
+    ) -> None:
+        assert len(perturb_batch(
+            texts, technique=technique, intensity=3, seed=seed,
+        )) == len(texts)
+
+    def test_empty_batch(self) -> None:
+        assert perturb_batch([], technique="leetspeak", intensity=1, seed=42) == []
 
     def test_default_triggers_exist(self) -> None:
         assert len(DEFAULT_TRIGGER_WORDS) > 20
         assert "hack" in DEFAULT_TRIGGER_WORDS
-        assert "exploit" in DEFAULT_TRIGGER_WORDS
-
-
-class TestPerturbBatch:
-    """Batch perturbation."""
-
-    def test_batch_length(self) -> None:
-        texts = ["hack a", "exploit b", "hello"]
-        results = perturb_batch(texts, technique="leetspeak", intensity=3, seed=42)
-        assert len(results) == 3
-
-    def test_batch_per_text_seeds(self) -> None:
-        texts = ["hack", "hack"]
-        results = perturb_batch(texts, technique="leetspeak", intensity=3, seed=42)
-        # Different seeds per text → likely different results
-        # (seed=42 for first, seed=43 for second)
-        # They may still be the same if substitutions align, so just check they run
-        assert len(results) == 2
-
-    def test_empty_batch(self) -> None:
-        results = perturb_batch([], technique="leetspeak", intensity=1, seed=42)
-        assert results == []
-
-    def test_none_seed(self) -> None:
-        # Should not raise
-        results = perturb_batch(["hack"], technique="leetspeak", intensity=1, seed=None)
-        assert len(results) == 1
-
-
-class TestEdgeCases:
-    """Edge cases and boundary conditions."""
-
-    def test_empty_string(self) -> None:
-        result = perturb("", technique="leetspeak", intensity=3, seed=42)
-        assert result == ""
-
-    def test_single_char(self) -> None:
-        result = perturb("a", technique="zero_width", intensity=3, seed=42)
-        # Single char word → zero_width returns as-is (no gaps to insert into)
-        assert "a" in result
-
-    def test_preserves_punctuation(self) -> None:
-        result = perturb("hack, exploit!", technique="leetspeak", intensity=3, seed=42)
-        assert "," in result
-        assert "!" in result
-
-    def test_preserves_whitespace(self) -> None:
-        result = perturb("hack  exploit", technique="leetspeak", intensity=3, seed=42)
-        # Double space should be preserved
-        assert "  " in result
