@@ -39,6 +39,7 @@ dev = [
     "matplotlib>=3.10.8",
     "pytest",
     "pytest-asyncio",
+    "pytest-cov>=7.1.0",
     "ruff",
     "scipy>=1.17.1",
     "ty",
@@ -107,4 +108,3 @@ filterwarnings = [
 ]
 
 [tool.uv.sources]
-ordeal = { git = "https://github.com/teilomillet/ordeal.git" }
