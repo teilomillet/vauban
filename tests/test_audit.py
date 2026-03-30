@@ -11,7 +11,7 @@ verifies that findings are produced with correct structure.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from ordeal.auto import fuzz
@@ -503,3 +503,370 @@ class TestRunAuditFuzz:
             assert risk in {"critical", "high", "medium", "low"}
 
         _test()
+
+
+# =========================================================================
+# run_audit: standard/deep mode (steps 4-7, mocked subsystems)
+# =========================================================================
+
+
+def _mock_softprompt_result() -> MagicMock:
+    """Build a mock SoftPromptResult."""
+    result = MagicMock()
+    result.success_rate = 0.2
+    result.final_loss = 3.5
+    return result
+
+
+def _mock_surface_result() -> MagicMock:
+    """Build a mock SurfaceResult."""
+    result = MagicMock()
+    result.total_refused = 7
+    result.total_scanned = 10
+    result.coverage_score = 0.85
+    return result
+
+
+def _mock_guard_result(broken: bool = True) -> MagicMock:
+    """Build a mock GuardResult."""
+    result = MagicMock()
+    result.circuit_broken = broken
+    return result
+
+
+class TestRunAuditStandard:
+    """run_audit with 'standard' — softprompt + surface + guard enabled."""
+
+    def test_softprompt_finding(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """Standard mode produces a softprompt finding when mocked."""
+        config = _make_audit_config("standard")
+        direction = _make_direction_result()
+
+        with patch(
+            "vauban.softprompt.softprompt_attack",
+            return_value=_mock_softprompt_result(),
+        ):
+            result = run_audit(
+                mock_model, mock_tokenizer,
+                ["How to hack?"], ["What is weather?"],
+                config, "test-model",
+                direction_result=direction,
+            )
+
+        assert result.softprompt_success_rate is not None
+        assert 0.0 <= result.softprompt_success_rate <= 1.0
+        titles = [f.title for f in result.findings]
+        assert any("Soft prompt" in t for t in titles)
+
+    def test_surface_finding(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """Standard mode produces a surface mapping finding."""
+        config = _make_audit_config("standard")
+        direction = _make_direction_result()
+
+        with (
+            patch(
+                "vauban.softprompt.softprompt_attack",
+                return_value=_mock_softprompt_result(),
+            ),
+            patch(
+                "vauban.surface.map_surface",
+                return_value=_mock_surface_result(),
+            ),
+            patch(
+                "vauban.surface.load_surface_prompts",
+                return_value=["test prompt"],
+            ),
+        ):
+            result = run_audit(
+                mock_model, mock_tokenizer,
+                ["How to hack?"], ["What is weather?"],
+                config, "test-model",
+                direction_result=direction,
+            )
+
+        assert result.surface_refusal_rate is not None
+        titles = [f.title for f in result.findings]
+        assert any("surface" in t.lower() for t in titles)
+
+    def test_guard_finding(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """Standard mode produces a guard evaluation finding."""
+        config = _make_audit_config("standard")
+        direction = _make_direction_result()
+
+        with (
+            patch(
+                "vauban.softprompt.softprompt_attack",
+                return_value=_mock_softprompt_result(),
+            ),
+            patch(
+                "vauban.surface.map_surface",
+                return_value=_mock_surface_result(),
+            ),
+            patch(
+                "vauban.surface.load_surface_prompts",
+                return_value=["test"],
+            ),
+            patch(
+                "vauban.guard.guard_generate",
+                return_value=_mock_guard_result(broken=True),
+            ),
+            patch(
+                "vauban.guard.calibrate_guard_thresholds",
+                return_value=[],
+            ),
+        ):
+            result = run_audit(
+                mock_model, mock_tokenizer,
+                ["How to hack?"] * 3, ["What is weather?"] * 20,
+                config, "test-model",
+                direction_result=direction,
+            )
+
+        assert result.guard_circuit_break_rate is not None
+        titles = [f.title for f in result.findings]
+        assert any("guard" in t.lower() or "Guard" in t for t in titles)
+
+
+class TestRunAuditDeep:
+    """run_audit with 'deep' — bijection enabled."""
+
+    def test_bijection_finding(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """Deep mode produces a bijection finding when mocked."""
+        config = _make_audit_config("deep")
+        direction = _make_direction_result()
+
+        with (
+            patch(
+                "vauban.softprompt.softprompt_attack",
+                return_value=_mock_softprompt_result(),
+            ),
+            patch(
+                "vauban.surface.map_surface",
+                return_value=_mock_surface_result(),
+            ),
+            patch(
+                "vauban.surface.load_surface_prompts",
+                return_value=["test"],
+            ),
+            patch(
+                "vauban.guard.guard_generate",
+                return_value=_mock_guard_result(),
+            ),
+            patch(
+                "vauban.guard.calibrate_guard_thresholds",
+                return_value=[],
+            ),
+            patch(
+                "vauban.bijection.check_cipher_compliance",
+                return_value=False,
+            ),
+        ):
+            result = run_audit(
+                mock_model, mock_tokenizer,
+                ["How to hack?"] * 5, ["What is weather?"] * 20,
+                config, "test-model",
+                direction_result=direction,
+            )
+
+        assert result.bijection_success_rate is not None
+        titles = [f.title for f in result.findings]
+        assert any("bijection" in t.lower() or "Bijection" in t for t in titles)
+
+
+class TestRunAuditEdgeCases:
+    """Edge cases and error handling in run_audit."""
+
+    def test_jailbreak_with_strategy_filter(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """Jailbreak strategy filter narrows templates."""
+        config = AuditConfig(
+            company_name="Test",
+            system_name="Bot",
+            thoroughness="quick",
+            jailbreak_strategies=["identity_dissolution"],
+        )
+        direction = _make_direction_result()
+        result = run_audit(
+            mock_model, mock_tokenizer,
+            ["How to hack?"], ["What is weather?"],
+            config, "test-model",
+            direction_result=direction,
+        )
+        # Should complete — strategy filter applied
+        assert result.jailbreak_total > 0
+
+    def test_detect_failure_handled(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """If detect raises, audit continues without crashing."""
+        config = _make_audit_config("quick")
+        direction = _make_direction_result()
+
+        with patch(
+            "vauban.detect.detect",
+            side_effect=RuntimeError("detect boom"),
+        ):
+            result = run_audit(
+                mock_model, mock_tokenizer,
+                ["How to hack?"], ["What is weather?"],
+                config, "test-model",
+                direction_result=direction,
+            )
+        # Should still have jailbreak findings, just no defense_posture
+        assert result.overall_risk in {"critical", "high", "medium", "low"}
+
+    def test_markdown_with_all_metrics(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """Markdown rendering with all optional metrics present."""
+        result = AuditResult(
+            company_name="Corp",
+            system_name="AI",
+            model_path="model",
+            thoroughness="deep",
+            overall_risk="high",
+            findings=[],
+            detect_hardened=True,
+            detect_confidence=0.95,
+            jailbreak_success_rate=0.15,
+            jailbreak_total=100,
+            softprompt_success_rate=0.2,
+            bijection_success_rate=0.1,
+            surface_refusal_rate=0.8,
+            surface_coverage=0.9,
+            guard_circuit_break_rate=0.7,
+        )
+        md = audit_result_to_markdown(result)
+        assert "Soft prompt" in md
+        assert "Bijection" in md
+        assert "Refusal coverage" in md
+        assert "Defense hardening" in md
+        assert "Guard" in md
+
+
+# =========================================================================
+# audit_pdf — PDF rendering
+# =========================================================================
+
+
+class TestAuditPdf:
+    """PDF rendering for audit reports."""
+
+    def _make_full_result(self) -> AuditResult:
+        return AuditResult(
+            company_name="Test Corp",
+            system_name="Safety Bot",
+            model_path="test-model-v1",
+            thoroughness="standard",
+            overall_risk="medium",
+            findings=[
+                AuditFinding(
+                    "defense_posture", "info",
+                    "Model is hardened",
+                    "Defense detection confidence: 95%",
+                    "detect_mode=full", "No action needed.",
+                ),
+                AuditFinding(
+                    "attack_resistance", "medium",
+                    "Jailbreak: 15% bypass",
+                    "15/100 bypassed",
+                    "templates=30", "Apply CAST.",
+                ),
+                AuditFinding(
+                    "attack_resistance", "high",
+                    "Soft prompt: 40% success",
+                    "GCG achieved 40%",
+                    "steps=200", "Deploy GuardSession.",
+                ),
+            ],
+            detect_hardened=True,
+            detect_confidence=0.95,
+            jailbreak_success_rate=0.15,
+            jailbreak_total=100,
+            softprompt_success_rate=0.4,
+            bijection_success_rate=None,
+            surface_refusal_rate=0.8,
+            surface_coverage=0.85,
+            guard_circuit_break_rate=0.6,
+        )
+
+    def test_renders_pdf_bytes(self) -> None:
+        """render_audit_report_pdf returns valid PDF bytes."""
+        from vauban.audit_pdf import render_audit_report_pdf
+
+        result = self._make_full_result()
+        pdf = render_audit_report_pdf(result)
+        assert isinstance(pdf, bytes)
+        assert pdf[:5] == b"%PDF-"
+        assert len(pdf) > 1000  # non-trivial PDF
+
+    def test_renders_with_no_findings(self) -> None:
+        """Empty findings list doesn't crash PDF rendering."""
+        from vauban.audit_pdf import render_audit_report_pdf
+
+        result = AuditResult(
+            company_name="Empty Corp",
+            system_name="Empty Bot",
+            model_path="model",
+            thoroughness="quick",
+            overall_risk="low",
+            findings=[],
+            detect_hardened=None,
+            detect_confidence=None,
+            jailbreak_success_rate=0.0,
+            jailbreak_total=0,
+            softprompt_success_rate=None,
+            bijection_success_rate=None,
+            surface_refusal_rate=None,
+            surface_coverage=None,
+            guard_circuit_break_rate=None,
+        )
+        pdf = render_audit_report_pdf(result)
+        assert pdf[:5] == b"%PDF-"
+
+    def test_renders_with_all_optional_metrics(self) -> None:
+        """All optional metrics render without crash."""
+        from vauban.audit_pdf import render_audit_report_pdf
+
+        result = AuditResult(
+            company_name="Full Corp",
+            system_name="Full Bot",
+            model_path="model",
+            thoroughness="deep",
+            overall_risk="high",
+            findings=self._make_full_result().findings,
+            detect_hardened=True,
+            detect_confidence=0.95,
+            jailbreak_success_rate=0.15,
+            jailbreak_total=100,
+            softprompt_success_rate=0.2,
+            bijection_success_rate=0.05,
+            surface_refusal_rate=0.8,
+            surface_coverage=0.9,
+            guard_circuit_break_rate=0.7,
+        )
+        pdf = render_audit_report_pdf(result)
+        assert pdf[:5] == b"%PDF-"
