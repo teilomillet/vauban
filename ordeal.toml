@@ -1,0 +1,24 @@
+# ordeal.toml — auto-scan configuration for vauban
+#
+# Each [[scan]] entry auto-generates per-function tests:
+# no-crash, return-type, determinism. Zero test code needed.
+#
+# Run: uv run pytest ordeal.toml -v
+
+[[scan]]
+module = "vauban.perturb"
+max_examples = 30
+
+[[scan]]
+module = "vauban.scoring"
+max_examples = 30
+
+[[scan]]
+module = "vauban.taxonomy"
+max_examples = 30
+[scan.fixtures]
+name_or_id = "violence,cyber,sexual,fraud,hate,self_harm,weapons,drugs"
+category_id = "violence,cyber,sexual,fraud,hate,self_harm,weapons,drugs"
+
+[report]
+verbose = true

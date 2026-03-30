@@ -15,6 +15,7 @@ requires-python = ">=3.12"
 dependencies = [
     "mlx>=0.22",
     "mlx-lm>=0.21",
+    "ordeal",
     "pypdf>=6.9.2",
     "reportlab>=4.4.10",
 ]
@@ -104,3 +105,6 @@ filterwarnings = [
     "ignore:builtin type SwigPyObject has no __module__ attribute:DeprecationWarning",
     "ignore:builtin type swigvarlink has no __module__ attribute:DeprecationWarning",
 ]
+
+[tool.uv.sources]
+ordeal = { path = "lib/ordeal", editable = true }

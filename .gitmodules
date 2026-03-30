@@ -1,0 +1,3 @@
+[submodule "lib/ordeal"]
+	path = lib/ordeal
+	url = https://github.com/teilomillet/ordeal.git

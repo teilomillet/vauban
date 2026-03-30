@@ -1007,6 +1007,33 @@ wheels = [
 ]
 
 [[package]]
+name = "ordeal"
+version = "0.1.1"
+source = { editable = "lib/ordeal" }
+dependencies = [
+    { name = "hypothesis" },
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "atheris", marker = "extra == 'all'", specifier = ">=2.3.0" },
+    { name = "atheris", marker = "extra == 'atheris'", specifier = ">=2.3.0" },
+    { name = "hypothesis", specifier = ">=6.100.0" },
+    { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.0.0" },
+    { name = "numpy", marker = "extra == 'all'", specifier = ">=1.26.0" },
+    { name = "pytest", specifier = ">=8.0.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4.0" },
+    { name = "schemathesis", marker = "extra == 'all'", specifier = ">=3.30.0" },
+    { name = "schemathesis", marker = "extra == 'api'", specifier = ">=3.30.0" },
+]
+provides-extras = ["atheris", "api", "all", "dev", "docs"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "numpy", specifier = ">=2.4.4" }]
+
+[[package]]
 name = "packaging"
 version = "26.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1810,6 +1837,7 @@ source = { editable = "." }
 dependencies = [
     { name = "mlx" },
     { name = "mlx-lm" },
+    { name = "ordeal" },
     { name = "pypdf" },
     { name = "reportlab" },
 ]
@@ -1844,6 +1872,7 @@ requires-dist = [
     { name = "mlx", specifier = ">=0.22" },
     { name = "mlx-lm", specifier = ">=0.21" },
     { name = "optuna", marker = "extra == 'optimize'", specifier = ">=4.0" },
+    { name = "ordeal", editable = "lib/ordeal" },
     { name = "pypdf", specifier = ">=6.9.2" },
     { name = "reportlab", specifier = ">=4.4.10" },
     { name = "safetensors", marker = "extra == 'torch'", specifier = ">=0.4" },
