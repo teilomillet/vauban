@@ -1,0 +1,524 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
+"""AI-agent-native session for vauban.
+
+Provides a single entry point for an LLM agent (or human) to discover
+and use every vauban capability.  The session holds the loaded model
+and tracks state (direction, findings, etc.) so tools can be composed
+without manual plumbing.
+
+Usage::
+
+    from vauban.session import Session
+
+    s = Session("mlx-community/Qwen2.5-0.5B-Instruct-bf16")
+    s.tools()           # list available tools
+    s.measure()         # extract refusal direction
+    s.detect()          # check hardening
+    s.probe("How?")     # inspect per-layer projections
+    s.audit()           # full red-team assessment
+    s.report()          # generate markdown report
+
+Each tool method returns structured data (dataclasses) that the agent
+can inspect and reason about.  The session tracks prerequisites:
+
+    s.available()       # tools callable right now
+    s.needs("cut")      # what "cut" requires: ["direction"]
+
+Design principle: simple by default, depth through parameters.
+Every tool works with zero config.  Optional parameters unlock
+advanced usage.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from vauban._array import Array
+    from vauban.types import (
+        AuditResult,
+        CastResult,
+        CausalLM,
+        DetectResult,
+        DirectionResult,
+        EvalResult,
+        ProbeResult,
+        ScanResult,
+        SICResult,
+        Tokenizer,
+    )
+
+
+@dataclass
+class Tool:
+    """Metadata for one vauban tool.
+
+    An agent reads these to decide which tools to call.
+    """
+
+    name: str
+    description: str
+    requires: list[str]
+    produces: list[str]
+    category: str
+
+
+# ── Tool registry ────────────────────────────────────────────────────────
+
+_TOOLS: list[Tool] = [
+    # Assessment
+    Tool(
+        name="measure",
+        description="Extract the refusal direction from model activations. "
+        "This is the foundation — most other tools need the direction.",
+        requires=["model"],
+        produces=["direction"],
+        category="assessment",
+    ),
+    Tool(
+        name="detect",
+        description="Check if the model has been hardened against abliteration. "
+        "Returns confidence score and evidence.",
+        requires=["model"],
+        produces=["detect_result"],
+        category="assessment",
+    ),
+    Tool(
+        name="evaluate",
+        description="Compare two models: refusal rate, perplexity, KL divergence. "
+        "Use after cutting to measure the effect.",
+        requires=["model", "direction"],
+        produces=["eval_result"],
+        category="assessment",
+    ),
+    Tool(
+        name="audit",
+        description="Full red-team assessment: measure + detect + jailbreak + "
+        "attacks + defenses. Produces findings with severity and remediation.",
+        requires=["model"],
+        produces=["audit_result"],
+        category="assessment",
+    ),
+    # Inspection
+    Tool(
+        name="probe",
+        description="Inspect per-layer projection of a prompt onto the "
+        "refusal direction. Shows where refusal signal is strongest.",
+        requires=["model", "direction"],
+        produces=["probe_result"],
+        category="inspection",
+    ),
+    Tool(
+        name="scan",
+        description="Scan text for injection patterns using per-token "
+        "projection onto the refusal direction.",
+        requires=["model", "direction"],
+        produces=["scan_result"],
+        category="inspection",
+    ),
+    Tool(
+        name="surface",
+        description="Map the refusal surface: scan diverse prompts and "
+        "measure refusal rate across categories.",
+        requires=["model", "direction"],
+        produces=["surface_result"],
+        category="inspection",
+    ),
+    # Defense
+    Tool(
+        name="steer",
+        description="Generate text with activation steering: remove the "
+        "refusal direction during generation.",
+        requires=["model", "direction"],
+        produces=["steer_result"],
+        category="defense",
+    ),
+    Tool(
+        name="cast",
+        description="Conditional activation steering: steer only when "
+        "refusal signal exceeds threshold. Smart defense.",
+        requires=["model", "direction"],
+        produces=["cast_result"],
+        category="defense",
+    ),
+    Tool(
+        name="sic",
+        description="Iterative input sanitization: detect and rewrite "
+        "adversarial content before the model processes it.",
+        requires=["model", "direction"],
+        produces=["sic_result"],
+        category="defense",
+    ),
+    # Modification
+    Tool(
+        name="cut",
+        description="Remove the refusal direction from model weights. "
+        "This is abliteration — the model will stop refusing.",
+        requires=["model", "direction"],
+        produces=["modified_model"],
+        category="modification",
+    ),
+    Tool(
+        name="export",
+        description="Save modified model weights to disk.",
+        requires=["modified_model"],
+        produces=["saved_path"],
+        category="modification",
+    ),
+    # Analysis
+    Tool(
+        name="score",
+        description="Score a response on 5 axes: length, structure, "
+        "anti-refusal, directness, relevance.",
+        requires=[],
+        produces=["score_result"],
+        category="analysis",
+    ),
+    Tool(
+        name="classify",
+        description="Classify text against the harm taxonomy (13 domains, "
+        "46+ categories).",
+        requires=[],
+        produces=["harm_scores"],
+        category="analysis",
+    ),
+    Tool(
+        name="jailbreak",
+        description="Evaluate jailbreak template resistance. Expands "
+        "templates with payloads and checks for refusal.",
+        requires=["model"],
+        produces=["jailbreak_rate"],
+        category="attack",
+    ),
+    # Reporting
+    Tool(
+        name="report",
+        description="Generate a markdown or PDF report from audit results.",
+        requires=["audit_result"],
+        produces=["report_text"],
+        category="reporting",
+    ),
+    Tool(
+        name="ai_act",
+        description="Generate EU AI Act compliance assessment and "
+        "deployer readiness artifacts.",
+        requires=["audit_result"],
+        produces=["compliance_report"],
+        category="reporting",
+    ),
+]
+
+
+class Session:
+    """AI-agent-native session for vauban.
+
+    Holds the model, tokenizer, and accumulated state.  Tools are
+    methods that operate on the session state and produce results.
+
+    The session tracks what's been computed so tools can declare
+    prerequisites and the agent can query what's available.
+    """
+
+    def __init__(
+        self,
+        model_path: str,
+        *,
+        harmful_prompts: list[str] | None = None,
+        harmless_prompts: list[str] | None = None,
+    ) -> None:
+        """Load a model and create a session.
+
+        Args:
+            model_path: HuggingFace model ID or local path.
+            harmful_prompts: Custom harmful test prompts (default: built-in).
+            harmless_prompts: Custom harmless test prompts (default: built-in).
+        """
+        from vauban._model_io import load_model
+        from vauban.dequantize import dequantize_model, is_quantized
+        from vauban.measure import default_prompt_paths, load_prompts
+
+        self.model_path = model_path
+        self.model: CausalLM
+        self.tokenizer: Tokenizer
+        self.model, self.tokenizer = load_model(model_path)
+
+        if is_quantized(self.model):
+            dequantize_model(self.model)
+
+        if harmful_prompts and harmless_prompts:
+            self.harmful = harmful_prompts
+            self.harmless = harmless_prompts
+        else:
+            harmful_path, harmless_path = default_prompt_paths()
+            self.harmful = load_prompts(harmful_path)
+            self.harmless = load_prompts(harmless_path)
+
+        # State — accumulated as tools run
+        self._direction: DirectionResult | None = None
+        self._detect: DetectResult | None = None
+        self._audit: AuditResult | None = None
+        self._modified_weights: dict[str, Array] | None = None
+
+    # ── Discovery ────────────────────────────────────────────────────
+
+    def tools(self) -> list[Tool]:
+        """List all available tools with descriptions.
+
+        An agent reads this to decide what to call.
+        """
+        return list(_TOOLS)
+
+    def available(self) -> list[str]:
+        """List tools that can be called right now (prerequisites met)."""
+        state = self._state_tags()
+        return [
+            t.name for t in _TOOLS
+            if all(r in state for r in t.requires)
+        ]
+
+    def needs(self, tool_name: str) -> list[str]:
+        """List prerequisites for a tool that aren't met yet."""
+        state = self._state_tags()
+        for t in _TOOLS:
+            if t.name == tool_name:
+                return [r for r in t.requires if r not in state]
+        return [f"unknown tool: {tool_name}"]
+
+    def state(self) -> dict[str, bool]:
+        """Current session state — what's been computed."""
+        return {
+            "model": True,
+            "direction": self._direction is not None,
+            "detect_result": self._detect is not None,
+            "audit_result": self._audit is not None,
+            "modified_model": self._modified_weights is not None,
+        }
+
+    def _state_tags(self) -> set[str]:
+        return {k for k, v in self.state().items() if v}
+
+    # ── Assessment tools ─────────────────────────────────────────────
+
+    def measure(self) -> DirectionResult:
+        """Extract the refusal direction from the model."""
+        from vauban.measure import measure
+
+        self._direction = measure(
+            self.model, self.tokenizer,
+            self.harmful, self.harmless,
+        )
+        return self._direction
+
+    def detect(self) -> DetectResult:
+        """Check if the model is hardened against abliteration."""
+        from vauban.detect import detect
+        from vauban.types import DetectConfig
+
+        self._detect = detect(
+            self.model, self.tokenizer,
+            self.harmful, self.harmless,
+            DetectConfig(),
+        )
+        return self._detect
+
+    def evaluate(self) -> EvalResult:
+        """Compare original model against itself (baseline metrics)."""
+        from vauban.evaluate import evaluate
+
+        return evaluate(
+            self.model, self.model, self.tokenizer,
+            self.harmful[:10],
+        )
+
+    def audit(
+        self,
+        *,
+        company_name: str = "Unknown",
+        system_name: str = "LLM System",
+        thoroughness: str = "quick",
+    ) -> AuditResult:
+        """Run a full red-team audit."""
+        from vauban.audit import run_audit
+        from vauban.types import AuditConfig
+
+        config = AuditConfig(
+            company_name=company_name,
+            system_name=system_name,
+            thoroughness=thoroughness,
+        )
+        self._audit = run_audit(
+            self.model, self.tokenizer,
+            self.harmful, self.harmless,
+            config, self.model_path,
+            direction_result=self._direction,
+        )
+        return self._audit
+
+    # ── Inspection tools ─────────────────────────────────────────────
+
+    def probe(self, prompt: str) -> ProbeResult:
+        """Inspect per-layer projection of a prompt."""
+        from vauban.probe import probe
+
+        self._ensure_direction()
+        return probe(
+            self.model, self.tokenizer,
+            prompt, self._direction.direction,  # type: ignore[union-attr]
+        )
+
+    def scan(self, content: str) -> ScanResult:
+        """Scan text for injection patterns."""
+        from vauban.scan import scan
+        from vauban.types import ScanConfig
+
+        self._ensure_direction()
+        return scan(
+            self.model, self.tokenizer,
+            content, ScanConfig(),
+            self._direction.direction,  # type: ignore[union-attr]
+            self._direction.layer_index,  # type: ignore[union-attr]
+        )
+
+    # ── Defense tools ────────────────────────────────────────────────
+
+    def steer(
+        self, prompt: str, *, alpha: float = 1.0,
+    ) -> object:
+        """Generate with activation steering."""
+        from vauban.probe import steer
+
+        self._ensure_direction()
+        n_layers = len(self.model.model.layers)  # type: ignore[attr-defined]
+        return steer(
+            self.model, self.tokenizer,
+            prompt, self._direction.direction,  # type: ignore[union-attr]
+            list(range(n_layers)), alpha,
+        )
+
+    def cast(
+        self, prompt: str, *, alpha: float = 1.0, threshold: float = 0.0,
+    ) -> CastResult:
+        """Generate with conditional activation steering."""
+        from vauban.cast import cast_generate
+
+        self._ensure_direction()
+        n_layers = len(self.model.model.layers)  # type: ignore[attr-defined]
+        return cast_generate(
+            self.model, self.tokenizer,
+            prompt, self._direction.direction,  # type: ignore[union-attr]
+            list(range(n_layers)), alpha, threshold,
+        )
+
+    def sic(self, prompts: list[str]) -> SICResult:
+        """Sanitize prompts via iterative input cleaning."""
+        from vauban.sic import sic
+        from vauban.types import SICConfig
+
+        self._ensure_direction()
+        return sic(
+            self.model, self.tokenizer,
+            prompts, SICConfig(),
+            self._direction.direction,  # type: ignore[union-attr]
+            self._direction.layer_index,  # type: ignore[union-attr]
+        )
+
+    # ── Modification tools ───────────────────────────────────────────
+
+    def cut(
+        self, *, alpha: float = 1.0, norm_preserve: bool = False,
+    ) -> dict[str, object]:
+        """Remove the refusal direction from model weights."""
+        from vauban.cut import cut
+
+        self._ensure_direction()
+        weights = dict(self.model.parameters())
+        # Flatten nested dicts
+        flat: dict[str, Array] = {}
+        for k, v in weights.items():
+            if isinstance(v, dict):
+                for k2, v2 in v.items():
+                    if isinstance(v2, dict):
+                        for k3, v3 in v2.items():
+                            flat[f"{k}.{k2}.{k3}"] = v3
+                    else:
+                        flat[f"{k}.{k2}"] = v2
+            else:
+                flat[k] = v
+
+        n_layers = len(self.model.model.layers)  # type: ignore[attr-defined]
+        self._modified_weights = cut(
+            flat,
+            self._direction.direction,  # type: ignore[union-attr]
+            list(range(n_layers)),
+            alpha, norm_preserve,
+        )
+        return self._modified_weights
+
+    def export(self, output_dir: str) -> str:
+        """Save modified weights to disk."""
+        from vauban.export import export_model
+
+        if self._modified_weights is None:
+            msg = "No modified weights. Run cut() first."
+            raise RuntimeError(msg)
+        export_model(
+            self._modified_weights,
+            self.model_path,
+            output_dir,
+        )
+        return output_dir
+
+    # ── Analysis tools (no model needed) ─────────────────────────────
+
+    @staticmethod
+    def score(prompt: str, response: str) -> object:
+        """Score a response on 5 axes."""
+        from vauban.scoring import score_response
+
+        return score_response(prompt, response)
+
+    @staticmethod
+    def classify(text: str) -> object:
+        """Classify text against the harm taxonomy."""
+        from vauban.taxonomy import score_text
+
+        return score_text(text)
+
+    # ── Reporting tools ──────────────────────────────────────────────
+
+    def report(self, fmt: str = "markdown") -> str:
+        """Generate a report from the last audit."""
+        if self._audit is None:
+            msg = "No audit results. Run audit() first."
+            raise RuntimeError(msg)
+        if fmt == "markdown":
+            from vauban.audit import audit_result_to_markdown
+
+            return audit_result_to_markdown(self._audit)
+        if fmt == "dict":
+            import json
+
+            from vauban.audit import audit_result_to_dict
+
+            return json.dumps(audit_result_to_dict(self._audit), indent=2)
+        msg = f"Unknown format: {fmt!r}. Use 'markdown' or 'dict'."
+        raise ValueError(msg)
+
+    def report_pdf(self) -> bytes:
+        """Generate a PDF report from the last audit."""
+        if self._audit is None:
+            msg = "No audit results. Run audit() first."
+            raise RuntimeError(msg)
+        from vauban.audit_pdf import render_audit_report_pdf
+
+        return render_audit_report_pdf(self._audit)
+
+    # ── Internal ─────────────────────────────────────────────────────
+
+    def _ensure_direction(self) -> None:
+        """Lazily measure direction if not already done."""
+        if self._direction is None:
+            self.measure()
