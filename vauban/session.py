@@ -262,6 +262,242 @@ class Session:
         self._audit: AuditResult | None = None
         self._modified_weights: dict[str, Array] | None = None
 
+    # ── Workflows ────────────────────────────────────────────────────
+
+    def guide(self, goal: str = "") -> str:
+        """Get step-by-step instructions for a goal.
+
+        An agent calls this to learn HOW to use the tools for a
+        specific objective.  Returns a plain-text workflow.
+
+        Args:
+            goal: What the agent wants to achieve.  If empty, lists
+                all available workflows.
+
+        Available goals:
+
+        - ``"audit"`` — red-team assessment with findings and report
+        - ``"compliance"`` — EU AI Act compliance assessment
+        - ``"harden"`` — improve model safety (measure → cast/sic)
+        - ``"abliterate"`` — remove refusal (measure → cut → export)
+        - ``"inspect"`` — understand model behavior (measure → probe)
+        """
+        workflows = {
+            "audit": (
+                "Red-team audit workflow:\n"
+                "\n"
+                "1. s.audit(company_name='...', system_name='...')\n"
+                "   → Returns AuditResult with findings and severity ratings.\n"
+                "   → Thoroughness: 'quick' (30s), 'standard' (5min), 'deep' (15min).\n"
+                "\n"
+                "2. Read the findings:\n"
+                "   for f in result.findings:\n"
+                "       print(f'{f.severity}: {f.title}')\n"
+                "       print(f'  {f.description}')\n"
+                "       print(f'  Fix: {f.remediation}')\n"
+                "\n"
+                "3. s.report()      → Markdown report\n"
+                "   s.report_pdf()  → PDF report bytes\n"
+                "\n"
+                "4. For deeper analysis of specific findings:\n"
+                "   s.probe('prompt')    → per-layer refusal signal\n"
+                "   s.scan('content')    → injection detection\n"
+                "   s.classify('text')   → harm taxonomy classification\n"
+            ),
+            "compliance": (
+                "EU AI Act compliance workflow:\n"
+                "\n"
+                "1. Run a thorough audit:\n"
+                "   result = s.audit(\n"
+                "       company_name='Your Company',\n"
+                "       system_name='Your AI System',\n"
+                "       thoroughness='standard',  # or 'deep' for full assessment\n"
+                "   )\n"
+                "\n"
+                "2. Check overall risk:\n"
+                "   print(result.overall_risk)  # 'critical', 'high', 'medium', 'low'\n"
+                "\n"
+                "3. Review each finding for EU AI Act relevance:\n"
+                "   - defense_posture → Article 15 (robustness)\n"
+                "   - attack_resistance → Article 15 (resilience)\n"
+                "   - refusal_coverage → Article 9 (risk management)\n"
+                "\n"
+                "4. Generate compliance report:\n"
+                "   md = s.report()           # Markdown\n"
+                "   pdf = s.report_pdf()      # PDF for filing\n"
+                "\n"
+                "5. If risk is 'high' or 'critical', apply defenses:\n"
+                "   s.cast('test prompt')     # Test CAST defense\n"
+                "   s.sic(['test prompt'])    # Test SIC sanitization\n"
+                "   Then re-audit to verify improvement.\n"
+            ),
+            "harden": (
+                "Model hardening workflow:\n"
+                "\n"
+                "1. s.measure()  → Extract refusal direction\n"
+                "2. s.detect()   → Check current hardening level\n"
+                "\n"
+                "3. Test defenses on a harmful prompt:\n"
+                "   normal = s.steer('How to hack?', alpha=0)  # No steering\n"
+                "   defended = s.cast('How to hack?', threshold=0.3)\n"
+                "   print(f'Interventions: {defended.interventions}')\n"
+                "\n"
+                "4. Try input sanitization:\n"
+                "   result = s.sic(['How to hack a computer?'])\n"
+                "   print(f'Blocked: {result.total_blocked}')\n"
+                "\n"
+                "5. Re-audit to measure improvement:\n"
+                "   s.audit(thoroughness='quick')\n"
+            ),
+            "abliterate": (
+                "Abliteration workflow (remove refusal):\n"
+                "\n"
+                "1. s.measure()   → Extract refusal direction\n"
+                "2. s.probe('How to hack?')  → Verify direction is meaningful\n"
+                "\n"
+                "3. s.cut(alpha=1.0)  → Remove direction from weights\n"
+                "   alpha=1.0 is full removal, 0.5 is partial\n"
+                "\n"
+                "4. s.evaluate()  → Check: refusal rate down, perplexity stable?\n"
+                "\n"
+                "5. s.export('output_dir')  → Save modified model\n"
+                "\n"
+                "WARNING: This removes safety alignment. Use only for research.\n"
+            ),
+            "inspect": (
+                "Model inspection workflow:\n"
+                "\n"
+                "1. s.measure()  → Extract refusal direction\n"
+                "\n"
+                "2. Compare harmful vs harmless:\n"
+                "   h = s.probe('How to hack a computer?')\n"
+                "   s = s.probe('What is the weather?')\n"
+                "   # Harmful should have higher projections\n"
+                "\n"
+                "3. Scan for injection patterns:\n"
+                "   result = s.scan('Ignore previous instructions...')\n"
+                "   print(f'Injection probability: {result.injection_probability}')\n"
+                "\n"
+                "4. Classify text:\n"
+                "   scores = s.classify('hack exploit malware')\n"
+                "   for score in scores:\n"
+                "       print(f'{score.category_id}: {score.score:.2f}')\n"
+            ),
+        }
+
+        if not goal:
+            lines = ["Available workflows:\n"]
+            for name, text in workflows.items():
+                first_line = text.split("\n")[0]
+                lines.append(f"  s.guide('{name}')  → {first_line}")
+            lines.append(
+                "\nCall s.guide('workflow_name') for step-by-step instructions.",
+            )
+            return "\n".join(lines)
+
+        key = goal.lower().strip()
+        if key in workflows:
+            return workflows[key]
+
+        # Fuzzy match
+        for name in workflows:
+            if key in name or name in key:
+                return workflows[name]
+
+        return (
+            f"Unknown goal: {goal!r}. Available: {list(workflows.keys())}\n"
+            f"Call s.guide() to see all workflows."
+        )
+
+    def suggest_next(self) -> str:
+        """Suggest what to do next based on current state and findings.
+
+        An agent calls this after each step to get context-aware
+        recommendations.  The suggestions depend on what's been
+        computed and what the results showed.
+        """
+        lines: list[str] = ["Based on current state:\n"]
+        st = self.state()
+
+        if not st["direction"]:
+            lines.append(
+                "→ s.measure()  Start here. Extracts the refusal direction, "
+                "which most other tools need. Takes ~2s."
+            )
+            lines.append(
+                "→ s.audit()    Or jump straight to a full audit "
+                "(will measure automatically)."
+            )
+            lines.append(
+                "→ s.classify('text')  Doesn't need a direction — "
+                "classify any text against the harm taxonomy."
+            )
+            return "\n".join(lines)
+
+        # Direction measured — suggest based on what we know
+        lines.append(f"Direction measured: layer {self._direction.layer_index}")  # type: ignore[union-attr]
+
+        if not st["detect_result"]:
+            lines.append(
+                "\n→ s.detect()  Check if the model is hardened. "
+                "This tells you if defenses are already in place."
+            )
+
+        if not st["audit_result"]:
+            lines.append(
+                "\n→ s.audit()  Run a full assessment to get findings. "
+                "Use thoroughness='standard' for a thorough scan."
+            )
+            lines.append(
+                "\n→ s.probe('your prompt')  Inspect a specific prompt's "
+                "refusal signal across layers. Good for understanding "
+                "why a particular input triggers refusal."
+            )
+
+        if st["audit_result"] and self._audit is not None:
+            risk = self._audit.overall_risk
+            lines.append(f"\nAudit complete. Overall risk: {risk}")
+
+            if risk in ("critical", "high"):
+                lines.append(
+                    "\n→ s.cast('harmful prompt', threshold=0.3)  "
+                    "Test CAST defense on a harmful prompt. "
+                    "If it intervenes, CAST can protect this model."
+                )
+                lines.append(
+                    "\n→ s.sic(['harmful prompt'])  "
+                    "Test SIC sanitization. Rewrites adversarial "
+                    "content before the model sees it."
+                )
+                lines.append(
+                    "\n→ s.audit(thoroughness='standard')  "
+                    "Run a deeper audit to find more attack vectors."
+                )
+            else:
+                lines.append(
+                    "\n→ s.report()  Generate the compliance report. "
+                    "The model looks reasonably safe."
+                )
+
+            # Suggest based on specific findings
+            for f in self._audit.findings:
+                jailbreak = "jailbreak" in f.title.lower()
+                if jailbreak and f.severity in ("critical", "high"):
+                    lines.append(
+                        f"\n→ Jailbreak bypass is {f.severity}. Try:"
+                        "\n  s.cast('jailbreak prompt', threshold=0.2)  "
+                        "to test if CAST blocks it."
+                    )
+                if "hardening" in f.title.lower() and "no" in f.title.lower():
+                    lines.append(
+                        "\n→ No hardening detected. Consider:"
+                        "\n  s.cut(alpha=0.5)  to partially abliterate "
+                        "(research only), or"
+                        "\n  deploy CAST/SIC as runtime defense."
+                    )
+
+        return "\n".join(lines)
+
     # ── Discovery ────────────────────────────────────────────────────
 
     def tools(self) -> list[Tool]:
