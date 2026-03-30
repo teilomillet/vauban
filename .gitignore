@@ -29,6 +29,8 @@ venv/
 .pytest_cache/
 .coverage
 htmlcov/
+.hypothesis/
+.ordeal/
 
 # Data
 .lancedb/

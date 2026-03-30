@@ -52,10 +52,10 @@ class TestTaxonomySometimes:
             "SQL injection exploit", "ransomware attack",
             "synthesize drugs", "jailbreak the model",
         ]
-        _sometimes(
-            "score_text returns non-empty",
-            lambda: len(score_text(keywords[hash(str(id)) % len(keywords)])) > 0,
-            attempts=len(keywords),
+        hits = sum(1 for kw in keywords if len(score_text(kw)) > 0)
+        assert hits > 0, (
+            "score_text returned empty for ALL harm keywords — "
+            "taxonomy patterns may be broken"
         )
 
     def test_sometimes_classifies(self) -> None:
