@@ -86,6 +86,28 @@ class TestInvariants:
         result = perturb(text, technique="zero_width", intensity=3, seed=seed)
         assert len(result) >= len(text)
 
+    @_s
+    @given(
+        text=_trigger,
+        technique=st.sampled_from([
+            "leetspeak", "homoglyph", "zero_width", "mixed_case",
+        ]),
+        seed=_seeds,
+    )
+    def test_non_phonetic_never_shortens(
+        self, text: str, technique: str, seed: int,
+    ) -> None:
+        """Mined by ordeal then refined by Hypothesis counterexample.
+
+        mine() reported len(output) >= len(text) at 200/200 (100%),
+        but Hypothesis found phonetic CAN shorten ("hack" → "hak"
+        via ck→k). All other techniques preserve or increase length.
+        """
+        result = perturb(
+            text, technique=technique, intensity=3, seed=seed,
+        )
+        assert len(result) >= len(text)
+
 
 # -- 3. Technique-specific behavior ----------------------------------------
 
