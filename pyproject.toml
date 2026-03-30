@@ -107,4 +107,4 @@ filterwarnings = [
 ]
 
 [tool.uv.sources]
-ordeal = { path = "lib/ordeal", editable = true }
+ordeal = { git = "https://github.com/teilomillet/ordeal.git" }
