@@ -1092,15 +1092,15 @@ wheels = [
 
 [[package]]
 name = "ordeal"
-version = "0.1.30"
+version = "0.2.26"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "hypothesis" },
     { name = "pytest" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bc/cb/8f7c396725bb1ce8e6adab8aff38203c5855436ba62e4d62ce714753fc55/ordeal-0.1.30.tar.gz", hash = "sha256:4f80aa4c8d58ccefad04987792a1053156a975ce8e2dfd738284e21bd3f038c7", size = 140537, upload-time = "2026-03-30T21:19:14.792Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/66/d6/205c227f0760b448a9679e3748ea2a3b31e4b9a979dac9523810df805273/ordeal-0.2.26.tar.gz", hash = "sha256:04445b82c07071a0cffa47bd553231b3a9d4a3474134dc6ce6f12f3edfc0963d", size = 232462, upload-time = "2026-03-31T22:05:13.366Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/14/72/a0854cd0242f1f63381c7ae099188f4184df646039df88607301abe08647/ordeal-0.1.30-py3-none-any.whl", hash = "sha256:f9d815eb8c20a2cbe0a487f3e10eb7b43707e5b888efae3dfd52859ea5c13f06", size = 108457, upload-time = "2026-03-30T21:19:13.417Z" },
+    { url = "https://files.pythonhosted.org/packages/34/83/6e6af721334563772daa96d7ad7eb16e9aefe7784a78ce9a24fa86e04a12/ordeal-0.2.26-py3-none-any.whl", hash = "sha256:9e010516b9a87463ba780b3539b9fd4faf4f991341d1cd2f98c25308619e29f1", size = 168988, upload-time = "2026-03-31T22:05:11.697Z" },
 ]
 
 [[package]]

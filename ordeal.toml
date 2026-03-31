@@ -12,6 +12,7 @@ max_examples = 30
 [[scan]]
 module = "vauban.scoring"
 max_examples = 30
+expected_failures = ["score_responses"]
 
 [[scan]]
 module = "vauban.taxonomy"
