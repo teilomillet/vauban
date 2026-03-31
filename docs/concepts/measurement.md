@@ -15,9 +15,9 @@ How behavioral directions are extracted from a model's activations or weights.
 
 To [abliterate](abliteration.md), [steer](steering.md), or [defend](defense-complementarity.md), you need a direction. Measurement is the process of finding it. Vauban provides four measurement modes, each a different lens on the same underlying [geometry](activation-geometry.md).
 
-> **What are "harmful" and "harmless" prompts?** --- Harmful prompts are inputs that a safety-aligned model should refuse (e.g., instructions for dangerous activities). Harmless prompts are benign inputs (e.g., "explain photosynthesis"). Measurement compares the model's internal response to each set to find what differs --- the [refusal direction](refusal-direction.md). The prompts themselves are dataset files loaded from TOML config.
+> **What are "harmful" and "harmless" prompts?** — Harmful prompts are inputs that a safety-aligned model should refuse (e.g., instructions for dangerous activities). Harmless prompts are benign inputs (e.g., "explain photosynthesis"). Measurement compares the model's internal response to each set to find what differs — the [refusal direction](refusal-direction.md). The prompts themselves are dataset files loaded from TOML config.
 
-> **What does "collect activations" mean?** --- Run each prompt through the model and record the residual stream vector at the last token position for every layer. This gives you one vector per (prompt, layer) pair. No generation happens --- just a single forward pass per prompt.
+> **What does "collect activations" mean?** — Run each prompt through the model and record the residual stream vector at the last token position for every layer. This gives you one vector per (prompt, layer) pair. No generation happens — just a single forward pass per prompt.
 
 ## Difference-in-means (mode: `direction`)
 
@@ -39,11 +39,13 @@ The layer with the highest $s_l$ is chosen. In practice, this is typically a mid
 
 Instead of collapsing to a single direction, extract the top-$k$ singular vectors of the activation difference matrix via SVD.
 
+> **SVD (Singular Value Decomposition)** — a mathematical technique that finds the most important axes of variation in data. Instead of reducing everything to one direction, SVD gives you a ranked list of directions ordered by how much of the difference they capture. The first direction is the most important, the second captures the next-biggest pattern, and so on.
+
 Given centered activation matrices $A_H$ and $A_B$, the combined difference matrix $\Delta$ is decomposed:
 
 $$\Delta = U \Sigma V^\top$$
 
-The first $k$ columns of $U$ span the behavioral subspace. This captures structure that a single direction misses --- behaviors that are rank-2 or higher.
+The first $k$ columns of $U$ span the behavioral subspace. This captures structure that a single direction misses — behaviors that are rank-2 or higher.
 
 **When to use:** When rank-1 abliteration damages model quality (perplexity spikes), suggesting the behavior is not perfectly rank-1. Also useful for hardened models where the refusal signal has been deliberately spread across multiple dimensions (effective rank > 1).
 
@@ -51,8 +53,8 @@ The first $k$ columns of $U$ span the behavioral subspace. This captures structu
 
 Decomposed Behavioral Direction Intervention separates refusal into two components:
 
-- **HDD** (Harm Detection Direction) --- extracted at the **instruction-final** token position. This is where the model recognizes that a request is harmful.
-- **RED** (Refusal Execution Direction) --- extracted at the **sequence-final** token position. This is where the model decides to refuse.
+- **HDD** (Harm Detection Direction) — extracted at the **instruction-final** token position. This is where the model recognizes that a request is harmful.
+- **RED** (Refusal Execution Direction) — extracted at the **sequence-final** token position. This is where the model decides to refuse.
 
 Each is extracted via the same difference-in-means procedure, but at different token positions within the prompt.
 
@@ -68,6 +70,8 @@ $$\Delta W^l = W^l_{\text{aligned}} - W^l_{\text{base}}$$
 
 SVD of $\Delta W^l$ extracts the directions along which alignment modified the weights. The top singular vectors correspond to safety-relevant directions.
 
+> **Weight matrices** — the learnable parameters inside each transformer layer. They define the function the model computes. When we say "the difference between aligned and base model weights," we mean subtracting corresponding parameter arrays to see what the alignment training changed.
+
 This approach comes from the Task Arithmetic (Ilharco et al., 2023) and LoX (Perin et al., 2025) literature. Key advantages:
 
 - **No prompt dataset needed.** The directions come from weights alone.
@@ -75,6 +79,8 @@ This approach comes from the Task Arithmetic (Ilharco et al., 2023) and LoX (Per
 - **Negative application.** Applying $-\Delta W$ amplifies safety (hardening) rather than removing it.
 
 **When to use:** When you have access to both the aligned and base model weights. Particularly valuable when the aligned model has undergone complex fine-tuning (DPO, RLHF) that may not be fully captured by activation-based measurement.
+
+> **DPO (Direct Preference Optimization)** — a training technique where the model learns from pairs of "preferred" and "dispreferred" responses. Like RLHF, it teaches the model to refuse harmful requests, but with a simpler training procedure. Both DPO and RLHF modify the model's weights in ways that weight-diff measurement can detect.
 
 ## Comparison
 

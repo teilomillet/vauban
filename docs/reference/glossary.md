@@ -23,7 +23,7 @@ Terms used across docs.vauban.dev. Each entry links to the page where the concep
 
 **CAST.** Conditional Activation Steering. Runtime defense that monitors the refusal direction projection during generation and steers activations when the projection exceeds a threshold. Supports dual-direction detection, tiered alpha, and SVF-aware boundaries. See [Defend Your Model](../capabilities/defend-your-model.md).
 
-**Cosine separation.** The cosine similarity between the mean harmful activation and mean harmless activation at a given layer. Used to select the best layer for the refusal direction --- the layer with highest cosine separation produces the most discriminative direction.
+**Cosine separation.** The cosine similarity between the mean harmful activation and mean harmless activation at a given layer. Used to select the best layer for the refusal direction — the layer with highest cosine separation produces the most discriminative direction.
 
 **Cut.** The operation that removes the refusal direction from weight matrices via rank-1 projection. The core of abliteration. See [Modify Weights](../capabilities/modify-weights.md).
 
@@ -59,7 +59,7 @@ Terms used across docs.vauban.dev. Each entry links to the page where the concep
 
 **Probe.** Per-layer projection inspection. Runs a forward pass, records $\langle h^l_T, d \rangle$ at every layer. Shows how the refusal signal builds through the model's depth. See [Understand Your Model](../capabilities/understand-your-model.md).
 
-**Projection.** The scalar $\langle h, d \rangle = h \cdot d$ --- the component of activation $h$ along direction $d$. Positive values indicate alignment with the direction (e.g., the model is heading toward refusal). Negative values indicate the opposite.
+**Projection.** The scalar $\langle h, d \rangle = h \cdot d$ — the component of activation $h$ along direction $d$. Positive values indicate alignment with the direction (e.g., the model is heading toward refusal). Negative values indicate the opposite.
 
 **Refusal direction.** The specific direction in activation space that mediates refusal behavior. Positive projection correlates with refusal; negative with compliance. Extracted by [Measure](../capabilities/understand-your-model.md), used by every other tool.
 

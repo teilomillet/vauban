@@ -9,17 +9,21 @@ keywords: "LLM stress test, adversarial attack LLM, GCG attack, EGD optimization
 
 # Stress-Test Defenses
 
-Defenses that are never attacked are untested assumptions. Vauban includes a full adversarial toolkit for probing defense boundaries --- the same tools used to build defenses are available to break them.
+Defenses that are never attacked are untested assumptions. Vauban includes a full adversarial toolkit for probing defense boundaries — the same tools used to build defenses are available to break them.
 
 ## Gradient-based token optimization
 
 The **Softprompt** module optimizes learnable token sequences that bypass model defenses. Two core algorithms:
 
-**GCG** (Greedy Coordinate Gradient): discrete token optimization. At each step, compute the gradient of the attack loss with respect to every candidate token substitution, score the top-$k$ candidates, and keep the best. The search operates directly in token space --- each candidate is a valid token sequence.
+**GCG** (Greedy Coordinate Gradient): discrete token optimization. At each step, compute the gradient of the attack loss with respect to every candidate token substitution, score the top-$k$ candidates, and keep the best. The search operates directly in token space — each candidate is a valid token sequence.
 
-> **GCG** --- Greedy Coordinate Gradient descent (Zou et al., 2023). Iteratively substitutes tokens to minimize a target loss. The "greedy" part: only one position is changed per step. The "coordinate" part: all vocab tokens are scored at the candidate position via a gradient.
+> **GCG** — Greedy Coordinate Gradient descent (Zou et al., 2023). Iteratively substitutes tokens to minimize a target loss. The "greedy" part: only one position is changed per step. The "coordinate" part: all vocab tokens are scored at the candidate position via a gradient.
 
 **EGD** (Exponentiated Gradient Descent): continuous relaxation on the probability simplex. Instead of discrete token swaps, EGD maintains a distribution over the vocabulary at each position and updates via Bregman projection. Smoother optimization landscape, sometimes finds solutions GCG misses.
+
+> **Gradient** — a vector that points in the direction of steepest increase of a function. In optimization, gradients tell you "which small change would improve the result the most." GCG and EGD both use gradients of a loss function to figure out which token substitutions are most promising.
+
+> **Probability simplex** — the set of all valid probability distributions over vocabulary tokens. Each position sums to 1.0 (100%). EGD works with "soft" token assignments (e.g., 60% token A, 30% token B, 10% token C) rather than hard picks, giving the optimizer a smoother landscape to search.
 
 Both algorithms support:
 
@@ -32,7 +36,7 @@ Both algorithms support:
 
 The **GAN loop** is an iterative attack-defense protocol. Each round: the attacker optimizes a token sequence, the defender (SIC + CAST) tries to block it, and both sides receive feedback for the next round.
 
-> **GAN loop** --- not a generative adversarial network in the neural sense. The name describes the iterative dynamic: attacker generates, defender evaluates, attacker adapts. Each round warm-starts from the previous round's best result.
+> **GAN loop** — not a generative adversarial network in the neural sense. The name describes the iterative dynamic: attacker generates, defender evaluates, attacker adapts. Each round warm-starts from the previous round's best result.
 
 Escalation dynamics across rounds:
 
@@ -52,15 +56,17 @@ The single most important variable in adversarial token optimization is **where 
 | Prefix | 12% | $d = -2.93$ vs infix (CAST) |
 | Suffix | 4% | $d = -4.69$ vs infix (interventions) |
 
-> **Infix** --- adversarial tokens inserted *within* the user's prompt (e.g., between sentences), rather than prepended (prefix) or appended (suffix). Infix tokens reduce CAST interventions by 6x compared to suffix tokens because they are processed in the middle of the prompt's semantic context, making them harder for activation-based defenses to isolate.
+> **Infix** — adversarial tokens inserted *within* the user's prompt (e.g., between sentences), rather than prepended (prefix) or appended (suffix). Infix tokens reduce CAST interventions by 6x compared to suffix tokens because they are processed in the middle of the prompt's semantic context, making them harder for activation-based defenses to isolate.
 
 Position explains 67.2% of CAST score variance ($\eta^2 = 0.672$). The next strongest factor (GAN loop) explains 19.2%. This is a decisive result: **suffix optimization is a dead end for CAST evasion** (0/15 configs evaded), while infix optimization succeeds reliably.
+
+> **$\eta^2$ (eta-squared)** — the fraction of total variation in an outcome that is explained by a single factor. $\eta^2 = 0.672$ means position alone accounts for 67.2% of why some attacks evade CAST and others do not. This is a very large effect — in social science, $\eta^2 > 0.14$ is considered "large."
 
 ## Additional attack vectors
 
 **Jailbreak templates**: prompt-level attacks that do not require gradients. DAN, hypothetical framing, reasoning chain exploitation, role-play instructions. These work at any access level, including endpoint-only.
 
-**Fusion**: latent-space blending of harmful and harmless prompt representations. At a target layer, the hidden states of a harmful prompt and a benign prompt are interpolated: $h_{\text{fused}} = \lambda \cdot h_{\text{harmful}} + (1-\lambda) \cdot h_{\text{benign}}$. This is the prompt-side dual of abliteration --- instead of removing the refusal direction from weights, it dilutes the harmful signal in the activation.
+**Fusion**: latent-space blending of harmful and harmless prompt representations. At a target layer, the hidden states of a harmful prompt and a benign prompt are interpolated: $h_{\text{fused}} = \lambda \cdot h_{\text{harmful}} + (1-\lambda) \cdot h_{\text{benign}}$. This is the prompt-side dual of abliteration — instead of removing the refusal direction from weights, it dilutes the harmful signal in the activation.
 
 **COLD-Attack**: energy-based constrained decoding with Langevin dynamics. Searches for adversarial prompts in continuous space under fluency and position constraints.
 
@@ -79,8 +85,8 @@ Beyond position dominance, several findings shape how to interpret stress-test r
 
 ## Access requirements
 
-Gradient-based attacks (GCG, EGD, fusion, COLD, LARGO) require **full weight access** --- the gradients must be computed through the model's forward and backward passes.
+Gradient-based attacks (GCG, EGD, fusion, COLD, LARGO) require **full weight access** — the gradients must be computed through the model's forward and backward passes.
 
-Jailbreak templates and API evaluation work with **endpoint access** --- they operate entirely at the prompt level.
+Jailbreak templates and API evaluation work with **endpoint access** — they operate entirely at the prompt level.
 
 See [Access Levels](access-levels.md) for the complete matrix.

@@ -9,7 +9,7 @@ keywords: "composable AI tools, modular safety pipeline, TOML configuration, Uni
 
 # Composability
 
-Vauban follows the Unix philosophy: small tools that do one thing well, connected through simple interfaces. Nothing is glued together --- parts are assembled. Any piece can be swapped without touching the rest.
+Vauban follows the Unix philosophy: small tools that do one thing well, connected through simple interfaces. Nothing is glued together — parts are assembled. Any piece can be swapped without touching the rest.
 
 ## The building blocks
 
@@ -29,9 +29,9 @@ Each pipeline module is a focused operation with clear inputs and outputs:
 | **Softprompt** | Model + target prompt | Optimized adversarial tokens |
 | **Export** | Modified weights | Loadable model directory |
 
-The output of Measure (a direction) is the input to Cut, Probe, Surface, Steer, CAST, and Guard. The output of Cut (modified weights) is the input to Evaluate and Export. These are not hardcoded pipelines --- they are components you wire together.
+The output of Measure (a direction) is the input to Cut, Probe, Surface, Steer, CAST, and Guard. The output of Cut (modified weights) is the input to Evaluate and Export. These are not hardcoded pipelines — they are components you wire together.
 
-> **Frozen dataclass** --- a Python dataclass with `frozen=True` and `slots=True`. Once created, its fields cannot be modified. This guarantees that a result passed between pipeline stages cannot be silently mutated. Every config and result type in Vauban is frozen.
+> **Frozen dataclass** — a Python dataclass with `frozen=True` and `slots=True`. Once created, its fields cannot be modified. This guarantees that a result passed between pipeline stages cannot be silently mutated. Every config and result type in Vauban is frozen.
 
 ## TOML as the wiring diagram
 
@@ -72,17 +72,21 @@ The pipeline runner reads the config, determines which sections are present, res
 
 ## Interfaces are dataclasses
 
-Every boundary between modules is a typed, frozen dataclass. The direction that Measure produces is not a raw array --- it is a `MeasureResult` with fields for the direction vector, the layers it was extracted from, and the metadata about how it was computed.
+Every boundary between modules is a typed, frozen dataclass. The direction that Measure produces is not a raw array — it is a `MeasureResult` with fields for the direction vector, the layers it was extracted from, and the metadata about how it was computed.
 
 This matters for three reasons:
 
 **Type safety.** The type checker (`ty`) verifies that a module receiving a `MeasureResult` actually uses the fields that exist on it. There is no stringly-typed dictionary passing.
 
+> **Type checker** — a tool that reads your code *without running it* and verifies that values match their declared types. If a function expects a `MeasureResult` but you pass it a string, the type checker catches this before you ever run the code. Vauban uses `ty` for type checking — it catches bugs at development time rather than at runtime.
+
 **Immutability.** A frozen dataclass cannot be mutated after creation. When Measure hands a direction to CAST, CAST cannot accidentally modify it. The direction that CAST uses is guaranteed to be the direction that Measure produced.
 
 **Serialization.** Dataclasses serialize cleanly to JSON for reports and logging. The complete state of a pipeline run is captured in structured, typed data.
 
-> **Dataclass** --- a Python class that primarily holds data fields, declared with the `@dataclass` decorator. With `frozen=True`, instances are immutable after creation. With `slots=True`, they use less memory and prevent accidental attribute creation.
+> **Serialization** — converting an in-memory object (like a direction result) into a format that can be saved to a file or sent over a network (like JSON). Deserialization is the reverse: reading the file back into an object. Clean serialization means pipeline results can be saved, shared, and inspected without loss of information.
+
+> **Dataclass** — a Python class that primarily holds data fields, declared with the `@dataclass` decorator. With `frozen=True`, instances are immutable after creation. With `slots=True`, they use less memory and prevent accidental attribute creation.
 
 ## Swapping components
 
@@ -92,7 +96,7 @@ The composable design means any component can be replaced without affecting othe
 
 **Backend.** The `_ops` and `_array` abstraction layers mean pipeline code never imports MLX or PyTorch directly. Switching backends changes the tensor operations underneath but not the pipeline logic above.
 
-**Defense layers.** CAST, SIC, and Guard are independent modules. You can run any combination. Adding Guard to an existing CAST config is adding a `[guard]` section --- no code changes, no rewiring.
+**Defense layers.** CAST, SIC, and Guard are independent modules. You can run any combination. Adding Guard to an existing CAST config is adding a `[guard]` section — no code changes, no rewiring.
 
 **Attack mode.** GCG and EGD are different optimization algorithms for the same softprompt objective. Switching between them is `mode = "gcg"` vs `mode = "egd"` in the same `[softprompt]` section.
 
@@ -115,10 +119,10 @@ Each method corresponds to a pipeline module. The Session tracks which operation
 The Session is self-describing: an agent can call `s.tools()` to discover available operations, their parameters, and their current applicability given the pipeline state.
 
 !!! note "Composition order"
-    Some compositions have implicit ordering. Measure must run before Cut (you need a direction to project out). CAST must have a direction before it can monitor. The pipeline runner resolves this automatically from the TOML config. The Session tracks it via state. But the modules themselves have no knowledge of each other --- they depend on interfaces, not implementations.
+    Some compositions have implicit ordering. Measure must run before Cut (you need a direction to project out). CAST must have a direction before it can monitor. The pipeline runner resolves this automatically from the TOML config. The Session tracks it via state. But the modules themselves have no knowledge of each other — they depend on interfaces, not implementations.
 
 ## Related pages
 
-- [Attack-Defense Duality](attack-defense-duality.md) --- how attack and defense modules compose
-- [Reproducibility](reproducibility.md) --- how TOML configs capture complete experiment definitions
-- [Last-Mile Reliability](last-mile-reliability.md) --- how defense composition addresses production needs
+- [Attack-Defense Duality](attack-defense-duality.md) — how attack and defense modules compose
+- [Reproducibility](reproducibility.md) — how TOML configs capture complete experiment definitions
+- [Last-Mile Reliability](last-mile-reliability.md) — how defense composition addresses production needs

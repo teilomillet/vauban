@@ -15,24 +15,26 @@ Systematically discovering where a model refuses and where it does not.
 
 A model's refusal behavior is not a single number. It varies across multiple dimensions:
 
-- **Category** --- the model may refuse drug synthesis but comply with social engineering.
-- **Style** --- a direct request may trigger refusal while a roleplay framing does not.
-- **Language** --- refusal may be strong in English but weak in other languages.
-- **Turn depth** --- the model may comply after several turns of conversation that gradually shift context.
-- **Framing** --- academic framing, hypothetical framing, or fictional framing each produce different refusal rates.
+- **Category** — the model may refuse drug synthesis but comply with social engineering.
+- **Style** — a direct request may trigger refusal while a roleplay framing does not.
+- **Language** — refusal may be strong in English but weak in other languages.
+- **Turn depth** — the model may comply after several turns of conversation that gradually shift context.
+- **Framing** — academic framing, hypothetical framing, or fictional framing each produce different refusal rates.
 
-The combination of these dimensions forms the **refusal surface** --- a multi-dimensional landscape where each point represents a specific type of request and the model's disposition toward refusing or complying with it.
+The combination of these dimensions forms the **refusal surface** — a multi-dimensional landscape where each point represents a specific type of request and the model's disposition toward refusing or complying with it.
 
-> **What is a "refusal surface" intuitively?** --- Think of a topographic map. The height at each point represents how strongly the model refuses that type of request. Mountains are strong refusal (the model consistently declines). Valleys are weak or absent refusal (the model complies). The terrain is not uniform --- it has ridges, cliffs, and plains. Surface mapping is the process of surveying this terrain to understand its shape before you modify it.
+> **What is a "refusal surface" intuitively?** — Think of a topographic map. The height at each point represents how strongly the model refuses that type of request. Mountains are strong refusal (the model consistently declines). Valleys are weak or absent refusal (the model complies). The terrain is not uniform — it has ridges, cliffs, and plains. Surface mapping is the process of surveying this terrain to understand its shape before you modify it.
 
 ## What surface mapping does
 
 Surface mapping runs a diverse prompt set through the model and records two quantities per prompt:
 
-1. **Projection** --- the scalar projection of the last-token activation onto the [refusal direction](refusal-direction.md). This measures the model's *internal* refusal signal.
-2. **Refusal decision** --- whether the model actually refuses (detected by checking generated output for refusal phrases). This measures the model's *external* behavior.
+1. **Projection** — the scalar projection of the last-token activation onto the [refusal direction](refusal-direction.md). This measures the model's *internal* refusal signal.
+2. **Refusal decision** — whether the model actually refuses (detected by checking generated output for refusal phrases). This measures the model's *external* behavior.
 
-The gap between these is informative. A prompt with high projection but no refusal suggests the model is close to refusing but does not --- a fragile boundary. A prompt with low projection but refusal suggests refusal driven by something other than the measured direction.
+The gap between these is informative. A prompt with high projection but no refusal suggests the model is close to refusing but does not — a fragile boundary. A prompt with low projection but refusal suggests refusal driven by something other than the measured direction.
+
+> **False positive vs. false negative** — a false positive is when the model refuses a harmless request (it "sees danger" where there is none). A false negative is when the model complies with a harmful request (it misses real danger). Surface mapping reveals both: high projection on harmless prompts suggests false-positive risk, and low projection on harmful prompts suggests false-negative risk.
 
 ## Before and after
 
@@ -66,6 +68,8 @@ $$\text{coverage} = \frac{|\text{observed cells}|}{|\text{total cells}|}$$
 
 where cells are defined by the Cartesian product of category, style, language, turn depth, and framing buckets.
 
+> **Cartesian product** — all possible combinations of items from multiple lists. If you have 3 categories, 2 styles, and 2 languages, the Cartesian product is 3 x 2 x 2 = 12 unique combinations (cells). Coverage measures how many of those 12 cells your prompt set actually tests.
+
 Higher coverage means more confidence that the surface map represents the model's true refusal landscape rather than a narrow slice of it. Low coverage is a warning that unmapped regions may contain surprises.
 
 ## Grouping and aggregation
@@ -76,11 +80,11 @@ Surface mapping results are grouped along each dimension:
 - **By style**: how framing (direct, roleplay, academic, hypothetical) affects refusal.
 - **By language**: cross-lingual refusal consistency.
 
-Each group reports count, refusal rate, mean projection, and standard deviation. This reveals asymmetries --- categories where the model is confident (high projection, consistent refusal) versus categories where it is borderline (moderate projection, inconsistent refusal).
+Each group reports count, refusal rate, mean projection, and standard deviation. This reveals asymmetries — categories where the model is confident (high projection, consistent refusal) versus categories where it is borderline (moderate projection, inconsistent refusal).
 
 ## Surface mapping in the pipeline
 
-Surface mapping is a **discovery** tool. It does not modify the model --- it observes it. The typical workflow:
+Surface mapping is a **discovery** tool. It does not modify the model — it observes it. The typical workflow:
 
 1. **Map** the original model's refusal surface.
 2. **Intervene** (cut, steer, harden).
@@ -93,7 +97,7 @@ This is the empirical counterpart to [measurement](measurement.md): measurement 
 
 Surface mapping informs [defense design](defense-complementarity.md). If the map reveals that infix-positioned requests in a specific category consistently evade CAST, that is a signal to strengthen SIC for that category or adjust CAST thresholds.
 
-The refusal surface is not static --- it changes with every intervention. Continuous mapping is how you track the model's behavioral envelope over time.
+The refusal surface is not static — it changes with every intervention. Continuous mapping is how you track the model's behavioral envelope over time.
 
 !!! tip "Discovery before action"
     Map the surface before cutting or steering. A direction may look clean by cosine separation but produce unexpected refusal patterns across categories. Surface mapping catches asymmetries that aggregate metrics miss.

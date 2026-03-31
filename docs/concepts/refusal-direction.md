@@ -13,7 +13,9 @@ The single direction in activation space that controls whether a language model 
 
 ## One direction mediates refusal
 
-Arditi et al. (2024) demonstrated a remarkable finding: safety refusal in instruction-tuned language models is mediated by a **single direction** in activation space. This is not a distributed, entangled property learned during RLHF --- it is a vector that can be isolated, measured, and manipulated with linear algebra.
+Arditi et al. (2024) demonstrated a remarkable finding: safety refusal in instruction-tuned language models is mediated by a **single direction** in activation space. This is not a distributed, entangled property learned during RLHF — it is a vector that can be isolated, measured, and manipulated with linear algebra.
+
+> **RLHF (Reinforcement Learning from Human Feedback)** — a training technique where human evaluators rate model outputs, and the model is fine-tuned to produce outputs that score highly. This is how most language models learn to refuse harmful requests. The refusal behavior RLHF instills turns out to be surprisingly simple in geometric terms.
 
 The refusal direction $\hat{d}$ has a simple signature:
 
@@ -33,17 +35,21 @@ Then L2-normalize:
 
 $$\hat{d}_l = \frac{d_l}{\|d_l\|}$$
 
-This is the simplest form of [measurement](measurement.md) --- it produces one direction per layer. More sophisticated modes (subspace, DBDI, weight-diff) exist for cases where a single direction is insufficient.
+> **L2-normalize** — scale a vector so its length (magnitude) becomes exactly 1, while keeping it pointing the same way. This turns it into a "unit vector" — a pure direction with no magnitude information. Dividing by $\|d_l\|$ (the vector's length) does this.
 
-> **What is "a direction in high-dimensional space"?** --- Think of a compass needle. It does not describe a location --- it describes an *orientation*. In 3D, a direction is a unit vector like $(0.6, 0.8, 0)$. In 1536 dimensions, it works the same way: a unit vector that picks out one axis of variation from the space. You cannot visualize 1536 dimensions, but the math is identical. Projecting an activation onto this direction gives a single number --- positive means "refusal-like," negative means "compliance-like."
+This is the simplest form of [measurement](measurement.md) — it produces one direction per layer. More sophisticated modes (subspace, DBDI, weight-diff) exist for cases where a single direction is insufficient.
+
+> **What is "a direction in high-dimensional space"?** — Think of a compass needle. It does not describe a location — it describes an *orientation*. In 3D, a direction is a unit vector like $(0.6, 0.8, 0)$. In 1536 dimensions, it works the same way: a unit vector that picks out one axis of variation from the space. You cannot visualize 1536 dimensions, but the math is identical. Projecting an activation onto this direction gives a single number — positive means "refusal-like," negative means "compliance-like."
 
 ## Layer selection
 
-Not all layers carry the refusal signal equally. Vauban scores each layer by **cosine separation** --- the gap between the mean projection of harmful activations and the mean projection of harmless activations onto the direction extracted at that layer:
+Not all layers carry the refusal signal equally. Vauban scores each layer by **cosine separation** — the gap between the mean projection of harmful activations and the mean projection of harmless activations onto the direction extracted at that layer.
+
+> **Cosine separation** — a measure of how well a direction distinguishes two groups. If harmful and harmless activations project very differently onto a direction (one group scores high, the other low), the cosine separation is large. A large gap means the direction is a good "detector" for that layer.
 
 $$s_l = \langle \mu_H^l, \hat{d}_l \rangle - \langle \mu_B^l, \hat{d}_l \rangle$$
 
-The layer with the highest $s_l$ is the most discriminative --- it separates harmful from harmless most cleanly. This layer is selected for cutting and monitoring.
+The layer with the highest $s_l$ is the most discriminative — it separates harmful from harmless most cleanly. This layer is selected for cutting and monitoring.
 
 In practice, the refusal signal tends to concentrate in the middle-to-upper layers. Early layers encode mostly syntactic and positional information; the refusal decision crystallizes later.
 
@@ -57,15 +63,15 @@ This number is Vauban's primary observable:
 
 | Projection | Interpretation |
 |---|---|
-| Large positive | Model is about to refuse --- high refusal activation |
-| Near zero | Ambiguous --- model could go either way |
-| Negative | Model is about to comply --- refusal suppressed |
+| Large positive | Model is about to refuse — high refusal activation |
+| Near zero | Ambiguous — model could go either way |
+| Negative | Model is about to comply — refusal suppressed |
 
 [CAST](steering.md) uses this value for zone classification (green/yellow/orange/red). [Surface mapping](surface-mapping.md) records it per-prompt to map where refusal is strong or weak.
 
 ## The direction is not the behavior
 
-An important subtlety: the refusal direction does not *cause* refusal. It is a **linear readout** of an internal decision that the model has already made (or is making). The causal structure flows through weights --- attention and MLP layers write refusal-correlated signal into the [residual stream](activation-geometry.md). The direction is how we observe and measure that signal.
+An important subtlety: the refusal direction does not *cause* refusal. It is a **linear readout** of an internal decision that the model has already made (or is making). The causal structure flows through weights — attention and MLP layers write refusal-correlated signal into the [residual stream](activation-geometry.md). The direction is how we observe and measure that signal.
 
 This distinction matters for intervention design:
 
@@ -75,13 +81,13 @@ This distinction matters for intervention design:
 
 ## Beyond a single direction
 
-The refusal direction is rank-1 --- a single vector captures nearly all the variance. But some behaviors are richer:
+The refusal direction is rank-1 — a single vector captures nearly all the variance. But some behaviors are richer:
 
 - **Subspace measurement** extracts a $k$-dimensional subspace via SVD, capturing more structure.
 - **DBDI** decomposes refusal into two directions: HDD (harm detection, at instruction-final token) and RED (refusal execution, at sequence-final token). Cutting RED while preserving HDD lets the model recognize harm without refusing.
 - **Weight-diff** extracts directions from the difference between aligned and base model weights, without needing prompt datasets at all.
 
-These are all covered in [Measurement](measurement.md). The single refusal direction remains the default starting point --- it is the simplest, fastest, and sufficient for most use cases.
+These are all covered in [Measurement](measurement.md). The single refusal direction remains the default starting point — it is the simplest, fastest, and sufficient for most use cases.
 
 !!! note "Shrivastava & Holtzman (2025)"
-    Refused knowledge remains linearly decodable from hidden states even when the model refuses to output it. This confirms that refusal is a **gate**, not erasure --- the model knows the answer but chooses not to say it. The refusal direction controls that gate.
+    Refused knowledge remains linearly decodable from hidden states even when the model refuses to output it. This confirms that refusal is a **gate**, not erasure — the model knows the answer but chooses not to say it. The refusal direction controls that gate.

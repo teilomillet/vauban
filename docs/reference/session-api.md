@@ -13,7 +13,7 @@ keywords: "vauban session API, programmatic LLM safety, AI agent API, tool disco
 
 ## What Session is
 
-A Session wraps a loaded model and tracks the results of every operation. Tools declare prerequisites (`measure` must run before `probe`), and the Session enforces this automatically --- if you call `probe()` before `measure()`, it measures first.
+A Session wraps a loaded model and tracks the results of every operation. Tools declare prerequisites (`measure` must run before `probe`), and the Session enforces this automatically — if you call `probe()` before `measure()`, it measures first.
 
 ```python
 from vauban.session import Session
@@ -23,21 +23,25 @@ s = Session("mlx-community/Qwen2.5-1.5B-Instruct-bf16")
 
 The constructor loads the model and tokenizer, dequantizes if needed, and loads default harmful/harmless prompt sets. Custom prompts can be passed via `harmful_prompts` and `harmless_prompts` keyword arguments.
 
+> **Tokenizer** — the component that converts text into tokens (numbers) and back. The model processes numbers, not letters. The tokenizer handles the translation in both directions. When Session loads a model, it loads the tokenizer too, since they must match.
+
+> **Dequantize** — convert a compressed (quantized) model back to full-precision floating point. Quantized models use fewer bits per number to save memory, but some operations (like extracting precise refusal directions) work better at full precision. Session handles this automatically.
+
 ## Discovery
 
 Four methods for understanding what is available:
 
-**`s.tools()`** --- returns a list of `Tool` dataclasses, each with `name`, `description`, `requires`, `produces`, and `category`. This is the complete capability inventory.
+**`s.tools()`** — returns a list of `Tool` dataclasses, each with `name`, `description`, `requires`, `produces`, and `category`. This is the complete capability inventory.
 
-**`s.available()`** --- returns the names of tools whose prerequisites are currently met. At session start, this includes tools that only require `model` (measure, detect, audit, jailbreak) and tools with no requirements (classify, score).
+**`s.available()`** — returns the names of tools whose prerequisites are currently met. At session start, this includes tools that only require `model` (measure, detect, audit, jailbreak) and tools with no requirements (classify, score).
 
-**`s.needs(tool_name)`** --- returns the unmet prerequisites for a specific tool. `s.needs("probe")` returns `["direction"]` if `measure()` has not been called.
+**`s.needs(tool_name)`** — returns the unmet prerequisites for a specific tool. `s.needs("probe")` returns `["direction"]` if `measure()` has not been called.
 
-**`s.state()`** --- returns a dict of booleans showing what has been computed: `model`, `direction`, `detect_result`, `audit_result`, `modified_model`.
+**`s.state()`** — returns a dict of booleans showing what has been computed: `model`, `direction`, `detect_result`, `audit_result`, `modified_model`.
 
 ## Guided workflows
 
-**`s.guide(goal)`** --- returns plain-text instructions for a named workflow. Available goals:
+**`s.guide(goal)`** — returns plain-text instructions for a named workflow. Available goals:
 
 | Goal | What it covers |
 |---|---|
@@ -49,9 +53,9 @@ Four methods for understanding what is available:
 
 Calling `s.guide()` with no argument lists all available workflows.
 
-**`s.done(goal)`** --- returns `(is_done: bool, reason: str)`. Call after each step to know when to stop.
+**`s.done(goal)`** — returns `(is_done: bool, reason: str)`. Call after each step to know when to stop.
 
-**`s.suggest_next()`** --- context-aware recommendations based on current state and findings. Each suggestion is labeled `[FACT]` (based on measured data) or `[ADVICE]` (heuristic). Use `s.done(goal)` rather than `suggest_next()` to determine completion --- suggestions always recommend more work.
+**`s.suggest_next()`** — context-aware recommendations based on current state and findings. Each suggestion is labeled `[FACT]` (based on measured data) or `[ADVICE]` (heuristic). Use `s.done(goal)` rather than `suggest_next()` to determine completion — suggestions always recommend more work.
 
 ## Tool categories
 
@@ -103,7 +107,7 @@ Calling `s.guide()` with no argument lists all available workflows.
 | `s.classify(text)` | Score text against 13-domain harm taxonomy | none | harm scores |
 | `s.score(prompt, response)` | 5-axis quality assessment (length, structure, anti-refusal, directness, relevance) | none | score result |
 
-These are static methods --- they work without a loaded model and without a measured direction.
+These are static methods — they work without a loaded model and without a measured direction.
 
 ### Reporting
 
@@ -147,6 +151,8 @@ model (always available)
 ```
 
 If a tool's prerequisite is not met, calling it will auto-trigger the prerequisite. For example, `s.probe("test")` will call `s.measure()` first if no direction exists.
+
+> **Prerequisite tracking** — the Session knows which operations depend on which results. You do not need to manually manage the order — if you call a tool that needs a direction, the Session measures one first. This makes programmatic use forgiving: you can call what you need, and dependencies resolve automatically.
 
 ## Authoritative source
 

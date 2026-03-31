@@ -9,7 +9,7 @@ keywords: "LLM weight modification, abliteration cut, model surgery, weight proj
 
 # Modify Weights
 
-Weight modification produces a new model --- a permanent change to behavior that persists without any runtime overhead. The modified model is exported as a standard model directory (safetensors + tokenizer + config) that any inference framework can load.
+Weight modification produces a new model — a permanent change to behavior that persists without any runtime overhead. The modified model is exported as a standard model directory (safetensors + tokenizer + config) that any inference framework can load.
 
 ## The cut operation
 
@@ -17,12 +17,12 @@ Weight modification produces a new model --- a permanent change to behavior that
 
 $$W' = W - \alpha \cdot d \, d^\top W$$
 
-> **Rank-1 projection** --- the matrix $d \, d^\top$ projects any vector onto the line spanned by $d$. Subtracting this projection from $W$ removes the component of $W$ that writes along $d$. The model can no longer produce activations that point in the refusal direction through the modified layers.
+> **Rank-1 projection** — the matrix $d \, d^\top$ projects any vector onto the line spanned by $d$. Subtracting this projection from $W$ removes the component of $W$ that writes along $d$. The model can no longer produce activations that point in the refusal direction through the modified layers.
 
 This operation targets two projections per layer:
 
-- **`o_proj`** --- the attention output projection. This is where multi-head attention writes its result into the residual stream.
-- **`down_proj`** --- the MLP output projection. This is where the feedforward block writes into the residual stream.
+- **`o_proj`** — the attention output projection. This is where multi-head attention writes its result into the residual stream.
+- **`down_proj`** — the MLP output projection. This is where the feedforward block writes into the residual stream.
 
 These are the only matrices that write into the [residual stream](../concepts/activation-geometry.md). Cutting them removes the model's ability to accumulate refusal signal at the modified layers.
 
@@ -31,8 +31,8 @@ These are the only matrices that write into the [residual stream](../concepts/ac
 The parameter $\alpha$ controls removal strength:
 
 - $\alpha = 1.0$: full removal of the refusal component.
-- $\alpha = 0.5$: half removal --- the model retains partial refusal ability.
-- $\alpha > 1.0$: overcorrection --- can push the model *away* from refusal, sometimes causing incoherence.
+- $\alpha = 0.5$: half removal — the model retains partial refusal ability.
+- $\alpha > 1.0$: overcorrection — can push the model *away* from refusal, sometimes causing incoherence.
 
 **Per-layer alpha** allows different strengths at different layers. Refusal is not uniformly distributed: early layers carry less refusal signal, peak layers carry the most. A `layer_weights` list multiplies the base alpha per layer, enabling surgical removal that concentrates on the layers where refusal is strongest.
 
@@ -56,11 +56,13 @@ $$d' = d_r - (d_r \cdot d_h) \, d_h, \quad d' \leftarrow d' / \|d'\|$$
 
 This preserves the component of the weights that encodes harmless behavior, reducing collateral damage to the model's general capabilities.
 
-**Sparsity**: zero out the smallest components of the direction vector before cutting. A sparsity of 0.1 zeros the bottom 10% of $d$'s dimensions. The cut becomes more targeted --- only the dimensions where the direction has significant magnitude are affected.
+**Sparsity**: zero out the smallest components of the direction vector before cutting. A sparsity of 0.1 zeros the bottom 10% of $d$'s dimensions. The cut becomes more targeted — only the dimensions where the direction has significant magnitude are affected.
 
 ## The tradeoff space
 
 More aggressive removal = lower refusal rate + higher perplexity + lower coherence. This is a Pareto frontier, not a free lunch.
+
+> **Pareto frontier** — the set of configurations where you cannot improve one metric without worsening another. If you want less refusal, you must accept higher perplexity. There is no magic setting that gives you both zero refusal and zero quality loss — you are choosing a point on a tradeoff curve.
 
 | Parameter | Refusal rate | Perplexity | Coherence |
 |---|---|---|---|
@@ -71,6 +73,8 @@ More aggressive removal = lower refusal rate + higher perplexity + lower coheren
 
 **Optuna search** automates navigation of this frontier. It runs multi-objective Bayesian optimization over cut parameters (alpha, sparsity, layer strategy, norm-preserve flag) and returns the Pareto-optimal configurations.
 
+> **Bayesian optimization** — a smart search strategy that builds a model of "which parameter combinations are likely to be good" based on results so far, then picks the next combination to try based on that model. Much more efficient than brute-force grid search when each trial is expensive (loading a model, cutting, evaluating).
+
 ## Cut vs. steering
 
 Cut and [steering](defend-your-model.md) both operate on the refusal direction, but they are fundamentally different:
@@ -78,7 +82,7 @@ Cut and [steering](defend-your-model.md) both operate on the refusal direction, 
 | Property | Cut | Steering |
 |---|---|---|
 | When | Offline, before deployment | Runtime, during generation |
-| Permanence | Permanent --- weights are modified | Ephemeral --- activations modified per-token |
+| Permanence | Permanent — weights are modified | Ephemeral — activations modified per-token |
 | Cost | Zero runtime overhead | Per-token computation overhead |
 | Reversibility | Not reversible (keep the original weights) | Fully reversible (just stop steering) |
 | Output | New model directory | Steered generation output |
@@ -90,8 +94,10 @@ Cut is the right tool when you want a model that behaves differently *everywhere
 
 After cutting, **Export** writes the modified model to disk as a standard directory: safetensors weight files, tokenizer, and model config. The output directory is loadable by mlx-lm, transformers, or any framework that reads the HuggingFace model format.
 
+> **Safetensors** — a file format for storing model weight tensors. It is the standard format used by HuggingFace and most modern ML frameworks. Unlike older formats (pickle), safetensors files cannot execute arbitrary code when loaded — they only contain raw numerical arrays.
+
 Only modified weight tensors are rewritten. Untouched tensors are not materialized, keeping export fast and memory-efficient.
 
 ## Access requirements
 
-Weight modification requires **full weight access**. The entire operation chain --- measure, cut, evaluate, export --- operates on local weight tensors. The output is a new model directory that can then be deployed anywhere.
+Weight modification requires **full weight access**. The entire operation chain — measure, cut, evaluate, export — operates on local weight tensors. The output is a new model directory that can then be deployed anywhere.
