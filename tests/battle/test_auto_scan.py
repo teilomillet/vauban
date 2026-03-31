@@ -49,6 +49,7 @@ class TestScanPerturb:
     """ordeal auto-scans vauban.perturb — should pass clean."""
 
     def test_scan(self) -> None:
+        """Every public function in perturb must pass crash + type checks."""
         result = scan_module(
             "vauban.perturb",
             max_examples=20,
@@ -62,6 +63,7 @@ class TestScanScoring:
     """ordeal auto-scans vauban.scoring."""
 
     def test_score_response_no_crash(self) -> None:
+        """score_response must not crash on arbitrary string pairs."""
         result = fuzz(
             _get_fn("vauban.scoring", "score_response"),
             max_examples=30,
@@ -103,6 +105,7 @@ class TestScanTaxonomy:
     """ordeal auto-scans vauban.taxonomy."""
 
     def test_score_text_no_crash(self) -> None:
+        """score_text must not crash on arbitrary text input."""
         result = fuzz(
             _get_fn("vauban.taxonomy", "score_text"),
             max_examples=30,
@@ -111,6 +114,7 @@ class TestScanTaxonomy:
         assert result.passed, result.summary()
 
     def test_classify_text_no_crash(self) -> None:
+        """classify_text must not crash — returns str | None for any input."""
         result = fuzz(
             _get_fn("vauban.taxonomy", "classify_text"),
             max_examples=30,
@@ -136,6 +140,7 @@ class TestFuzzPerturb:
     """Deep-fuzz vauban.perturb.perturb with boundary inputs."""
 
     def test_fuzz_all_techniques(self) -> None:
+        """Fuzz all perturbation techniques x intensities x seeds."""
         from vauban.perturb import perturb
 
         result = fuzz(
@@ -156,6 +161,7 @@ class TestFuzzScoring:
     """Deep-fuzz scoring with adversarial inputs."""
 
     def test_fuzz_score_response(self) -> None:
+        """Deep-fuzz score_response with adversarial prompt/response pairs."""
         from vauban.scoring import score_response
 
         result = fuzz(
@@ -176,6 +182,7 @@ class TestChaosScoring:
     """Deep-fuzz score_response (the single-pair API)."""
 
     def test_scoring_fuzz_deep(self) -> None:
+        """Extended fuzz with wider input ranges than scan_module provides."""
         from vauban.scoring import score_response
 
         result = fuzz(
@@ -191,6 +198,7 @@ class TestChaosTaxonomy:
     """ChaosTest auto-generated from vauban.taxonomy."""
 
     def test_taxonomy_chaos(self) -> None:
+        """Stateful test: randomly call taxonomy functions, check no crashes."""
         test_case = chaos_for(
             "vauban.taxonomy",
             fixtures={

@@ -5,6 +5,19 @@
 
 Uses ordeal invariants to verify algebraic and numeric properties
 of cut, probe, cast, and evaluate beyond smoke-test coverage.
+
+These tests verify **contracts**: invariants that must hold regardless
+of input. If a property test fails, the module's mathematical
+guarantees are broken — not just a specific edge case.
+
+Modules tested:
+    cut       — rank-1 projection algebra (key closure, norm preservation,
+                alpha-zero identity, projection contraction, Gram-Schmidt)
+    probe     — forward-pass structural guarantees (layer count, determinism,
+                finite projections)
+    cast      — runtime steering contracts (intervention rate bounds,
+                threshold gating, finite projections)
+    evaluate  — metric bounds (refusal rate in [0,1], PPL >= 1, KL >= 0)
 """
 
 from __future__ import annotations
@@ -26,21 +39,24 @@ from vauban import _ops as ops
 from vauban._array import Array
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Helpers — lightweight factories for test isolation
 # ---------------------------------------------------------------------------
 
 
 def _make_model() -> MockCausalLM:
+    """Build a fresh mock model with evaluated parameters."""
     m = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
     ops.eval(m.parameters())
     return m
 
 
 def _make_tokenizer() -> MockTokenizer:
+    """Build a mock tokenizer matching the model's vocab."""
     return MockTokenizer(VOCAB_SIZE)
 
 
 def _make_direction() -> Array:
+    """Generate a random unit-norm direction vector (d_model,)."""
     d = ops.random.normal((D_MODEL,))
     d = d / ops.linalg.norm(d)
     ops.eval(d)
@@ -48,6 +64,11 @@ def _make_direction() -> Array:
 
 
 def _make_weights() -> dict[str, Array]:
+    """Flatten a mock model's parameters into a weight dict.
+
+    Mirrors the format that cut/cut_subspace expect: dotted keys
+    like "model.layers.0.self_attn.o_proj.weight".
+    """
     model = _make_model()
     flat: dict[str, Array] = {}
 
@@ -68,6 +89,10 @@ def _make_weights() -> dict[str, Array]:
 
 # ---------------------------------------------------------------------------
 # cut — algebraic properties
+#
+# The cut module removes a direction from weight matrices via rank-1
+# orthogonal projection: W' = W - alpha * d (d^T W). These tests
+# verify the algebraic contracts of that operation.
 # ---------------------------------------------------------------------------
 
 
@@ -75,7 +100,11 @@ class TestCutProperties:
     """Verify algebraic invariants of the cut module."""
 
     def test_cut_key_closure(self) -> None:
-        """Output dict has exactly the same keys as input."""
+        """Cut returns a dict with exactly the same keys as the input.
+
+        No keys are added or removed — unmodified layers are shared
+        by reference, modified layers are replaced in-place.
+        """
         from vauban.cut import cut
 
         weights = _make_weights()
@@ -84,7 +113,12 @@ class TestCutProperties:
         assert set(result.keys()) == set(weights.keys())
 
     def test_cut_norm_preserve(self) -> None:
-        """With norm_preserve=True, row norms are preserved."""
+        """With norm_preserve=True, row norms are preserved exactly.
+
+        After projection removal, rows are rescaled to match their
+        original L2 norms. This prevents the cut from changing the
+        activation magnitude, only the direction.
+        """
         from vauban.cut import cut
 
         weights = _make_weights()
@@ -103,7 +137,10 @@ class TestCutProperties:
                 )
 
     def test_cut_alpha_zero_is_identity(self) -> None:
-        """alpha=0 should return weights unchanged."""
+        """alpha=0 means "remove nothing" — weights must be unchanged.
+
+        This is the degenerate case: W' = W - 0 * d(d^T W) = W.
+        """
         from vauban.cut import cut
 
         weights = _make_weights()
@@ -117,7 +154,12 @@ class TestCutProperties:
             )
 
     def test_cut_projection_reduces(self) -> None:
-        """After cut, projection onto direction is smaller."""
+        """After cut(alpha=1), the direction's projection onto W shrinks.
+
+        This is the core contract: removing a direction means the
+        remaining weights have less alignment with that direction.
+        Formally: |d^T W'| <= |d^T W| for all target weight matrices.
+        """
         from vauban.cut import cut
 
         weights = _make_weights()
@@ -138,7 +180,7 @@ class TestCutProperties:
     @given(sparsity=st.floats(min_value=0.0, max_value=1.0))
     @settings(max_examples=50, deadline=None)
     def test_sparsify_preserves_shape(self, sparsity: float) -> None:
-        """Sparsified direction has same shape as input."""
+        """Sparsification zeroes components but never changes shape."""
         from vauban.cut import sparsify_direction
 
         direction = _make_direction()
@@ -149,7 +191,10 @@ class TestCutProperties:
     @given(sparsity=st.floats(min_value=0.01, max_value=0.99))
     @settings(max_examples=50, deadline=None)
     def test_sparsify_zeros_components(self, sparsity: float) -> None:
-        """Sparsified direction has at most ceil(d*(1-s)) non-zero entries."""
+        """Sparsified vector keeps at most ceil(d*(1-s)) non-zero entries.
+
+        sparsity=0.9 means keep top 10% by magnitude, zero the rest.
+        """
         from vauban.cut import sparsify_direction
 
         direction = _make_direction()
@@ -161,7 +206,11 @@ class TestCutProperties:
         )
 
     def test_target_weight_keys_finds_projections(self) -> None:
-        """target_weight_keys returns only o_proj and down_proj keys."""
+        """target_weight_keys selects only output projection matrices.
+
+        These are the matrices where the refusal direction lives in
+        the output space: o_proj.weight, down_proj.weight, fc2.weight.
+        """
         from vauban.cut import target_weight_keys
 
         all_keys = list(_make_weights().keys())
@@ -174,7 +223,12 @@ class TestCutProperties:
             ), f"Unexpected target key: {key}"
 
     def test_biprojected_orthogonal_to_harmless(self) -> None:
-        """Biprojected direction should be orthogonal to harmless direction."""
+        """Gram-Schmidt orthogonalizes refusal against harmless direction.
+
+        After biprojection, the resulting direction should have zero
+        dot product with the harmless direction — so cutting it
+        doesn't damage harmless behavior.
+        """
         from vauban.cut import _biprojected_direction
 
         refusal = _make_direction()
@@ -186,6 +240,10 @@ class TestCutProperties:
 
 # ---------------------------------------------------------------------------
 # probe — structural properties
+#
+# Probe runs a single forward pass and records per-layer projections
+# onto a direction. These tests verify structural guarantees: correct
+# output shape, determinism, and numeric safety.
 # ---------------------------------------------------------------------------
 
 
@@ -193,7 +251,7 @@ class TestProbeProperties:
     """Verify structural invariants of the probe module."""
 
     def test_probe_layer_count(self) -> None:
-        """Probe returns exactly one projection per layer."""
+        """Probe returns exactly one projection per transformer layer."""
         from vauban.probe import probe
 
         model = _make_model()
@@ -205,7 +263,11 @@ class TestProbeProperties:
         assert len(result.projections) == NUM_LAYERS
 
     def test_probe_determinism(self) -> None:
-        """Same inputs produce identical projections."""
+        """Probe is a pure forward pass — same inputs, same outputs.
+
+        No randomness in probe: no sampling, no dropout. Two calls
+        with identical inputs must produce identical projections.
+        """
         from vauban.probe import probe
 
         model = _make_model()
@@ -219,7 +281,7 @@ class TestProbeProperties:
         )
 
     def test_probe_projections_finite(self) -> None:
-        """All projections must be finite (no NaN/Inf)."""
+        """Projections must be finite — NaN/Inf means numerical blowup."""
         from vauban.probe import probe
 
         model = _make_model()
@@ -229,7 +291,10 @@ class TestProbeProperties:
         finite(result.projections, name="projections")
 
     def test_steer_produces_text(self) -> None:
-        """Steer generates text and records projections."""
+        """Steer generates text and records before/after projections.
+
+        One projection pair per generated token (5 tokens = 5 pairs).
+        """
         from vauban.probe import steer
 
         model = _make_model()
@@ -248,6 +313,10 @@ class TestProbeProperties:
 
 # ---------------------------------------------------------------------------
 # cast — runtime steering properties
+#
+# CAST (Conditional Activation Steering) only intervenes when the
+# projection exceeds a threshold. These tests verify the gating
+# contract and numeric bounds of the steering loop.
 # ---------------------------------------------------------------------------
 
 
@@ -255,7 +324,7 @@ class TestCastProperties:
     """Verify CAST runtime steering invariants."""
 
     def test_cast_intervention_rate_bounded(self) -> None:
-        """interventions / considered must be in [0, 1]."""
+        """Intervention rate = interventions / considered, must be in [0, 1]."""
         from vauban.cast import cast_generate
 
         check = bounded(0.0, 1.0)
@@ -272,7 +341,7 @@ class TestCastProperties:
             check(rate, name="intervention_rate")
 
     def test_cast_interventions_nonnegative(self) -> None:
-        """Interventions and considered must be non-negative."""
+        """All CAST counters must be non-negative integers."""
         from vauban.cast import cast_generate
 
         model = _make_model()
@@ -289,7 +358,11 @@ class TestCastProperties:
         assert result.max_displacement >= 0.0
 
     def test_cast_high_threshold_no_interventions(self) -> None:
-        """With a very high threshold, no steering should occur."""
+        """Threshold=1e6 means "never steer" — zero interventions.
+
+        CAST only steers when projection >= threshold. An impossibly
+        high threshold should produce zero interventions.
+        """
         from vauban.cast import cast_generate
 
         model = _make_model()
@@ -305,7 +378,7 @@ class TestCastProperties:
         )
 
     def test_cast_projections_finite(self) -> None:
-        """All CAST projections must be finite."""
+        """All CAST projections must be finite — no NaN/Inf from steering."""
         from vauban.cast import cast_generate
 
         model = _make_model()
@@ -324,6 +397,10 @@ class TestCastProperties:
 
 # ---------------------------------------------------------------------------
 # evaluate — metric bounds
+#
+# Evaluation compares original vs modified model on refusal rate,
+# perplexity, and KL divergence. These tests verify the mathematical
+# bounds that must hold for any valid measurement.
 # ---------------------------------------------------------------------------
 
 
@@ -333,7 +410,7 @@ class TestEvaluateProperties:
     _check_rate = bounded(0.0, 1.0)
 
     def test_refusal_rate_bounded(self) -> None:
-        """Refusal rates must be in [0, 1]."""
+        """Refusal rate is a proportion — must be in [0, 1]."""
         from vauban.evaluate import evaluate
 
         model = _make_model()
@@ -347,7 +424,11 @@ class TestEvaluateProperties:
         self._check_rate(result.refusal_rate_modified, name="rr_modified")
 
     def test_perplexity_lower_bound(self) -> None:
-        """Perplexity must be >= 1.0 (or 0.0 for empty prompts)."""
+        """Perplexity = exp(cross-entropy), so PPL >= 1.0 always.
+
+        PPL = 1.0 means perfect prediction. Lower is impossible
+        because cross-entropy >= 0.
+        """
         from vauban.evaluate import evaluate
 
         model = _make_model()
@@ -365,7 +446,7 @@ class TestEvaluateProperties:
         )
 
     def test_kl_nonnegative(self) -> None:
-        """KL divergence must be >= 0."""
+        """KL divergence is non-negative by Gibbs' inequality."""
         from vauban.evaluate import evaluate
 
         model = _make_model()
@@ -380,7 +461,7 @@ class TestEvaluateProperties:
         )
 
     def test_kl_self_is_zero(self) -> None:
-        """KL(model || model) should be ~0."""
+        """KL(P || P) = 0 — divergence of a distribution from itself."""
         from vauban.evaluate import evaluate
 
         model = _make_model()
@@ -395,7 +476,7 @@ class TestEvaluateProperties:
         )
 
     def test_empty_prompts(self) -> None:
-        """Empty prompt list should return zeros, not crash."""
+        """Empty prompt list must return zeros, not NaN or crash."""
         from vauban.evaluate import evaluate
 
         model = _make_model()
@@ -410,7 +491,7 @@ class TestEvaluateProperties:
         assert result.num_prompts == 0
 
     def test_num_prompts_matches(self) -> None:
-        """num_prompts field must match input length."""
+        """num_prompts must match the input list length."""
         from vauban.evaluate import evaluate
 
         model = _make_model()

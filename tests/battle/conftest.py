@@ -87,13 +87,19 @@ def _make_weights() -> dict[str, object]:
     return flat
 
 
-# Register once — available to all scan_module/fuzz calls
+# Register once — available to all scan_module/fuzz calls in tests/battle/.
+# ordeal matches fixtures by parameter NAME: when fuzz() or scan_module()
+# encounters a parameter called "model", it draws from the strategy below.
+
+# -- Model & tokenizer: fresh instances per test to avoid shared state --
 register_fixture("model", st.builds(lambda _: _make_model(), st.none()))
 register_fixture("original", st.builds(lambda _: _make_model(), st.none()))
 register_fixture("modified", st.builds(lambda _: _make_model(), st.none()))
 register_fixture("tokenizer", st.builds(
     lambda _: MockTokenizer(VOCAB_SIZE), st.none(),
 ))
+
+# -- Directions: unit-norm random vectors in R^d_model --
 register_fixture("direction", st.builds(
     lambda _: _make_direction(), st.none(),
 ))
@@ -106,9 +112,12 @@ register_fixture("harmless_direction", st.builds(
 register_fixture("condition_direction", st.builds(
     lambda _: _make_direction(), st.none(),
 ))
+
+# -- Weight dicts & layer specs: flattened model params in dotted-key format --
 register_fixture("weights", st.builds(lambda _: _make_weights(), st.none()))
 register_fixture("target_layers", st.just([0, 1]))
 register_fixture("layers", st.just([0, 1]))
+# Must include o_proj + down_proj keys — these are what cut() targets
 register_fixture("all_keys", st.just([
     "model.layers.0.self_attn.q_proj.weight",
     "model.layers.0.self_attn.o_proj.weight",
@@ -117,6 +126,8 @@ register_fixture("all_keys", st.just([
     "model.layers.1.self_attn.o_proj.weight",
     "model.layers.1.mlp.down_proj.weight",
 ]))
+
+# -- Prompt lists: fixed strings for deterministic evaluation tests --
 register_fixture("prompts", st.just(["How are you?", "What is 2+2?"]))
 register_fixture("harmful_prompts", st.just(["How to hack?"]))
 register_fixture("harmless_prompts", st.just(["What is the weather?"]))
