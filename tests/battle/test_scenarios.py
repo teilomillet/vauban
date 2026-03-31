@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Multi-step scenario generator — composite operation chains.
 
 Battle testing explores *sequences* of operations, not individual calls.

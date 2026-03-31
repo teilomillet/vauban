@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Deterministic replay tests.
 
 Any operation with a seed must produce

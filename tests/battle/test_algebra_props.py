@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Property-based tests for vauban.algebra — direction space algebra.
 
 Tests universal algebraic properties: closure, commutativity,

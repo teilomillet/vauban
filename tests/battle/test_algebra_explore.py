@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """ChaosTest state machine for vauban.algebra.
 
 Explores the algebra API as a stateful system: a pool of

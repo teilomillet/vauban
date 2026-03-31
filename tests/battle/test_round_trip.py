@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Round-trip property tests — serialize then deserialize = identity.
 
 If data survives a round-trip unchanged, serialization is correct.

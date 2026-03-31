@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Auto-scan tests for model-dependent vauban modules.
 
 Fixtures are registered in conftest.py via ordeal.auto.register_fixture.

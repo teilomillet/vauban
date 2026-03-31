@@ -88,8 +88,12 @@ def header_block_for_path(path: Path) -> str:
 
 
 def has_required_header(text: str, path: Path) -> bool:
-    """Return whether text already starts with the required SPDX header."""
-    first_lines = text.splitlines()[:6]
+    """Return whether text already starts with the required SPDX header.
+
+    Checks the first 12 lines to accommodate YAML frontmatter blocks
+    in Markdown files (frontmatter pushes SPDX comments down).
+    """
+    first_lines = text.splitlines()[:12]
     return all(line in first_lines for line in header_lines_for_path(path))
 
 

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Metamorphic relation tests for vauban algebra.
 
 Tests algebraic *relationships* rather than exact values:

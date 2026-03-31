@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """'Sometimes' properties — detect dead code and unreachable states.
 
 Battle testing distinguishes two invariant types:

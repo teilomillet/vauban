@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Auto-scan tests via ordeal.auto — zero-boilerplate coverage.
 
 Uses ordeal's scan_module, fuzz, and chaos_for to auto-test

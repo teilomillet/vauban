@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Property-based tests for vauban.subspace — geometric invariants.
 
 Tests metric properties: non-negativity, symmetry, identity of

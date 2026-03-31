@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Mutation testing for vauban.algebra — validate test strength.
 
 Uses ordeal's mutation testing to verify that the property tests in

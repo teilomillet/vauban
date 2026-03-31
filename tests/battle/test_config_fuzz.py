@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Config fuzzing — explore the TOML config state space.
 
 The config space is combinatorially huge.

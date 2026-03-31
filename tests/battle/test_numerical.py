@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Numerical stability and fault injection tests.
 
 The chaos engineering layer: inject NaN, Inf, zeros, extreme
