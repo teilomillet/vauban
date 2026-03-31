@@ -691,7 +691,7 @@ class Session:
         from vauban.probe import steer
 
         self._ensure_direction()
-        n_layers = len(self.model.model.layers)  # type: ignore[attr-defined]
+        n_layers = len(self.model.model.layers)
         return steer(
             self.model, self.tokenizer,
             prompt, self._direction.direction,  # type: ignore[union-attr]
@@ -705,7 +705,7 @@ class Session:
         from vauban.cast import cast_generate
 
         self._ensure_direction()
-        n_layers = len(self.model.model.layers)  # type: ignore[attr-defined]
+        n_layers = len(self.model.model.layers)
         return cast_generate(
             self.model, self.tokenizer,
             prompt, self._direction.direction,  # type: ignore[union-attr]
@@ -729,12 +729,12 @@ class Session:
 
     def cut(
         self, *, alpha: float = 1.0, norm_preserve: bool = False,
-    ) -> dict[str, object]:
+    ) -> dict[str, Array]:
         """Remove the refusal direction from model weights."""
         from vauban.cut import cut
 
         self._ensure_direction()
-        weights = dict(self.model.parameters())
+        weights = dict(self.model.parameters())  # ty: ignore[unresolved-attribute]
         # Flatten nested dicts
         flat: dict[str, Array] = {}
         for k, v in weights.items():
@@ -748,7 +748,7 @@ class Session:
             else:
                 flat[k] = v
 
-        n_layers = len(self.model.model.layers)  # type: ignore[attr-defined]
+        n_layers = len(self.model.model.layers)
         self._modified_weights = cut(
             flat,
             self._direction.direction,  # type: ignore[union-attr]
@@ -765,8 +765,8 @@ class Session:
             msg = "No modified weights. Run cut() first."
             raise RuntimeError(msg)
         export_model(
-            self._modified_weights,
             self.model_path,
+            self._modified_weights,
             output_dir,
         )
         return output_dir

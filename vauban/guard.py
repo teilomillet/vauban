@@ -100,8 +100,8 @@ def _snapshot_cache(
         offset = lc.offset
         keys = getattr(lc, "keys", None)
         values = getattr(lc, "values", None)
-        k = keys[..., :offset, :] if keys is not None and offset > 0 else None  # type: ignore[index]
-        v = values[..., :offset, :] if values is not None and offset > 0 else None  # type: ignore[index]
+        k = keys[..., :offset, :] if keys is not None and offset > 0 else None
+        v = values[..., :offset, :] if values is not None and offset > 0 else None
         states.append((k, v, offset))
     return _CacheCheckpoint(
         layer_states=states,
@@ -122,10 +122,10 @@ def _restore_cache(
     new_cache = make_cache(model)
     for lc, (k, v, offset) in zip(new_cache, checkpoint.layer_states, strict=True):
         if k is not None:
-            lc.keys = k  # type: ignore[attr-defined]
+            lc.keys = k
         if v is not None:
-            lc.values = v  # type: ignore[attr-defined]
-        lc.offset = offset  # type: ignore[attr-defined]
+            lc.values = v
+        lc.offset = offset
     return new_cache
 
 
@@ -688,7 +688,7 @@ class GuardSession:
 
         verdict = GuardVerdict(
             zone=zone,
-            action=action,  # type: ignore[arg-type]
+            action=action,
             projection=projection,
             alpha=alpha,
             step=self._step,

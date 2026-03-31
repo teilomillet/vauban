@@ -28,7 +28,7 @@ def _load_dotenv(config_path: str | Path) -> None:
     if not env_path.exists():
         return
     try:
-        from dotenv import load_dotenv
+        from dotenv import load_dotenv  # ty: ignore[unresolved-import]
 
         load_dotenv(env_path)
     except ImportError:

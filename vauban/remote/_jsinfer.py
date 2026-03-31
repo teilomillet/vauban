@@ -33,7 +33,11 @@ class JsinferBackend:
         max_tokens: int,
     ) -> list[RemoteChatResult]:
         """Send chat completions via jsinfer batch API."""
-        from jsinfer import BatchInferenceClient, ChatCompletionRequest, Message
+        from jsinfer import (  # ty: ignore[unresolved-import]
+            BatchInferenceClient,
+            ChatCompletionRequest,
+            Message,
+        )
 
         client = BatchInferenceClient(api_key=self._api_key)
         requests = [
@@ -63,7 +67,11 @@ class JsinferBackend:
         modules: list[str],
     ) -> list[RemoteActivationResult]:
         """Fetch activation tensors via jsinfer batch API."""
-        from jsinfer import ActivationsRequest, BatchInferenceClient, Message
+        from jsinfer import (  # ty: ignore[unresolved-import]
+            ActivationsRequest,
+            BatchInferenceClient,
+            Message,
+        )
 
         client = BatchInferenceClient(api_key=self._api_key)
         requests = [

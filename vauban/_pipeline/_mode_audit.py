@@ -36,14 +36,14 @@ def _run_audit_mode(context: EarlyModeContext) -> None:
 
     # Load prompts — audit runs at before_prompts phase so context
     # may not have them yet.
-    from vauban.measure import load_prompts
+    from vauban.dataset import resolve_prompts
 
     harmful = context.harmful
     if harmful is None:
-        harmful = load_prompts(config.harmful_path)
+        harmful = resolve_prompts(config.harmful_path)
     harmless = context.harmless
     if harmless is None:
-        harmless = load_prompts(config.harmless_path)
+        harmless = resolve_prompts(config.harmless_path)
 
     def _log_fn(msg: str) -> None:
         log(msg, verbose=v, elapsed=time.monotonic() - context.t0)

@@ -275,7 +275,7 @@ elif _BACKEND == "torch":
         # Tied embeddings: project through embedding weight matrix
         import torch.nn.functional as _f
 
-        return _f.linear(h, get_transformer(model).embed_tokens.weight)  # type: ignore[arg-type]
+        return _f.linear(h, get_transformer(model).embed_tokens.weight)
 
     def extract_logits(result: Array | tuple[Array, ...]) -> Array:
         """Extract logits tensor from model output."""

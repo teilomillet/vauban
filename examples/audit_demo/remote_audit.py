@@ -28,6 +28,7 @@ from vauban.audit import (
     audit_result_to_markdown,
 )
 from vauban.bijection import (
+    BijectionCipher,
     check_cipher_compliance,
     generate_cipher,
     wrap_prompt,
@@ -179,7 +180,7 @@ def run_remote_audit(model: str) -> AuditResult:
 
     # -- 3. Bijection cipher attack --
     print("  [3/3] Testing bijection cipher attacks...")
-    bij_entries: list[tuple[str, object]] = []
+    bij_entries: list[tuple[str, BijectionCipher]] = []
     for i, hp in enumerate(HARMFUL_PROMPTS[:3]):
         for j in range(2):
             c = generate_cipher(seed=42 + i * 2 + j)

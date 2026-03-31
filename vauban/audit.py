@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 # Thoroughness presets
 # ---------------------------------------------------------------------------
 
-_PRESETS: dict[str, dict[str, object]] = {
+_PRESETS: dict[str, dict[str, str | int | bool]] = {
     "quick": {
         "detect_mode": "fast",
         "jailbreak_limit": 5,
@@ -273,6 +273,7 @@ def run_audit(
         _log("Running bijection cipher attack")
         try:
             from vauban.bijection import (
+                BijectionCipher,
                 check_cipher_compliance,
                 generate_cipher,
                 wrap_prompt,
@@ -281,7 +282,7 @@ def run_audit(
 
             bij_success = 0
             bij_prompts: list[str] = harmful_prompts[:5]
-            bij_entries: list[tuple[str, object]] = []
+            bij_entries: list[tuple[str, BijectionCipher]] = []
             for i, hp in enumerate(bij_prompts):
                 for j in range(3):
                     c = generate_cipher(seed=42 + i * 3 + j)
@@ -386,7 +387,7 @@ def run_audit(
                 if guard_prompts_limit > 0
                 else harmful_prompts
             )
-            n_layers = len(model.model.layers)  # type: ignore[attr-defined]
+            n_layers = len(model.model.layers)
             guard_layers = list(range(n_layers))
 
             tiers = calibrate_guard_thresholds(
