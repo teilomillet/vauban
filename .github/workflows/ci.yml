@@ -9,9 +9,12 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   checks:
@@ -51,3 +54,56 @@ jobs:
 
       - name: Pytest
         run: uv run pytest -q
+
+  bump-and-publish:
+    if: github.event_name == 'push'
+    needs: [checks]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Bump patch version
+        run: |
+          git fetch --tags
+          git pull --rebase origin main
+          CURRENT=$(grep -m1 '__version__' vauban/_version.py | sed 's/.*"\(.*\)".*/\1/')
+          MAJOR=$(echo "$CURRENT" | cut -d. -f1)
+          MINOR=$(echo "$CURRENT" | cut -d. -f2)
+          PATCH=$(echo "$CURRENT" | cut -d. -f3)
+          NEW="$MAJOR.$MINOR.$((PATCH + 1))"
+          # Skip if this version was already tagged (e.g. re-run)
+          while git tag -l "v$NEW" | grep -q .; do
+            PATCH=$((PATCH + 1))
+            NEW="$MAJOR.$MINOR.$((PATCH + 1))"
+          done
+          sed -i "s/__version__ = \"$CURRENT\"/__version__ = \"$NEW\"/" vauban/_version.py
+          echo "NEW_VERSION=$NEW" >> "$GITHUB_ENV"
+
+      - name: Commit and tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add vauban/_version.py
+          git commit -m "chore: bump version to v$NEW_VERSION [skip ci]"
+          git tag "v$NEW_VERSION"
+          git push
+          git push --tags
+
+      - name: Pull latest before build
+        run: git pull --rebase origin main
+
+      - name: Build
+        run: pip install build && python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
