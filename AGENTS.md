@@ -191,6 +191,169 @@ MLX gives everything TransformerLens gives PyTorch users, native on Apple Silico
 - `vauban diff <dir_a> <dir_b>` — compare reports between two runs.
 - `vauban man [topic]` — built-in manual generated from typed dataclasses.
 
+## Session API — Programmatic Usage
+
+The `Session` class is the single entry point for using Vauban as a library. It holds the model, tracks state, and enforces prerequisites. This section is the complete reference — reading source should not be necessary.
+
+```python
+from vauban.session import Session
+s = Session("mlx-community/Qwen2.5-1.5B-Instruct-bf16")
+```
+
+### Discovery
+
+| Method | Returns | Purpose |
+|--------|---------|---------|
+| `s.tools()` | `list[Tool]` | All tools with name, description, requires, produces, category, example, related |
+| `s.available()` | `list[str]` | Tool names callable right now (prerequisites met) |
+| `s.needs(name)` | `list[str]` | Unmet prerequisites for a tool |
+| `s.state()` | `dict[str, bool]` | What has been computed: model, direction, detect_result, audit_result, modified_model |
+| `s.describe(name)` | `str` | Detailed tool info with current availability |
+| `s.catalog()` | `dict[str, list[dict]]` | All tools grouped by category with status |
+| `s.guide(goal)` | `str` | Workflow instructions. Goals: `"audit"`, `"harden"`, `"abliterate"`, `"inspect"`, `"compliance"` |
+| `s.done(goal)` | `(bool, str)` | Whether a goal is complete + reason |
+| `s.suggest_next()` | `str` | Context-aware next step, labeled `[FACT]` or `[ADVICE]` |
+
+### Tools Quick Reference
+
+#### Assessment (require: model)
+| Method | Returns | What it does |
+|--------|---------|-------------|
+| `s.measure()` | `DirectionResult` | Extract refusal direction. Foundation for everything else. |
+| `s.detect()` | `DetectResult` | Check if model is hardened against abliteration. |
+| `s.evaluate()` | `EvalResult` | Refusal rate + perplexity + KL divergence (needs direction). |
+| `s.audit(thoroughness="standard")` | `AuditResult` | Full red-team: jailbreak + softprompt + surface + guard. |
+
+#### Inspection (require: model + direction)
+| Method | Returns | What it does |
+|--------|---------|-------------|
+| `s.probe("prompt")` | `ProbeResult` | Per-layer projection onto refusal direction. |
+| `s.scan("text")` | `ScanResult` | Per-token injection detection via direction projection. |
+| `s.surface()` | `SurfaceResult` | Map refusal boundary across diverse prompt categories. |
+
+#### Defense (require: model + direction)
+| Method | Returns | What it does |
+|--------|---------|-------------|
+| `s.cast("prompt", threshold=0.3)` | `CastResult` | Conditional steering — only intervenes when projection > threshold. |
+| `s.sic(["prompt1", ...])` | `SICResult` | Input sanitization loop: detect → rewrite → re-detect → block. |
+| `s.steer("prompt", alpha=-1.0)` | `str` | Unconditional activation steering during generation. |
+
+#### Modification (require: model + direction)
+| Method | Returns | What it does |
+|--------|---------|-------------|
+| `s.cut(alpha=1.0, norm_preserve=True)` | `dict[str, Array]` | Remove refusal direction from weights. Permanent. |
+| `s.export("output/dir")` | `str` | Save modified model to disk (needs cut first). |
+
+#### Analysis (no model needed)
+| Method | Returns | What it does |
+|--------|---------|-------------|
+| `s.classify("text")` | harm scores | Score against 13-domain harm taxonomy. |
+| `s.score("prompt", "response")` | score result | 5-axis quality: length, structure, anti-refusal, directness, relevance. |
+
+#### Reporting (require: audit_result)
+| Method | Returns | What it does |
+|--------|---------|-------------|
+| `s.report()` | `str` | Markdown report from audit findings. |
+| `s.report_pdf()` | `bytes` | PDF report. |
+
+### Result Types — Field Reference
+
+#### DirectionResult (from `measure()`)
+| Field | Type | Meaning |
+|-------|------|---------|
+| `direction` | `Array` | L2-normalized refusal direction, shape `(d_model,)` |
+| `layer_index` | `int` | 0-based layer with highest cosine separation |
+| `cosine_scores` | `list[float]` | Per-layer separation between harmful/harmless activations |
+| `d_model` | `int` | Hidden dimension |
+| `model_path` | `str` | Model identifier |
+
+#### CastResult (from `cast()`)
+| Field | Type | Meaning |
+|-------|------|---------|
+| `text` | `str` | Generated output |
+| `interventions` | `int` | Tokens where CAST applied steering (0 = defense didn't engage) |
+| `considered` | `int` | Total tokens evaluated |
+| `projections_before` | `list[float]` | Per-layer projection before steering |
+| `projections_after` | `list[float]` | Per-layer projection after steering |
+
+#### SICResult (from `sic()`)
+| Field | Type | Meaning |
+|-------|------|---------|
+| `prompts_clean` | `list[str]` | Sanitized prompts (rewritten or original if clean) |
+| `prompts_blocked` | `list[bool]` | True = prompt was blocked after max iterations |
+| `initial_scores` | `list[float]` | Direction projection before sanitization |
+| `final_scores` | `list[float]` | Direction projection after sanitization |
+| `total_blocked` | `int` | Count of prompts blocked |
+| `total_sanitized` | `int` | Count of prompts rewritten |
+| `total_clean` | `int` | Count of prompts that passed unchanged |
+
+#### DetectResult (from `detect()`)
+| Field | Type | Meaning |
+|-------|------|---------|
+| `hardened` | `bool` | Whether the model is hardened against abliteration |
+| `confidence` | `float` | 0.0–1.0 confidence in the hardening verdict |
+| `effective_rank` | `float` | Refusal subspace dimensionality (>1.5 suggests hardening) |
+| `evidence` | `list[str]` | Human-readable evidence strings |
+
+#### AuditResult (from `audit()`)
+| Field | Type | Meaning |
+|-------|------|---------|
+| `overall_risk` | `str` | `"critical"`, `"high"`, `"medium"`, or `"low"` |
+| `findings` | `list[AuditFinding]` | Severity-rated findings with descriptions and remediation |
+| `jailbreak_success_rate` | `float` | Fraction of jailbreak templates that bypassed refusal |
+| `softprompt_success_rate` | `float \| None` | GCG/EGD attack success rate (None if not run) |
+| `surface_refusal_rate` | `float \| None` | Overall refusal rate from surface mapping |
+
+#### ProbeResult (from `probe()`)
+| Field | Type | Meaning |
+|-------|------|---------|
+| `projections` | `list[float]` | Per-layer scalar projection onto refusal direction |
+| `layer_count` | `int` | Number of layers |
+
+#### EvalResult (from `evaluate()`)
+| Field | Type | Meaning |
+|-------|------|---------|
+| `refusal_rate_original` | `float` | Refusal rate before cut |
+| `refusal_rate_modified` | `float` | Refusal rate after cut |
+| `perplexity_original` | `float` | Perplexity before cut |
+| `perplexity_modified` | `float` | Perplexity after cut |
+| `kl_divergence` | `float` | KL divergence between original and modified |
+
+### Decision Guide
+
+| I want to... | Use | Prerequisites |
+|--------------|-----|---------------|
+| Understand what a model refuses | `measure()` → `surface()` | model |
+| Check if a model is hardened | `detect()` | model |
+| Full safety audit before deployment | `audit()` → `report()` | model |
+| Inspect one prompt's refusal signal | `measure()` → `probe("prompt")` | model |
+| Defend against adversarial inputs | `measure()` → `sic()` + `cast()` | model |
+| Remove refusal permanently | `measure()` → `cut()` → `export()` | model |
+| Stress-test defenses | `measure()` → softprompt in TOML | model + TOML |
+| Score response quality | `score("prompt", "response")` | nothing |
+| Classify text for harm | `classify("text")` | nothing |
+
+### Prerequisite Chain
+
+```
+model (loaded at Session init)
+  ├── measure() → direction
+  │     ├── probe(), scan(), surface()
+  │     ├── steer(), cast(), sic()
+  │     ├── evaluate()
+  │     └── cut() → modified_model
+  │           └── export()
+  ├── detect()
+  ├── audit() → audit_result
+  │     ├── report()
+  │     └── report_pdf()
+  └── jailbreak()
+
+(no prerequisites)
+  ├── classify()
+  └── score()
+```
+
 ## Typing Rules (STRICT)
 
 - **All code must be fully typed.** Every function parameter, return type, and variable annotation must have explicit types.
