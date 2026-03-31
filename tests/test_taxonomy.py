@@ -39,7 +39,7 @@ class TestNoCrash:
         assert result.passed, result.summary()
 
     def test_fuzz_classify_text(self) -> None:
-        result = fuzz(classify_text, max_examples=30, check_return_type=False)
+        result = fuzz(classify_text, max_examples=30)
         assert result.passed, result.summary()
 
 
