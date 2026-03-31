@@ -2,36 +2,71 @@
 # SPDX-License-Identifier: Apache-2.0
 
 site_name: Vauban
-site_description: MLX-native toolkit for understanding and reshaping how language models behave
-site_url: https://vauban.readthedocs.io/
+site_description: >-
+  Research instrument for understanding and reshaping LLM behavior
+  through activation-space geometry. Measure, steer, defend, and
+  stress-test language model safety alignment.
+site_url: https://docs.vauban.dev/
 repo_url: https://github.com/teilomillet/vauban
 repo_name: teilomillet/vauban
+copyright: Copyright &copy; 2026 Teilo Millet
 
 theme:
   name: material
+  custom_dir: docs/overrides
+  language: en
   palette:
     - scheme: default
       primary: deep purple
       accent: amber
+      media: "(prefers-color-scheme: light)"
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - scheme: slate
       primary: deep purple
       accent: amber
+      media: "(prefers-color-scheme: dark)"
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
   features:
+    - announce.dismiss
     - content.code.copy
+    - content.code.annotate
+    - navigation.footer
+    - navigation.indexes
+    - navigation.instant
+    - navigation.instant.prefetch
     - navigation.sections
-    - navigation.expand
+    - navigation.tabs
+    - navigation.tabs.sticky
     - navigation.top
+    - navigation.tracking
     - search.highlight
+    - search.share
+    - search.suggest
     - toc.follow
 
+plugins:
+  - search:
+      separator: '[\s\-\.]+'
+      lang: en
+  - social:
+      cards_layout_options:
+        background_color: "#4527a0"
+        color: "#ffffff"
+
 markdown_extensions:
+  - abbr
   - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
   - pymdownx.details
   - pymdownx.superfences
   - pymdownx.highlight:
@@ -39,21 +74,58 @@ markdown_extensions:
   - pymdownx.inlinehilite
   - pymdownx.arithmatex:
       generic: true
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
   - tables
   - toc:
       permalink: true
+      toc_depth: 3
+  - meta
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/teilomillet/vauban
+      name: Vauban on GitHub
+  generator: false
+  # Analytics handled via GTM (GTM-KP597527) in docs/overrides/main.html
+
+extra_css:
+  - stylesheets/extra.css
 
 extra_javascript:
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
 
 nav:
-  - Home: index.md
-  - Getting Started: getting-started.md
-  - Guides:
-    - Surface Mapping: surface.md
-    - HuggingFace Datasets: hf-datasets.md
-  - "Spinning Up in Abliteration":
-    - Overview: class/index.md
+  - What is Vauban?: index.md
+  - Concepts:
+    - Activation Geometry: concepts/activation-geometry.md
+    - Refusal Direction: concepts/refusal-direction.md
+    - Linear Representation: concepts/linear-representation.md
+    - Measurement: concepts/measurement.md
+    - Abliteration: concepts/abliteration.md
+    - Steering: concepts/steering.md
+    - Defense Complementarity: concepts/defense-complementarity.md
+    - Surface Mapping: concepts/surface-mapping.md
+  - Capabilities:
+    - Understand Your Model: capabilities/understand-your-model.md
+    - Defend Your Model: capabilities/defend-your-model.md
+    - Stress-Test Defenses: capabilities/stress-test-defenses.md
+    - Modify Weights: capabilities/modify-weights.md
+    - Access Levels: capabilities/access-levels.md
+  - Principles:
+    - Attack-Defense Duality: principles/attack-defense-duality.md
+    - Last-Mile Reliability: principles/last-mile-reliability.md
+    - Composability: principles/composability.md
+    - Reproducibility: principles/reproducibility.md
+  - Reference:
+    - Glossary: reference/glossary.md
+    - Papers: reference/papers.md
+    - Session API: reference/session-api.md
+    - Configuration: config.md
+  - Course:
+    - "Spinning Up in Abliteration": class/index.md
     - "Part 1: What is Abliteration?": class/part1_what_is_abliteration.md
     - "Part 2: Your First Abliteration": class/part2_your_first_abliteration.md
     - "Part 3: Under the Hood": class/part3_under_the_hood.md
@@ -63,4 +135,3 @@ nav:
     - "Part 7: Production Workflows": class/part7_production_workflows.md
     - References: class/references.md
     - Glossary: class/glossary.md
-  - Configuration Reference: config.md

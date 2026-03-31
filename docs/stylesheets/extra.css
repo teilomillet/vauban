@@ -1,0 +1,27 @@
+/* SPDX-FileCopyrightText: 2026 Teilo Millet */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/* Improve readability for long-form content */
+.md-content {
+  max-width: 52rem;
+}
+
+/* Blockquote styling for junior-dev scaffolding */
+.md-typeset blockquote {
+  border-left: 0.2rem solid var(--md-primary-fg-color);
+  background: var(--md-code-bg-color);
+  padding: 0.8rem 1rem;
+  margin: 1rem 0;
+  font-size: 0.92rem;
+}
+
+/* Table improvements for access matrix and comparison tables */
+.md-typeset table:not([class]) {
+  font-size: 0.85rem;
+}
+
+.md-typeset table:not([class]) th {
+  background: var(--md-primary-fg-color);
+  color: var(--md-primary-bg-color);
+  font-weight: 600;
+}

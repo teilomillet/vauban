@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block extrahead %}
+  <!-- Google Tag Manager -->
+  <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+  new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+  j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+  'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+  })(window,document,'script','dataLayer','GTM-KP597527');</script>
+  <!-- End Google Tag Manager -->
+
+{% if page %}
+  <!-- Canonical URL -->
+  <link rel="canonical" href="{{ page.canonical_url }}" />
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Vauban" />
+  <meta property="og:title" content="{{ page.meta.get('title', page.title) }} - Vauban" />
+  <meta property="og:description" content="{{ page.meta.get('description', config.site_description) }}" />
+  <meta property="og:url" content="{{ page.canonical_url }}" />
+  <meta property="og:locale" content="en_US" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="{{ page.meta.get('title', page.title) }} - Vauban" />
+  <meta name="twitter:description" content="{{ page.meta.get('description', config.site_description) }}" />
+
+  <!-- Additional SEO -->
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <meta name="author" content="Teilo Millet" />
+  {% if page.meta.keywords %}
+  <meta name="keywords" content="{{ page.meta.keywords }}" />
+  {% endif %}
+
+  <!-- JSON-LD Structured Data: SoftwareApplication (site-wide) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Vauban",
+    "description": "{{ config.site_description | e }}",
+    "url": "https://docs.vauban.dev/",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "macOS",
+    "programmingLanguage": "Python",
+    "license": "https://www.apache.org/licenses/LICENSE-2.0",
+    "codeRepository": "https://github.com/teilomillet/vauban",
+    "author": {
+      "@type": "Person",
+      "name": "Teilo Millet",
+      "url": "https://github.com/teilomillet"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+
+  <!-- JSON-LD: TechArticle (per-page) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "{{ page.meta.get('title', page.title) | e }}",
+    "description": "{{ page.meta.get('description', config.site_description) | e }}",
+    "url": "{{ page.canonical_url }}",
+    "author": {
+      "@type": "Person",
+      "name": "Teilo Millet"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "Vauban",
+      "url": "https://docs.vauban.dev/"
+    },
+    "inLanguage": "en",
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "Vauban Documentation",
+      "url": "https://docs.vauban.dev/"
+    },
+    "about": {
+      "@type": "Thing",
+      "name": "LLM Safety",
+      "description": "Language model safety alignment, activation-space geometry, and behavioral analysis"
+    }
+  }
+  </script>
+
+  <!-- JSON-LD: BreadcrumbList -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Vauban",
+        "item": "https://docs.vauban.dev/"
+      }{% if page.parent %},
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "{{ page.parent.title }}",
+        "item": "https://docs.vauban.dev/{{ page.parent.url }}"
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "name": "{{ page.title }}",
+        "item": "{{ page.canonical_url }}"
+      }{% elif page.title != "What is Vauban?" %},
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "{{ page.title }}",
+        "item": "{{ page.canonical_url }}"
+      }{% endif %}
+    ]
+  }
+  </script>
+{% else %}
+  <!-- Fallback for non-page templates (404, etc.) -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Vauban" />
+  <meta property="og:title" content="Vauban - LLM Safety Research" />
+  <meta property="og:description" content="{{ config.site_description }}" />
+  <meta name="robots" content="noindex" />
+{% endif %}
+{% endblock %}
+
+{% block analytics %}
+  <!-- Google Tag Manager (noscript) -->
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KP597527"
+  height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+  <!-- End Google Tag Manager (noscript) -->
+{% endblock %}
