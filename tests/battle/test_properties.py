@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 """Deep property tests for pipeline-critical modules.
 
 Uses ordeal invariants to verify algebraic and numeric properties

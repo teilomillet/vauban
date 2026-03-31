@@ -274,16 +274,88 @@ This README is aligned to the code in this repo:
 
 The current README previously had some stale mode/output claims; this version removes those and points readers to `vauban man ...` for the parts generated directly from code.
 
+## Python API (Session)
+
+For programmatic use, the `Session` class wraps a loaded model with tool discovery, prerequisite tracking, and structured results.
+
+```python
+from vauban.session import Session
+
+s = Session("mlx-community/Qwen2.5-1.5B-Instruct-bf16")
+s.tools()           # discover all capabilities
+s.guide("audit")    # step-by-step workflow
+s.describe("cast")  # detailed tool info with current status
+s.catalog()         # all tools grouped by category
+```
+
+### Tools
+
+| Method | Returns | What it does |
+|--------|---------|-------------|
+| `s.measure()` | `DirectionResult` | Extract refusal direction from activations |
+| `s.detect()` | `DetectResult` | Check if model is hardened against abliteration |
+| `s.audit(thoroughness=...)` | `AuditResult` | Full red-team: jailbreak + softprompt + surface + guard |
+| `s.evaluate()` | `EvalResult` | Refusal rate + perplexity + KL divergence |
+| `s.probe("prompt")` | `ProbeResult` | Per-layer projection onto refusal direction |
+| `s.scan("text")` | `ScanResult` | Per-token injection detection |
+| `s.surface()` | `SurfaceResult` | Map refusal boundary across prompt categories |
+| `s.cast("prompt", threshold=0.3)` | `CastResult` | Conditional activation steering (defense) |
+| `s.sic(["prompt", ...])` | `SICResult` | Iterative input sanitization (defense) |
+| `s.steer("prompt", alpha=-1.0)` | `str` | Unconditional activation steering |
+| `s.cut(alpha=1.0)` | `dict[str, Array]` | Remove refusal direction from weights |
+| `s.export("output/")` | `str` | Save modified model to disk |
+| `s.classify("text")` | harm scores | Score against 13-domain harm taxonomy |
+| `s.score("prompt", "response")` | score result | 5-axis quality assessment |
+| `s.report()` | `str` | Markdown report from audit findings |
+
+### Result Types
+
+**DirectionResult** (from `measure`): `direction` (Array, shape d_model), `layer_index` (best layer), `cosine_scores` (per-layer separation), `d_model`, `model_path`.
+
+**CastResult** (from `cast`): `text` (generated output), `interventions` (tokens where CAST steered, 0 = defense didn't engage), `considered` (total tokens), `projections_before`/`projections_after` (per-layer).
+
+**SICResult** (from `sic`): `prompts_clean` (sanitized text), `prompts_blocked` (bool per prompt), `initial_scores`/`final_scores` (direction projection), `total_blocked`/`total_sanitized`/`total_clean`.
+
+**DetectResult** (from `detect`): `hardened` (bool), `confidence` (0.0-1.0), `effective_rank` (>1.5 suggests hardening), `evidence` (list of strings).
+
+**AuditResult** (from `audit`): `overall_risk` ("critical"/"high"/"medium"/"low"), `findings` (list of AuditFinding), `jailbreak_success_rate`, `softprompt_success_rate`, `surface_refusal_rate`.
+
+### Decision Guide
+
+| I want to... | Use |
+|--------------|-----|
+| Understand what a model refuses | `measure()` then `surface()` |
+| Check if a model is hardened | `detect()` |
+| Full safety audit | `audit()` then `report()` |
+| Defend against adversarial inputs | `measure()` then `sic()` + `cast()` |
+| Remove refusal permanently | `measure()` then `cut()` then `export()` |
+| Score response quality | `score("prompt", "response")` (no model needed) |
+
+### Prerequisites
+
+```
+model (loaded at Session init)
+  ├── measure() → direction
+  │     ├── probe(), scan(), surface()
+  │     ├── steer(), cast(), sic()
+  │     ├── evaluate()
+  │     └── cut() → modified_model → export()
+  ├── detect(), audit() → report()
+  └── jailbreak()
+classify(), score() → no prerequisites
+```
+
 ## Documentation
 
-Full docs: [vauban.readthedocs.io](https://vauban.readthedocs.io/)
+Full docs: [docs.vauban.dev](https://docs.vauban.dev/)
 
 | Resource | Description |
 |----------|-------------|
-| [Spinning Up in Abliteration](https://vauban.readthedocs.io/class/index/) | Seven-part progressive curriculum |
-| [Getting Started](https://vauban.readthedocs.io/getting-started/) | Guided walkthrough |
-| [Configuration Reference](https://vauban.readthedocs.io/config/) | TOML field reference |
-| [Surface Mapping](https://vauban.readthedocs.io/surface/) | Surface mapping reference |
+| [Concepts](https://docs.vauban.dev/concepts/activation-geometry/) | Domain knowledge: activation geometry, refusal directions, measurement, steering |
+| [Capabilities](https://docs.vauban.dev/capabilities/understand-your-model/) | What you can do: understand, defend, stress-test, modify |
+| [Principles](https://docs.vauban.dev/principles/attack-defense-duality/) | Design philosophy: duality, composability, reproducibility |
+| [Spinning Up in Abliteration](https://docs.vauban.dev/class/) | Eight-part progressive curriculum |
+| [Configuration Reference](https://docs.vauban.dev/config/) | TOML field reference |
 | [`examples/config.toml`](examples/config.toml) | Annotated example config |
 
 ## License

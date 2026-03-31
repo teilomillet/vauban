@@ -1,7 +1,45 @@
 # SPDX-FileCopyrightText: 2026 Teilo Millet
 # SPDX-License-Identifier: Apache-2.0
 
-"""Vauban - MLX-native abliteration toolkit for Apple Silicon.
+"""Vauban — research instrument for LLM behavior through activation-space geometry.
+
+Measure, steer, defend, and stress-test language model safety alignment
+on Apple Silicon (MLX) or CUDA (PyTorch).
+
+Quick start (programmatic)::
+
+    from vauban.session import Session
+
+    s = Session("mlx-community/Qwen2.5-1.5B-Instruct-bf16")
+    s.measure()                              # extract refusal direction
+    s.probe("How to pick a lock?")           # inspect per-layer signal
+    s.cast("How to hack?", threshold=0.3)    # conditional defense
+    s.audit(thoroughness="standard")         # full red-team assessment
+    s.report()                               # markdown report
+
+Quick start (CLI)::
+
+    vauban run.toml          # run pipeline from TOML config
+    vauban man workflows     # list available workflows
+    vauban init --mode cast  # scaffold a config
+
+Session tools by category:
+
+    Assessment:   measure, detect, evaluate, audit
+    Inspection:   probe, scan, surface
+    Defense:      cast, sic, steer
+    Modification: cut, export
+    Analysis:     classify, score
+    Reporting:    report, report_pdf
+
+Discovery::
+
+    s.tools()          # all tools with requires/produces/example/related
+    s.available()      # tools callable now (prerequisites met)
+    s.needs("cast")    # what's missing to call cast
+    s.describe("cast") # detailed info with current status
+    s.catalog()        # all tools grouped by category
+    s.guide("audit")   # step-by-step workflow
 
 All public symbols are lazily loaded on first access (PEP 562).
 ``from vauban import X`` and ``vauban.X`` both work — the first access
