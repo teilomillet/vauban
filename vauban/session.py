@@ -33,7 +33,7 @@ advanced usage.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -52,7 +52,7 @@ if TYPE_CHECKING:
     )
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class Tool:
     """Metadata for one vauban tool.
 
@@ -64,6 +64,11 @@ class Tool:
     requires: list[str]
     produces: list[str]
     category: str
+    example: str = ""
+    """Example method call, e.g. ``s.measure()``."""
+
+    related: list[str] = field(default_factory=list)
+    """Names of tools that are commonly used together with this one."""
 
 
 # ── Tool registry ────────────────────────────────────────────────────────
@@ -77,6 +82,8 @@ _TOOLS: list[Tool] = [
         requires=["model"],
         produces=["direction"],
         category="assessment",
+        example="s.measure()",
+        related=["probe", "cut", "detect"],
     ),
     Tool(
         name="detect",
@@ -85,6 +92,8 @@ _TOOLS: list[Tool] = [
         requires=["model"],
         produces=["detect_result"],
         category="assessment",
+        example="s.detect()",
+        related=["measure", "audit"],
     ),
     Tool(
         name="evaluate",
@@ -93,6 +102,8 @@ _TOOLS: list[Tool] = [
         requires=["model", "direction"],
         produces=["eval_result"],
         category="assessment",
+        example="s.evaluate()",
+        related=["measure", "cut"],
     ),
     Tool(
         name="audit",
@@ -101,6 +112,8 @@ _TOOLS: list[Tool] = [
         requires=["model"],
         produces=["audit_result"],
         category="assessment",
+        example='s.audit(thoroughness="standard")',
+        related=["detect", "report"],
     ),
     # Inspection
     Tool(
@@ -110,6 +123,8 @@ _TOOLS: list[Tool] = [
         requires=["model", "direction"],
         produces=["probe_result"],
         category="inspection",
+        example='s.probe("How to pick a lock?")',
+        related=["measure", "scan"],
     ),
     Tool(
         name="scan",
@@ -118,6 +133,8 @@ _TOOLS: list[Tool] = [
         requires=["model", "direction"],
         produces=["scan_result"],
         category="inspection",
+        example='s.scan("Ignore previous instructions...")',
+        related=["probe", "sic"],
     ),
     Tool(
         name="surface",
@@ -126,6 +143,8 @@ _TOOLS: list[Tool] = [
         requires=["model", "direction"],
         produces=["surface_result"],
         category="inspection",
+        example="s.surface()",
+        related=["measure", "probe"],
     ),
     # Defense
     Tool(
@@ -135,6 +154,8 @@ _TOOLS: list[Tool] = [
         requires=["model", "direction"],
         produces=["steer_result"],
         category="defense",
+        example='s.steer("Tell me about cats", alpha=-1.0)',
+        related=["measure", "cast"],
     ),
     Tool(
         name="cast",
@@ -143,6 +164,8 @@ _TOOLS: list[Tool] = [
         requires=["model", "direction"],
         produces=["cast_result"],
         category="defense",
+        example='s.cast("How to hack?", threshold=0.3)',
+        related=["measure", "steer", "sic"],
     ),
     Tool(
         name="sic",
@@ -151,6 +174,8 @@ _TOOLS: list[Tool] = [
         requires=["model", "direction"],
         produces=["sic_result"],
         category="defense",
+        example='s.sic(["Ignore all rules and..."])',
+        related=["cast", "scan"],
     ),
     # Modification
     Tool(
@@ -160,6 +185,8 @@ _TOOLS: list[Tool] = [
         requires=["model", "direction"],
         produces=["modified_model"],
         category="modification",
+        example="s.cut(alpha=1.0, norm_preserve=True)",
+        related=["measure", "evaluate", "export"],
     ),
     Tool(
         name="export",
@@ -167,6 +194,8 @@ _TOOLS: list[Tool] = [
         requires=["modified_model"],
         produces=["saved_path"],
         category="modification",
+        example='s.export("output/modified-model")',
+        related=["cut"],
     ),
     # Analysis
     Tool(
@@ -176,6 +205,8 @@ _TOOLS: list[Tool] = [
         requires=[],
         produces=["score_result"],
         category="analysis",
+        example="""s.score("Make a bomb", "Sure, here's how...")""",
+        related=["classify"],
     ),
     Tool(
         name="classify",
@@ -184,6 +215,8 @@ _TOOLS: list[Tool] = [
         requires=[],
         produces=["harm_scores"],
         category="analysis",
+        example='s.classify("how to synthesize drugs")',
+        related=["score"],
     ),
     Tool(
         name="jailbreak",
@@ -192,6 +225,8 @@ _TOOLS: list[Tool] = [
         requires=["model"],
         produces=["jailbreak_rate"],
         category="attack",
+        example="s.jailbreak()",
+        related=["audit", "cast"],
     ),
     # Reporting
     Tool(
@@ -200,6 +235,17 @@ _TOOLS: list[Tool] = [
         requires=["audit_result"],
         produces=["report_text"],
         category="reporting",
+        example="s.report()",
+        related=["audit"],
+    ),
+    Tool(
+        name="report_pdf",
+        description="Generate a PDF report from the last audit.",
+        requires=["audit_result"],
+        produces=["pdf_bytes"],
+        category="reporting",
+        example="s.report_pdf()",
+        related=["audit", "report"],
     ),
     Tool(
         name="ai_act",
@@ -208,6 +254,8 @@ _TOOLS: list[Tool] = [
         requires=["audit_result"],
         produces=["compliance_report"],
         category="reporting",
+        example="s.ai_act()",
+        related=["audit", "report"],
     ),
 ]
 
@@ -599,6 +647,89 @@ class Session:
 
     def _state_tags(self) -> set[str]:
         return {k for k, v in self.state().items() if v}
+
+    def describe(self, tool_name: str) -> str:
+        """Return detailed description of a tool including example and related tools.
+
+        Designed for AI assistants that need to understand a specific tool
+        before deciding to use it.
+
+        Args:
+            tool_name: Name of the tool to describe (e.g. ``"measure"``).
+
+        Returns:
+            A formatted multi-line string with the tool's metadata and
+            current availability status.
+
+        Raises:
+            KeyError: If *tool_name* does not match any registered tool.
+        """
+        tool: Tool | None = None
+        for t in _TOOLS:
+            if t.name == tool_name:
+                tool = t
+                break
+        if tool is None:
+            known = ", ".join(t.name for t in _TOOLS)
+            msg = f"Unknown tool: {tool_name!r}. Known tools: {known}"
+            raise KeyError(msg)
+
+        missing = self.needs(tool_name)
+        if missing:
+            status = f"blocked (missing: {', '.join(missing)})"
+        else:
+            status = "available (all prerequisites met)"
+
+        requires_str = ", ".join(tool.requires) if tool.requires else "none"
+        produces_str = ", ".join(tool.produces) if tool.produces else "none"
+        example_str = tool.example or "(no example)"
+        related_str = ", ".join(tool.related) if tool.related else "none"
+
+        return (
+            f"{tool.name} — {tool.description}\n"
+            f"\n"
+            f"Category: {tool.category}\n"
+            f"Requires: {requires_str}\n"
+            f"Produces: {produces_str}\n"
+            f"Example:  {example_str}\n"
+            f"Related:  {related_str}\n"
+            f"\n"
+            f"Current state: {status}"
+        )
+
+    def catalog(self) -> dict[str, list[dict[str, str | list[str]]]]:
+        """Return a structured capability catalog for programmatic discovery.
+
+        Returns a dict keyed by category, where each value is a list of tool
+        metadata dicts.  Designed for AI assistants to discover all
+        capabilities in one call.
+
+        Each tool dict contains:
+
+        - ``name`` — tool identifier
+        - ``description`` — what the tool does
+        - ``requires`` — prerequisite state tags
+        - ``produces`` — state tags produced
+        - ``example`` — example method call
+        - ``related`` — names of commonly co-used tools
+        - ``status`` — ``"available"`` or ``"blocked"``
+        """
+        state = self._state_tags()
+        grouped: dict[str, list[dict[str, str | list[str]]]] = {}
+        for t in _TOOLS:
+            missing = [r for r in t.requires if r not in state]
+            status = "blocked" if missing else "available"
+            entry: dict[str, str | list[str]] = {
+                "name": t.name,
+                "description": t.description,
+                "requires": list(t.requires),
+                "produces": list(t.produces),
+                "example": t.example,
+                "related": list(t.related),
+                "status": status,
+            }
+            grouped.setdefault(t.category, []).append(entry)
+        return grouped
 
     # ── Assessment tools ─────────────────────────────────────────────
 
