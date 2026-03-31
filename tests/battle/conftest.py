@@ -110,10 +110,12 @@ register_fixture("weights", st.builds(lambda _: _make_weights(), st.none()))
 register_fixture("target_layers", st.just([0, 1]))
 register_fixture("layers", st.just([0, 1]))
 register_fixture("all_keys", st.just([
-    "layers.0.self_attn.q_proj.weight",
-    "layers.0.self_attn.k_proj.weight",
-    "layers.1.self_attn.q_proj.weight",
-    "layers.1.self_attn.k_proj.weight",
+    "model.layers.0.self_attn.q_proj.weight",
+    "model.layers.0.self_attn.o_proj.weight",
+    "model.layers.0.mlp.down_proj.weight",
+    "model.layers.1.self_attn.q_proj.weight",
+    "model.layers.1.self_attn.o_proj.weight",
+    "model.layers.1.mlp.down_proj.weight",
 ]))
 register_fixture("prompts", st.just(["How are you?", "What is 2+2?"]))
 register_fixture("harmful_prompts", st.just(["How to hack?"]))

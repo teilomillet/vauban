@@ -115,7 +115,6 @@ class TestScanTaxonomy:
             _get_fn("vauban.taxonomy", "classify_text"),
             max_examples=30,
             text=st.text(min_size=0, max_size=500),
-            check_return_type=False,  # returns None legitimately
         )
         assert result.passed, result.summary()
 

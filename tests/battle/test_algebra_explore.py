@@ -10,12 +10,13 @@ invariants checked after every step.
 
 from __future__ import annotations
 
+import random
 from typing import TYPE_CHECKING, ClassVar
 
-import numpy as np
 from hypothesis import settings
 from hypothesis.stateful import Bundle, invariant, rule
 from ordeal import ChaosTest
+from ordeal.invariants import finite, orthonormal, rank_bounded
 
 from vauban import _ops as ops
 from vauban.algebra import (
@@ -38,7 +39,7 @@ D_MODEL = 16  # small for fast exploration
 class AlgebraChaosTest(ChaosTest):
     """Stateful exploration of the direction space algebra."""
 
-    faults: ClassVar[list[object]] = []  # type: ignore[assignment]
+    faults: ClassVar[list[object]] = []
 
     spaces = Bundle("spaces")
 
@@ -49,7 +50,7 @@ class AlgebraChaosTest(ChaosTest):
     @rule(target=spaces)
     def create_random_space(self) -> DirectionSpace:
         """Generate a fresh random DirectionSpace."""
-        rank = np.random.randint(1, 5)
+        rank = random.randint(1, 4)
         arr = ops.random.normal((rank, D_MODEL))
         ops.eval(arr)
         space = from_array(arr, label=f"r{rank}_{len(self._all_spaces)}")
@@ -93,23 +94,20 @@ class AlgebraChaosTest(ChaosTest):
 
     # -- Invariants (checked after every step) --
 
+    _check_orthonormal = orthonormal()
+    _check_rank = rank_bounded(0, D_MODEL)
+
     @invariant()
     def all_spaces_valid(self) -> None:
         """Every DirectionSpace must satisfy structural invariants."""
         for space in self._all_spaces:
             assert space.d_model == D_MODEL, f"d_model={space.d_model}"
-            assert space.rank >= 0, f"rank={space.rank}"
-            assert space.rank <= space.d_model, f"rank={space.rank} > d_model"
+            self._check_rank(space.rank, name=space.label or "space")
             if space.rank > 0:
-                basis = np.array(to_basis(space))
+                basis = to_basis(space)
                 assert basis.shape == (space.rank, space.d_model)
-                # Check orthonormality
-                gram = basis @ basis.T
-                identity = np.eye(gram.shape[0])
-                max_err = float(np.max(np.abs(gram - identity)))
-                assert max_err < 1e-3, (
-                    f"Basis not orthonormal: max |G-I| = {max_err:.6f}"
-                )
+                self._check_orthonormal(basis, name=space.label or "basis")
+                finite(basis, name=space.label or "basis")
 
     @invariant()
     def similarity_self_is_one(self) -> None:

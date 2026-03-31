@@ -1957,7 +1957,7 @@ requires-dist = [
     { name = "mlx", specifier = ">=0.22" },
     { name = "mlx-lm", specifier = ">=0.21" },
     { name = "optuna", marker = "extra == 'optimize'", specifier = ">=4.0" },
-    { name = "ordeal" },
+    { name = "ordeal", specifier = ">=0.2.26" },
     { name = "pypdf", specifier = ">=6.9.2" },
     { name = "reportlab", specifier = ">=4.4.10" },
     { name = "safetensors", marker = "extra == 'torch'", specifier = ">=0.4" },
