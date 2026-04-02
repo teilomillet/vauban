@@ -9,7 +9,10 @@ This file contains zero strategy definitions — just scan calls.
 
 from __future__ import annotations
 
+import hypothesis.strategies as st
 from ordeal.auto import fuzz, scan_module
+
+from tests.battle.conftest import _make_direction
 
 
 class TestScanCut:
@@ -34,6 +37,18 @@ class TestScanCut:
         from vauban.cut import target_weight_keys
 
         result = fuzz(target_weight_keys, max_examples=30)
+        assert result.passed, result.summary()
+
+    def test_cut_false_refusal_ortho(self) -> None:
+        from vauban.cut import cut_false_refusal_ortho
+
+        direction_st = st.builds(lambda _: _make_direction(), st.none())
+        result = fuzz(
+            cut_false_refusal_ortho,
+            max_examples=10,
+            false_refusal_direction=direction_st,
+            layer_weights=st.none(),
+        )
         assert result.passed, result.summary()
 
 
@@ -71,7 +86,17 @@ class TestScanCast:
     def test_cast_generate(self) -> None:
         from vauban.cast import cast_generate
 
-        result = fuzz(cast_generate, max_examples=3, max_tokens=5)
+        # ordeal 0.2.103+ resolves Optional types via type-inference before
+        # name-based fixtures, so Array | None params need explicit strategies
+        # to guarantee correct shapes.
+        direction_st = st.builds(lambda _: _make_direction(), st.none())
+        result = fuzz(
+            cast_generate,
+            max_examples=3,
+            max_tokens=5,
+            condition_direction=st.one_of(st.none(), direction_st),
+            baseline_activations=st.none(),
+        )
         assert result.passed, result.summary()
 
 

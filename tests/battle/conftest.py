@@ -112,6 +112,11 @@ register_fixture("harmless_direction", st.builds(
 register_fixture("condition_direction", st.builds(
     lambda _: _make_direction(), st.none(),
 ))
+register_fixture("false_refusal_direction", st.builds(
+    lambda _: _make_direction(), st.none(),
+))
+register_fixture("baseline_activations", st.just(None))
+register_fixture("layer_weights", st.just(None))
 
 # -- Weight dicts & layer specs: flattened model params in dotted-key format --
 register_fixture("weights", st.builds(lambda _: _make_weights(), st.none()))

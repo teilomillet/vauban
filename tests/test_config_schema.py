@@ -111,4 +111,4 @@ def test_pyproject_uses_dynamic_version_source() -> None:
 
     assert pyproject["project"]["dynamic"] == ["version"]
     assert pyproject["tool"]["hatch"]["version"]["path"] == "vauban/_version.py"
-    assert vauban.__version__ == "0.3.3"
+    assert vauban.__version__ == "0.3.4"
