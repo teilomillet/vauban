@@ -16,7 +16,13 @@ from typing import TYPE_CHECKING, ClassVar
 from hypothesis import settings
 from hypothesis.stateful import Bundle, invariant, rule
 from ordeal import ChaosTest
-from ordeal.invariants import finite, orthonormal, rank_bounded
+from ordeal.invariants import (
+    finite,
+    orthonormal,
+    positive_semi_definite,
+    rank_bounded,
+    symmetric,
+)
 
 from vauban import _ops as ops
 from vauban.algebra import (
@@ -96,6 +102,8 @@ class AlgebraChaosTest(ChaosTest):
 
     _check_orthonormal = orthonormal()
     _check_rank = rank_bounded(0, D_MODEL)
+    _check_symmetric = symmetric(tol=1e-4)
+    _check_psd = positive_semi_definite(tol=1e-4)
 
     @invariant()
     def all_spaces_valid(self) -> None:
@@ -108,6 +116,13 @@ class AlgebraChaosTest(ChaosTest):
                 assert basis.shape == (space.rank, space.d_model)
                 self._check_orthonormal(basis, name=space.label or "basis")
                 finite(basis, name=space.label or "basis")
+                # Gram matrix B @ B.T must be symmetric PSD (identity-like
+                # for orthonormal bases). Catches numerical drift after
+                # chained compose/subtract operations.
+                gram = basis @ basis.T
+                label = space.label or "gram"
+                self._check_symmetric(gram, name=label)
+                self._check_psd(gram, name=label)
 
     @invariant()
     def similarity_self_is_one(self) -> None:

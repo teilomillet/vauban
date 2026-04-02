@@ -6,6 +6,10 @@
 Uses ordeal's mutation testing to verify that the property tests in
 test_algebra_props.py can detect injected bugs.  A surviving mutant
 means the property tests have a gap.
+
+Since ordeal 0.2.103, equivalence filtering is tunable via
+``equivalence_samples`` — higher values give more confident
+equivalent-mutant classification, allowing a tighter kill threshold.
 """
 
 from __future__ import annotations
@@ -73,6 +77,10 @@ class TestMutationKillRate:
     def test_mutation_score(self, target: str) -> None:
         result = mutate_function_and_test(
             target, _run_property_tests, operators=_OPERATORS,
+            # Raise equivalence_samples from default 10 to 50 so that
+            # equivalent mutants (e.g. x+0, reordered commutative ops)
+            # are classified correctly instead of inflating the denominator.
+            equivalence_samples=50,
         )
         if result.total == 0:
             pytest.skip(f"No mutants generated for {target}")
@@ -82,8 +90,8 @@ class TestMutationKillRate:
         for m in surviving:
             print(f"  SURVIVED: {m.location} {m.description}")
 
-        # Target: at least 60% kill rate (property tests are intentionally
-        # lightweight here — full hypothesis runs would catch more)
+        # With better equivalence filtering (50 samples), the kill rate
+        # threshold can be tighter — surviving mutants are genuine gaps.
         assert result.score >= 0.6, (
             f"{target}: mutation score {result.score:.0%} "
             f"({result.killed}/{result.total}), "
