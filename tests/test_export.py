@@ -3,10 +3,16 @@
 
 """Tests for vauban.export: model directory export."""
 
+import importlib
 import json
+import sys
 from pathlib import Path
+from types import ModuleType
 from unittest.mock import patch
 
+import pytest
+
+import vauban.export as export_module
 from vauban import _ops as ops
 from vauban.export import export_model
 
@@ -73,3 +79,102 @@ class TestExportModel:
         assert (output_dir / "model.safetensors").exists()
         assert not (output_dir / "model-00001-of-00002.safetensors").exists()
         assert not (output_dir / "model-00002-of-00002.safetensors").exists()
+
+
+class TestResolveSourceDir:
+    def test_returns_local_directory_as_is(self, tmp_path: Path) -> None:
+        """Local model paths should bypass any download helper."""
+        assert export_module._resolve_source_dir(str(tmp_path)) == tmp_path
+
+    def test_uses_mlx_download_for_remote_models(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """MLX backends should resolve remote models through mlx-lm."""
+        monkeypatch.setattr(export_module, "_BACKEND", "mlx")
+        monkeypatch.setattr("mlx_lm.utils._download", lambda model_path: tmp_path)
+
+        assert export_module._resolve_source_dir("mlx-community/test") == tmp_path
+
+    def test_uses_huggingface_download_for_torch_backend(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Torch backends should resolve remote models through HF Hub."""
+        monkeypatch.setattr(export_module, "_BACKEND", "torch")
+        monkeypatch.setattr(
+            "huggingface_hub.snapshot_download",
+            lambda model_path: str(tmp_path),
+        )
+
+        assert export_module._resolve_source_dir("hf/test-model") == tmp_path
+
+
+class TestExportBackendBranches:
+    def test_torch_save_weights_branch(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Reloading under the torch backend should bind torch safetensors."""
+        module = export_module
+        backend_module = importlib.import_module("vauban._backend")
+        original_backend = backend_module.get_backend()
+        calls: list[tuple[dict[str, object], str]] = []
+
+        fake_safetensors = ModuleType("safetensors.torch")
+        fake_torch = ModuleType("torch")
+        fake_torch.Tensor = object  # type: ignore[attr-defined]
+
+        def _fake_save_file(weights: dict[str, object], path: str) -> None:
+            calls.append((weights, path))
+
+        fake_safetensors.save_file = _fake_save_file  # type: ignore[attr-defined]
+
+        try:
+            monkeypatch.setattr(backend_module, "get_backend", lambda: "torch")
+            with patch.dict(
+                sys.modules,
+                {
+                    "safetensors.torch": fake_safetensors,
+                    "torch": fake_torch,
+                },
+            ):
+                reloaded = importlib.reload(module)
+                target = tmp_path / "model.safetensors"
+                weights = {"w": ops.ones((1, 1))}
+                reloaded._save_weights(target, weights)
+        finally:
+            monkeypatch.setattr(
+                backend_module,
+                "get_backend",
+                lambda: original_backend,
+            )
+            importlib.reload(module)
+
+        assert len(calls) == 1
+        assert "w" in calls[0][0]
+        assert calls[0][1] == str(tmp_path / "model.safetensors")
+
+    def test_unknown_backend_raises_during_reload(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Unsupported backends should fail fast at import time."""
+        module = export_module
+        backend_module = importlib.import_module("vauban._backend")
+        original_backend = backend_module.get_backend()
+
+        try:
+            monkeypatch.setattr(backend_module, "get_backend", lambda: "bogus")
+            with pytest.raises(ValueError, match="Unknown backend"):
+                importlib.reload(module)
+        finally:
+            monkeypatch.setattr(
+                backend_module,
+                "get_backend",
+                lambda: original_backend,
+            )
+            importlib.reload(module)

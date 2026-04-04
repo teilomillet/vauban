@@ -68,6 +68,14 @@ class TestGetInnerModel:
         with pytest.raises(AttributeError):
             get_inner_model(model)
 
+    def test_flat_architecture_returns_model(self) -> None:
+        model = _MockObj(layers=["l1", "l2"])
+        assert get_inner_model(model) is model
+
+    def test_recursion_limit_raises(self) -> None:
+        with pytest.raises(AttributeError, match="Recursion limit reached"):
+            get_inner_model(_MockObj(), _depth=4)
+
 
 # ── normalize_transformer ───────────────────────────────────────────
 
@@ -125,13 +133,13 @@ class TestTransformerAdapter:
             embed_tokens="e", layers=[], norm="n", custom_attr="custom",
         )
         adapter = TransformerAdapter(inner)
-        assert adapter.custom_attr == "custom"  # type: ignore[attr-defined]
+        assert adapter.custom_attr == "custom"
 
     def test_proxy_missing_attr_raises(self) -> None:
         inner = _MockObj(embed_tokens="e", layers=[], norm="n")
         adapter = TransformerAdapter(inner)
         with pytest.raises(AttributeError):
-            _ = adapter.nonexistent  # type: ignore[attr-defined]
+            _ = adapter.nonexistent
 
     def test_missing_embed_raises(self) -> None:
         inner = _MockObj(layers=[], norm="n")

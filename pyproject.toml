@@ -15,7 +15,7 @@ requires-python = ">=3.12"
 dependencies = [
     "mlx>=0.22",
     "mlx-lm>=0.21",
-    "ordeal>=0.2.103",
+    "ordeal>=0.3.8",
     "pypdf>=6.9.2",
     "reportlab>=4.4.10",
 ]
@@ -105,6 +105,15 @@ filterwarnings = [
     "ignore:builtin type SwigPyPacked has no __module__ attribute:DeprecationWarning",
     "ignore:builtin type SwigPyObject has no __module__ attribute:DeprecationWarning",
     "ignore:builtin type swigvarlink has no __module__ attribute:DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["vauban"]
+
+[tool.coverage.report]
+omit = [
+    "tests/*",
+    "scripts/*",
 ]
 
 [tool.uv.sources]

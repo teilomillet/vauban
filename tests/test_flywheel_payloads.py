@@ -26,6 +26,17 @@ class TestPayloadLibrary:
         payloads = load_payload_library(Path("/nonexistent/path"))
         assert len(payloads) == len(BUILTIN_PAYLOADS)
 
+    def test_load_skips_blank_lines(self, tmp_path: Path) -> None:
+        path = tmp_path / "payloads.jsonl"
+        path.write_text(
+            '{"text": "one", "source": "lib", "cycle_discovered": 1}\n\n'
+            '{"text": "two", "source": "lib", "cycle_discovered": 2}\n',
+        )
+
+        payloads = load_payload_library(path)
+
+        assert [p.text for p in payloads] == ["one", "two"]
+
     def test_save_load_roundtrip(self, tmp_path: Path) -> None:
         original = [
             Payload(text="test1", source="lib", cycle_discovered=0),

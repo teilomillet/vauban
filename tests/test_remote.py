@@ -5,8 +5,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
-from typing import TYPE_CHECKING
+import os
+import sys
+from types import ModuleType
+from typing import TYPE_CHECKING, ClassVar, cast
 from unittest.mock import MagicMock, patch
 
 if TYPE_CHECKING:
@@ -171,6 +175,123 @@ class _FakeBackend:
         ]
 
 
+class _FakeArrayWithToList:
+    """Activation container that exposes ``tolist`` like numpy arrays."""
+
+    def __init__(self, rows: list[list[float]]) -> None:
+        self._rows = rows
+
+    def tolist(self) -> list[list[float]]:
+        """Return nested list data."""
+        return self._rows
+
+
+class _FakeArrayIterable:
+    """Activation container that only supports iteration."""
+
+    def __init__(self, rows: list[list[float]]) -> None:
+        self._rows = rows
+
+    def __iter__(self) -> object:
+        """Yield rows so ``list(arr)`` produces nested lists."""
+        return iter(self._rows)
+
+
+class _FakeJsinferMessage:
+    """Minimal jsinfer message stub."""
+
+    def __init__(self, role: str, content: str) -> None:
+        self.role = role
+        self.content = content
+
+
+class _FakeChatCompletionRequest:
+    """Minimal jsinfer chat request stub."""
+
+    def __init__(self, custom_id: str, messages: list[_FakeJsinferMessage]) -> None:
+        self.custom_id = custom_id
+        self.messages = messages
+
+
+class _FakeActivationsRequest:
+    """Minimal jsinfer activation request stub."""
+
+    def __init__(
+        self,
+        custom_id: str,
+        messages: list[_FakeJsinferMessage],
+        module_names: list[str],
+    ) -> None:
+        self.custom_id = custom_id
+        self.messages = messages
+        self.module_names = module_names
+
+
+class _FakeChatResponse:
+    """Chat completion result wrapper."""
+
+    def __init__(self, content: str) -> None:
+        self.messages = [_FakeJsinferMessage(role="assistant", content=content)]
+
+
+class _FakeActivationResponse:
+    """Activation result wrapper."""
+
+    def __init__(self, activations: dict[str, object]) -> None:
+        self.activations = activations
+
+
+class _FakeBatchInferenceClient:
+    """BatchInferenceClient stub used to exercise lazy imports."""
+
+    instances: ClassVar[list[_FakeBatchInferenceClient]] = []
+
+    def __init__(self, api_key: str) -> None:
+        self.api_key = api_key
+        self.chat_requests: list[_FakeChatCompletionRequest] = []
+        self.chat_model: str | None = None
+        self.activation_requests: list[_FakeActivationsRequest] = []
+        self.activation_model: str | None = None
+        self.__class__.instances.append(self)
+
+    async def chat_completions(
+        self,
+        requests: list[_FakeChatCompletionRequest],
+        *,
+        model: str,
+    ) -> dict[str, _FakeChatResponse]:
+        """Record chat requests and omit one response on purpose."""
+        self.chat_requests = requests
+        self.chat_model = model
+        return {"p000": _FakeChatResponse("reply-0")}
+
+    async def activations(
+        self,
+        requests: list[_FakeActivationsRequest],
+        *,
+        model: str,
+    ) -> dict[str, _FakeActivationResponse]:
+        """Record activation requests and omit one response on purpose."""
+        self.activation_requests = requests
+        self.activation_model = model
+        return {
+            "act_000": _FakeActivationResponse({
+                "layer.0": _FakeArrayWithToList([[1.0, 2.0]]),
+                "layer.1": _FakeArrayIterable([[3.0, 4.0]]),
+            }),
+        }
+
+
+def _make_fake_jsinfer_module() -> ModuleType:
+    """Build a fake jsinfer module with the symbols the backend imports."""
+    module = ModuleType("jsinfer")
+    module.BatchInferenceClient = _FakeBatchInferenceClient  # type: ignore[attr-defined]
+    module.ChatCompletionRequest = _FakeChatCompletionRequest  # type: ignore[attr-defined]
+    module.ActivationsRequest = _FakeActivationsRequest  # type: ignore[attr-defined]
+    module.Message = _FakeJsinferMessage  # type: ignore[attr-defined]
+    return module
+
+
 # ── Mode runner tests ────────────────────────────────────────────────
 
 
@@ -247,6 +368,224 @@ class TestRemoteModeRunner:
         with pytest.raises(ValueError, match="NONEXISTENT_KEY_12345"):
             _run_remote_mode(ctx)
 
+    def test_missing_remote_config_raises(self, tmp_path: Path) -> None:
+        """Remote mode requires an explicit [remote] section."""
+        from vauban._pipeline._mode_remote import _run_remote_mode
+
+        ctx = MagicMock()
+        ctx.config.remote = None
+        ctx.config.verbose = False
+        ctx.config.output_dir = tmp_path
+        ctx.config_path = str(tmp_path / "test.toml")
+        ctx.t0 = 0.0
+
+        with pytest.raises(ValueError, match=r"\[remote\] section is required"):
+            _run_remote_mode(ctx)
+
+
+class TestRemoteModeHelpers:
+    """Helper coverage for dotenv loading and summary rendering."""
+
+    def test_load_dotenv_manual_parser_handles_quotes(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When python-dotenv is absent, .env should still be parsed safely."""
+        from vauban._pipeline._mode_remote import _load_dotenv
+
+        config_path = tmp_path / "config.toml"
+        config_path.write_text("")
+        (tmp_path / ".env").write_text(
+            "A=\"quoted\"\n"
+            "B='single'\n"
+            "EMPTY=\n"
+            "# comment\n"
+            "EXISTING=ignored\n",
+        )
+        monkeypatch.delenv("A", raising=False)
+        monkeypatch.delenv("B", raising=False)
+        monkeypatch.delenv("EMPTY", raising=False)
+        monkeypatch.setenv("EXISTING", "kept")
+
+        with patch.dict(sys.modules, {"dotenv": None}):
+            _load_dotenv(config_path)
+
+        assert os.environ["A"] == "quoted"
+        assert os.environ["B"] == "single"
+        assert os.environ["EMPTY"] == ""
+        assert os.environ["EXISTING"] == "kept"
+
+    def test_load_dotenv_uses_python_dotenv_when_available(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """If python-dotenv is importable, its loader should be used."""
+        from vauban._pipeline._mode_remote import _load_dotenv
+
+        config_path = tmp_path / "config.toml"
+        config_path.write_text("")
+        env_path = tmp_path / ".env"
+        env_path.write_text("KEY=value\n")
+
+        fake_dotenv = ModuleType("dotenv")
+        calls: list[Path] = []
+
+        def _fake_load_dotenv(path: Path) -> None:
+            calls.append(path)
+
+        fake_dotenv.load_dotenv = _fake_load_dotenv  # type: ignore[attr-defined]
+
+        with patch.dict(sys.modules, {"dotenv": fake_dotenv}):
+            _load_dotenv(config_path)
+
+        assert calls == [env_path]
+
+    def test_print_summary_renders_errors_and_previews(
+        self,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Summary output should include both error and response previews."""
+        from vauban._pipeline._mode_remote import _print_summary
+
+        cfg = RemoteConfig(
+            backend="jsinfer",
+            api_key_env="KEY",
+            models=["m1", "m2", "missing"],
+            prompts=["hello"],
+        )
+        result: dict[str, object] = {
+            "models": {
+                "m1": {
+                    "responses": [
+                        {"prompt": "p1", "response": "hello\nworld"},
+                        {"prompt": "p2", "error": "timeout"},
+                        "skip-me",
+                    ],
+                    "activation_files": ["a.npy"],
+                },
+                "m2": {
+                    "responses": [],
+                    "activation_files": [],
+                },
+            },
+        }
+
+        _print_summary(cfg, result)
+
+        output = capsys.readouterr().err
+        assert "Model" in output
+        assert "m1" in output
+        assert "ERROR: timeout" in output
+        assert "hello world" in output
+
+    def test_print_summary_ignores_non_mapping_results(self) -> None:
+        """Non-dict model payloads should be ignored cleanly."""
+        from vauban._pipeline._mode_remote import _print_summary
+
+        cfg = RemoteConfig(
+            backend="jsinfer",
+            api_key_env="KEY",
+            models=["m1"],
+            prompts=["hello"],
+        )
+
+        _print_summary(cfg, {"models": []})
+
+    def test_print_summary_skips_models_without_response_lists(
+        self,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Preview output should skip dict entries that lack a list of responses."""
+        from vauban._pipeline._mode_remote import _print_summary
+
+        cfg = RemoteConfig(
+            backend="jsinfer",
+            api_key_env="KEY",
+            models=["m1"],
+            prompts=["hello"],
+        )
+
+        _print_summary(cfg, {"models": {"m1": {"responses": "not-a-list"}}})
+
+        output = capsys.readouterr().err
+        assert "Model" in output
+        assert "── m1 ──" not in output
+
+
+class TestJsinferBackend:
+    """Tests for the lazy-import jsinfer backend wrapper."""
+
+    def test_factory_returns_backend(self) -> None:
+        from vauban.remote._jsinfer import JsinferBackend, create_jsinfer_backend
+
+        backend = create_jsinfer_backend("secret-key")
+
+        assert isinstance(backend, JsinferBackend)
+        assert backend._api_key == "secret-key"
+
+    def test_chat_builds_requests_and_handles_missing_responses(self) -> None:
+        from vauban.remote._jsinfer import JsinferBackend
+
+        _FakeBatchInferenceClient.instances.clear()
+        backend = JsinferBackend("secret-key")
+
+        with patch.dict(sys.modules, {"jsinfer": _make_fake_jsinfer_module()}):
+            results = asyncio.run(
+                backend.chat(
+                    model_id="demo-model",
+                    prompts=["hello", "bye"],
+                    max_tokens=32,
+                ),
+            )
+
+        client = _FakeBatchInferenceClient.instances[0]
+        assert client.api_key == "secret-key"
+        assert client.chat_model == "demo-model"
+        assert [
+            request.custom_id for request in client.chat_requests
+        ] == ["p000", "p001"]
+        assert client.chat_requests[0].messages[0].content == "hello"
+        assert results == [
+            RemoteChatResult(prompt="hello", response="reply-0"),
+            RemoteChatResult(prompt="bye", error="no response"),
+        ]
+
+    def test_activations_convert_arrays_for_serialization(self) -> None:
+        from vauban.remote._jsinfer import JsinferBackend
+
+        _FakeBatchInferenceClient.instances.clear()
+        backend = JsinferBackend("secret-key")
+
+        with patch.dict(sys.modules, {"jsinfer": _make_fake_jsinfer_module()}):
+            results = asyncio.run(
+                backend.activations(
+                    model_id="demo-model",
+                    prompts=["hello", "bye"],
+                    modules=["layer.0", "layer.1"],
+                ),
+            )
+
+        client = _FakeBatchInferenceClient.instances[0]
+        assert client.activation_model == "demo-model"
+        assert [request.custom_id for request in client.activation_requests] == [
+            "act_000",
+            "act_001",
+        ]
+        assert client.activation_requests[0].module_names == ["layer.0", "layer.1"]
+        assert results == [
+            RemoteActivationResult(
+                prompt_index=0,
+                module_name="layer.0",
+                data=[[1.0, 2.0]],
+            ),
+            RemoteActivationResult(
+                prompt_index=0,
+                module_name="layer.1",
+                data=[[3.0, 4.0]],
+            ),
+        ]
+
 
 # ── Probe orchestrator tests ─────────────────────────────────────────
 
@@ -284,9 +623,11 @@ class TestRunRemoteProbe:
 
         models = result["models"]
         assert isinstance(models, dict)
-        entry = models["test-model"]
+        models_dict = cast("dict[str, object]", models)
+        entry = models_dict["test-model"]
         assert isinstance(entry, dict)
-        responses = entry["responses"]
+        entry_dict = cast("dict[str, object]", entry)
+        responses = entry_dict["responses"]
         assert isinstance(responses, list)
         assert len(responses) == 2
         assert responses[0] == {"prompt": "Hello", "response": "Hi there"}
@@ -345,14 +686,16 @@ class TestRunRemoteProbe:
         # Files were saved
         models = result["models"]
         assert isinstance(models, dict)
-        entry = models["test/model"]
+        models_dict = cast("dict[str, object]", models)
+        entry = models_dict["test/model"]
         assert isinstance(entry, dict)
-        act_files = entry["activation_files"]
+        entry_dict = cast("dict[str, object]", entry)
+        act_files = entry_dict["activation_files"]
         assert isinstance(act_files, list)
         assert len(act_files) == 1
 
         # File exists on disk
-        filepath = tmp_path / act_files[0]
+        filepath = tmp_path / cast("str", act_files[0])
         assert filepath.exists()
 
         import numpy as np
@@ -385,9 +728,11 @@ class TestRunRemoteProbe:
 
         models = result["models"]
         assert isinstance(models, dict)
-        entry = models["m"]
+        models_dict = cast("dict[str, object]", models)
+        entry = models_dict["m"]
         assert isinstance(entry, dict)
-        responses = entry["responses"]
+        entry_dict = cast("dict[str, object]", entry)
+        responses = entry_dict["responses"]
         assert isinstance(responses, list)
         assert responses[0] == {"prompt": "Hello", "error": "timeout"}
 
@@ -440,7 +785,7 @@ class TestBackendRegistry:
         def _factory(api_key: str) -> _FakeBackend:
             return _FakeBackend()
 
-        register_backend("test_custom", _factory)  # type: ignore[arg-type]
+        register_backend("test_custom", _factory)
         assert "test_custom" in _REGISTRY
 
         # Cleanup

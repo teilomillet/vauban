@@ -232,11 +232,6 @@ def depth_direction(
     shallow_prompts = [p for dtr, p in dtr_scores[:median_idx]]
     deep_prompts = [p for dtr, p in dtr_scores[median_idx:]]
 
-    # Ensure both groups are non-empty
-    if not shallow_prompts or not deep_prompts:
-        msg = "DTR median split produced an empty group"
-        raise ValueError(msg)
-
     # Use measure() with deep=harmful slot, shallow=harmless slot
     direction_result = measure(
         model, tokenizer,

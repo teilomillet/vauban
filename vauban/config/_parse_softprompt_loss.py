@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 from vauban.config._parse_helpers import SectionReader
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from vauban.config._types import TomlDict
 
 

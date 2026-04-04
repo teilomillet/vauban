@@ -5,9 +5,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 
 from tests.conftest import (
@@ -25,11 +26,9 @@ from vauban.types import (
     DefenseStackConfig,
     DefenseStackResult,
     EvalConfig,
+    PerturbConfig,
     SICConfig,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 # ===================================================================
 # CAST mode
@@ -101,6 +100,109 @@ class TestCastMode:
             # 3 interventions per prompt * 2 prompts = 6
             assert metadata["interventions"] == 6
             assert metadata["n_prompts"] == 2
+
+    def test_loads_baseline_activations_and_condition_direction(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Externality-monitor inputs should be loaded and passed through."""
+        cast_cfg = CastConfig(
+            prompts=["test"],
+            externality_monitor=True,
+            baseline_activations_path="baseline.safetensors",
+            condition_direction_path="cond.npy",
+        )
+        dr = make_direction_result()
+        ctx = make_early_mode_context(
+            tmp_path,
+            direction_result=dr,
+            cast=cast_cfg,
+        )
+        baseline = {"0": MagicMock()}
+        mock_result = CastResult(
+            prompt="test",
+            text="output",
+            projections_before=[0.1],
+            projections_after=[0.05],
+            interventions=1,
+            considered=2,
+        )
+
+        with (
+            patch(
+                "vauban._forward.get_transformer",
+                return_value=make_mock_transformer(n_layers=2),
+            ),
+            patch("vauban._ops.load", return_value=baseline),
+            patch("numpy.load", return_value=np.zeros((16,))),
+            patch(
+                "vauban.cast.cast_generate",
+                return_value=mock_result,
+            ) as mock_generate,
+            patch("vauban._pipeline._mode_cast.finish_mode_run"),
+            patch("vauban._pipeline._mode_cast._cast_to_dict", return_value={}),
+        ):
+            _run_cast_mode(ctx)
+
+        kwargs = mock_generate.call_args.kwargs
+        assert kwargs["baseline_activations"] == {0: baseline["0"]}
+        assert kwargs["condition_direction"] is not None
+
+    def test_non_dict_baseline_activations_raise_type_error(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Baseline activations files must deserialize to a mapping."""
+        cast_cfg = CastConfig(
+            prompts=["test"],
+            externality_monitor=True,
+            baseline_activations_path="baseline.safetensors",
+        )
+        dr = make_direction_result()
+        ctx = make_early_mode_context(
+            tmp_path,
+            direction_result=dr,
+            cast=cast_cfg,
+        )
+
+        with (
+            patch(
+                "vauban._forward.get_transformer",
+                return_value=make_mock_transformer(n_layers=1),
+            ),
+            patch("vauban._ops.load", return_value=["bad"]),
+            pytest.raises(
+                TypeError,
+                match="Expected dict from baseline activations file",
+            ),
+        ):
+            _run_cast_mode(ctx)
+
+    def test_condition_direction_dim_mismatch_raises(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Condition directions must match the model hidden size."""
+        cast_cfg = CastConfig(
+            prompts=["test"],
+            condition_direction_path="cond.npy",
+        )
+        dr = make_direction_result()
+        ctx = make_early_mode_context(
+            tmp_path,
+            direction_result=dr,
+            cast=cast_cfg,
+        )
+
+        with (
+            patch(
+                "vauban._forward.get_transformer",
+                return_value=make_mock_transformer(n_layers=1),
+            ),
+            patch("numpy.load", return_value=np.zeros((8,))),
+            pytest.raises(ValueError, match="condition_direction d_model mismatch"),
+        ):
+            _run_cast_mode(ctx)
 
 
 # ===================================================================
@@ -235,6 +337,61 @@ class TestDefendMode:
             assert (tmp_path / "defend_report.json").exists()
             metadata = mock_finish.call_args[0][3]
             assert metadata["block_rate"] == pytest.approx(0.5)
+
+    def test_eval_prompts_and_perturb_branch(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Custom eval prompts and perturbation should feed the defense stack."""
+        defend_cfg = DefenseStackConfig(
+            perturb=PerturbConfig(
+                technique="trigger",
+                intensity=1,
+                seed=7,
+                trigger_words=["boom"],
+            ),
+        )
+        eval_cfg = EvalConfig(prompts_path=Path("defend.jsonl"))
+        dr = make_direction_result(layer_index=3)
+        ctx = make_early_mode_context(
+            tmp_path,
+            harmful=["fallback"],
+            direction_result=dr,
+            defend=defend_cfg,
+            eval=eval_cfg,
+        )
+
+        results = [
+            DefenseStackResult(blocked=False, layer_that_blocked=None),
+            DefenseStackResult(blocked=True, layer_that_blocked="policy"),
+        ]
+
+        with (
+            patch(
+                "vauban.measure.load_prompts",
+                return_value=["p1", "p2"],
+            ) as mock_load,
+            patch(
+                "vauban.perturb.perturb",
+                side_effect=["p1*", "p2*"],
+            ) as mock_perturb,
+            patch(
+                "vauban.defend.defend_content",
+                side_effect=results,
+            ) as mock_defend,
+            patch("vauban._pipeline._mode_defend.finish_mode_run"),
+        ):
+            _run_defend_mode(ctx)
+
+        mock_load.assert_called_once()
+        assert mock_perturb.call_count == 2
+        first_call = mock_defend.call_args_list[0].args
+        assert first_call[2] == "p1*"
+        assert first_call[3] is dr.direction
+        assert first_call[5] == 3
+        report = (tmp_path / "defend_report.json").read_text()
+        assert '"perturb_technique": "trigger"' in report
+        assert '"perturb_intensity": 1' in report
 
 
 # ===================================================================
@@ -391,7 +548,7 @@ class TestSicCalibration:
     def test_custom_eval_prompts_path(self, tmp_path: Path) -> None:
         """eval.prompts_path overrides harmful-based prompts."""
         sic_cfg = SICConfig(mode="generation")
-        eval_cfg = EvalConfig(prompts_path="custom.jsonl")
+        eval_cfg = EvalConfig(prompts_path=Path("custom.jsonl"))
         ctx = make_early_mode_context(
             tmp_path, sic=sic_cfg, eval=eval_cfg,
         )

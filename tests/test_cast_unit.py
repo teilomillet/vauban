@@ -3,6 +3,8 @@
 
 """Tests for CAST entry points, forward pass steering, and SVF-aware CAST."""
 
+from typing import cast
+
 import pytest
 
 from tests.conftest import D_MODEL, MockCausalLM, MockTokenizer
@@ -10,10 +12,18 @@ from vauban import _ops as ops
 from vauban._array import Array
 from vauban.cast import (
     _cast_forward,
+    _cast_forward_svf,
     cast_generate,
+    cast_generate_svf,
     cast_generate_with_messages,
 )
-from vauban.types import AlphaTier
+from vauban.svf import SVFBoundary
+from vauban.types import AlphaTier, LayerCache
+
+
+def _make_layer_cache(model: MockCausalLM) -> list[LayerCache]:
+    """Cast the mock model cache to the protocol used by CAST helpers."""
+    return cast("list[LayerCache]", model.make_cache())
 
 
 class TestCastGenerateWithMessages:
@@ -74,7 +84,7 @@ class TestCastForward:
         direction: Array,
     ) -> None:
         token_ids = ops.array([[1, 2, 3]])
-        cache = mock_model.make_cache()
+        cache = _make_layer_cache(mock_model)
 
         logits, proj_before, _proj_after, interventions, considered, _, _ = (
             _cast_forward(
@@ -94,7 +104,7 @@ class TestCastForward:
         direction: Array,
     ) -> None:
         token_ids = ops.array([[1, 2, 3]])
-        cache = mock_model.make_cache()
+        cache = _make_layer_cache(mock_model)
 
         logits, proj_before, proj_after, interventions, considered, _, _ = (
             _cast_forward(
@@ -115,7 +125,7 @@ class TestCastForward:
         direction: Array,
     ) -> None:
         token_ids = ops.array([[1, 2, 3]])
-        cache = mock_model.make_cache()
+        cache = _make_layer_cache(mock_model)
 
         _, _, _, _, considered, _, _ = _cast_forward(
             mock_model, token_ids, direction,
@@ -131,7 +141,7 @@ class TestCastForward:
     ) -> None:
         """Condition direction gates, primary direction steers."""
         token_ids = ops.array([[1, 2]])
-        cache = mock_model.make_cache()
+        cache = _make_layer_cache(mock_model)
 
         # Zero condition = never triggers
         zero_cond = ops.zeros((D_MODEL,))
@@ -151,7 +161,7 @@ class TestCastForward:
         direction: Array,
     ) -> None:
         token_ids = ops.array([[1, 2]])
-        cache = mock_model.make_cache()
+        cache = _make_layer_cache(mock_model)
         tiers = [
             AlphaTier(threshold=0.0, alpha=0.1),
             AlphaTier(threshold=100.0, alpha=99.0),
@@ -173,7 +183,7 @@ class TestCastForward:
         direction: Array,
     ) -> None:
         token_ids = ops.array([[1, 2, 3]])
-        cache = mock_model.make_cache()
+        cache = _make_layer_cache(mock_model)
 
         # Create baseline activations (zeros → any activation will displace)
         baseline = {0: ops.zeros((D_MODEL,))}
@@ -196,7 +206,7 @@ class TestCastForward:
         direction: Array,
     ) -> None:
         token_ids = ops.array([[1, 2, 3]])
-        cache = mock_model.make_cache()
+        cache = _make_layer_cache(mock_model)
 
         logits, _, _, _, _, _, _ = _cast_forward(
             mock_model, token_ids, direction,
@@ -241,3 +251,136 @@ class TestCastExternalities:
         )
         # max_displacement should be tracked even if no disp interventions
         assert result.max_displacement >= 0.0
+
+
+class TestCastSVF:
+    """Tests for SVF-aware CAST generation and forward steps."""
+
+    def test_cast_generate_svf_aggregates_scores(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import vauban.cast as cast_module
+
+        logits_step_1 = ops.array([[[0.1, 0.9, 0.2]]])
+        logits_step_2 = ops.array([[[0.1, 0.2, 0.9]]])
+        steps = iter([
+            (logits_step_1, [1.0], [0.5], 1, 1),
+            (logits_step_2, [2.0], [1.5], 0, 1),
+        ])
+
+        def _fake_encode(
+            tokenizer: MockTokenizer,
+            messages: list[dict[str, str]],
+        ) -> Array:
+            del tokenizer, messages
+            return ops.array([[1, 2]])
+
+        def _fake_forward(
+            model: MockCausalLM,
+            token_ids: Array,
+            boundary: SVFBoundary,
+            layers: list[int],
+            alpha: float,
+            cache: object,
+        ) -> tuple[Array, list[float], list[float], int, int]:
+            del model, token_ids, boundary, layers, alpha, cache
+            return next(steps)
+
+        monkeypatch.setattr(cast_module, "encode_chat_prompt", _fake_encode)
+        monkeypatch.setattr(cast_module, "_cast_forward_svf", _fake_forward)
+
+        boundary = SVFBoundary(
+            d_model=D_MODEL,
+            projection_dim=4,
+            hidden_dim=4,
+            n_layers=len(mock_model.model.layers),
+        )
+        result = cast_generate_svf(
+            mock_model,
+            mock_tokenizer,
+            "prompt",
+            boundary,
+            layers=[0],
+            max_tokens=2,
+        )
+
+        assert result.prompt == "prompt"
+        assert result.text == mock_tokenizer.decode([1, 2])
+        assert result.projections_before == [1.0, 2.0]
+        assert result.projections_after == [0.5, 1.5]
+        assert result.interventions == 1
+        assert result.considered == 2
+
+    def test_cast_forward_svf_no_positive_scores(
+        self,
+        mock_model: MockCausalLM,
+    ) -> None:
+        token_ids = ops.array([[1, 2]])
+        cache = _make_layer_cache(mock_model)
+        boundary = SVFBoundary(
+            d_model=D_MODEL,
+            projection_dim=4,
+            hidden_dim=4,
+            n_layers=len(mock_model.model.layers),
+        )
+        grad = ops.zeros((D_MODEL,))
+        ops.eval(grad)
+
+        with pytest.MonkeyPatch.context() as monkeypatch:
+            monkeypatch.setattr(
+                "vauban.svf.svf_gradient",
+                lambda boundary_obj, last_token, layer_idx: (-0.5, grad),
+            )
+            logits, before, after, interventions, considered = _cast_forward_svf(
+                mock_model,
+                token_ids,
+                boundary,
+                cast_layers=[0],
+                alpha=1.0,
+                cache=cache,
+            )
+
+        ops.eval(logits)
+        assert interventions == 0
+        assert considered == 1
+        assert before == [-0.5]
+        assert after == [-0.5]
+
+    def test_cast_forward_svf_positive_score_intervenes(
+        self,
+        mock_model: MockCausalLM,
+    ) -> None:
+        token_ids = ops.array([[1, 2]])
+        cache = _make_layer_cache(mock_model)
+        boundary = SVFBoundary(
+            d_model=D_MODEL,
+            projection_dim=4,
+            hidden_dim=4,
+            n_layers=len(mock_model.model.layers),
+        )
+        grad = ops.ones((D_MODEL,))
+        ops.eval(grad)
+        scores = iter([(1.0, grad), (-0.25, grad)])
+
+        with pytest.MonkeyPatch.context() as monkeypatch:
+            monkeypatch.setattr(
+                "vauban.svf.svf_gradient",
+                lambda boundary_obj, last_token, layer_idx: next(scores),
+            )
+            logits, before, after, interventions, considered = _cast_forward_svf(
+                mock_model,
+                token_ids,
+                boundary,
+                cast_layers=[0],
+                alpha=1.0,
+                cache=cache,
+            )
+
+        ops.eval(logits)
+        assert interventions == 1
+        assert considered == 1
+        assert before == [1.0]
+        assert after == [-0.25]

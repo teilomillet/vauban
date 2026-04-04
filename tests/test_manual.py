@@ -4,6 +4,8 @@
 """Tests for the runtime-generated manual."""
 
 import ast
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -13,8 +15,11 @@ from vauban.manual import (
     ManualField,
     ManualSection,
     SectionSpec,
+    _auto_field_map,
     _build_section,
     _build_sections,
+    _default_from_factory_expr,
+    _default_from_field_call,
     _format_default,
     _normalize_topic,
     _parse_class_fields,
@@ -104,6 +109,13 @@ def test_unknown_topic_raises() -> None:
         render_manual("does-not-exist")
 
 
+def test_render_manual_none_returns_topic_index() -> None:
+    text = render_manual(None)
+    assert "VAUBAN MANUAL — Topic Index" in text
+    assert "GENERAL TOPICS" in text
+    assert "CONFIG SECTIONS" in text
+
+
 # ── _normalize_topic ─────────────────────────────────────────────────
 
 
@@ -183,6 +195,17 @@ class FakeConfig:
         assert fields["enabled"].default_repr == "true"
         assert fields["disabled"].default_repr == "false"
 
+    def test_ignores_non_name_targets(self) -> None:
+        source = """
+class FakeConfig:
+    obj.attr: int = 1
+"""
+        module = ast.parse(source)
+        class_node = module.body[0]
+        assert isinstance(class_node, ast.ClassDef)
+        fields = _parse_class_fields(class_node)
+        assert fields == {}
+
 
 # ── _format_default ─────────────────────────────────────────────────
 
@@ -220,6 +243,16 @@ class TestFormatDefault:
         assert '"key"' in result
         assert '"val"' in result
 
+    def test_path(self) -> None:
+        assert _format_default(Path("/tmp/example")) == '"/tmp/example"'
+
+    def test_fallback_str(self) -> None:
+        class Dummy:
+            def __str__(self) -> str:
+                return "dummy"
+
+        assert _format_default(Dummy()) == '"dummy"'
+
 
 # ── _build_section ──────────────────────────────────────────────────
 
@@ -256,6 +289,29 @@ class TestBuildSection:
         assert [f.key for f in section.fields][:3] == [
             "first", "second", "third",
         ]
+
+    def test_adds_auto_discovered_fields(self) -> None:
+        spec = SectionSpec(
+            name="test",
+            description="desc",
+            config_class="FakeConfig",
+            fields=(
+                FieldSpec(key="alpha", description="Alpha"),
+            ),
+        )
+        with patch(
+            "vauban.manual._auto_field_map",
+            return_value={
+                "alpha": AutoField("float", "1.0", False),
+                "beta": AutoField("str", '"x"', True),
+            },
+        ):
+            section = _build_section(spec)
+        keys = [field.key for field in section.fields]
+        assert "alpha" in keys
+        assert "beta" in keys
+        beta = next(field for field in section.fields if field.key == "beta")
+        assert beta.description.startswith("Auto-discovered field")
 
 
 # ── _build_sections ─────────────────────────────────────────────────
@@ -310,6 +366,43 @@ class TestSelectSections:
         sections = _build_sections()
         selected = _select_sections(sections, "nonexistent_section")
         assert selected == ()
+
+
+class TestInternalHelpers:
+    def test_auto_field_map_unknown_class_raises(self) -> None:
+        with (
+            patch("vauban.manual._parsed_config_fields", return_value={}),
+            pytest.raises(ValueError, match="Config class"),
+        ):
+            _auto_field_map("MissingConfig")
+
+    def test_default_from_field_call(self) -> None:
+        default_call = ast.parse("field(default=42)", mode="eval").body
+        empty_call = ast.parse("field()", mode="eval").body
+        assert isinstance(default_call, ast.Call)
+        assert isinstance(empty_call, ast.Call)
+        assert _default_from_field_call(default_call) == ("42", False)
+        assert _default_from_field_call(empty_call) == (None, True)
+
+    def test_default_from_factory_expr(self) -> None:
+        list_expr = ast.parse("list", mode="eval").body
+        dict_expr = ast.parse("dict", mode="eval").body
+        lambda_expr = ast.parse("lambda: {'a': 1}", mode="eval").body
+        set_expr = ast.parse("set", mode="eval").body
+        list_call = ast.parse("list()", mode="eval").body
+        dict_call = ast.parse("dict()", mode="eval").body
+        assert isinstance(list_expr, ast.Name)
+        assert isinstance(dict_expr, ast.Name)
+        assert isinstance(lambda_expr, ast.Lambda)
+        assert isinstance(set_expr, ast.Name)
+        assert isinstance(list_call, ast.Call)
+        assert isinstance(dict_call, ast.Call)
+        assert _default_from_factory_expr(list_expr) == "[]"
+        assert _default_from_factory_expr(dict_expr) == "{}"
+        assert _default_from_factory_expr(lambda_expr) == '{"a": 1}'
+        assert _default_from_factory_expr(set_expr) == "set"
+        assert _default_from_factory_expr(list_call) == "[]"
+        assert _default_from_factory_expr(dict_call) == "{}"
 
 
 # ── render_manual for every topic ────────────────────────────────────

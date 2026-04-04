@@ -38,7 +38,7 @@ from vauban.types import (
     GuardZone,
 )
 
-if _TC:
+if _TC:  # pragma: no cover
     from vauban._array import Array
     from vauban.types import CausalLM, LayerCache, Tokenizer
 
@@ -500,11 +500,16 @@ def calibrate_guard_thresholds(
     p_orange = _percentile(percentiles[1])
     p_red = _percentile(percentiles[2])
 
+    green = 0.0
+    yellow = max(green, p_yellow)
+    orange = max(yellow, p_orange)
+    red = max(orange, p_red)
+
     return [
-        GuardTierSpec(threshold=0.0, zone="green", alpha=0.0),
-        GuardTierSpec(threshold=p_yellow, zone="yellow", alpha=0.5),
-        GuardTierSpec(threshold=p_orange, zone="orange", alpha=1.5),
-        GuardTierSpec(threshold=p_red, zone="red", alpha=3.0),
+        GuardTierSpec(threshold=green, zone="green", alpha=0.0),
+        GuardTierSpec(threshold=yellow, zone="yellow", alpha=0.5),
+        GuardTierSpec(threshold=orange, zone="orange", alpha=1.5),
+        GuardTierSpec(threshold=red, zone="red", alpha=3.0),
     ]
 
 

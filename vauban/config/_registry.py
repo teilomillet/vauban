@@ -93,7 +93,7 @@ class ConfigParseContext:
     raw: TomlDict
 
 
-type _SectionParserResult = (
+type _SectionParserResult = (  # pragma: no cover
     DepthConfig
     | None
     | ApiEvalConfig
@@ -136,7 +136,7 @@ type _SectionParserResult = (
 type SectionParser[T] = Callable[..., T]
 
 # How the parser receives its arguments from ConfigParseContext.
-type CallConvention = Literal[
+type CallConvention = Literal[  # pragma: no cover
     "raw",             # parser(raw)
     "base_dir_raw",    # parser(base_dir, raw)
     "raw_base_dir",    # parser(raw, base_dir)

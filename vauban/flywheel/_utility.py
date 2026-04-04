@@ -57,8 +57,6 @@ def measure_utility(
         return 1.0
     rng = random.Random(seed)
     sample = rng.sample(worlds, k)
-    if not sample:
-        return 1.0
 
     successes = 0
     for world in sample:

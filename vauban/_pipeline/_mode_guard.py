@@ -116,7 +116,7 @@ def _run_guard_mode(context: EarlyModeContext) -> None:
             )
 
     # If calibration produced new tiers, build a new config with them
-    if tiers is not config.guard.tiers:
+    if tiers != config.guard.tiers:
         from dataclasses import replace
         guard_cfg = replace(config.guard, tiers=tiers)
     else:

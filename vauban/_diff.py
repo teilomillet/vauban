@@ -94,10 +94,10 @@ def _extract_value(data: dict[str, object], path: list[str]) -> float | None:
         if not isinstance(current, dict):
             return None
         current = current.get(key)  # type: ignore[union-attr]
-    if isinstance(current, int | float):
-        return float(current)
     if isinstance(current, bool):
         return 1.0 if current else 0.0
+    if isinstance(current, int | float):
+        return float(current)
     return None
 
 

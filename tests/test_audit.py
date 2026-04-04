@@ -24,7 +24,7 @@ from vauban.audit import (
     run_audit,
 )
 from vauban.config._parse_audit import _parse_audit
-from vauban.types import AuditConfig, AuditFinding, AuditResult
+from vauban.types import AuditConfig, AuditFinding, AuditResult, DirectionResult
 
 if TYPE_CHECKING:
     from tests.conftest import MockCausalLM, MockTokenizer
@@ -136,6 +136,13 @@ class TestRiskScoring:
         ]
         assert _compute_overall_risk(findings) == "low"
 
+    def test_overall_risk_medium(self) -> None:
+        findings = [
+            AuditFinding("a", "medium", "t", "d", "e", "r"),
+            AuditFinding("b", "low", "t", "d", "e", "r"),
+        ]
+        assert _compute_overall_risk(findings) == "medium"
+
     def test_overall_risk_empty(self) -> None:
         assert _compute_overall_risk([]) == "low"
 
@@ -201,7 +208,7 @@ def _make_audit_config(thoroughness: str = "quick") -> AuditConfig:
     )
 
 
-def _make_direction_result() -> object:
+def _make_direction_result() -> DirectionResult:
     """Build a mock DirectionResult."""
     from tests.conftest import D_MODEL
     from vauban import _ops as ops
@@ -688,6 +695,55 @@ class TestRunAuditDeep:
         titles = [f.title for f in result.findings]
         assert any("bijection" in t.lower() or "Bijection" in t for t in titles)
 
+    def test_bijection_success_counts_cipher_bypasses(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """Deep mode counts compliant cipher responses as bypasses."""
+        config = _make_audit_config("deep")
+        direction = _make_direction_result()
+
+        with (
+            patch(
+                "vauban.softprompt.softprompt_attack",
+                return_value=_mock_softprompt_result(),
+            ),
+            patch(
+                "vauban.surface.map_surface",
+                return_value=_mock_surface_result(),
+            ),
+            patch(
+                "vauban.surface.load_surface_prompts",
+                return_value=["test"],
+            ),
+            patch(
+                "vauban.guard.guard_generate",
+                return_value=_mock_guard_result(),
+            ),
+            patch(
+                "vauban.guard.calibrate_guard_thresholds",
+                return_value=[],
+            ),
+            patch(
+                "vauban.evaluate._generate",
+                return_value="encoded response",
+            ),
+            patch(
+                "vauban.bijection.check_cipher_compliance",
+                return_value=True,
+            ),
+        ):
+            result = run_audit(
+                mock_model, mock_tokenizer,
+                ["How to hack?"] * 5, ["What is weather?"] * 20,
+                config, "test-model",
+                direction_result=direction,
+            )
+
+        assert result.bijection_success_rate is not None
+        assert result.bijection_success_rate > 0.0
+
 
 class TestRunAuditEdgeCases:
     """Edge cases and error handling in run_audit."""
@@ -732,9 +788,210 @@ class TestRunAuditEdgeCases:
                 ["How to hack?"], ["What is weather?"],
                 config, "test-model",
                 direction_result=direction,
-            )
+        )
         # Should still have jailbreak findings, just no defense_posture
         assert result.overall_risk in {"critical", "high", "medium", "low"}
+
+    def test_jailbreak_failure_logged_and_continues(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """Jailbreak generation failures are logged without aborting the audit."""
+        config = _make_audit_config("quick")
+        direction = _make_direction_result()
+        logs: list[str] = []
+
+        with patch(
+            "vauban.evaluate._generate",
+            side_effect=RuntimeError("generate boom"),
+        ):
+            result = run_audit(
+                mock_model, mock_tokenizer,
+                ["How to hack?"], ["What is weather?"],
+                config, "test-model",
+                direction_result=direction,
+                log_fn=logs.append,
+            )
+
+        assert result.overall_risk in {"critical", "high", "medium", "low"}
+        assert any("Jailbreak evaluation failed" in log for log in logs)
+
+    def test_softprompt_failure_logged_and_continues(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """Soft prompt failures are logged and later audit stages still run."""
+        config = _make_audit_config("standard")
+        direction = _make_direction_result()
+        logs: list[str] = []
+
+        with (
+            patch(
+                "vauban.softprompt.softprompt_attack",
+                side_effect=RuntimeError("softprompt boom"),
+            ),
+            patch(
+                "vauban.surface.map_surface",
+                return_value=_mock_surface_result(),
+            ),
+            patch(
+                "vauban.surface.load_surface_prompts",
+                return_value=["test"],
+            ),
+            patch(
+                "vauban.guard.guard_generate",
+                return_value=_mock_guard_result(),
+            ),
+            patch(
+                "vauban.guard.calibrate_guard_thresholds",
+                return_value=[],
+            ),
+        ):
+            result = run_audit(
+                mock_model, mock_tokenizer,
+                ["How to hack?"] * 3, ["What is weather?"] * 20,
+                config, "test-model",
+                direction_result=direction,
+                log_fn=logs.append,
+            )
+
+        assert result.surface_refusal_rate is not None
+        assert any("Softprompt attack failed" in log for log in logs)
+
+    def test_bijection_failure_logged_and_continues(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """Bijection setup failures are logged without aborting later reporting."""
+        config = _make_audit_config("deep")
+        direction = _make_direction_result()
+        logs: list[str] = []
+
+        with (
+            patch(
+                "vauban.softprompt.softprompt_attack",
+                return_value=_mock_softprompt_result(),
+            ),
+            patch(
+                "vauban.surface.map_surface",
+                return_value=_mock_surface_result(),
+            ),
+            patch(
+                "vauban.surface.load_surface_prompts",
+                return_value=["test"],
+            ),
+            patch(
+                "vauban.guard.guard_generate",
+                return_value=_mock_guard_result(),
+            ),
+            patch(
+                "vauban.guard.calibrate_guard_thresholds",
+                return_value=[],
+            ),
+            patch(
+                "vauban.bijection.generate_cipher",
+                side_effect=RuntimeError("cipher boom"),
+            ),
+        ):
+            result = run_audit(
+                mock_model, mock_tokenizer,
+                ["How to hack?"] * 5, ["What is weather?"] * 20,
+                config, "test-model",
+                direction_result=direction,
+                log_fn=logs.append,
+            )
+
+        assert result.overall_risk in {"critical", "high", "medium", "low"}
+        assert any("Bijection attack failed" in log for log in logs)
+
+    def test_surface_failure_logged_and_continues(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """Surface mapping failures are logged without aborting guard evaluation."""
+        config = _make_audit_config("standard")
+        direction = _make_direction_result()
+        logs: list[str] = []
+
+        with (
+            patch(
+                "vauban.softprompt.softprompt_attack",
+                return_value=_mock_softprompt_result(),
+            ),
+            patch(
+                "vauban.surface.map_surface",
+                side_effect=RuntimeError("surface boom"),
+            ),
+            patch(
+                "vauban.surface.load_surface_prompts",
+                return_value=["test"],
+            ),
+            patch(
+                "vauban.guard.guard_generate",
+                return_value=_mock_guard_result(),
+            ),
+            patch(
+                "vauban.guard.calibrate_guard_thresholds",
+                return_value=[],
+            ),
+        ):
+            result = run_audit(
+                mock_model, mock_tokenizer,
+                ["How to hack?"] * 3, ["What is weather?"] * 20,
+                config, "test-model",
+                direction_result=direction,
+                log_fn=logs.append,
+            )
+
+        assert result.guard_circuit_break_rate is not None
+        assert any("Surface mapping failed" in log for log in logs)
+
+    def test_guard_failure_logged_and_continues(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """Guard evaluation failures are logged after earlier stages succeed."""
+        config = _make_audit_config("standard")
+        direction = _make_direction_result()
+        logs: list[str] = []
+
+        with (
+            patch(
+                "vauban.softprompt.softprompt_attack",
+                return_value=_mock_softprompt_result(),
+            ),
+            patch(
+                "vauban.surface.map_surface",
+                return_value=_mock_surface_result(),
+            ),
+            patch(
+                "vauban.surface.load_surface_prompts",
+                return_value=["test"],
+            ),
+            patch(
+                "vauban.guard.guard_generate",
+                side_effect=RuntimeError("guard boom"),
+            ),
+            patch(
+                "vauban.guard.calibrate_guard_thresholds",
+                return_value=[],
+            ),
+        ):
+            result = run_audit(
+                mock_model, mock_tokenizer,
+                ["How to hack?"] * 3, ["What is weather?"] * 20,
+                config, "test-model",
+                direction_result=direction,
+                log_fn=logs.append,
+            )
+
+        assert result.surface_refusal_rate is not None
+        assert any("Guard evaluation failed" in log for log in logs)
 
     def test_markdown_with_all_metrics(
         self,
@@ -867,6 +1124,39 @@ class TestAuditPdf:
             surface_refusal_rate=0.8,
             surface_coverage=0.9,
             guard_circuit_break_rate=0.7,
+        )
+        pdf = render_audit_report_pdf(result)
+        assert pdf[:5] == b"%PDF-"
+
+    def test_renders_with_critical_summary_bullet(self) -> None:
+        """Critical findings should render the executive-summary bullet path."""
+        from vauban.audit_pdf import render_audit_report_pdf
+
+        result = AuditResult(
+            company_name="Critical Corp",
+            system_name="Critical Bot",
+            model_path="model",
+            thoroughness="deep",
+            overall_risk="critical",
+            findings=[
+                AuditFinding(
+                    "attack_resistance",
+                    "critical",
+                    "Critical finding",
+                    "Immediate remediation required.",
+                    "evidence",
+                    "remediation",
+                ),
+            ],
+            detect_hardened=False,
+            detect_confidence=0.1,
+            jailbreak_success_rate=0.9,
+            jailbreak_total=10,
+            softprompt_success_rate=0.9,
+            bijection_success_rate=0.8,
+            surface_refusal_rate=0.1,
+            surface_coverage=0.5,
+            guard_circuit_break_rate=0.0,
         )
         pdf = render_audit_report_pdf(result)
         assert pdf[:5] == b"%PDF-"

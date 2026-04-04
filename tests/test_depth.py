@@ -3,11 +3,15 @@
 
 """Tests for vauban.depth: deep-thinking token analysis."""
 
+from typing import TYPE_CHECKING, cast
+from unittest.mock import patch
+
 import pytest
 
 from tests.conftest import D_MODEL, NUM_LAYERS, MockCausalLM, MockTokenizer
 from vauban import _ops as ops
 from vauban.depth import (
+    _cached_forward_all_hidden,
     _jsd,
     _settling_depth,
     depth_direction,
@@ -15,6 +19,9 @@ from vauban.depth import (
     depth_profile,
 )
 from vauban.types import DepthConfig, DepthResult, DirectionResult, TokenDepth
+
+if TYPE_CHECKING:
+    from vauban.types import LayerCache
 
 
 @pytest.fixture
@@ -187,6 +194,21 @@ class TestDepthProfile:
         )
         assert result.prompt == "Hello world"
 
+    def test_top_k_larger_than_vocab_uses_full_vocab(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        config = DepthConfig(
+            prompts=["Hello world"],
+            settling_threshold=0.5,
+            deep_fraction=0.85,
+            top_k_logits=10_000,
+            max_tokens=0,
+        )
+        result = depth_profile(mock_model, mock_tokenizer, "Hello", config)
+        assert len(result.tokens) > 0
+
 
 class TestDepthGenerate:
     def test_token_count(
@@ -225,6 +247,35 @@ class TestDepthGenerate:
         )
         for token in result.tokens:
             assert len(token.jsd_profile) == result.layer_count
+
+    def test_top_k_larger_than_vocab_uses_full_vocab(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        config = DepthConfig(
+            prompts=["Hello world"],
+            settling_threshold=0.5,
+            deep_fraction=0.85,
+            top_k_logits=10_000,
+            max_tokens=2,
+        )
+        result = depth_generate(mock_model, mock_tokenizer, "Hi", config)
+        assert len(result.tokens) == config.max_tokens
+
+    def test_cached_forward_with_cache_branch(
+        self,
+        mock_model: MockCausalLM,
+    ) -> None:
+        token_ids = ops.array([[1, 2, 3]])
+        cache = mock_model.make_cache()
+        typed_cache = cast("list[LayerCache]", cache)
+        logits = _cached_forward_all_hidden(
+            mock_model,
+            token_ids,
+            cache=typed_cache,
+        )
+        assert logits.shape[0] == 1
 
 
 def _make_depth_result(
@@ -347,6 +398,42 @@ class TestDepthDirection:
         )
         assert dir_result.refusal_cosine is not None
         assert -1.0 <= dir_result.refusal_cosine <= 1.0
+
+    def test_refusal_cosine_zero_when_refusal_direction_is_zero(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        results = [
+            _make_depth_result("a", 0.1),
+            _make_depth_result("b", 0.9),
+        ]
+        zero = ops.zeros((D_MODEL,))
+        ops.eval(zero)
+        measured = DirectionResult(
+            direction=zero,
+            layer_index=0,
+            cosine_scores=[0.0] * NUM_LAYERS,
+            d_model=D_MODEL,
+            model_path="test",
+        )
+        refusal_dir = DirectionResult(
+            direction=zero,
+            layer_index=0,
+            cosine_scores=[0.0] * NUM_LAYERS,
+            d_model=D_MODEL,
+            model_path="test",
+        )
+
+        with patch("vauban.measure.measure", return_value=measured):
+            dir_result = depth_direction(
+                mock_model,
+                mock_tokenizer,
+                results,
+                refusal_direction=refusal_dir,
+            )
+
+        assert dir_result.refusal_cosine == 0.0
 
     def test_clip_quantile_passed_through(
         self,

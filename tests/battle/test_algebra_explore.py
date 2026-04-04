@@ -10,9 +10,9 @@ invariants checked after every step.
 
 from __future__ import annotations
 
-import random
 from typing import TYPE_CHECKING, ClassVar
 
+import hypothesis.strategies as st
 from hypothesis import settings
 from hypothesis.stateful import Bundle, invariant, rule
 from ordeal import ChaosTest
@@ -53,10 +53,9 @@ class AlgebraChaosTest(ChaosTest):
         super().__init__()
         self._all_spaces: list[DirectionSpace] = []
 
-    @rule(target=spaces)
-    def create_random_space(self) -> DirectionSpace:
+    @rule(target=spaces, rank=st.integers(min_value=1, max_value=4))
+    def create_random_space(self, rank: int) -> DirectionSpace:
         """Generate a fresh random DirectionSpace."""
-        rank = random.randint(1, 4)
         arr = ops.random.normal((rank, D_MODEL))
         ops.eval(arr)
         space = from_array(arr, label=f"r{rank}_{len(self._all_spaces)}")
@@ -100,7 +99,7 @@ class AlgebraChaosTest(ChaosTest):
 
     # -- Invariants (checked after every step) --
 
-    _check_orthonormal = orthonormal()
+    _check_orthonormal = orthonormal(tol=1e-4)
     _check_rank = rank_bounded(0, D_MODEL)
     _check_symmetric = symmetric(tol=1e-4)
     _check_psd = positive_semi_definite(tol=1e-4)

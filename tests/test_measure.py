@@ -4,6 +4,9 @@
 """Tests for vauban.measure: activation capture and direction computation."""
 
 from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 from tests.conftest import D_MODEL, NUM_LAYERS, MockCausalLM, MockTokenizer
 from vauban import _ops as ops
@@ -18,6 +21,33 @@ from vauban.measure import (
     select_target_layers,
     silhouette_scores,
 )
+from vauban.measure._direction import _collect_activations_at_instruction_end
+
+
+class _ChatTemplateTokenizer:
+    def __init__(
+        self,
+        full_result: str | list[int],
+        empty_result: str | list[int],
+    ) -> None:
+        self.full_result = full_result
+        self.empty_result = empty_result
+
+    def apply_chat_template(
+        self,
+        messages: list[dict[str, str]],
+        tokenize: bool = True,
+    ) -> str | list[int]:
+        del tokenize
+        if messages[0]["content"] == "":
+            return self.empty_result
+        return self.full_result
+
+    def encode(self, text: str) -> list[int]:
+        return [ord(char) % 32 for char in text]
+
+    def decode(self, token_ids: list[int]) -> str:
+        return "".join(chr(token_id + 65) for token_id in token_ids)
 
 
 class TestLoadPrompts:
@@ -114,6 +144,71 @@ class TestFindInstructionBoundary:
         full_text = "[USER]test prompt[/USER][ASST]"
         full_ids = mock_tokenizer.encode(full_text)
         assert boundary < len(full_ids) - 1
+
+    def test_full_template_string_raises_type_error(self) -> None:
+        tokenizer = _ChatTemplateTokenizer("bad", [1, 2, 3])
+        with pytest.raises(TypeError, match="list\\[int\\]"):
+            find_instruction_boundary(tokenizer, "prompt")
+
+    def test_empty_template_string_raises_type_error(self) -> None:
+        tokenizer = _ChatTemplateTokenizer([1, 2, 3], "bad")
+        with pytest.raises(TypeError, match="list\\[int\\]"):
+            find_instruction_boundary(tokenizer, "prompt")
+
+    def test_no_matching_suffix_falls_back_to_last(self) -> None:
+        tokenizer = _ChatTemplateTokenizer([1, 2, 3], [4, 5, 6])
+        assert find_instruction_boundary(tokenizer, "prompt") == 2
+
+
+class TestCollectActivationsAtInstructionEnd:
+    def test_collects_with_clipping_and_periodic_force_eval(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        token_ids = ops.array([[1, 2, 3]])
+        residuals = [ops.array([1.0, 2.0]), ops.array([3.0, 4.0])]
+        prompts = ["prompt"] * 16
+
+        with (
+            patch(
+                "vauban.measure._direction.encode_user_prompt",
+                return_value=token_ids,
+            ),
+            patch(
+                "vauban.measure._direction.find_instruction_boundary",
+                return_value=1,
+            ),
+            patch(
+                "vauban.measure._direction._forward_collect",
+                return_value=residuals,
+            ),
+            patch(
+                "vauban.measure._direction._clip_activation",
+                side_effect=lambda r, _q: r + 1.0,
+            ),
+        ):
+            means = _collect_activations_at_instruction_end(
+                mock_model,
+                mock_tokenizer,
+                prompts,
+                clip_quantile=0.5,
+            )
+
+        assert len(means) == 2
+        assert float(means[0][0].item()) > 0.0
+
+    def test_empty_prompts_raise(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        with pytest.raises(ValueError, match="No prompts"):
+            _collect_activations_at_instruction_end(
+                mock_model,
+                mock_tokenizer,
+                [],
+            )
 
 
 class TestForwardCollectWithPosition:
@@ -353,3 +448,12 @@ class TestSelectTargetLayersWithTypeFilter:
             layer_types=layer_types, type_filter="global",
         )
         assert result == []
+
+
+class TestSelectTargetLayersEdgeCases:
+    def test_empty_scores_returns_empty(self) -> None:
+        assert select_target_layers([]) == []
+
+    def test_unknown_strategy_raises(self) -> None:
+        with pytest.raises(ValueError, match="Unknown strategy"):
+            select_target_layers([0.1, 0.2], strategy="bogus")

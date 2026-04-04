@@ -244,6 +244,86 @@ class TestDefendContent:
         assert result.blocked is True
         assert result.sic_result is None
 
+    def test_sic_blocked_fail_fast(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """A blocking SIC result stops the stack immediately."""
+        from unittest.mock import patch
+
+        from vauban.defend import defend_content
+        from vauban.types import SICConfig, SICPromptResult
+
+        config = DefenseStackConfig(sic=SICConfig(), fail_fast=True)
+        sic_result = SICPromptResult(
+            clean_prompt="clean",
+            blocked=True,
+            iterations=3,
+            initial_score=1.0,
+            final_score=1.0,
+        )
+
+        with patch("vauban.sic.sic_single", return_value=sic_result):
+            result = defend_content(
+                mock_model, mock_tokenizer, "test", None, config,
+            )
+
+        assert result.blocked is True
+        assert result.layer_that_blocked == "sic"
+        assert result.sic_result == sic_result
+
+    def test_scan_sets_blocker_when_not_fail_fast(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+        direction: Array,
+    ) -> None:
+        """A flagged scan remains the blocker when the stack continues."""
+        from vauban.defend import defend_content
+        from vauban.types import ScanConfig
+
+        config = DefenseStackConfig(
+            scan=ScanConfig(threshold=-1e9, span_threshold=-1e9),
+            fail_fast=False,
+        )
+        result = defend_content(
+            mock_model, mock_tokenizer, "test", direction, config,
+        )
+
+        assert result.blocked is True
+        assert result.layer_that_blocked == "scan"
+        assert result.scan_result is not None
+
+    def test_sic_sets_blocker_when_not_fail_fast(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """A blocking SIC result is preserved when fail_fast is disabled."""
+        from unittest.mock import patch
+
+        from vauban.defend import defend_content
+        from vauban.types import SICConfig, SICPromptResult
+
+        config = DefenseStackConfig(sic=SICConfig(), fail_fast=False)
+        sic_result = SICPromptResult(
+            clean_prompt="clean",
+            blocked=True,
+            iterations=3,
+            initial_score=1.0,
+            final_score=1.0,
+        )
+
+        with patch("vauban.sic.sic_single", return_value=sic_result):
+            result = defend_content(
+                mock_model, mock_tokenizer, "test", None, config,
+            )
+
+        assert result.blocked is True
+        assert result.layer_that_blocked == "sic"
+        assert result.sic_result == sic_result
+
 
 # ── defend_tool_call ─────────────────────────────────────────────────
 
@@ -347,3 +427,60 @@ class TestDefendToolCall:
             "any_tool", {}, None, config,
         )
         assert result.intent_check is None
+
+    def test_policy_sets_blocker_when_not_fail_fast(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """Policy remains the recorded blocker when the stack continues."""
+        from vauban.defend import defend_tool_call
+
+        policy = PolicyConfig(rules=[
+            PolicyRule(
+                name="block_dangerous",
+                action="block",
+                tool_pattern="dangerous_*",
+            ),
+        ])
+        config = DefenseStackConfig(policy=policy, fail_fast=False)
+        result = defend_tool_call(
+            mock_model, mock_tokenizer,
+            "dangerous_tool", {}, None, config,
+        )
+
+        assert result.blocked is True
+        assert result.layer_that_blocked == "policy"
+
+    def test_intent_sets_blocker_when_not_fail_fast(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """Intent misalignment remains the blocker when fail_fast is disabled."""
+        from unittest.mock import patch
+
+        from vauban.defend import defend_tool_call
+        from vauban.types import IntentCheckResult
+
+        config = DefenseStackConfig(
+            intent=IntentConfig(mode="embedding"),
+            fail_fast=False,
+        )
+        intent_state = IntentState(user_request="summarize", activation=None)
+
+        with patch(
+            "vauban.intent.check_alignment",
+            return_value=IntentCheckResult(
+                aligned=False,
+                score=0.1,
+                mode="embedding",
+            ),
+        ):
+            result = defend_tool_call(
+                mock_model, mock_tokenizer,
+                "safe_tool", {"arg": "value"}, intent_state, config,
+            )
+
+        assert result.blocked is True
+        assert result.layer_that_blocked == "intent"

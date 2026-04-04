@@ -6,12 +6,14 @@
 from vauban import _ops as ops
 from vauban._serializers import (
     _cast_to_dict,
+    _circuit_to_dict,
     _defend_to_dict,
     _depth_direction_to_dict,
     _depth_to_dict,
     _detect_to_dict,
     _diff_result_to_dict,
     _direction_transfer_to_dict,
+    _features_to_dict,
     _optimize_to_dict,
     _probe_to_dict,
     _scan_result_to_dict,
@@ -21,8 +23,11 @@ from vauban._serializers import (
     _surface_comparison_to_dict,
     _transfer_eval_to_dict,
 )
+from vauban.taxonomy import TaxonomyCoverage
 from vauban.types import (
     CastResult,
+    CircuitResult,
+    ComponentEffect,
     DefenseEvalResult,
     DefenseStackResult,
     DepthDirectionResult,
@@ -30,11 +35,13 @@ from vauban.types import (
     DetectResult,
     DiffResult,
     DirectionTransferResult,
+    FeaturesResult,
     GanRoundResult,
     IntentCheckResult,
     OptimizeResult,
     PolicyDecision,
     ProbeResult,
+    SAELayerResult,
     ScanResult,
     ScanSpan,
     SICPromptResult,
@@ -309,6 +316,12 @@ class TestSurfaceComparisonToDict:
             threshold=0.5,
             total_scanned=100,
             total_refused=20,
+            taxonomy_coverage=TaxonomyCoverage(
+                present=frozenset({"violence"}),
+                missing=frozenset({"fraud"}),
+                aliased={"violent": "violence"},
+                coverage_ratio=0.5,
+            ),
         )
         after = SurfaceResult(
             points=[],
@@ -358,6 +371,11 @@ class TestSurfaceComparisonToDict:
         assert summary["threshold_before"] == 0.5
         assert summary["total_scanned"] == 100
         assert summary["coverage_score_before"] == 0.0  # default
+        taxonomy_coverage: dict[str, object] = d["taxonomy_coverage"]  # type: ignore[assignment]
+        assert taxonomy_coverage["present"] == ["violence"]
+        assert taxonomy_coverage["missing"] == ["fraud"]
+        assert taxonomy_coverage["aliased"] == {"violent": "violence"}
+        assert taxonomy_coverage["coverage_ratio"] == 0.5
         cats: list[object] = d["category_deltas"]  # type: ignore[assignment]
         assert len(cats) == 1
         cat_d: dict[str, object] = cats[0]  # type: ignore[assignment]
@@ -438,6 +456,59 @@ class TestDetectToDict:
         assert d["residual_refusal_rate"] is None
         assert d["mean_refusal_position"] is None
         assert d["evidence"] == []
+
+
+class TestPassthroughSerializers:
+    def test_circuit_to_dict_passthrough(self) -> None:
+        result = CircuitResult(
+            effects=[
+                ComponentEffect(
+                    layer=1,
+                    component="attn",
+                    effect=0.4,
+                    direction_attribution=0.2,
+                ),
+            ],
+            metric="logit_diff",
+            granularity="layer",
+            n_layers=2,
+            clean_prompts=["clean"],
+            corrupt_prompts=["corrupt"],
+        )
+
+        d = _circuit_to_dict(result)
+
+        effects: list[object] = d["effects"]  # type: ignore[assignment]
+        first: dict[str, object] = effects[0]  # type: ignore[assignment]
+        assert first["component"] == "attn"
+        assert d["metric"] == "logit_diff"
+        assert d["n_layers"] == 2
+
+    def test_features_to_dict_passthrough(self) -> None:
+        result = FeaturesResult(
+            layers=[
+                SAELayerResult(
+                    layer=0,
+                    final_loss=0.25,
+                    loss_history=[0.8, 0.25],
+                    n_dead_features=3,
+                    n_active_features=61,
+                ),
+            ],
+            d_model=16,
+            d_sae=64,
+            model_path="test-model",
+            direction_alignment=[[0.1, 0.2]],
+        )
+
+        d = _features_to_dict(result)
+
+        layers: list[object] = d["layers"]  # type: ignore[assignment]
+        first: dict[str, object] = layers[0]  # type: ignore[assignment]
+        assert first["layer"] == 0
+        assert first["n_active_features"] == 61
+        assert d["d_model"] == 16
+        assert d["direction_alignment"] == [[0.1, 0.2]]
 
 
 class TestOptimizeToDict:

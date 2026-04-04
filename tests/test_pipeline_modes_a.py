@@ -251,6 +251,127 @@ class TestDepthMode:
             _run_depth_mode(ctx)
             mock_dd.assert_called_once()
 
+    def test_extract_direction_uses_custom_prompts_and_refusal_direction(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Custom direction prompts should be profiled and compared to refusal."""
+        depth_cfg = DepthConfig(
+            prompts=["p1", "p2"],
+            direction_prompts=["d1", "d2"],
+            max_tokens=50,
+            extract_direction=True,
+            clip_quantile=0.2,
+        )
+        ctx = make_early_mode_context(tmp_path, depth=depth_cfg)
+
+        prompt_result = MagicMock()
+        prompt_result.tokens = []
+        direction_result = make_direction_result()
+
+        import numpy as np
+
+        depth_direction_result = MagicMock(spec=DirectionResult)
+        depth_direction_result.direction = np.array([0.1, 0.2])
+
+        with (
+            patch(
+                "vauban.depth.depth_generate",
+                side_effect=[
+                    prompt_result,
+                    prompt_result,
+                    prompt_result,
+                    prompt_result,
+                ],
+            ) as mock_generate,
+            patch("vauban.depth.depth_profile") as mock_profile,
+            patch(
+                "vauban._pipeline._mode_depth.is_default_data",
+                return_value=False,
+            ),
+            patch(
+                "vauban.dataset.resolve_prompts",
+                side_effect=[["harm"], ["safe"]],
+            ) as mock_resolve,
+            patch(
+                "vauban.measure.measure",
+                return_value=direction_result,
+            ) as mock_measure,
+            patch(
+                "vauban.depth.depth_direction",
+                return_value=depth_direction_result,
+            ) as mock_depth_direction,
+            patch("numpy.save"),
+            patch("vauban._pipeline._mode_depth.finish_mode_run"),
+            patch(
+                "vauban._pipeline._mode_depth._depth_to_dict",
+                return_value={},
+            ),
+            patch(
+                "vauban._pipeline._mode_depth._depth_direction_to_dict",
+                return_value={"layer": 0},
+            ),
+        ):
+            _run_depth_mode(ctx)
+
+        assert mock_generate.call_count == 4
+        mock_profile.assert_not_called()
+        assert mock_resolve.call_count == 2
+        mock_measure.assert_called_once()
+        kwargs = mock_depth_direction.call_args.kwargs
+        assert kwargs["refusal_direction"] is direction_result
+
+    def test_extract_direction_profiles_custom_prompts_when_static(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Static depth runs should profile custom direction prompts too."""
+        depth_cfg = DepthConfig(
+            prompts=["p1", "p2"],
+            direction_prompts=["d1"],
+            max_tokens=0,
+            extract_direction=True,
+        )
+        ctx = make_early_mode_context(tmp_path, depth=depth_cfg)
+
+        depth_result = MagicMock()
+        depth_result.tokens = []
+
+        import numpy as np
+
+        depth_direction_result = MagicMock(spec=DirectionResult)
+        depth_direction_result.direction = np.array([0.1, 0.2])
+
+        with (
+            patch(
+                "vauban.depth.depth_profile",
+                side_effect=[depth_result, depth_result, depth_result],
+            ) as mock_profile,
+            patch("vauban.depth.depth_generate") as mock_generate,
+            patch(
+                "vauban.depth.depth_direction",
+                return_value=depth_direction_result,
+            ),
+            patch(
+                "vauban._pipeline._mode_depth.is_default_data",
+                return_value=True,
+            ),
+            patch("numpy.save"),
+            patch("vauban._pipeline._mode_depth.finish_mode_run"),
+            patch(
+                "vauban._pipeline._mode_depth._depth_to_dict",
+                return_value={},
+            ),
+            patch(
+                "vauban._pipeline._mode_depth._depth_direction_to_dict",
+                return_value={"layer": 0},
+            ),
+        ):
+            _run_depth_mode(ctx)
+
+        assert mock_profile.call_count == 3
+        mock_generate.assert_not_called()
+
 
 # ===================================================================
 # Steer — alternate direction branches

@@ -87,6 +87,15 @@ class TestCheckUnknownKeys:
         warnings = check_unknown_keys(raw)
         assert warnings == []
 
+    def test_unknown_data_subtable_is_skipped(self) -> None:
+        raw: dict[str, object] = {
+            "data": {
+                "archive": {"hf": "repo/id", "split": "train"},
+            },
+        }
+        warnings = check_unknown_keys(raw)
+        assert warnings == []
+
     def test_skips_sections_not_in_known_keys(self) -> None:
         """Sections without a _KNOWN_KEYS entry are ignored."""
         raw: dict[str, object] = {"verbose": True}

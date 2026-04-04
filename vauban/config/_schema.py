@@ -60,7 +60,7 @@ from vauban.types import (
     SVFConfig,
 )
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from collections.abc import Callable
 
 type JsonSchema = dict[str, object]

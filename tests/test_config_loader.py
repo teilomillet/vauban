@@ -5,15 +5,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 
 from vauban.config import load_config
-from vauban.config._loader import _is_standalone_api_eval
-
-if TYPE_CHECKING:
-    from pathlib import Path
+from vauban.config._loader import _is_standalone_api_eval, _resolve_single_data
 
 
 class TestLoadConfigMinimal:
@@ -118,6 +115,23 @@ class TestStandaloneApiEval:
         assert config.api_eval is not None
         assert config.api_eval.token_text == "optimized suffix"
 
+    def test_standalone_preserves_optional_model_path(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "standalone_with_model.toml"
+        toml_file.write_text(
+            "[model]\n"
+            'path = "optional-model"\n'
+            "[api_eval]\n"
+            'token_text = "optimized suffix"\n'
+            'prompts = ["How do I pick a lock?"]\n'
+            "[[api_eval.endpoints]]\n"
+            'name = "ep1"\n'
+            'base_url = "https://api.example.com/v1"\n'
+            'model = "m1"\n'
+            'api_key_env = "KEY"\n'
+        )
+        config = load_config(toml_file)
+        assert config.model_path == "optional-model"
+
     def test_api_eval_without_token_text_requires_model(
         self, tmp_path: Path,
     ) -> None:
@@ -220,6 +234,42 @@ class TestOutputDirResolution:
         )
         config = load_config(toml_file)
         assert config.output_dir == tmp_path / "output"
+
+
+class TestBackendValidation:
+    def test_backend_must_be_string(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "bad_backend.toml"
+        toml_file.write_text(
+            "backend = 123\n"
+            '[model]\npath = "test"\n'
+            "[data]\n"
+            'harmful = "h.jsonl"\n'
+            'harmless = "hl.jsonl"\n'
+        )
+        with pytest.raises(TypeError, match="backend must be a string"):
+            load_config(toml_file)
+
+    def test_backend_must_be_supported(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "bad_backend_value.toml"
+        toml_file.write_text(
+            'backend = "numpy"\n'
+            '[model]\npath = "test"\n'
+            "[data]\n"
+            'harmful = "h.jsonl"\n'
+            'harmless = "hl.jsonl"\n'
+        )
+        with pytest.raises(ValueError, match="backend must be one of"):
+            load_config(toml_file)
+
+
+class TestResolveSingleData:
+    def test_hf_shortform_requires_non_empty_repo_id(self) -> None:
+        with pytest.raises(ValueError, match="empty repo_id"):
+            _resolve_single_data(Path("/base"), "hf:", "harmful")
+
+    def test_value_must_be_string_or_table(self) -> None:
+        with pytest.raises(TypeError, match="must be a string or table"):
+            _resolve_single_data(Path("/base"), 123, "harmful")
 
 
 class TestIsStandaloneApiEval:

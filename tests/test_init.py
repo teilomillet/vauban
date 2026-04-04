@@ -9,7 +9,12 @@ from typing import cast
 
 import pytest
 
-from vauban._init import _STANDALONE_TEMPLATES, KNOWN_MODES, init_config
+from vauban._init import (
+    _STANDALONE_TEMPLATES,
+    KNOWN_MODES,
+    _write_ai_act_supporting_files,
+    init_config,
+)
 from vauban.ai_act import generate_deployer_readiness_bundle
 
 
@@ -105,6 +110,54 @@ class TestInitConfig:
             evidence_dir / "ai_literacy.md"
         ).read_text()
 
+    def test_ai_act_supporting_files_skip_existing_without_force(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        out = tmp_path / "readiness.toml"
+        evidence_dir = tmp_path / "evidence"
+        evidence_dir.mkdir(parents=True)
+        existing = evidence_dir / "ai_literacy.md"
+        existing.write_text("existing content")
+
+        written = _write_ai_act_supporting_files(out, force=False)
+
+        assert existing.read_text() == "existing content"
+        assert existing not in written
+        assert (evidence_dir / "transparency_notice.md").exists()
+
+    def test_roundtrip_validation_failure_raises_internal_error(self) -> None:
+        from unittest.mock import patch
+
+        with (
+            patch("tomllib.loads", return_value={}),
+            pytest.raises(ValueError, match="missing required sections"),
+        ):
+            init_config("default")
+
+    def test_mode_descriptions_guard_raises_on_missing_registry_entry(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import importlib
+
+        import vauban._init as init_module
+        from vauban.config import _mode_registry
+
+        broken = dict(_mode_registry.EARLY_MODE_DESCRIPTION_BY_MODE)
+        removed_mode = next(iter(broken))
+        del broken[removed_mode]
+
+        with monkeypatch.context() as ctx:
+            ctx.setattr(_mode_registry, "EARLY_MODE_DESCRIPTION_BY_MODE", broken)
+            with pytest.raises(
+                AssertionError,
+                match="MODE_DESCRIPTIONS is missing entries",
+            ):
+                importlib.reload(init_module)
+
+        importlib.reload(init_module)
+
 
 class TestInitRoundtrip:
     @pytest.mark.parametrize("mode", sorted(KNOWN_MODES))
@@ -155,6 +208,23 @@ class TestInitRoundtrip:
         missing_markers = article4["missing_markers"]
         assert isinstance(missing_markers, list)
         assert "replace_scaffold_placeholders" in missing_markers
+
+
+class TestPublicApiLazyImport:
+    def test_tuple_backed_lazy_import_resolves_original_name(self) -> None:
+        import vauban
+        from vauban.scan import scan
+
+        assert vauban.__getattr__("injection_scan") is scan
+
+    def test_dir_exposes_lazy_public_symbols(self) -> None:
+        import vauban
+
+        names = dir(vauban)
+
+        assert "injection_scan" in names
+        assert "__version__" in names
+        assert "validate" in names
 
 
 class TestInitCli:

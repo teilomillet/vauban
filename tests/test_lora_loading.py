@@ -6,7 +6,10 @@
 from __future__ import annotations
 
 import json
+import sys
+import types
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 import pytest
 
@@ -488,6 +491,37 @@ class TestAnalyzeAdapter:
         d = result.to_dict()
         json.dumps(d)  # Must not raise
 
+    def test_skips_non_lora_and_incomplete_pairs(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Non-LoRA tensors and incomplete pairs should be ignored."""
+        from vauban.lora import analyze_adapter
+
+        adapter_dir = tmp_path / "mixed_adapter"
+        adapter_dir.mkdir(parents=True, exist_ok=True)
+
+        tensors: dict[str, Array] = {
+            "layers.0.self_attn.o_proj.lora_a": ops.ones((1, IN_FEATURES)),
+            "layers.0.self_attn.o_proj.lora_b": ops.ones((D_MODEL, 1)),
+            "layers.1.self_attn.o_proj.lora_a": ops.ones((1, IN_FEATURES)),
+            "layers.9.self_attn.o_proj.weight": ops.ones((D_MODEL, IN_FEATURES)),
+        }
+        ops.save_safetensors(str(adapter_dir / "adapters.safetensors"), tensors)
+        (adapter_dir / "adapter_config.json").write_text(
+            json.dumps(
+                {
+                    "lora_rank": 1,
+                    "lora_alpha": 1.0,
+                    "model_path": "test-model",
+                    "num_lora_layers": 1,
+                },
+            ),
+        )
+
+        result = analyze_adapter(str(adapter_dir))
+        assert len(result.layers) == 1
+
 
 # ---------------------------------------------------------------------------
 # Key normalization tests
@@ -629,6 +663,114 @@ class TestLoadAndMergeAdapters:
         # merge_adapters scales each tensor: (0.5*B) @ (0.5*A) = 0.25 * B@A
         flat = new_w.reshape(-1)
         assert float(flat[0]) == pytest.approx(0.25, abs=0.01)
+
+    def test_non_lora_keys_are_ignored_and_base_key_fallback_is_used(
+        self,
+    ) -> None:
+        """Merged non-LoRA keys are ignored and fallback weight keys work."""
+        from vauban.lora import load_and_merge_adapters
+
+        weight = ops.zeros((D_MODEL, IN_FEATURES))
+        ops.eval(weight)
+
+        loaded: list[tuple[str, Array]] = []
+
+        class _MockModel:
+            def parameters(self) -> dict[str, object]:
+                return {
+                    "layers": [
+                        {
+                            "self_attn": {
+                                "o_proj": {"weight": weight},
+                            },
+                        },
+                    ],
+                }
+
+            def load_weights(
+                self, updates: list[tuple[str, Array]],
+            ) -> None:
+                loaded.extend(updates)
+
+        merged = {
+            "misc.weight": ops.ones((1, 1)),
+            "layers.0.self_attn.o_proj.lora_a": ops.ones((1, IN_FEATURES)),
+            "layers.0.self_attn.o_proj.lora_b": ops.ones((D_MODEL, 1)),
+        }
+
+        with (
+            patch("vauban.lora.merge_adapters", return_value=merged),
+            patch(
+                "vauban._ops.tree_flatten",
+                return_value=[("layers.0.self_attn.o_proj.weight", weight)],
+            ),
+        ):
+            load_and_merge_adapters(_MockModel(), ["adapter_a"])
+
+        assert len(loaded) == 1
+        assert loaded[0][0] == "layers.0.self_attn.o_proj.weight"
+
+    def test_missing_safetensors_raises(self, tmp_path: Path) -> None:
+        """Adapters without safetensors should fail fast."""
+        from vauban.lora import merge_adapters
+
+        empty = tmp_path / "empty"
+        empty.mkdir()
+
+        with pytest.raises(FileNotFoundError, match="No safetensors"):
+            merge_adapters([empty], [1.0])
+
+
+class TestLoadAndApplyAdapter:
+    """Tests for loading and fusing adapters into a model."""
+
+    def test_load_and_apply_adapter_fuses_children(self) -> None:
+        """load_and_apply_adapter should call apply and fuse LoRA children."""
+        from vauban.lora import load_and_apply_adapter
+
+        class _Child:
+            def __init__(self) -> None:
+                self.fused = False
+
+            def to_linear(self) -> str:
+                self.fused = True
+                return "fused"
+
+        class _Module:
+            def __init__(self) -> None:
+                self.child = _Child()
+                self.empty = None
+
+        class _Model:
+            def __init__(self) -> None:
+                self.module = _Module()
+
+            def named_modules(self) -> list[tuple[str, object]]:
+                return [("module", self.module)]
+
+        fake_utils = types.ModuleType("mlx_lm.tuner.utils")
+        fake_utils.apply_lora_layers = lambda model, adapter_path: None  # type: ignore[assignment]
+        fake_tuner = types.ModuleType("mlx_lm.tuner")
+        fake_mlx = types.ModuleType("mlx_lm")
+        fake_mlx.tuner = fake_tuner  # type: ignore[attr-defined]
+        fake_tuner.utils = fake_utils  # type: ignore[attr-defined]
+
+        model = _Model()
+        child = model.module.child
+        with patch.dict(
+            sys.modules,
+            {
+                "mlx_lm": fake_mlx,
+                "mlx_lm.tuner": fake_tuner,
+                "mlx_lm.tuner.utils": fake_utils,
+            },
+        ):
+            load_and_apply_adapter(model, "/tmp/adapter")
+
+        assert model.module.child == "fused"
+        assert model.module.empty is None
+        assert child.fused is True
+        assert isinstance(model.module.child, str)
 
 
 # ---------------------------------------------------------------------------

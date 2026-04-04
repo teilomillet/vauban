@@ -12,7 +12,7 @@ import urllib.request
 
 if sys.version_info >= (3, 13):
     from typing import TypeIs
-else:
+else:  # pragma: no cover
     from typing_extensions import TypeIs
 
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES

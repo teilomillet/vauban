@@ -6,7 +6,7 @@
 from unittest.mock import patch
 
 from vauban.flywheel._defended_loop import DefendedEnvironmentResult
-from vauban.flywheel._utility import measure_utility
+from vauban.flywheel._utility import _completed_benign_task, measure_utility
 from vauban.types import (
     AgentTurn,
     EnvironmentConfig,
@@ -128,3 +128,88 @@ def test_measure_utility_uses_defended_execution() -> None:
 
     assert mocked_run.call_count == 4
     assert score == 0.25
+
+
+def test_measure_utility_empty_worlds_returns_full_score() -> None:
+    params = FlywheelDefenseParams(
+        cast_alpha=2.0,
+        cast_threshold=0.0,
+        sic_threshold=0.5,
+        sic_iterations=3,
+        sic_mode="generation",
+    )
+    score = measure_utility(
+        object(), object(),  # type: ignore[arg-type]
+        [],
+        direction=None,
+        layer_index=0,
+        defense_params=params,
+        n_samples=4,
+    )
+    assert score == 1.0
+
+
+def test_completed_benign_task_requires_turns_and_tool_calls() -> None:
+    world = _make_world()
+    defended = DefendedEnvironmentResult(
+        env_result=EnvironmentResult(
+            reward=0.0,
+            target_called=False,
+            target_args_match=False,
+            turns=[],
+            tool_calls_made=[],
+            injection_payload="",
+        ),
+        cast_interventions=0,
+        cast_considered=0,
+        sic_blocked=False,
+    )
+    assert _completed_benign_task(world, defended) is False
+
+
+def test_completed_benign_task_rejects_expected_tool_mismatch() -> None:
+    world = _make_world()
+    defended = DefendedEnvironmentResult(
+        env_result=EnvironmentResult(
+            reward=0.0,
+            target_called=False,
+            target_args_match=False,
+            turns=[
+                AgentTurn(role="assistant", content="summary", tool_call=None),
+            ],
+            tool_calls_made=[
+                ToolCall(function="send_email", arguments={"email_id": "1"}),
+            ],
+            injection_payload="",
+        ),
+        cast_interventions=0,
+        cast_considered=0,
+        sic_blocked=False,
+    )
+    assert _completed_benign_task(world, defended) is False
+
+
+def test_measure_utility_skips_failed_defended_runs() -> None:
+    worlds = [_make_world()]
+    params = FlywheelDefenseParams(
+        cast_alpha=2.0,
+        cast_threshold=0.0,
+        sic_threshold=0.5,
+        sic_iterations=3,
+        sic_mode="generation",
+    )
+
+    with patch(
+        "vauban.flywheel._utility.run_defended_agent_loop",
+        side_effect=RuntimeError("boom"),
+    ):
+        score = measure_utility(
+            object(), object(),  # type: ignore[arg-type]
+            worlds,
+            direction=None,
+            layer_index=0,
+            defense_params=params,
+            n_samples=1,
+        )
+
+    assert score == 0.0

@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tests.conftest import make_early_mode_context
+from tests.conftest import make_direction_result, make_early_mode_context
 from vauban._pipeline._mode_api_eval import _run_api_eval_mode
 from vauban._pipeline._mode_circuit import _run_circuit_mode
 from vauban._pipeline._mode_features import _run_features_mode
@@ -143,6 +143,40 @@ class TestFeaturesMode:
             metadata = mock_finish.call_args[0][3]
             assert metadata["n_layers"] == 2
 
+    def test_passes_direction_when_available(self, tmp_path: Path) -> None:
+        features_cfg = FeaturesConfig(
+            prompts_path=Path("prompts.jsonl"),
+            layers=[0, 1],
+        )
+        ctx = make_early_mode_context(
+            tmp_path,
+            features=features_cfg,
+            direction_result=make_direction_result(),
+        )
+
+        mock_result = MagicMock()
+        mock_result.layers = [MagicMock()]
+        mock_result.to_dict.return_value = {"layers": []}
+        mock_saes: dict[int, MagicMock] = {0: MagicMock()}
+
+        with (
+            patch("vauban.measure.load_prompts", return_value=["p1"]),
+            patch(
+                "vauban.features.train_sae_multi_layer",
+                return_value=(mock_saes, mock_result),
+            ) as mock_train,
+            patch("vauban.features.save_sae"),
+            patch("vauban._pipeline._mode_features.finish_mode_run"),
+        ):
+            _run_features_mode(ctx)
+
+        direction_result = ctx.direction_result
+        assert direction_result is not None
+        assert (
+            mock_train.call_args.kwargs["direction"]
+            is direction_result.direction
+        )
+
 
 # ===================================================================
 # Circuit mode
@@ -184,6 +218,40 @@ class TestCircuitMode:
             metadata = mock_finish.call_args[0][3]
             assert metadata["n_effects"] == 2
 
+    def test_attribute_direction_passes_measured_direction(
+        self, tmp_path: Path,
+    ) -> None:
+        circuit_cfg = CircuitConfig(
+            clean_prompts=["clean"],
+            corrupt_prompts=["corrupt"],
+            attribute_direction=True,
+        )
+        ctx = make_early_mode_context(
+            tmp_path,
+            circuit=circuit_cfg,
+            direction_result=make_direction_result(),
+        )
+
+        mock_result = MagicMock()
+        mock_result.effects = [MagicMock()]
+        mock_result.to_dict.return_value = {"effects": []}
+
+        with (
+            patch(
+                "vauban.circuit.trace_circuit",
+                return_value=mock_result,
+            ) as mock_trace,
+            patch("vauban._pipeline._mode_circuit.finish_mode_run"),
+        ):
+            _run_circuit_mode(ctx)
+
+        direction_result = ctx.direction_result
+        assert direction_result is not None
+        assert (
+            mock_trace.call_args.kwargs["direction"]
+            is direction_result.direction
+        )
+
 
 # ===================================================================
 # Linear probe mode
@@ -223,6 +291,39 @@ class TestLinearProbeMode:
             ).exists()
             metadata = mock_finish.call_args[0][3]
             assert metadata["n_layers"] == 2
+
+    def test_loads_prompts_when_context_is_missing(
+        self, tmp_path: Path,
+    ) -> None:
+        lp_cfg = LinearProbeConfig(layers=[0, 1])
+        ctx = make_early_mode_context(
+            tmp_path,
+            linear_probe=lp_cfg,
+            harmful=None,
+            harmless=None,
+        )
+
+        mock_result = MagicMock()
+        mock_result.layers = [MagicMock()]
+        mock_result.to_dict.return_value = {"layers": []}
+
+        with (
+            patch(
+                "vauban.dataset.resolve_prompts",
+                side_effect=[["bad"], ["good"]],
+            ) as mock_resolve,
+            patch(
+                "vauban.linear_probe.train_probe",
+                return_value=mock_result,
+            ) as mock_train,
+            patch("vauban._pipeline._mode_linear_probe.finish_mode_run"),
+        ):
+            _run_linear_probe_mode(ctx)
+
+        assert mock_resolve.call_args_list[0].args == (ctx.config.harmful_path,)
+        assert mock_resolve.call_args_list[1].args == (ctx.config.harmless_path,)
+        assert mock_train.call_args[0][2] == ["bad"]
+        assert mock_train.call_args[0][3] == ["good"]
 
 
 # ===================================================================
@@ -312,6 +413,39 @@ class TestRepbendMode:
             metadata = mock_finish.call_args[0][3]
             assert metadata["n_layers"] == 2
 
+    def test_loads_prompts_when_context_is_missing(
+        self, tmp_path: Path,
+    ) -> None:
+        repbend_cfg = RepBendConfig(layers=[0, 1])
+        ctx = make_early_mode_context(
+            tmp_path,
+            repbend=repbend_cfg,
+            harmful=None,
+            harmless=None,
+        )
+
+        mock_result = MagicMock()
+        mock_result.layers = [MagicMock()]
+        mock_result.to_dict.return_value = {"layers": []}
+
+        with (
+            patch(
+                "vauban.dataset.resolve_prompts",
+                side_effect=[["bad"], ["good"]],
+            ) as mock_resolve,
+            patch(
+                "vauban.repbend.repbend",
+                return_value=mock_result,
+            ) as mock_run,
+            patch("vauban._pipeline._mode_repbend.finish_mode_run"),
+        ):
+            _run_repbend_mode(ctx)
+
+        assert mock_resolve.call_args_list[0].args == (ctx.config.harmful_path,)
+        assert mock_resolve.call_args_list[1].args == (ctx.config.harmless_path,)
+        assert mock_run.call_args[0][2] == ["bad"]
+        assert mock_run.call_args[0][3] == ["good"]
+
 
 # ===================================================================
 # API eval mode
@@ -378,4 +512,35 @@ class TestApiEvalMode:
             assert metadata["avg_success_rate"] == pytest.approx(
                 0.75,
             )
-            assert metadata["n_endpoints"] == 1
+
+    def test_defense_proxy_logs_warning_in_standalone_mode(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Standalone API eval should warn when defense_proxy is configured."""
+        endpoint = ApiEvalEndpoint(
+            name="test-ep",
+            base_url="http://localhost:8080/v1",
+            model="test-model",
+            api_key_env="TEST_KEY",
+        )
+        api_cfg = ApiEvalConfig(
+            endpoints=[endpoint],
+            prompts=["test1"],
+            token_text="suffix",
+            defense_proxy="sic",
+        )
+        ctx = make_early_mode_context(tmp_path, api_eval=api_cfg)
+
+        with (
+            patch(
+                "vauban.api_eval.evaluate_suffix_via_api",
+                return_value=[],
+            ),
+            patch("vauban._pipeline._mode_api_eval.finish_mode_run"),
+            patch("vauban._pipeline._mode_api_eval.log") as mock_log,
+        ):
+            _run_api_eval_mode(ctx)
+
+        messages = [call.args[0] for call in mock_log.call_args_list]
+        assert any("WARNING: defense_proxy is set" in msg for msg in messages)

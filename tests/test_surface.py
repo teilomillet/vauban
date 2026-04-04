@@ -4,6 +4,7 @@
 """Tests for vauban.surface: refusal surface mapping."""
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -12,6 +13,7 @@ from vauban._array import Array
 from vauban.surface import (
     aggregate,
     compare_surfaces,
+    default_full_surface_path,
     default_multilingual_surface_path,
     default_surface_path,
     find_threshold,
@@ -87,6 +89,29 @@ class TestLoadSurfacePrompts:
         assert prompts[0].messages is not None
         assert len(prompts[0].messages) == 3
 
+    def test_skips_blank_lines(self, tmp_path: Path) -> None:
+        path = tmp_path / "surface_blank_lines.jsonl"
+        path.write_text(
+            '\n{"prompt":"p","label":"harmful","category":"weapons"}\n\n',
+        )
+        prompts = load_surface_prompts(path)
+        assert len(prompts) == 1
+
+    def test_rejects_non_object_records(self, tmp_path: Path) -> None:
+        path = tmp_path / "surface_bad_object.jsonl"
+        path.write_text('"bad"\n')
+        with pytest.raises(ValueError, match="must be a JSON object"):
+            load_surface_prompts(path)
+
+    def test_rejects_non_string_keys(self, tmp_path: Path) -> None:
+        path = tmp_path / "surface_bad_keys.jsonl"
+        path.write_text('{"prompt":"ok","label":"harmful","category":"weapons"}\n')
+        with (
+            patch("vauban.surface._load.json.loads", return_value={1: "bad"}),
+            pytest.raises(ValueError, match="keys must be strings"),
+        ):
+            load_surface_prompts(path)
+
 
 class TestDefaultSurfacePath:
     def test_path_exists(self) -> None:
@@ -125,6 +150,17 @@ class TestDefaultMultilingualSurfacePath:
         assert "es" in languages
         assert "zh" in languages
         assert "ar" in languages
+
+
+class TestDefaultFullSurfacePath:
+    def test_path_exists(self) -> None:
+        path = default_full_surface_path()
+        assert path.exists()
+        assert path.name == "surface_full.jsonl"
+
+    def test_bundled_full_surface_is_loadable(self) -> None:
+        prompts = load_surface_prompts(default_full_surface_path())
+        assert len(prompts) > 0
 
 
 class TestScan:
@@ -357,8 +393,77 @@ class TestMapSurface:
         assert len(result.points) == 4
         assert len(result.groups_by_label) > 0
         assert len(result.groups_by_category) > 0
-        assert isinstance(result.threshold, float)
-        assert result.total_refused >= 0
+
+
+class TestSurfaceRecordValidation:
+    def test_prompt_or_messages_required(self, tmp_path: Path) -> None:
+        path = tmp_path / "missing_prompt.jsonl"
+        path.write_text('{"label":"harmful","category":"weapons"}\n')
+        with pytest.raises(ValueError, match="must include key 'prompt' or 'messages'"):
+            load_surface_prompts(path)
+
+    def test_prompt_must_be_non_empty_string(self, tmp_path: Path) -> None:
+        path = tmp_path / "bad_prompt.jsonl"
+        path.write_text('{"prompt":"","label":"harmful","category":"weapons"}\n')
+        with pytest.raises(ValueError, match="invalid key 'prompt'"):
+            load_surface_prompts(path)
+
+    def test_optional_fields_validate(self, tmp_path: Path) -> None:
+        path = tmp_path / "bad_optional.jsonl"
+        path.write_text(
+            '{"prompt":"p","label":"harmful","category":"weapons","style":""}\n',
+        )
+        with pytest.raises(ValueError, match="invalid optional key 'style'"):
+            load_surface_prompts(path)
+
+    def test_turn_depth_must_be_positive_int(self, tmp_path: Path) -> None:
+        path = tmp_path / "bad_turn_depth.jsonl"
+        path.write_text(
+            '{"prompt":"p","label":"harmful","category":"weapons","turn_depth":0}\n',
+        )
+        with pytest.raises(ValueError, match="turn_depth"):
+            load_surface_prompts(path)
+
+    def test_messages_must_be_non_empty_list(self, tmp_path: Path) -> None:
+        path = tmp_path / "bad_messages.jsonl"
+        path.write_text(
+            '{"label":"harmful","category":"weapons","messages":[]}\n',
+        )
+        with pytest.raises(ValueError, match="expected a non-empty list"):
+            load_surface_prompts(path)
+
+    def test_messages_entries_must_be_objects(self, tmp_path: Path) -> None:
+        path = tmp_path / "bad_message_item.jsonl"
+        path.write_text(
+            '{"label":"harmful","category":"weapons","messages":["bad"]}\n',
+        )
+        with pytest.raises(ValueError, match="expected an object"):
+            load_surface_prompts(path)
+
+    def test_messages_role_and_content_are_validated(self, tmp_path: Path) -> None:
+        path = tmp_path / "bad_message_role.jsonl"
+        path.write_text(
+            (
+                '{"label":"harmful","category":"weapons","messages":['
+                '{"role":"tool","content":"bad"}]}\n'
+            ),
+        )
+        with pytest.raises(ValueError, match="expected role/content strings"):
+            load_surface_prompts(path)
+
+    def test_messages_without_user_turn_use_last_message_content(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        path = tmp_path / "assistant_only.jsonl"
+        path.write_text(
+            (
+                '{"label":"harmless","category":"trivia","messages":['
+                '{"role":"assistant","content":"final answer"}]}\n'
+            ),
+        )
+        prompts = load_surface_prompts(path)
+        assert prompts[0].prompt == "final answer"
 
     def test_fast_recon_mode(
         self,

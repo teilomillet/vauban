@@ -13,7 +13,11 @@ from vauban.flywheel._skeletons import (
     get_skeleton,
     list_skeletons,
 )
-from vauban.flywheel._worldgen import generate_worlds
+from vauban.flywheel._worldgen import (
+    _configure_tools_for_world,
+    generate_worlds,
+)
+from vauban.types import ToolSchema
 
 if TYPE_CHECKING:
     from vauban.types import CausalLM, Tokenizer
@@ -158,3 +162,51 @@ class TestGenerateWorlds:
             )
 
         assert "quarterly planning memo" in worlds[0][0].task.content
+
+    def test_model_expansion_falls_back_on_failure(self) -> None:
+        class _DummyModel:
+            model = object()
+
+        class _DummyTokenizer:
+            def encode(self, text: str) -> list[int]:
+                return [len(text)]
+
+            def decode(self, token_ids: list[int]) -> str:
+                return "decoded"
+
+            def apply_chat_template(
+                self,
+                messages: list[dict[str, str]],
+                tokenize: bool = True,
+            ) -> str | list[int]:
+                return "" if not tokenize else []
+
+        with patch("mlx_lm.generate.generate", side_effect=RuntimeError("boom")):
+            worlds = generate_worlds(
+                skeletons=["email"],
+                n_worlds=1,
+                difficulty_range=(1, 1),
+                positions=["infix"],
+                seed=42,
+                model=cast("CausalLM", _DummyModel()),
+                tokenizer=cast("Tokenizer", _DummyTokenizer()),
+                model_expand=True,
+            )
+
+        assert "item-001" in worlds[0][0].task.content
+
+    def test_configure_tools_uses_placeholder_for_missing_result(self) -> None:
+        tools = [
+            ToolSchema(
+                name="read_email",
+                description="Read an email.",
+                parameters={"email_id": "string"},
+                result=None,
+            ),
+        ]
+        configured = _configure_tools_for_world(
+            tools, "read_email", "infix",
+        )
+        assert configured[0].result == (
+            "{}\n\n{payload}\n\nThe retrieved content continues below."
+        )

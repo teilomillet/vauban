@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING, cast
+from unittest.mock import patch
 
 import pytest
 
@@ -190,6 +191,15 @@ class TestSubspaceToLora:
         assert lora_a.shape == (k, IN_FEATURES)
         assert lora_b.shape == (D_MODEL, k)
 
+    def test_invalid_polarity(self) -> None:
+        """Invalid polarity should raise ValueError."""
+        from vauban.lora import subspace_to_lora
+
+        basis = ops.eye(D_MODEL)[:2]
+        w = _make_weight()
+        with pytest.raises(ValueError, match="polarity"):
+            subspace_to_lora(basis, w, polarity="flip")
+
 
 # ---------------------------------------------------------------------------
 # Reconstruction test: LoRA delta == cut delta
@@ -298,6 +308,30 @@ class TestBuildLoraWeights:
         # Both should produce the same effective alpha per layer
         for a, b in zip(m1, m2, strict=True):
             assert ops.allclose(a.lora_b, b.lora_b, atol=1e-5)
+
+    def test_layer_weights_length_mismatch(self) -> None:
+        """Mismatched layer_weights should raise ValueError."""
+        from vauban.lora import build_lora_weights
+
+        d = _make_direction()
+        flat = _make_flat_weights()
+        with pytest.raises(ValueError, match="layer_weights length"):
+            build_lora_weights(
+                d,
+                flat,
+                [0, 1],
+                alpha=1.0,
+                layer_weights=[1.0],
+            )
+
+    def test_subspace_direction(self) -> None:
+        """A rank-k direction should use subspace_to_lora."""
+        from vauban.lora import build_lora_weights
+
+        basis = ops.eye(D_MODEL)[:2]
+        flat = _make_flat_weights()
+        matrices = build_lora_weights(basis, flat, [0], alpha=1.0)
+        assert len(matrices) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -513,6 +547,332 @@ class TestNormPreserveWarning:
             _run_lora_export_mode(ctx)
 
         assert "norm_preserve is incompatible with LoRA export" in captured.getvalue()
+
+
+class TestLoraExportModeBranches:
+    """Branch coverage for the real LoRA export mode runner."""
+
+    def test_missing_config_raises(self, tmp_path: Path) -> None:
+        """The mode should reject missing [lora_export] config."""
+        from tests.conftest import make_early_mode_context
+        from vauban._pipeline._mode_lora_export import _run_lora_export_mode
+
+        ctx = make_early_mode_context(tmp_path)
+
+        with pytest.raises(ValueError, match="lora_export config is required"):
+            _run_lora_export_mode(ctx)
+
+    def test_missing_direction_raises(self, tmp_path: Path) -> None:
+        """The mode requires a measured direction."""
+        from tests.conftest import make_pipeline_config
+        from vauban._pipeline._context import EarlyModeContext
+        from vauban._pipeline._mode_lora_export import _run_lora_export_mode
+        from vauban.types import LoraExportConfig
+
+        config = make_pipeline_config(
+            tmp_path,
+            lora_export=LoraExportConfig(),
+        )
+        ctx = EarlyModeContext(
+            config_path="test.toml",
+            config=config,
+            model=object(),
+            tokenizer=object(),
+            t0=0.0,
+        )
+
+        with pytest.raises(ValueError, match="direction_result is None"):
+            _run_lora_export_mode(ctx)
+
+    def test_sparsity_false_refusal_explicit_layers_and_peft(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Sparsity, false-refusal ortho, and PEFT export should compose cleanly."""
+        from tests.conftest import (
+            D_MODEL as MODEL_D_MODEL,
+        )
+        from tests.conftest import (
+            NUM_HEADS,
+            NUM_LAYERS,
+            VOCAB_SIZE,
+            MockCausalLM,
+            MockTokenizer,
+            make_direction_result,
+            make_pipeline_config,
+        )
+        from vauban._pipeline._context import EarlyModeContext
+        from vauban._pipeline._mode_lora_export import _run_lora_export_mode
+        from vauban.types import CutConfig, LoraExportConfig
+
+        model = MockCausalLM(MODEL_D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        ops.eval(model.parameters())
+        original = make_direction_result(d_model=MODEL_D_MODEL)
+        sparse_direction = ops.zeros((MODEL_D_MODEL,))
+        sparse_direction[0] = 1.0
+        sparse_direction = sparse_direction / ops.linalg.norm(sparse_direction)
+        ortho_direction = ops.zeros((MODEL_D_MODEL,))
+        ortho_direction[1] = 1.0
+        ortho_direction = ortho_direction / ops.linalg.norm(ortho_direction)
+        ops.eval(sparse_direction, ortho_direction)
+        config = make_pipeline_config(
+            tmp_path,
+            cut=CutConfig(sparsity=0.25, false_refusal_ortho=True, layers=[1]),
+            borderline_path=tmp_path / "border.jsonl",
+            lora_export=LoraExportConfig(format="peft", polarity="add"),
+            verbose=False,
+        )
+        ctx = EarlyModeContext(
+            config_path="test.toml",
+            config=config,
+            model=model,
+            tokenizer=MockTokenizer(VOCAB_SIZE),
+            t0=0.0,
+            harmless=["safe"],
+            direction_result=original,
+        )
+        false_refusal_result = make_direction_result(d_model=MODEL_D_MODEL)
+        matrices = [object(), object()]
+
+        with (
+            patch(
+                "vauban.cut.sparsify_direction",
+                return_value=sparse_direction,
+            ),
+            patch(
+                "vauban.dataset.resolve_prompts",
+                return_value=["border"],
+            ),
+            patch(
+                "vauban.measure.measure",
+                return_value=false_refusal_result,
+            ),
+            patch(
+                "vauban.cut._biprojected_direction",
+                return_value=ortho_direction,
+            ),
+            patch(
+                "vauban._ops.tree_flatten",
+                return_value=[("w", ops.ones((2, 2)))],
+            ),
+            patch(
+                "vauban.lora.build_lora_weights",
+                return_value=matrices,
+            ) as mock_build,
+            patch(
+                "vauban.lora.save_adapter_peft",
+                return_value=tmp_path / "adapter",
+            ) as mock_save,
+            patch(
+                "vauban._pipeline._mode_lora_export.write_mode_report",
+                return_value=tmp_path / "report.json",
+            ),
+            patch(
+                "vauban._pipeline._mode_lora_export.finish_mode_run",
+            ) as mock_finish,
+        ):
+            _run_lora_export_mode(ctx)
+
+        assert ctx.direction_result is not None
+        assert ops.allclose(ctx.direction_result.direction, ortho_direction)
+        assert mock_build.call_args.args[2] == [1]
+        assert mock_build.call_args.kwargs["polarity"] == "add"
+        mock_save.assert_called_once_with(
+            matrices,
+            tmp_path / "lora_adapter",
+            1,
+            config.model_path,
+        )
+        metadata = mock_finish.call_args.args[3]
+        assert metadata == {"n_weights": 2, "rank": 1}
+
+    def test_biprojected_requires_harmful_and_harmless(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Biprojection should fail fast without both prompt sets."""
+        from tests.conftest import (
+            D_MODEL as MODEL_D_MODEL,
+        )
+        from tests.conftest import (
+            NUM_HEADS,
+            NUM_LAYERS,
+            VOCAB_SIZE,
+            MockCausalLM,
+            MockTokenizer,
+            make_direction_result,
+            make_pipeline_config,
+        )
+        from vauban._pipeline._context import EarlyModeContext
+        from vauban._pipeline._mode_lora_export import _run_lora_export_mode
+        from vauban.types import CutConfig, LoraExportConfig
+
+        model = MockCausalLM(MODEL_D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        ops.eval(model.parameters())
+        config = make_pipeline_config(
+            tmp_path,
+            cut=CutConfig(biprojected=True),
+            lora_export=LoraExportConfig(),
+        )
+        ctx = EarlyModeContext(
+            config_path="test.toml",
+            config=config,
+            model=model,
+            tokenizer=MockTokenizer(VOCAB_SIZE),
+            t0=0.0,
+            harmful=None,
+            harmless=["safe"],
+            direction_result=make_direction_result(d_model=MODEL_D_MODEL),
+        )
+
+        with pytest.raises(ValueError, match="harmful and harmless prompt lists"):
+            _run_lora_export_mode(ctx)
+
+    def test_probe_guided_selection_requires_cosine_scores(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Probe-guided layer selection should reject missing cosine scores."""
+        from tests.conftest import (
+            D_MODEL as MODEL_D_MODEL,
+        )
+        from tests.conftest import (
+            NUM_HEADS,
+            NUM_LAYERS,
+            VOCAB_SIZE,
+            MockCausalLM,
+            MockTokenizer,
+            make_direction_result,
+            make_pipeline_config,
+        )
+        from vauban._pipeline._context import EarlyModeContext
+        from vauban._pipeline._mode_lora_export import _run_lora_export_mode
+        from vauban.types import CutConfig, LoraExportConfig
+
+        model = MockCausalLM(MODEL_D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        ops.eval(model.parameters())
+        config = make_pipeline_config(
+            tmp_path,
+            cut=CutConfig(layer_strategy="top_k", layer_top_k=1),
+            lora_export=LoraExportConfig(),
+        )
+        ctx = EarlyModeContext(
+            config_path="test.toml",
+            config=config,
+            model=model,
+            tokenizer=MockTokenizer(VOCAB_SIZE),
+            t0=0.0,
+            direction_result=make_direction_result(
+                d_model=MODEL_D_MODEL,
+                cosine_scores=[],
+            ),
+        )
+
+        with pytest.raises(ValueError, match="Probe-guided layer selection"):
+            _run_lora_export_mode(ctx)
+
+    def test_biprojected_probe_guided_selection_builds_mlx_adapter(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Biprojection should use selected target layers and save MLX adapters."""
+        from tests.conftest import (
+            D_MODEL as MODEL_D_MODEL,
+        )
+        from tests.conftest import (
+            NUM_HEADS,
+            NUM_LAYERS,
+            VOCAB_SIZE,
+            MockCausalLM,
+            MockTokenizer,
+            make_direction_result,
+            make_pipeline_config,
+        )
+        from vauban._pipeline._context import EarlyModeContext
+        from vauban._pipeline._mode_lora_export import _run_lora_export_mode
+        from vauban.types import CutConfig, LoraExportConfig
+
+        model = MockCausalLM(MODEL_D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
+        ops.eval(model.parameters())
+        config = make_pipeline_config(
+            tmp_path,
+            cut=CutConfig(
+                biprojected=True,
+                layer_strategy="top_k",
+                layer_top_k=1,
+                layer_type_filter="global",
+            ),
+            lora_export=LoraExportConfig(),
+            verbose=False,
+        )
+        ctx = EarlyModeContext(
+            config_path="test.toml",
+            config=config,
+            model=model,
+            tokenizer=MockTokenizer(VOCAB_SIZE),
+            t0=0.0,
+            harmful=["bad"],
+            harmless=["safe"],
+            direction_result=make_direction_result(
+                d_model=MODEL_D_MODEL,
+                cosine_scores=[0.1, 0.9],
+            ),
+        )
+        harmless_result = make_direction_result(d_model=MODEL_D_MODEL)
+        ortho_direction = ops.zeros((MODEL_D_MODEL,))
+        ortho_direction[2] = 1.0
+        ortho_direction = ortho_direction / ops.linalg.norm(ortho_direction)
+        ops.eval(ortho_direction)
+        matrices = [object()]
+
+        with (
+            patch(
+                "vauban.measure.measure",
+                return_value=harmless_result,
+            ),
+            patch(
+                "vauban.cut._biprojected_direction",
+                return_value=ortho_direction,
+            ),
+            patch(
+                "vauban.measure.select_target_layers",
+                return_value=[1],
+            ) as mock_select,
+            patch(
+                "vauban._ops.tree_flatten",
+                return_value=[("w", ops.ones((2, 2)))],
+            ),
+            patch(
+                "vauban.lora.build_lora_weights",
+                return_value=matrices,
+            ) as mock_build,
+            patch(
+                "vauban.lora.save_adapter_mlx",
+                return_value=tmp_path / "adapter",
+            ) as mock_save,
+            patch(
+                "vauban._pipeline._mode_lora_export.write_mode_report",
+                return_value=tmp_path / "report.json",
+            ),
+            patch("vauban._pipeline._mode_lora_export.finish_mode_run"),
+        ):
+            _run_lora_export_mode(ctx)
+
+        mock_select.assert_called_once_with(
+            [0.1, 0.9],
+            "top_k",
+            1,
+            layer_types=None,
+            type_filter="global",
+        )
+        assert mock_build.call_args.args[2] == [1]
+        mock_save.assert_called_once_with(
+            matrices,
+            tmp_path / "lora_adapter",
+            1,
+            config.model_path,
+        )
+
 
 
 # ---------------------------------------------------------------------------

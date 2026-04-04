@@ -268,7 +268,7 @@ def _coverage_score(points: list[SurfacePoint]) -> float:
         * len(turn_depths)
         * len(framings)
     )
-    if max_cells == 0:
+    if max_cells == 0:  # pragma: no cover
         return 0.0
 
     observed_cells = {

@@ -21,5 +21,17 @@ max_examples = 30
 name_or_id = "violence,cyber,sexual,fraud,hate,self_harm,weapons,drugs"
 category_id = "violence,cyber,sexual,fraud,hate,self_harm,weapons,drugs"
 
+[[scan]]
+module = "vauban._suggestions"
+max_examples = 30
+
+[[scan]]
+module = "vauban.environment._format"
+max_examples = 30
+
+[[scan]]
+module = "vauban.environment._policy"
+max_examples = 30
+
 [report]
 verbose = true

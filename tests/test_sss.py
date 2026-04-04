@@ -23,7 +23,7 @@ from vauban.sensitivity import (
     find_compression_valleys,
     jvp_finite_diff,
 )
-from vauban.sss import sss_generate
+from vauban.sss import _sss_calibrate, sss_generate
 from vauban.types import SSSConfig, SSSResult
 
 if TYPE_CHECKING:
@@ -197,6 +197,36 @@ class TestComputeSensitivityProfile:
         assert isinstance(profile.valley_layers, list)
 
 
+class TestSSSCalibrate:
+    def test_calls_compute_sensitivity_profile(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+        direction: Array,
+    ) -> None:
+        profile = SensitivityProfile(
+            layers=[LayerSensitivity(0, 1.0, 0.5, 2.0)],
+            valley_layers=[0],
+        )
+        with patch(
+            "vauban.sss.compute_sensitivity_profile",
+            return_value=profile,
+        ) as mock_compute:
+            result = _sss_calibrate(
+                mock_model,
+                mock_tokenizer,
+                "calibration",
+                direction,
+                n_power_iterations=3,
+                fd_epsilon=1e-3,
+                valley_window=4,
+                top_k_valleys=2,
+            )
+
+        assert result is profile
+        mock_compute.assert_called_once()
+
+
 # ===================================================================
 # SSS generation
 # ===================================================================
@@ -288,7 +318,7 @@ class TestSSSGenerate:
 
         # First run with EOS disabled to discover what tokens the
         # model actually produces (steered output is unpredictable).
-        mock_tokenizer.eos_token_id = -1  # type: ignore[assignment]
+        mock_tokenizer.eos_token_id = -1
         result_full = sss_generate(
             mock_model, mock_tokenizer, "test",
             direction, config, profile=profile,
@@ -305,6 +335,41 @@ class TestSSSGenerate:
             direction, config, profile=profile,
         )
         assert len(result_short.per_token_gains) < len(result_full.per_token_gains)
+
+    def test_calibrates_when_profile_missing_and_honors_explicit_layers(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+        direction: Array,
+    ) -> None:
+        config = SSSConfig(
+            prompts=["test"],
+            layers=[1],
+            max_tokens=1,
+            calibration_prompt="calibration",
+            n_power_iterations=1,
+        )
+        profile = SensitivityProfile(
+            layers=[
+                LayerSensitivity(0, 1.0, 0.5, 2.0),
+                LayerSensitivity(1, 0.8, 0.3, 3.0),
+            ],
+            valley_layers=[1],
+        )
+
+        with patch("vauban.sss._sss_calibrate", return_value=profile) as mock_cal:
+            result = sss_generate(
+                mock_model,
+                mock_tokenizer,
+                "test",
+                direction,
+                config,
+                profile=None,
+            )
+
+        mock_cal.assert_called_once()
+        assert result.seed_layers == [1]
+        assert result.prompt == "test"
 
 
 # ===================================================================

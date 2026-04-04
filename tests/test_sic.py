@@ -4,12 +4,15 @@
 """Tests for vauban.sic: SIC iterative input sanitization."""
 
 import math
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from tests.conftest import MockCausalLM, MockTokenizer
+from vauban import _ops as ops
 from vauban._array import Array
 from vauban.sic import (
+    _detect,
     _detect_adversarial_direction,
     _detect_adversarial_generation,
     _generate_with_messages,
@@ -67,6 +70,18 @@ class TestDetectAdversarialGeneration:
         )
         assert score in (0.0, 1.0)
 
+    def test_refusal_phrase_returns_one(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+    ) -> None:
+        with patch(
+            "vauban.sic._generate_with_messages",
+            return_value="I cannot help with that.",
+        ):
+            score = _detect_adversarial_generation(
+                mock_model, mock_tokenizer, "Hello world", 20,
+            )
+        assert score == 1.0
+
 
 class TestRewritePrompt:
     def test_returns_nonempty_string(
@@ -78,6 +93,19 @@ class TestRewritePrompt:
         )
         assert isinstance(result, str)
         assert len(result) > 0
+
+    def test_falls_back_to_original_when_model_returns_blank(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+    ) -> None:
+        with patch(
+            "vauban.sic._generate_with_messages",
+            return_value="   ",
+        ):
+            result = _rewrite_prompt(
+                mock_model, mock_tokenizer,
+                "Test prompt", "Rewrite this.", 20,
+            )
+        assert result == "Test prompt"
 
 
 class TestGenerateWithMessages:
@@ -101,6 +129,21 @@ class TestGenerateWithMessages:
             mock_model, mock_tokenizer, messages, 10,
         )
         assert isinstance(result, str)
+
+    def test_stops_on_eos_token(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+    ) -> None:
+        mock_tokenizer.eos_token_id = 0
+        with patch(
+            "vauban.sic.extract_logits",
+            return_value=ops.array([[[1.0, 0.0]]]),
+        ):
+            result = _generate_with_messages(
+                mock_model, mock_tokenizer,
+                [{"role": "user", "content": "Hello"}],
+                10,
+            )
+        assert result == "A"
 
 
 class TestSanitizePrompt:
@@ -177,6 +220,26 @@ class TestSanitizePrompt:
         assert result.blocked is False
         assert result.iterations == 1
 
+    def test_rewrite_succeeds_before_max_iterations(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+        direction: Array,
+    ) -> None:
+        config = SICConfig(
+            mode="direction", threshold=0.5,
+            max_iterations=3, block_on_failure=True,
+        )
+        with (
+            patch("vauban.sic._detect", side_effect=[0.1, 0.9]),
+            patch("vauban.sic._rewrite_prompt", return_value="cleaned"),
+        ):
+            result = _sanitize_prompt(
+                mock_model, mock_tokenizer, "Hello",
+                config, direction, 0,
+            )
+        assert result.blocked is False
+        assert result.iterations == 1
+        assert result.clean_prompt == "cleaned"
+
 
 class TestSic:
     def test_returns_sic_result(
@@ -215,6 +278,13 @@ class TestSic:
         with pytest.raises(ValueError, match="direction"):
             sic(mock_model, mock_tokenizer, ["Hello"], config)
 
+    def test_detect_direction_mode_requires_direction(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+    ) -> None:
+        config = SICConfig(mode="direction")
+        with pytest.raises(ValueError, match="direction"):
+            _detect(mock_model, mock_tokenizer, "Hello", config, None, 0)
+
     def test_generation_mode_works_without_direction(
         self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
     ) -> None:
@@ -251,6 +321,46 @@ class TestSic:
             ["A", "B"], config, direction, 0,
         )
         assert result.total_blocked == 2
+
+    def test_svf_mode_dispatches(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+        direction: Array,
+    ) -> None:
+        config = SICConfig(mode="svf", svf_boundary_path="boundary.svf")
+        boundary = MagicMock()
+        boundary.forward.return_value = ops.array(0.75)
+        with (
+            patch("vauban.svf.load_svf_boundary", return_value=boundary),
+        ):
+            result = _detect(
+                mock_model, mock_tokenizer, "Hello", config, direction, 0,
+            )
+
+        assert isinstance(result, float)
+        assert result == 0.75
+
+    def test_svf_mode_falls_back_to_last_layer(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+        direction: Array,
+    ) -> None:
+        config = SICConfig(mode="svf", svf_boundary_path="boundary.svf")
+        boundary = MagicMock()
+        boundary.forward.return_value = ops.array(0.25)
+        with patch("vauban.svf.load_svf_boundary", return_value=boundary):
+            result = _detect(
+                mock_model, mock_tokenizer, "Hello", config, direction, 999,
+            )
+
+        assert isinstance(result, float)
+        assert result == 0.25
+
+    def test_svf_mode_requires_boundary_path(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+        direction: Array,
+    ) -> None:
+        config = SICConfig(mode="svf")
+        with pytest.raises(ValueError, match="svf_boundary_path"):
+            _detect(mock_model, mock_tokenizer, "Hello", config, direction, 0)
 
 
 class TestSicSingle:

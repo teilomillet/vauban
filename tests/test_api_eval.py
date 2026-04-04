@@ -6,6 +6,7 @@
 import json
 import os
 from pathlib import Path
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -155,6 +156,10 @@ class TestIsViolationFinishReason:
         data: dict[str, object] = {"choices": "not a list"}
         assert not _is_violation_finish_reason(data)
 
+    def test_non_mapping_choice_is_ignored(self) -> None:
+        data: dict[str, object] = {"choices": ["bad"]}
+        assert not _is_violation_finish_reason(data)
+
 
 class TestBuildAuthHeaders:
     def test_bearer_token_default(self, endpoint: ApiEvalEndpoint) -> None:
@@ -221,6 +226,20 @@ class TestExtractContent:
         data: dict[str, object] = {"choices": [{}]}
         assert _extract_content(data) == ""
 
+    def test_non_mapping_choice_returns_empty(self) -> None:
+        data: dict[str, object] = {"choices": ["bad"]}
+        assert _extract_content(data) == ""
+
+    def test_non_mapping_message_returns_empty(self) -> None:
+        data: dict[str, object] = {"choices": [{"message": "bad"}]}
+        assert _extract_content(data) == ""
+
+    def test_reasoning_fallback(self) -> None:
+        data: dict[str, object] = {
+            "choices": [{"message": {"reasoning": "thoughtful output"}}],
+        }
+        assert _extract_content(data) == "thoughtful output"
+
 
 class TestCallChatApi:
     def test_successful_call(self, endpoint: ApiEvalEndpoint) -> None:
@@ -285,6 +304,26 @@ class TestCallChatApi:
                 timeout=10,
             )
 
+        assert is_refused
+
+    def test_malformed_json_returns_refusal(
+        self, endpoint: ApiEvalEndpoint,
+    ) -> None:
+        mock_response = MagicMock()
+        mock_response.read.return_value = b"{bad json"
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch("urllib.request.urlopen", return_value=mock_response):
+            text, is_refused = _call_chat_api(
+                endpoint=endpoint,
+                api_key="sk-test",
+                messages=[{"role": "user", "content": "Hello"}],
+                max_tokens=50,
+                timeout=10,
+            )
+
+        assert text == "I cannot assist with that request."
         assert is_refused
 
     def test_timeout_returns_refusal(
@@ -472,8 +511,7 @@ class TestEvaluateSuffixViaApi:
         # Verify the prompt was assembled correctly
         msgs = sent_bodies[0]["messages"]
         assert isinstance(msgs, list)
-        user_msg = msgs[-1]
-        assert isinstance(user_msg, dict)
+        user_msg = cast("dict[str, object]", msgs[-1])
         content = str(user_msg["content"])
         assert "ADV_TOKENS" in content
         assert "{suffix}" not in content
@@ -508,8 +546,7 @@ class TestEvaluateSuffixViaApi:
         assert results[0].success_rate == 1.0
         msgs = sent_bodies[0]["messages"]
         assert isinstance(msgs, list)
-        user_msg = msgs[-1]
-        assert isinstance(user_msg, dict)
+        user_msg = cast("dict[str, object]", msgs[-1])
         assert str(user_msg["content"]) == "How to do something ADV_TOKENS"
 
 

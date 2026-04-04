@@ -22,6 +22,7 @@ from vauban._pipeline._helpers import (
 from vauban.types import (
     DBDIResult,
     DiffResult,
+    GanRoundResult,
     SoftPromptResult,
     SubspaceResult,
     SurfaceConfig,
@@ -205,6 +206,118 @@ class TestWriteMeasureReports:
         assert reports == []
 
 
+class TestWriteArenaCard:
+    """Tests for write_arena_card."""
+
+    def _make_sp_result(
+        self,
+        token_text: str | None = "adversarial suffix",
+        transfer_results: list[TransferEvalResult] | None = None,
+        gan_history: list[GanRoundResult] | None = None,
+    ) -> SoftPromptResult:
+        return SoftPromptResult(
+            mode="gcg",
+            success_rate=0.75,
+            final_loss=1.0,
+            loss_history=[2.0, 1.0],
+            n_steps=100,
+            n_tokens=8,
+            embeddings=None,
+            token_ids=None,
+            token_text=token_text,
+            eval_responses=["Sure, here is", "I can help"],
+            accessibility_score=0.0,
+            per_prompt_losses=[1.0],
+            early_stopped=False,
+            transfer_results=transfer_results or [],
+            defense_eval=None,
+            gan_history=[] if gan_history is None else gan_history,
+        )
+
+    def test_basic_card_structure(self, tmp_path: Path) -> None:
+        """Card has summary, suffix, and per-prompt sections."""
+        result = self._make_sp_result()
+        card_path = tmp_path / "arena_card.txt"
+        write_arena_card(card_path, result, ["prompt1", "prompt2"])
+
+        text = card_path.read_text()
+        assert "ARENA SUBMISSION CARD" in text
+        assert "SUFFIX (copy-paste ready)" in text
+        assert "adversarial suffix" in text
+        assert "PER-PROMPT SUBMISSIONS" in text
+        assert "prompt1" in text
+        assert "prompt2" in text
+        assert "Primary ASR: 75.00%" in text
+
+    def test_transfer_results_section(self, tmp_path: Path) -> None:
+        """Transfer results section appears when present."""
+        tr = TransferEvalResult(
+            model_id="other-model",
+            success_rate=0.5,
+            eval_responses=["resp"],
+        )
+        result = self._make_sp_result(transfer_results=[tr])
+        card_path = tmp_path / "arena_card.txt"
+        write_arena_card(card_path, result, ["p1"])
+
+        text = card_path.read_text()
+        assert "TRANSFER RESULTS" in text
+        assert "other-model" in text
+
+    def test_includes_gan_round_transfer_results(self, tmp_path: Path) -> None:
+        round_result = GanRoundResult(
+            round_index=1,
+            attack_result=SoftPromptResult(
+                mode="gcg",
+                success_rate=0.5,
+                final_loss=1.0,
+                loss_history=[1.5, 1.0],
+                n_steps=10,
+                n_tokens=4,
+                embeddings=None,
+                token_ids=[1, 2],
+                token_text="suffix",
+                eval_responses=["response"],
+            ),
+            defense_result=None,
+            attacker_won=True,
+            config_snapshot={"n_steps": 10},
+            transfer_results=[
+                TransferEvalResult(
+                    model_id="transfer-model",
+                    success_rate=0.25,
+                    eval_responses=["resp"],
+                ),
+            ],
+        )
+        result = self._make_sp_result(gan_history=[round_result])
+        card_path = tmp_path / "arena_card.txt"
+        write_arena_card(card_path, result, ["prompt"])
+
+        text = card_path.read_text()
+        assert "GAN ROUND HISTORY" in text
+        assert "Round 1: WON" in text
+        assert "Transfer transfer-model: 25.00%" in text
+
+    def test_no_transfer_section_when_empty(self, tmp_path: Path) -> None:
+        """Transfer section omitted when transfer_results is empty."""
+        result = self._make_sp_result(transfer_results=[])
+        card_path = tmp_path / "arena_card.txt"
+        write_arena_card(card_path, result, ["p1"])
+
+        text = card_path.read_text()
+        assert "TRANSFER RESULTS" not in text
+
+    def test_no_gan_section_when_empty(self, tmp_path: Path) -> None:
+        """GAN section omitted when gan_history is empty."""
+        result = self._make_sp_result()
+        card_path = tmp_path / "arena_card.txt"
+        write_arena_card(card_path, result, ["p1"])
+
+        text = card_path.read_text()
+        assert "GAN ROUND HISTORY" not in text
+
+
 # ===================================================================
 # is_default_data
 # ===================================================================
@@ -246,85 +359,3 @@ class TestLoadRefusalPhrases:
             result = load_refusal_phrases(Path("phrases.txt"))
             mock_fn.assert_called_once_with(Path("phrases.txt"))
             assert result == ["I cannot", "I'm sorry"]
-
-
-# ===================================================================
-# write_arena_card
-# ===================================================================
-
-
-class TestWriteArenaCard:
-    """Tests for write_arena_card."""
-
-    def _make_sp_result(
-        self,
-        token_text: str | None = "adversarial suffix",
-        transfer_results: list[TransferEvalResult] | None = None,
-        gan_history: list[object] | None = None,
-    ) -> SoftPromptResult:
-        return SoftPromptResult(
-            mode="gcg",
-            success_rate=0.75,
-            final_loss=1.0,
-            loss_history=[2.0, 1.0],
-            n_steps=100,
-            n_tokens=8,
-            embeddings=None,
-            token_ids=None,
-            token_text=token_text,
-            eval_responses=["Sure, here is", "I can help"],
-            accessibility_score=0.0,
-            per_prompt_losses=[1.0],
-            early_stopped=False,
-            transfer_results=transfer_results or [],
-            defense_eval=None,
-            gan_history=gan_history or [],
-        )
-
-    def test_basic_card_structure(self, tmp_path: Path) -> None:
-        """Card has summary, suffix, and per-prompt sections."""
-        result = self._make_sp_result()
-        card_path = tmp_path / "arena_card.txt"
-        write_arena_card(card_path, result, ["prompt1", "prompt2"])
-
-        text = card_path.read_text()
-        assert "ARENA SUBMISSION CARD" in text
-        assert "SUFFIX (copy-paste ready)" in text
-        assert "adversarial suffix" in text
-        assert "PER-PROMPT SUBMISSIONS" in text
-        assert "prompt1" in text
-        assert "prompt2" in text
-        assert "Primary ASR: 75.00%" in text
-
-    def test_transfer_results_section(self, tmp_path: Path) -> None:
-        """Transfer results section appears when present."""
-        tr = TransferEvalResult(
-            model_id="other-model",
-            success_rate=0.5,
-            eval_responses=["resp"],
-        )
-        result = self._make_sp_result(transfer_results=[tr])
-        card_path = tmp_path / "arena_card.txt"
-        write_arena_card(card_path, result, ["p1"])
-
-        text = card_path.read_text()
-        assert "TRANSFER RESULTS" in text
-        assert "other-model" in text
-
-    def test_no_transfer_section_when_empty(self, tmp_path: Path) -> None:
-        """Transfer section omitted when transfer_results is empty."""
-        result = self._make_sp_result(transfer_results=[])
-        card_path = tmp_path / "arena_card.txt"
-        write_arena_card(card_path, result, ["p1"])
-
-        text = card_path.read_text()
-        assert "TRANSFER RESULTS" not in text
-
-    def test_no_gan_section_when_empty(self, tmp_path: Path) -> None:
-        """GAN section omitted when gan_history is empty."""
-        result = self._make_sp_result()
-        card_path = tmp_path / "arena_card.txt"
-        write_arena_card(card_path, result, ["p1"])
-
-        text = card_path.read_text()
-        assert "GAN ROUND HISTORY" not in text

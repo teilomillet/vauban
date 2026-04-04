@@ -1092,15 +1092,16 @@ wheels = [
 
 [[package]]
 name = "ordeal"
-version = "0.2.103"
+version = "0.3.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "coverage" },
     { name = "hypothesis" },
     { name = "pytest" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4f/4c/dcdaa836ef74e8b0fcb05f7f32b4c7eafef10aeff994fe23ff2262af3d88/ordeal-0.2.103.tar.gz", hash = "sha256:dc87d4b4f76b5805c33fafcb87120dde4e9a204f1a229e1d70a870f7726a1211", size = 355883, upload-time = "2026-04-02T13:32:52.534Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/64/d8/8a4f25803504d8be716fae5d4df002aac0ac78081a01777e4185f6e9e0e4/ordeal-0.3.8.tar.gz", hash = "sha256:189bd7085b5c9c01f7678646d1b7e75f4545f6cf82f91d14d52985da7ba0063a", size = 437972, upload-time = "2026-04-04T00:18:12.641Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ac/af/a14462f1fe1b4933ed021116c33a0072e7c13e02f4ca7d2eb897e539105f/ordeal-0.2.103-py3-none-any.whl", hash = "sha256:a50bbdfac0cd04ecebc8aa115cc60376ff7dfbbf56f45609c83b05753eea8afa", size = 268978, upload-time = "2026-04-02T13:32:50.842Z" },
+    { url = "https://files.pythonhosted.org/packages/d3/a6/06965a28598166f787c1ce1ec0c4dfdd6eae8ea9cfcc43c55b6a5b813a06/ordeal-0.3.8-py3-none-any.whl", hash = "sha256:0956f9d9e934a770e592cf82285d68caa8c83ad91731a31930f0e7a4168a317b", size = 324423, upload-time = "2026-04-04T00:18:11.173Z" },
 ]
 
 [[package]]
@@ -1957,7 +1958,7 @@ requires-dist = [
     { name = "mlx", specifier = ">=0.22" },
     { name = "mlx-lm", specifier = ">=0.21" },
     { name = "optuna", marker = "extra == 'optimize'", specifier = ">=4.0" },
-    { name = "ordeal", specifier = ">=0.2.103" },
+    { name = "ordeal", specifier = ">=0.3.8" },
     { name = "pypdf", specifier = ">=6.9.2" },
     { name = "reportlab", specifier = ">=4.4.10" },
     { name = "safetensors", marker = "extra == 'torch'", specifier = ">=0.4" },

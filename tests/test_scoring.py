@@ -17,7 +17,7 @@ from hypothesis import strategies as st
 from ordeal.auto import fuzz
 from ordeal.invariants import bounded
 
-from vauban.scoring import score_response, score_responses
+from vauban.scoring import _score_anti_refusal, score_response, score_responses
 from vauban.types import ResponseScoreWeights
 
 _s = settings(max_examples=50, deadline=None)
@@ -97,6 +97,33 @@ class TestEdges:
         assert score_response(
             prompt, "Cats are great animals.",
         ).anti_refusal == 1.0
+
+    def test_empty_refusal_phrase_list_returns_full_score(self) -> None:
+        assert _score_anti_refusal("I cannot help with that.", []) == 1.0
+
+    def test_score_response_respects_empty_refusal_phrase_override(self) -> None:
+        result = score_response(
+            "How to hack",
+            "I cannot help with that.",
+            refusal_phrases=[],
+        )
+        assert result.anti_refusal == 1.0
+
+    def test_single_match_out_of_ten_refusal_phrases_scores_half(self) -> None:
+        phrases = [
+            "cannot",
+            "sorry",
+            "decline",
+            "unable",
+            "ethics",
+            "policy",
+            "inappropriate",
+            "guidelines",
+            "refuse",
+            "comfortable",
+        ]
+        score = _score_anti_refusal("I cannot help with that.", phrases)
+        assert score == pytest.approx(0.5)
 
     def test_refusal_detected(self) -> None:
         r = score_response(

@@ -22,7 +22,7 @@ from vauban.types import (
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from tests.conftest import MockCausalLM
+    from tests.conftest import MockCausalLM, MockTokenizer
     from vauban._array import Array
 
 from tests.conftest import make_direction_result, make_early_mode_context
@@ -142,6 +142,225 @@ class TestAwarenessDetect:
         # Not anomalous in fast mode — gain ratio 1.5 < threshold 2.0
         assert not result.anomalous
 
+    def test_zero_baseline_nonzero_test_uses_epsilon_denominator(self) -> None:
+        """Zero baseline gain falls back to epsilon instead of dividing by zero."""
+        from vauban.awareness import _layer_anomaly_score
+
+        config = AwarenessConfig(prompts=["test"], mode="full")
+        baseline = LayerSensitivity(
+            layer_index=0, directional_gain=0.0,
+            correlation=0.0, effective_rank=1.0,
+        )
+        test = LayerSensitivity(
+            layer_index=0, directional_gain=2.0,
+            correlation=0.0, effective_rank=1.0,
+        )
+
+        result, _score = _layer_anomaly_score(baseline, test, config)
+
+        assert result.gain_ratio > 1e9
+
+    def test_zero_baseline_zero_test_defaults_to_neutral_gain_ratio(self) -> None:
+        """Two near-zero gains should not manufacture a fake anomaly."""
+        from vauban.awareness import _layer_anomaly_score
+
+        config = AwarenessConfig(prompts=["test"], mode="full")
+        baseline = LayerSensitivity(
+            layer_index=0, directional_gain=0.0,
+            correlation=0.0, effective_rank=1.0,
+        )
+        test = LayerSensitivity(
+            layer_index=0, directional_gain=0.0,
+            correlation=0.0, effective_rank=1.0,
+        )
+
+        result, _score = _layer_anomaly_score(baseline, test, config)
+
+        assert result.gain_ratio == pytest.approx(1.0)
+
+    def test_awareness_detect_builds_evidence_in_full_mode(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+        direction: Array,
+    ) -> None:
+        """Full-mode detection should aggregate anomalies into evidence."""
+        from vauban.awareness import awareness_detect
+
+        config = AwarenessConfig(
+            prompts=["test"],
+            mode="full",
+            gain_ratio_threshold=2.0,
+            rank_ratio_threshold=0.5,
+            correlation_delta_threshold=0.2,
+            min_anomalous_layers=1,
+            confidence_threshold=0.1,
+        )
+        baseline = SensitivityProfile(
+            layers=[
+                LayerSensitivity(
+                    layer_index=0,
+                    directional_gain=1.0,
+                    correlation=0.1,
+                    effective_rank=4.0,
+                ),
+                LayerSensitivity(
+                    layer_index=1,
+                    directional_gain=1.0,
+                    correlation=0.2,
+                    effective_rank=4.0,
+                ),
+            ],
+            valley_layers=[],
+        )
+        test_profile = SensitivityProfile(
+            layers=[
+                LayerSensitivity(
+                    layer_index=0,
+                    directional_gain=4.0,
+                    correlation=0.6,
+                    effective_rank=1.0,
+                ),
+                LayerSensitivity(
+                    layer_index=1,
+                    directional_gain=1.0,
+                    correlation=0.2,
+                    effective_rank=4.0,
+                ),
+            ],
+            valley_layers=[],
+        )
+        token_ids = ops.zeros((1, 2), dtype=ops.int32)
+        h = ops.zeros((1, 2, 2))
+        mask = ops.zeros((1, 2), dtype=ops.int32)
+        ops.eval(token_ids, h, mask)
+
+        with (
+            patch("vauban.awareness.encode_user_prompt", return_value=token_ids),
+            patch("vauban.awareness.get_transformer", return_value=object()),
+            patch("vauban.awareness.embed_and_mask", return_value=(h, mask)),
+            patch(
+                "vauban.awareness.compute_sensitivity_profile",
+                return_value=test_profile,
+            ),
+        ):
+            result = awareness_detect(
+                mock_model,
+                mock_tokenizer,
+                "test prompt",
+                direction,
+                config,
+                baseline,
+            )
+
+        assert result.steered is True
+        assert result.anomalous_layers == [0]
+        assert result.confidence == pytest.approx(1.0)
+        assert result.evidence == [
+            "layer 0: gain_ratio=4.00, rank_ratio=0.25, corr_delta=0.50",
+        ]
+
+    def test_awareness_detect_fast_mode_uses_fast_profile(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+        direction: Array,
+    ) -> None:
+        """Fast-mode detection should use the gain-only profile helper."""
+        from vauban.awareness import awareness_detect
+
+        config = AwarenessConfig(
+            prompts=["test"],
+            mode="fast",
+            gain_ratio_threshold=1.5,
+            min_anomalous_layers=1,
+            confidence_threshold=0.1,
+        )
+        baseline = SensitivityProfile(
+            layers=[
+                LayerSensitivity(
+                    layer_index=0,
+                    directional_gain=1.0,
+                    correlation=0.0,
+                    effective_rank=1.0,
+                ),
+            ],
+            valley_layers=[],
+        )
+        test_profile = SensitivityProfile(
+            layers=[
+                LayerSensitivity(
+                    layer_index=0,
+                    directional_gain=2.0,
+                    correlation=0.0,
+                    effective_rank=1.0,
+                ),
+            ],
+            valley_layers=[],
+        )
+        token_ids = ops.zeros((1, 1), dtype=ops.int32)
+        h = ops.zeros((1, 1, 2))
+        mask = ops.zeros((1, 1), dtype=ops.int32)
+        ops.eval(token_ids, h, mask)
+
+        with (
+            patch("vauban.awareness.encode_user_prompt", return_value=token_ids),
+            patch("vauban.awareness.get_transformer", return_value=object()),
+            patch("vauban.awareness.embed_and_mask", return_value=(h, mask)),
+            patch(
+                "vauban.awareness._fast_gain_profile",
+                return_value=test_profile,
+            ) as mock_fast,
+        ):
+            result = awareness_detect(
+                mock_model,
+                mock_tokenizer,
+                "test prompt",
+                direction,
+                config,
+                baseline,
+            )
+
+        mock_fast.assert_called_once()
+        assert result.steered is True
+
+    def test_awareness_detect_empty_profiles_have_zero_confidence(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+        direction: Array,
+    ) -> None:
+        """Empty profiles should produce zero confidence and no verdict."""
+        from vauban.awareness import awareness_detect
+
+        config = AwarenessConfig(prompts=["test"], mode="full")
+        baseline = SensitivityProfile(layers=[], valley_layers=[])
+        token_ids = ops.zeros((1, 1), dtype=ops.int32)
+        h = ops.zeros((1, 1, 2))
+        mask = ops.zeros((1, 1), dtype=ops.int32)
+        ops.eval(token_ids, h, mask)
+
+        with (
+            patch("vauban.awareness.encode_user_prompt", return_value=token_ids),
+            patch("vauban.awareness.get_transformer", return_value=object()),
+            patch("vauban.awareness.embed_and_mask", return_value=(h, mask)),
+            patch(
+                "vauban.awareness.compute_sensitivity_profile",
+                return_value=SensitivityProfile(layers=[], valley_layers=[]),
+            ),
+        ):
+            result = awareness_detect(
+                mock_model,
+                mock_tokenizer,
+                "test prompt",
+                direction,
+                config,
+                baseline,
+            )
+
+        assert result.confidence == 0.0
+        assert result.steered is False
+
 
 # ---------------------------------------------------------------------------
 # Test fast gain profile
@@ -176,6 +395,100 @@ class TestFastGainProfile:
         assert all(ls.correlation == 0.0 for ls in profile.layers)
         assert all(ls.effective_rank == 1.0 for ls in profile.layers)
         assert profile.valley_layers == []
+
+    def test_calibrate_full_mode_uses_sensitivity_profile(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+        direction: Array,
+    ) -> None:
+        """Full-mode calibration should delegate to the sensitivity engine."""
+        from vauban.awareness import awareness_calibrate
+
+        config = AwarenessConfig(
+            prompts=["test"],
+            mode="full",
+            n_power_iterations=7,
+            fd_epsilon=1e-3,
+            valley_window=5,
+            top_k_valleys=2,
+        )
+        token_ids = ops.zeros((1, 1), dtype=ops.int32)
+        h = ops.zeros((1, 1, 2))
+        mask = ops.zeros((1, 1), dtype=ops.int32)
+        profile = SensitivityProfile(layers=[], valley_layers=[])
+        ops.eval(token_ids, h, mask)
+
+        with (
+            patch("vauban.awareness.encode_user_prompt", return_value=token_ids),
+            patch("vauban.awareness.get_transformer", return_value=object()),
+            patch("vauban.awareness.embed_and_mask", return_value=(h, mask)),
+            patch(
+                "vauban.awareness.compute_sensitivity_profile",
+                return_value=profile,
+            ) as mock_compute,
+        ):
+            result = awareness_calibrate(
+                mock_model,
+                mock_tokenizer,
+                "hello",
+                direction,
+                config,
+            )
+
+        assert result is profile
+        mock_compute.assert_called_once_with(
+            mock_model,
+            h,
+            mask,
+            direction,
+            n_power_iterations=7,
+            fd_epsilon=1e-3,
+            valley_window=5,
+            top_k_valleys=2,
+        )
+
+    def test_calibrate_fast_mode_uses_fast_gain_profile(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+        direction: Array,
+    ) -> None:
+        """Fast-mode calibration should route through the cheap gain profile."""
+        from vauban.awareness import awareness_calibrate
+
+        config = AwarenessConfig(prompts=["test"], mode="fast")
+        token_ids = ops.zeros((1, 1), dtype=ops.int32)
+        h = ops.zeros((1, 1, 2))
+        mask = ops.zeros((1, 1), dtype=ops.int32)
+        profile = SensitivityProfile(layers=[], valley_layers=[])
+        ops.eval(token_ids, h, mask)
+
+        with (
+            patch("vauban.awareness.encode_user_prompt", return_value=token_ids),
+            patch("vauban.awareness.get_transformer", return_value=object()),
+            patch("vauban.awareness.embed_and_mask", return_value=(h, mask)),
+            patch(
+                "vauban.awareness._fast_gain_profile",
+                return_value=profile,
+            ) as mock_fast,
+        ):
+            result = awareness_calibrate(
+                mock_model,
+                mock_tokenizer,
+                "hello",
+                direction,
+                config,
+            )
+
+        assert result is profile
+        mock_fast.assert_called_once_with(
+            mock_model,
+            h,
+            mask,
+            direction,
+            config,
+        )
 
 
 # ---------------------------------------------------------------------------

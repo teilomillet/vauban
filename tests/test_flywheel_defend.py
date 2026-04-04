@@ -149,6 +149,34 @@ class TestDefendTraces:
         assert results[0].cast_interventions == 2
         assert results[0].cast_refusal_rate == 0.2  # 2/10
 
+    def test_low_reward_trace_skips_defense_eval(self) -> None:
+        world = _make_world()
+        payloads = [Payload(text="inject", source="test", cycle_discovered=0)]
+        trace = FlywheelTrace(
+            world_index=0,
+            payload_index=0,
+            payload_text="test",
+            reward=0.4,
+            target_called=False,
+            turns_used=1,
+            tool_calls_made=1,
+        )
+
+        with patch(
+            "vauban.flywheel._defend.run_defended_agent_loop",
+            side_effect=AssertionError("should not run"),
+        ):
+            results = defend_traces(
+                object(), object(),  # type: ignore[arg-type]
+                [trace], [world], payloads,
+                direction=None, layer_index=0,
+                defense_params=_make_defense_params("generation"),
+            )
+
+        assert results[0].defense_blocked is False
+        assert results[0].reward == 0.4
+        assert results[0].cast_interventions == 0
+
     def test_generation_mode_runs_without_direction(self) -> None:
         world = _make_world()
         payloads = [Payload(text="inject", source="test", cycle_discovered=0)]
@@ -172,6 +200,51 @@ class TestDefendTraces:
         assert mocked_run.call_count == 1
         assert results[0].sic_blocked is True
         assert results[0].defense_blocked is True
+
+    def test_defense_blocked_false_when_sic_passes_and_reward_is_high(
+        self,
+    ) -> None:
+        world = _make_world()
+        payloads = [Payload(text="inject", source="test", cycle_discovered=0)]
+
+        with patch(
+            "vauban.flywheel._defend.run_defended_agent_loop",
+            return_value=DefendedEnvironmentResult(
+                env_result=_make_env_result(0.9, target_called=True),
+                cast_interventions=0,
+                cast_considered=0,
+                sic_blocked=False,
+            ),
+        ):
+            results = defend_traces(
+                object(), object(),  # type: ignore[arg-type]
+                [_make_attack_trace()], [world], payloads,
+                direction=None, layer_index=0,
+                defense_params=_make_defense_params("generation"),
+            )
+
+        assert results[0].defense_blocked is False
+        assert results[0].cast_refusal_rate == 0.0
+
+    def test_run_defended_agent_loop_failure_falls_back_to_trace(
+        self,
+    ) -> None:
+        world = _make_world()
+        payloads = [Payload(text="inject", source="test", cycle_discovered=0)]
+
+        with patch(
+            "vauban.flywheel._defend.run_defended_agent_loop",
+            side_effect=RuntimeError("boom"),
+        ):
+            results = defend_traces(
+                object(), object(),  # type: ignore[arg-type]
+                [_make_attack_trace()], [world], payloads,
+                direction=None, layer_index=0,
+                defense_params=_make_defense_params("generation"),
+            )
+
+        assert results[0].defense_blocked is False
+        assert results[0].cast_interventions == 0
 
 
 class TestTriage:

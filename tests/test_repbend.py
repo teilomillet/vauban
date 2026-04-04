@@ -6,10 +6,55 @@
 from __future__ import annotations
 
 import tomllib
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from vauban import _ops as ops
+
+if TYPE_CHECKING:
+    from vauban._array import Array
+    from vauban.types import CausalLM, Tokenizer
+
+
+class _FakeOProj:
+    """Minimal attention output projection holder."""
+
+    def __init__(self, weight: Array) -> None:
+        self.weight = weight
+
+
+class _FakeSelfAttn:
+    """Minimal self-attention holder."""
+
+    def __init__(self, o_proj: object) -> None:
+        self.o_proj = o_proj
+
+
+class _TrainableLayer:
+    """Layer with ``self_attn.o_proj.weight``."""
+
+    def __init__(self, weight: Array) -> None:
+        self.self_attn = _FakeSelfAttn(_FakeOProj(weight))
+
+
+class _LayerWithoutSelfAttn:
+    """Layer missing ``self_attn``."""
+
+
+class _LayerWithoutWeight:
+    """Layer whose output projection lacks a ``weight`` attribute."""
+
+    def __init__(self) -> None:
+        self.self_attn = _FakeSelfAttn(object())
+
+
+class _FakeTransformer:
+    """Minimal transformer wrapper for RepBend tests."""
+
+    def __init__(self, layers: list[object]) -> None:
+        self.layers = layers
+
 
 # ---------------------------------------------------------------------------
 # Config dataclass
@@ -221,3 +266,153 @@ class TestCosineHelper:
         sim = _cosine_similarity(a, b)
         ops.eval(sim)
         assert float(sim.item()) == pytest.approx(0.0, abs=1e-5)
+
+
+# ---------------------------------------------------------------------------
+# Runtime behavior
+# ---------------------------------------------------------------------------
+
+
+class TestRepBendRuntime:
+    """Tests for RepBend runtime helpers."""
+
+    def test_compute_separation_skips_out_of_range_layers(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        from vauban.repbend import _compute_separation
+
+        per_layer = [ops.array([[1.0, 0.0], [0.0, 1.0]])]
+
+        with caplog.at_level("WARNING"):
+            result = _compute_separation(per_layer, [0, 3], 1)
+
+        assert result == pytest.approx(1.0, abs=1e-5)
+        assert "out of range" in caplog.text
+
+    def test_repbend_returns_result_and_normalizes_model_path(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from vauban.repbend import repbend
+        from vauban.types import RepBendConfig
+
+        before = [ops.array([[1.0, 0.0], [0.0, 1.0]])]
+        after = [ops.array([[1.0, 0.0], [-1.0, 0.0]])]
+        collected = iter([before, after])
+
+        monkeypatch.setattr(
+            "vauban.repbend._collect_per_prompt_activations",
+            lambda model, tokenizer, prompts, token_position: next(collected),
+        )
+        monkeypatch.setattr(
+            "vauban.repbend._train_repbend",
+            lambda model, tokenizer, harmful, harmless, config: [0.4, 0.2],
+        )
+
+        class _Model:
+            _model_path = 123
+
+        model = cast("CausalLM", _Model())
+        tokenizer = cast("Tokenizer", object())
+
+        result = repbend(
+            model,
+            tokenizer,
+            ["harm"],
+            ["safe"],
+            RepBendConfig(layers=[0]),
+        )
+
+        assert result.initial_separation == pytest.approx(1.0, abs=1e-5)
+        assert result.final_separation == pytest.approx(2.0, abs=1e-5)
+        assert result.loss_history == [0.4, 0.2]
+        assert result.model_path == "unknown"
+
+    def test_train_repbend_updates_projection_weights(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from vauban.repbend import _train_repbend
+        from vauban.types import RepBendConfig
+
+        weight = ops.array([[0.0, 0.0], [0.0, 0.0]])
+        layer = _TrainableLayer(weight)
+        transformer = _FakeTransformer([layer])
+        per_layer = [ops.array([[1.0, 0.0], [0.0, 1.0]])]
+        model = cast("CausalLM", object())
+        tokenizer = cast("Tokenizer", object())
+
+        monkeypatch.setattr(
+            "vauban.repbend.get_transformer",
+            lambda model: transformer,
+        )
+        monkeypatch.setattr(
+            "vauban.repbend._collect_per_prompt_activations",
+            lambda model, tokenizer, prompts, token_position: per_layer,
+        )
+
+        history = _train_repbend(
+            model,
+            tokenizer,
+            ["harm"],
+            ["safe"],
+            RepBendConfig(
+                layers=[0],
+                n_epochs=2,
+                learning_rate=0.5,
+                separation_coeff=2.0,
+            ),
+        )
+
+        expected = ops.array([[1.0, -1.0], [-1.0, 1.0]])
+        o_proj = cast("_FakeOProj", layer.self_attn.o_proj)
+        ops.eval(o_proj.weight, expected)
+        assert history == [pytest.approx(0.0), pytest.approx(0.0)]
+        assert bool(ops.allclose(o_proj.weight, expected))
+
+    def test_train_repbend_skips_zero_diff_and_invalid_layers(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        from vauban.repbend import _train_repbend
+        from vauban.types import RepBendConfig
+
+        transformer = _FakeTransformer(
+            [
+                _TrainableLayer(ops.array([[0.0, 0.0], [0.0, 0.0]])),
+                _LayerWithoutSelfAttn(),
+                _LayerWithoutWeight(),
+            ],
+        )
+        per_layer = [
+            ops.array([[1.0, 0.0], [1.0, 0.0]]),
+            ops.array([[1.0, 0.0], [0.0, 1.0]]),
+            ops.array([[1.0, 0.0], [0.0, 1.0]]),
+        ]
+        model = cast("CausalLM", object())
+        tokenizer = cast("Tokenizer", object())
+
+        monkeypatch.setattr(
+            "vauban.repbend.get_transformer",
+            lambda model: transformer,
+        )
+        monkeypatch.setattr(
+            "vauban.repbend._collect_per_prompt_activations",
+            lambda model, tokenizer, prompts, token_position: per_layer,
+        )
+
+        with caplog.at_level("WARNING"):
+            history = _train_repbend(
+                model,
+                tokenizer,
+                ["harm"],
+                ["safe"],
+                RepBendConfig(layers=[0, 1, 2, 5], n_epochs=1),
+            )
+
+        assert len(history) == 1
+        assert "out of range" in caplog.text
+        assert "no self_attn.o_proj" in caplog.text
+        assert "no weight attribute" in caplog.text

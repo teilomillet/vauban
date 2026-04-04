@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from vauban._backend import SUPPORTED_BACKENDS, get_backend
+from vauban._nn_contract import NN_CONTRACT
 from vauban._ops_contract import OPS_CONTRACT
 
 # ── _backend ─────────────────────────────────────────────────────────
@@ -266,9 +267,15 @@ class TestOpsMlx:
 
 
 class TestNnContract:
+    def test_nn_dir_matches_contract(self) -> None:
+        from vauban import _nn as nn_ops
+
+        nn_dir = set(dir(nn_ops))
+        for name in NN_CONTRACT:
+            assert name in nn_dir, f"Missing from __dir__: {name}"
+
     def test_all_nn_symbols_accessible(self) -> None:
         from vauban import _nn as nn_ops
-        from vauban._nn_contract import NN_CONTRACT
 
         for name in NN_CONTRACT:
             assert hasattr(nn_ops, name), f"Missing nn symbol: {name}"

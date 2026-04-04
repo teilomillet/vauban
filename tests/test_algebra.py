@@ -4,6 +4,7 @@
 """Tests for vauban.algebra: direction algebra with closed operations."""
 
 import json
+from typing import cast
 
 import pytest
 
@@ -426,13 +427,19 @@ class TestProvenance:
         assert "delta" in result.label
 
         # Intermediate node serialization
-        ab_c_dict = ab_c.to_dict()
-        ab_c_prov = ab_c_dict["provenance"]
+        ab_c_dict: dict[str, object] = ab_c.to_dict()
+        ab_c_prov: dict[str, object] = cast(
+            "dict[str, object]",
+            ab_c_dict["provenance"],
+        )
         assert ab_c_prov["operation"] == "subtract"
         assert ab_c_prov["parents"] == [ab.label, "gamma"]
 
-        ab_dict = ab.to_dict()
-        ab_prov = ab_dict["provenance"]
+        ab_dict: dict[str, object] = ab.to_dict()
+        ab_prov: dict[str, object] = cast(
+            "dict[str, object]",
+            ab_dict["provenance"],
+        )
         assert ab_prov["operation"] == "add"
         assert ab_prov["parents"] == ["alpha", "beta"]
 
@@ -449,6 +456,12 @@ class TestEdgeCases:
         result = add(a, b)
         assert result.rank == b.rank
         assert similarity(result, b) > 0.99
+
+    def test_rank0_add_rhs_is_identity(self) -> None:
+        a = _random_space(2, "a", seed=1)
+        b = _rank0_space("empty_b")
+        result = add(a, b)
+        assert result.rank == a.rank
 
     def test_rank0_subtract(self) -> None:
         a = _rank0_space("empty_a")
@@ -478,6 +491,33 @@ class TestEdgeCases:
         result = compose([a, b], [0.0, 0.0])
         # Zero-weighted compose should produce rank-0
         assert result.rank == 0
+
+    def test_add_zero_signal_returns_rank0(self) -> None:
+        basis = ops.zeros((1, D_MODEL))
+        ops.eval(basis)
+        a = DirectionSpace(basis=basis, d_model=D_MODEL, rank=1, label="a")
+        b = DirectionSpace(basis=basis, d_model=D_MODEL, rank=1, label="b")
+
+        result = add(a, b)
+        assert result.rank == 0
+
+    def test_compose_all_rank0_spaces_returns_rank0(self) -> None:
+        result = compose([_rank0_space("a"), _rank0_space("b")], [1.0, 2.0])
+        assert result.rank == 0
+
+    def test_compose_dimension_mismatch_raises(self) -> None:
+        a = _random_space(2, "a", seed=1)
+        b_basis = ops.zeros((1, D_MODEL + 1))
+        ops.eval(b_basis)
+        b = DirectionSpace(
+            basis=b_basis,
+            d_model=D_MODEL + 1,
+            rank=1,
+            label="b",
+        )
+
+        with pytest.raises(ValueError, match="Dimension mismatch"):
+            compose([a, b], [1.0, 1.0])
 
     def test_max_rank_capping(self) -> None:
         a = _random_space(3, "a", seed=1)

@@ -3,7 +3,9 @@
 
 """Tests for vauban.tree: experiment tech tree discovery and rendering."""
 
+import runpy
 import sys
+import warnings
 from pathlib import Path
 
 import pytest
@@ -11,11 +13,15 @@ import pytest
 from vauban.__main__ import main as cli_main
 from vauban.tree import (
     ExperimentNode,
+    _filter_nodes,
     _sanitize_mermaid_id,
     _validate_graph,
     build_mermaid,
     build_tree_text,
     discover_experiments,
+)
+from vauban.tree import (
+    main as tree_main,
 )
 
 
@@ -171,6 +177,41 @@ class TestBuildTreeText:
         assert "gcg(2)" in text
         assert "transfer(1)" in text
 
+    def test_missing_parent_nodes_are_promoted_to_roots(self) -> None:
+        nodes = [
+            _make_node("root", title="Root"),
+            _make_node("child", title="Child", parents=["missing"]),
+        ]
+
+        text = build_tree_text(nodes)
+        assert "[WIP] Root" in text
+        assert "[WIP] Child" in text
+        assert "Orphans:" not in text
+
+    def test_duplicate_root_ids_are_rendered_once(self) -> None:
+        nodes = [
+            _make_node("dup", title="First"),
+            _make_node("dup", title="Second"),
+        ]
+
+        text = build_tree_text(nodes)
+        assert "[WIP] First" in text
+        assert "Second" not in text
+        assert "Warnings:" in text
+        assert "Duplicate id" in text
+
+    def test_cycle_graph_emits_orphans_and_warning(self) -> None:
+        nodes = [
+            _make_node("a", parents=["b"]),
+            _make_node("b", parents=["a"]),
+        ]
+
+        text = build_tree_text(nodes)
+        assert "Orphans:" in text
+        assert "[WIP] a" in text
+        assert "[WIP] b" in text
+        assert "Cycle detected in experiment graph" in text
+
 
 class TestBuildMermaid:
     """Tests for build_mermaid()."""
@@ -265,6 +306,70 @@ class TestSanitizeMermaidId:
 
     def test_spaces_replaced(self) -> None:
         assert _sanitize_mermaid_id("my experiment") == "my_experiment"
+
+
+class TestFilterNodes:
+    """Tests for the private node filtering helper."""
+
+    def test_filters_by_status_and_tag(self) -> None:
+        nodes = [
+            _make_node("a", status="promising", tags=["gcg"]),
+            _make_node("b", status="dead_end", tags=["transfer"]),
+            _make_node("c", status="promising", tags=["transfer"]),
+        ]
+
+        assert [node.id for node in _filter_nodes(nodes, status="promising")] == [
+            "a",
+            "c",
+        ]
+        assert [node.id for node in _filter_nodes(nodes, tag="transfer")] == [
+            "b",
+            "c",
+        ]
+        assert [node.id for node in _filter_nodes(
+            nodes,
+            status="promising",
+            tag="transfer",
+        )] == ["c"]
+
+
+class TestMainEntrypoint:
+    """Tests for the tree CLI entrypoint."""
+
+    def test_main_mermaid_prints_warnings_to_stderr(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        (tmp_path / "bad_meta.toml").write_text(
+            '[meta]\nstatus = "bogus"\n',
+        )
+
+        tree_main([str(tmp_path), "--format", "mermaid"])
+        captured = capsys.readouterr()
+        assert "flowchart TD" in captured.out
+        assert "bad_meta.toml" in captured.err
+
+    def test_module_execution_runs_main(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        (tmp_path / "meta.toml").write_text(
+            '[meta]\nstatus = "baseline"\n',
+        )
+
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["python", str(tmp_path)],
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            runpy.run_module("vauban.tree", run_name="__main__")
+        captured = capsys.readouterr()
+        assert "[BASE]" in captured.out
 
 
 class TestDiscoveryWarningsInTree:

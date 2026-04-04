@@ -11,8 +11,10 @@ from typing import TYPE_CHECKING
 from tests.conftest import D_MODEL, NUM_LAYERS, MockCausalLM, MockTokenizer
 from vauban.quick import (
     abliterate,
+    analyze_geometry,
     compare,
     evaluate,
+    load,
     measure_direction,
     probe_prompt,
     scan,
@@ -49,6 +51,52 @@ class TestMeasureDirection:
         )
         assert isinstance(result, DirectionResult)
         assert result.direction.shape == (D_MODEL,)
+
+
+class TestLoad:
+    def test_dequantizes_quantized_model(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """load() dequantizes quantized models before returning them."""
+        from unittest.mock import patch
+
+        with (
+            patch(
+                "vauban._model_io.load_model",
+                return_value=(mock_model, mock_tokenizer),
+            ),
+            patch("vauban.quick.is_quantized", return_value=True),
+            patch("vauban.quick.dequantize_model") as mock_dequantize,
+        ):
+            model, tokenizer = load("mlx-community/test")
+
+        assert model is mock_model
+        assert tokenizer is mock_tokenizer
+        mock_dequantize.assert_called_once_with(mock_model)
+
+    def test_skips_dequantize_for_non_quantized_model(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """load() leaves non-quantized models unchanged."""
+        from unittest.mock import patch
+
+        with (
+            patch(
+                "vauban._model_io.load_model",
+                return_value=(mock_model, mock_tokenizer),
+            ),
+            patch("vauban.quick.is_quantized", return_value=False),
+            patch("vauban.quick.dequantize_model") as mock_dequantize,
+        ):
+            model, tokenizer = load("mlx-community/test")
+
+        assert model is mock_model
+        assert tokenizer is mock_tokenizer
+        mock_dequantize.assert_not_called()
 
 
 class TestProbePrompt:
@@ -253,3 +301,54 @@ class TestScan:
         assert isinstance(result, SurfaceResult)
         # Verify direction_layer was passed
         assert mock_map.call_args[0][4] == 3
+
+    def test_scan_raw_array_defaults_direction_layer_zero(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+        direction: Array,
+    ) -> None:
+        """scan() defaults raw-array directions to layer 0."""
+        from unittest.mock import patch
+
+        from vauban.types import SurfaceResult
+
+        mock_surface_result = SurfaceResult(
+            points=[], groups_by_label=[], groups_by_category=[],
+            threshold=0.0, total_scanned=0, total_refused=0,
+        )
+        with (
+            patch(
+                "vauban.surface.load_surface_prompts",
+                return_value=[],
+            ),
+            patch(
+                "vauban.surface.map_surface",
+                return_value=mock_surface_result,
+            ) as mock_map,
+        ):
+            result = scan(mock_model, mock_tokenizer, direction)
+        assert isinstance(result, SurfaceResult)
+        assert mock_map.call_args[0][4] == 0
+
+
+class TestAnalyzeGeometry:
+    def test_accepts_direction_results_and_raw_arrays(
+        self,
+        direction: Array,
+    ) -> None:
+        """analyze_geometry() normalizes mixed convenience inputs."""
+        result = analyze_geometry({
+            "measured": DirectionResult(
+                direction=direction,
+                layer_index=1,
+                cosine_scores=[0.5],
+                d_model=D_MODEL,
+                model_path="test-model",
+            ),
+            "raw": direction,
+        })
+
+        assert result.direction_names == ["measured", "raw"]
+        assert len(result.pairwise) == 1
+        assert result.most_aligned_pair is not None

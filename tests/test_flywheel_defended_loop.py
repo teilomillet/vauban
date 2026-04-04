@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 from vauban.flywheel._defended_loop import (
     DefendedEnvironmentResult,
     _build_sic_config,
+    _generate_defended_response,
     _should_run_sic,
     run_defended_agent_loop,
 )
@@ -109,6 +110,39 @@ class TestBuildSicConfig:
         assert cfg.mode == "direction"
         assert cfg.threshold == 0.5
         assert cfg.max_iterations == 3
+
+
+class TestGenerateDefendedResponse:
+    def test_cast_failure_falls_back_to_plain_generation(self) -> None:
+        model = MagicMock()
+        tokenizer = MagicMock()
+        defense = _make_defense(cast_layers=[0])
+
+        with (
+            patch(
+                "vauban.cast.cast_generate_with_messages",
+                side_effect=RuntimeError("boom"),
+            ),
+            patch(
+                "vauban.flywheel._defended_loop._generate_response",
+                return_value="plain response",
+            ) as mock_generate,
+        ):
+            text, interventions, considered = _generate_defended_response(
+                model,
+                tokenizer,
+                messages=[{"role": "user", "content": "hi"}],
+                max_tokens=4,
+                temperature=0.0,
+                direction=MagicMock(),
+                layer_index=0,
+                defense_params=defense,
+            )
+
+        assert text == "plain response"
+        assert interventions == 0
+        assert considered == 0
+        mock_generate.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

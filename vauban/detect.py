@@ -492,7 +492,7 @@ def _margin_layer(
                     direction, target_layers, alpha, config.max_tokens,
                 )
                 lower = result.text.lower()
-                if any(p in lower for p in DEFAULT_REFUSAL_PHRASES):
+                if any(p.lower() in lower for p in DEFAULT_REFUSAL_PHRASES):
                     refusals += 1
             steered_rr = refusals / len(sample) if sample else 0.0
             delta = steered_rr - baseline_rr

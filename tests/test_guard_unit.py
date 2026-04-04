@@ -3,6 +3,9 @@
 
 """Unit tests for guard zone classification and cache checkpointing."""
 
+from pathlib import Path
+from typing import cast
+
 import pytest
 
 from tests.conftest import MockCausalLM, MockTokenizer
@@ -14,7 +17,7 @@ from vauban.guard import (
     _snapshot_cache,
     guard_generate,
 )
-from vauban.types import GuardConfig, GuardTierSpec
+from vauban.types import GuardConfig, GuardTierSpec, LayerCache
 
 # ---------------------------------------------------------------------------
 # Zone classification
@@ -96,7 +99,7 @@ class TestCacheCheckpoint:
     ) -> None:
         from vauban import _ops as ops
 
-        cache = mock_model.make_cache()
+        cache = cast("list[LayerCache]", mock_model.make_cache())
         dummy_tok = ops.array([[0]])
 
         checkpoint = _snapshot_cache(cache, [1, 2, 3], dummy_tok)
@@ -112,7 +115,7 @@ class TestCacheCheckpoint:
     ) -> None:
         from vauban import _ops as ops
 
-        cache = mock_model.make_cache()
+        cache = cast("list[LayerCache]", mock_model.make_cache())
         dummy_tok = ops.array([[0]])
         # Take snapshot at offset=0
         checkpoint = _snapshot_cache(cache, [], dummy_tok)
@@ -133,7 +136,7 @@ class TestCacheCheckpoint:
         """Ensure checkpoint holds a copy, not a reference."""
         from vauban import _ops as ops
 
-        cache = mock_model.make_cache()
+        cache = cast("list[LayerCache]", mock_model.make_cache())
         dummy_tok = ops.array([[0]])
         original = [1, 2, 3]
         checkpoint = _snapshot_cache(cache, original, dummy_tok)
@@ -401,27 +404,125 @@ class TestGuardSession:
         assert verdict.zone == "red"
 
     def test_from_file(
-        self, direction: Array, tmp_path: "Path",  # noqa: F821
+        self, direction: Array, tmp_path: Path,
     ) -> None:
-        """Test loading direction from .npy file."""
+        """Test loading direction(s) and exercising a yellow verdict."""
         import json
 
         import numpy as np
 
-        # Save direction
         dir_path = tmp_path / "direction.npy"
+        extra_path = tmp_path / "extra.npy"
         np.save(str(dir_path), np.array(direction))
+        np.save(str(extra_path), np.array(direction) * 2.0)
 
-        # Save tiers
         tiers_data = [
             {"threshold": 0.0, "zone": "green", "alpha": 0.0},
-            {"threshold": 0.5, "zone": "red", "alpha": 3.0},
+            {"threshold": 1.5, "zone": "yellow", "alpha": 0.5},
+            {"threshold": 3.0, "zone": "orange", "alpha": 1.5},
+            {"threshold": 4.0, "zone": "red", "alpha": 3.0},
         ]
         tiers_path = tmp_path / "tiers.json"
         tiers_path.write_text(json.dumps(tiers_data))
 
         session = GuardSession.from_file(
-            str(dir_path), str(tiers_path), max_rewinds=5,
+            str(dir_path),
+            str(tiers_path),
+            extra_direction_paths=[str(extra_path)],
+            max_rewinds=5,
         )
-        assert len(session.tiers) == 2
-        assert session.tiers[1].zone == "red"
+        verdict = session.check(direction)
+
+        assert session.direction.shape == direction.shape
+        assert len(session.tiers) == 4
+        assert session.tiers[1].zone == "yellow"
+        assert verdict.zone == "yellow"
+        assert verdict.action == "steer"
+        assert len(session.events) == 1
+
+
+class TestGuardGenerateBranches:
+    """Tests for guard_generate branches not covered by the basic cases."""
+
+    def test_yellow_zone_steers(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+        direction: Array,
+    ) -> None:
+        """Yellow zone should steer and keep generation running."""
+        from unittest.mock import patch
+
+        from vauban import _ops as ops
+        from vauban.types import GuardConfig, GuardTierSpec
+
+        logits = ops.array([[[0.0, 1.0]]])
+        config = GuardConfig(
+            prompts=["test"],
+            tiers=[
+                GuardTierSpec(threshold=0.0, zone="green", alpha=0.0),
+                GuardTierSpec(threshold=0.1, zone="yellow", alpha=0.5),
+                GuardTierSpec(threshold=0.9, zone="orange", alpha=1.5),
+                GuardTierSpec(threshold=1.5, zone="red", alpha=3.0),
+            ],
+            max_tokens=1,
+        )
+
+        with patch(
+            "vauban.guard._guard_forward",
+            side_effect=[
+                (logits, 0.0, "green", 0.0),
+                (logits, 0.2, "yellow", 0.5),
+            ],
+        ):
+            result = guard_generate(
+                mock_model, mock_tokenizer, "test", direction,
+                layers=[0], config=config,
+            )
+
+        assert result.events[0].zone == "yellow"
+        assert result.events[0].action == "steer"
+        assert result.total_rewinds == 0
+
+    def test_defensive_rewind_path(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+        direction: Array,
+    ) -> None:
+        """Orange zone with defensive embeds should take the rewind branch."""
+        from unittest.mock import patch
+
+        from vauban import _ops as ops
+        from vauban.types import GuardConfig, GuardTierSpec
+
+        logits = ops.array([[[0.0, 1.0]]])
+        defensive_embeds = ops.zeros((1, 1, direction.shape[0]))
+        config = GuardConfig(
+            prompts=["test"],
+            tiers=[
+                GuardTierSpec(threshold=0.0, zone="green", alpha=0.0),
+                GuardTierSpec(threshold=0.1, zone="yellow", alpha=0.5),
+                GuardTierSpec(threshold=0.9, zone="orange", alpha=1.5),
+                GuardTierSpec(threshold=1.5, zone="red", alpha=3.0),
+            ],
+            max_tokens=1,
+            max_rewinds=1,
+        )
+
+        with patch(
+            "vauban.guard._guard_forward",
+            side_effect=[
+                (logits, 0.0, "green", 0.0),
+                (logits, 1.0, "orange", 1.5),
+                (logits, 0.0, "green", 0.0),
+            ],
+        ):
+            result = guard_generate(
+                mock_model, mock_tokenizer, "test", direction,
+                layers=[0], config=config, defensive_embeds=defensive_embeds,
+            )
+
+        assert result.total_rewinds == 1
+        assert result.circuit_broken is False
+        assert any(event.action == "rewind" for event in result.events)

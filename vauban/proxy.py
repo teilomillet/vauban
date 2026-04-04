@@ -211,11 +211,16 @@ class GuardProxyHandler(BaseHTTPRequestHandler):
 
         latency = (time.monotonic() - t0) * 1000
 
+        if blocked and self.__class__.block_mode == "block":
+            self._send_blocked(
+                block_reason or "blocked", model, messages, t0,
+            )
+            return
+
         if blocked:
             self.__class__.stats["blocked"] += 1
             _log_decision(
-                "BLOCKED" if self.__class__.block_mode == "block"
-                else "FLAGGED",
+                "FLAGGED",
                 model, block_reason or "", latency,
             )
         else:
@@ -232,28 +237,23 @@ class GuardProxyHandler(BaseHTTPRequestHandler):
         )
 
         # -- Respond to client --
-        if blocked and self.__class__.block_mode == "block":
-            self._send_blocked(
-                block_reason or "blocked", model, messages, t0,
+        if blocked and self.__class__.block_mode == "warn":
+            # Inject warning into response
+            warning = (
+                "\n\n[VAUBAN GUARD: This response was flagged"
+                f" — {block_reason}]"
             )
-        else:
-            if blocked and self.__class__.block_mode == "warn":
-                # Inject warning into response
-                warning = (
-                    "\n\n[VAUBAN GUARD: This response was flagged"
-                    f" — {block_reason}]"
+            if choices:
+                choices[0]["message"]["content"] = (
+                    response_content + warning
                 )
-                if choices:
-                    choices[0]["message"]["content"] = (
-                        response_content + warning
-                    )
 
-            response_bytes = json.dumps(response_data).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(response_bytes)))
-            self.end_headers()
-            self.wfile.write(response_bytes)
+        response_bytes = json.dumps(response_data).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(response_bytes)))
+        self.end_headers()
+        self.wfile.write(response_bytes)
 
     def do_GET(self) -> None:
         """Handle GET requests (models list, health check)."""

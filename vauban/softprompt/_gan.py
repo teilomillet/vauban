@@ -361,7 +361,7 @@ def gan_loop(
             )
             # Override attacker_won if environment target was achieved
             if env_result.reward >= 1.0:
-                if not direction or attacker_won:
+                if direction is None or attacker_won:
                     attacker_won = True
                 else:
                     # Need both defense bypass AND environment success

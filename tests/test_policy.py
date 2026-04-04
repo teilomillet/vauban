@@ -3,7 +3,8 @@
 
 """Tests for the tool-call policy engine."""
 
-from vauban.policy import evaluate_data_flow, evaluate_tool_call
+import vauban.policy as policy
+from vauban.policy import _check_rate_limits, evaluate_data_flow, evaluate_tool_call
 from vauban.types import (
     DataFlowRule,
     PolicyConfig,
@@ -181,6 +182,69 @@ class TestRateLimiting:
         d3 = evaluate_tool_call("send_email", {}, config, state)
         assert d3.action == "block"
         assert "rate limit" in d3.reasons[0].lower()
+
+    def test_check_rate_limits_reuses_existing_history(self) -> None:
+        config_rule = RateLimitRule(
+            tool_pattern="send_*",
+            max_calls=1,
+            window_seconds=60.0,
+        )
+        state: dict[str, object] = {
+            "_rate_limit_history": {"send_*": [100.0]},
+        }
+
+        original = policy.time.monotonic
+        policy.time.monotonic = lambda: 100.0
+        try:
+            decision = _check_rate_limits("send_email", [config_rule], state)
+        finally:
+            policy.time.monotonic = original
+
+        assert decision is not None
+        assert decision.action == "block"
+        assert decision.matched_rules == ["rate_limit:send_*"]
+
+    def test_check_rate_limits_replaces_invalid_history_container(self) -> None:
+        config_rule = RateLimitRule(
+            tool_pattern="send_*",
+            max_calls=2,
+            window_seconds=60.0,
+        )
+        state: dict[str, object] = {"_rate_limit_history": []}
+
+        original = policy.time.monotonic
+        policy.time.monotonic = lambda: 100.0
+        try:
+            decision = _check_rate_limits("send_email", [config_rule], state)
+        finally:
+            policy.time.monotonic = original
+
+        assert decision is None
+        history = state["_rate_limit_history"]
+        assert isinstance(history, dict)
+        assert history["send_*"] == [100.0]
+
+    def test_check_rate_limits_replaces_invalid_call_history(self) -> None:
+        config_rule = RateLimitRule(
+            tool_pattern="send_*",
+            max_calls=2,
+            window_seconds=60.0,
+        )
+        state: dict[str, object] = {
+            "_rate_limit_history": {"send_*": "not-a-list"},
+        }
+
+        original = policy.time.monotonic
+        policy.time.monotonic = lambda: 100.0
+        try:
+            decision = _check_rate_limits("send_email", [config_rule], state)
+        finally:
+            policy.time.monotonic = original
+
+        assert decision is None
+        history = state["_rate_limit_history"]
+        assert isinstance(history, dict)
+        assert history["send_*"] == [100.0]
 
 
 class TestPolicyConfigParsing:

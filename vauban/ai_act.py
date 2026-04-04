@@ -1622,7 +1622,7 @@ def _build_annex_iii_classification(
             }
             areas[area] = area_bucket
         raw_use_cases = area_bucket.get("use_cases")
-        if not isinstance(raw_use_cases, list):
+        if not isinstance(raw_use_cases, list):  # pragma: no cover
             msg = "annex_iii classification use_cases must be a list"
             raise TypeError(msg)
         use_cases = cast("list[dict[str, object]]", raw_use_cases)
@@ -2602,8 +2602,8 @@ def _evaluate_article5_prohibited_practices(
             ],
             confidence=0.7,
         )
-    msg = "unreachable Article 5 screening branch"
-    raise AssertionError(msg)
+    msg = "unreachable Article 5 screening branch"  # pragma: no cover
+    raise AssertionError(msg)  # pragma: no cover
 
 
 def _evaluate_article50_human_interaction(

@@ -3,10 +3,16 @@
 
 """Tests for vauban.probe: probing and steering on tiny model."""
 
+from typing import TYPE_CHECKING, cast
+from unittest.mock import patch
+
 from tests.conftest import D_MODEL, NUM_LAYERS, MockCausalLM, MockTokenizer
 from vauban import _ops as ops
 from vauban._array import Array
-from vauban.probe import multi_probe, probe, steer
+from vauban.probe import multi_probe, probe, steer, steer_svf
+
+if TYPE_CHECKING:
+    from vauban.svf import SVFBoundary
 
 
 class TestProbe:
@@ -88,3 +94,37 @@ class TestSteer:
             # If before was positive, after should be <= before
             if before > 0:
                 assert after <= before + 1e-4
+
+
+class TestSteerSVF:
+    def test_generates_text_with_svf_boundary(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        """SVF steering runs token generation and records boundary scores."""
+        grad = ops.ones((D_MODEL,))
+        ops.eval(grad)
+
+        def _fake_svf_gradient(
+            boundary: object,
+            last_token: Array,
+            layer_index: int,
+        ) -> tuple[float, Array]:
+            del boundary, last_token, layer_index
+            return 1.0, grad
+
+        with patch("vauban.svf.svf_gradient", side_effect=_fake_svf_gradient):
+            result = steer_svf(
+                mock_model,
+                mock_tokenizer,
+                "test",
+                boundary=cast("SVFBoundary", object()),
+                layers=[0],
+                alpha=1.0,
+                max_tokens=3,
+            )
+
+        assert len(result.text) > 0
+        assert result.projections_before == [1.0, 1.0, 1.0]
+        assert len(result.projections_after) == 3
