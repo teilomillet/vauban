@@ -778,7 +778,7 @@ class TestEvaluateAttackWithHistory:
     """Tests for _evaluate_attack_with_history."""
 
     def test_basic_evaluation(self) -> None:
-        model = MockCausalLM(D_MODEL, VOCAB_SIZE, NUM_LAYERS, NUM_HEADS)
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
         tok = MockTokenizer(VOCAB_SIZE)
         config = SoftPromptConfig(n_tokens=2, max_gen_tokens=5)
         soft_embeds = ops.random.normal((1, 2, D_MODEL))
@@ -793,7 +793,7 @@ class TestEvaluateAttackWithHistory:
         assert len(responses) == 1
 
     def test_empty_history_works(self) -> None:
-        model = MockCausalLM(D_MODEL, VOCAB_SIZE, NUM_LAYERS, NUM_HEADS)
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
         tok = MockTokenizer(VOCAB_SIZE)
         config = SoftPromptConfig(n_tokens=2, max_gen_tokens=3)
         soft_embeds = ops.random.normal((1, 2, D_MODEL))
@@ -806,7 +806,7 @@ class TestEvaluateAttackWithHistory:
 class TestGcgBeamSearch:
     def test_beam_width_1_is_greedy(self) -> None:
         """beam_width=1 should produce valid results (fast path)."""
-        model = MockCausalLM(VOCAB_SIZE, D_MODEL, NUM_LAYERS, NUM_HEADS)
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
         tokenizer = MockTokenizer(VOCAB_SIZE)
         config = SoftPromptConfig(
             mode="gcg",
@@ -823,7 +823,7 @@ class TestGcgBeamSearch:
 
     def test_beam_width_gt1_produces_result(self) -> None:
         """beam_width>1 should produce valid results with beam search."""
-        model = MockCausalLM(VOCAB_SIZE, D_MODEL, NUM_LAYERS, NUM_HEADS)
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
         tokenizer = MockTokenizer(VOCAB_SIZE)
         config = SoftPromptConfig(
             mode="gcg",
@@ -840,7 +840,7 @@ class TestGcgBeamSearch:
 
     def test_zero_steps_falls_back_to_initial_tokens(self) -> None:
         """Zero-step GCG should still return a valid initialized suffix."""
-        model = MockCausalLM(VOCAB_SIZE, D_MODEL, NUM_LAYERS, NUM_HEADS)
+        model = MockCausalLM(D_MODEL, NUM_LAYERS, VOCAB_SIZE, NUM_HEADS)
         tokenizer = MockTokenizer(VOCAB_SIZE)
         config = SoftPromptConfig(
             mode="gcg",
