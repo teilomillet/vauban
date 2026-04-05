@@ -299,7 +299,9 @@ SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     SectionParseSpec(
         "lora_analysis", "lora_analysis", _parse_lora_analysis, 190,
     ),
-    SectionParseSpec("objective", "objective", _parse_objective, 192),
+    SectionParseSpec(
+        "objective", "objective", _parse_objective, 192, call="base_dir_raw",
+    ),
     SectionParseSpec("flywheel", "flywheel", _parse_flywheel, 195),
     SectionParseSpec("remote", "remote", _parse_remote, 200),
 )

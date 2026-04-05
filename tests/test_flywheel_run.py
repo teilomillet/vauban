@@ -331,6 +331,76 @@ class TestRunFlywheel:
             "utility_score",
         ]
 
+    def test_objective_dataset_inquiries_are_loaded_for_utility(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        config = FlywheelConfig(
+            n_cycles=1,
+            worlds_per_cycle=1,
+            payloads_per_world=1,
+            skeletons=["email"],
+            model_expand=False,
+            harden=False,
+        )
+        benign_path = tmp_path / "benign.jsonl"
+        objective = ObjectiveConfig(
+            name="customer_support_gate",
+            deployment="customer_support",
+            access="api",
+            benign_inquiry_source="dataset",
+            benign_inquiries_path=benign_path,
+            utility=[
+                ObjectiveMetricSpec(
+                    metric="utility_score",
+                    threshold=0.90,
+                    comparison="at_least",
+                ),
+            ],
+        )
+
+        with (
+            patch(
+                "vauban.flywheel._run.generate_worlds",
+                side_effect=_stub_generate_worlds,
+            ),
+            patch(
+                "vauban.flywheel._run.execute_attack_matrix",
+                side_effect=_stub_execute,
+            ),
+            patch(
+                "vauban.flywheel._run.defend_traces",
+                side_effect=_stub_defend,
+            ),
+            patch(
+                "vauban.flywheel._run.load_prompts",
+                return_value=[
+                    "Check shipping status.",
+                    "Explain refund policy.",
+                ],
+            ) as mocked_load_prompts,
+            patch(
+                "vauban.flywheel._run.measure_utility",
+                return_value=0.95,
+            ) as mocked_measure_utility,
+        ):
+            run_flywheel(
+                MagicMock(), MagicMock(), config,
+                direction=None, layer_index=0,
+                output_dir=tmp_path, objective=objective, verbose=False,
+            )
+
+        mocked_load_prompts.assert_called_once_with(benign_path)
+        assert mocked_measure_utility.call_args is not None
+        assert mocked_measure_utility.call_args.kwargs["benign_inquiries"] == [
+            "Check shipping status.",
+            "Explain refund policy.",
+        ]
+
+        report = json.loads((tmp_path / "flywheel_report.json").read_text())
+        assert report["objective"]["benign_inquiry_source"] == "dataset"
+        assert report["objective"]["benign_inquiries_path"] == str(benign_path)
+
     def test_payload_selection_includes_recent(
         self, tmp_path: Path,
     ) -> None:

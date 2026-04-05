@@ -3220,6 +3220,25 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 constraints='one of: "weights", "api", "hybrid", "system".',
             ),
             FieldSpec(
+                key="benign_inquiry_source",
+                description=(
+                    "Where benign utility inquiries come from during"
+                    " objective evaluation."
+                ),
+                constraints='one of: "generated", "dataset".',
+            ),
+            FieldSpec(
+                key="benign_inquiries",
+                attr="benign_inquiries_path",
+                description=(
+                    "JSONL file of benign inquiries used when"
+                    ' benign_inquiry_source = "dataset".'
+                ),
+                constraints=(
+                    'string path to JSONL with {"prompt": "..."} lines.'
+                ),
+            ),
+            FieldSpec(
                 key="preserve",
                 description="Benign capabilities that must be retained.",
                 constraints="list of strings.",
@@ -3262,6 +3281,12 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
             (
                 "Current quantitative enforcement is implemented for"
                 " [flywheel] runs."
+            ),
+            (
+                'Use benign_inquiry_source = "generated" to score utility'
+                " on the generated flywheel worlds, or set"
+                ' benign_inquiry_source = "dataset" plus'
+                " benign_inquiries to reuse a fixed benign inquiry set."
             ),
             (
                 "Supported objective metrics today: attack_success_rate,"

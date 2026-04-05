@@ -3,7 +3,7 @@
 
 """Shared types for the vauban pipeline."""
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
@@ -2659,10 +2659,31 @@ class ObjectiveConfig:
     deployment: str = ""
     summary: str = ""
     access: Literal["weights", "api", "hybrid", "system"] = "system"
+    benign_inquiry_source: Literal["generated", "dataset"] = "generated"
+    benign_inquiries_path: Path | None = None
     preserve: list[str] = field(default_factory=list)
     prevent: list[str] = field(default_factory=list)
     safety: list[ObjectiveMetricSpec] = field(default_factory=list)
     utility: list[ObjectiveMetricSpec] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to a JSON-compatible dict."""
+        return {
+            "name": self.name,
+            "deployment": self.deployment,
+            "summary": self.summary,
+            "access": self.access,
+            "benign_inquiry_source": self.benign_inquiry_source,
+            "benign_inquiries_path": (
+                str(self.benign_inquiries_path)
+                if self.benign_inquiries_path is not None
+                else None
+            ),
+            "preserve": self.preserve,
+            "prevent": self.prevent,
+            "safety": [asdict(spec) for spec in self.safety],
+            "utility": [asdict(spec) for spec in self.utility],
+        }
 
 
 @dataclass(frozen=True, slots=True)

@@ -125,6 +125,14 @@ threshold = 0.90
 Today, `[objective]` is enforced quantitatively by `[flywheel]` runs and recorded
 in `flywheel_report.json` as an explicit pass/fail assessment.
 
+If preserved utility should come from a fixed benign inquiry set instead of the
+generated flywheel worlds, add:
+
+```toml
+benign_inquiry_source = "dataset"
+benign_inquiries = "data/customer_support_benign.jsonl"
+```
+
 All pipeline modes can be scaffolded. See the full list with:
 
 ```bash

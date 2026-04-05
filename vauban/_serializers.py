@@ -494,7 +494,7 @@ def _flywheel_to_dict(result: FlywheelResult) -> dict[str, object]:
         "defense_history": [asdict(d) for d in result.defense_history],
         "final_defense": asdict(result.final_defense),
         "objective": (
-            asdict(result.objective)
+            result.objective.to_dict()
             if result.objective is not None
             else None
         ),

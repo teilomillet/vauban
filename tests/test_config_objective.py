@@ -3,21 +3,32 @@
 
 """Tests for the [objective] config parser."""
 
+from pathlib import Path
+
 import pytest
 
 from vauban.config._parse_objective import _parse_objective
+from vauban.types import ObjectiveConfig
 
 
 class TestParseObjective:
+    def _parse(
+        self,
+        raw: dict[str, object],
+        *,
+        base_dir: Path | None = None,
+    ) -> ObjectiveConfig | None:
+        return _parse_objective(base_dir or Path("/tmp"), raw)
+
     def test_absent_returns_none(self) -> None:
-        assert _parse_objective({}) is None
+        assert self._parse({}) is None
 
     def test_section_not_table(self) -> None:
         with pytest.raises(TypeError, match="must be a table"):
-            _parse_objective({"objective": "bad"})
+            self._parse({"objective": "bad"})
 
     def test_minimal_valid_utility_objective(self) -> None:
-        cfg = _parse_objective({
+        cfg = self._parse({
             "objective": {
                 "name": "customer_support_gate",
                 "utility": [{
@@ -30,6 +41,8 @@ class TestParseObjective:
         assert cfg is not None
         assert cfg.name == "customer_support_gate"
         assert cfg.access == "system"
+        assert cfg.benign_inquiry_source == "generated"
+        assert cfg.benign_inquiries_path is None
         assert cfg.preserve == []
         assert cfg.prevent == []
         assert cfg.safety == []
@@ -39,7 +52,7 @@ class TestParseObjective:
         assert cfg.utility[0].aggregate == "final"
 
     def test_custom_values(self) -> None:
-        cfg = _parse_objective({
+        cfg = self._parse({
             "objective": {
                 "name": "refund_abuse_gate",
                 "deployment": "customer_support",
@@ -78,9 +91,57 @@ class TestParseObjective:
         assert cfg.utility[0].aggregate == "mean"
         assert cfg.utility[0].description == "Average benign retention."
 
+    def test_dataset_path_infers_dataset_source_and_resolves_relative_path(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        cfg = self._parse({
+            "objective": {
+                "name": "support_dataset_gate",
+                "benign_inquiries": "data/benign.jsonl",
+                "utility": [{
+                    "metric": "utility_score",
+                    "threshold": 0.9,
+                }],
+            },
+        }, base_dir=tmp_path)
+
+        assert cfg is not None
+        assert cfg.benign_inquiry_source == "dataset"
+        assert cfg.benign_inquiries_path == tmp_path / "data" / "benign.jsonl"
+
+    def test_dataset_source_requires_path(self) -> None:
+        with pytest.raises(
+            ValueError,
+            match=r"requires \[objective\]\.benign_inquiries",
+        ):
+            self._parse({"objective": {
+                "name": "missing_dataset",
+                "benign_inquiry_source": "dataset",
+                "utility": [{
+                    "metric": "utility_score",
+                    "threshold": 0.90,
+                }],
+            }})
+
+    def test_generated_source_rejects_explicit_dataset_path(self) -> None:
+        with pytest.raises(
+            ValueError,
+            match=r"requires.*benign_inquiry_source = \"dataset\"",
+        ):
+            self._parse({"objective": {
+                "name": "mismatch",
+                "benign_inquiry_source": "generated",
+                "benign_inquiries": "data/benign.jsonl",
+                "utility": [{
+                    "metric": "utility_score",
+                    "threshold": 0.90,
+                }],
+            }})
+
     def test_name_must_be_non_empty(self) -> None:
         with pytest.raises(ValueError, match="name must be non-empty"):
-            _parse_objective({"objective": {
+            self._parse({"objective": {
                 "name": "",
                 "utility": [{
                     "metric": "utility_score",
@@ -90,11 +151,11 @@ class TestParseObjective:
 
     def test_requires_at_least_one_threshold(self) -> None:
         with pytest.raises(ValueError, match="must define at least one"):
-            _parse_objective({"objective": {"name": "empty"}})
+            self._parse({"objective": {"name": "empty"}})
 
     def test_invalid_metric_is_rejected(self) -> None:
         with pytest.raises(ValueError, match="must be one of"):
-            _parse_objective({"objective": {
+            self._parse({"objective": {
                 "name": "bad_metric",
                 "safety": [{
                     "metric": "made_up_metric",
@@ -104,14 +165,14 @@ class TestParseObjective:
 
     def test_metric_group_must_be_list(self) -> None:
         with pytest.raises(TypeError, match="array of tables"):
-            _parse_objective({"objective": {
+            self._parse({"objective": {
                 "name": "bad_group",
                 "utility": "bad",
             }})
 
     def test_metric_entry_must_be_table(self) -> None:
         with pytest.raises(TypeError, match="must be a table"):
-            _parse_objective({"objective": {
+            self._parse({"objective": {
                 "name": "bad_entry",
                 "utility": ["bad"],
             }})

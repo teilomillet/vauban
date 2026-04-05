@@ -79,6 +79,23 @@ def _rule_prompt_sources(
             ),
         )
 
+    objective = config.objective
+    if (
+        objective is not None
+        and objective.benign_inquiry_source == "dataset"
+        and objective.benign_inquiries_path is not None
+    ):
+        _validate_prompt_jsonl_file(
+            objective.benign_inquiries_path,
+            "[objective].benign_inquiries",
+            collector,
+            min_recommended=8,
+            missing_fix=(
+                "set [objective].benign_inquiries to an existing JSONL path"
+                ' or use [objective].benign_inquiry_source = "generated"'
+            ),
+        )
+
     if (
         harmful_count is not None
         and harmless_count is not None

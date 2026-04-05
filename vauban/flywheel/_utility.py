@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import random
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from vauban.flywheel._defended_loop import (
@@ -32,6 +33,7 @@ def measure_utility(
     defense_params: FlywheelDefenseParams,
     n_samples: int = 20,
     seed: int | None = None,
+    benign_inquiries: list[str] | None = None,
 ) -> float:
     """Measure utility by running benign tasks through the defended model.
 
@@ -48,15 +50,21 @@ def measure_utility(
         defense_params: Current defense parameters.
         n_samples: Number of benign tasks to evaluate.
         seed: Random seed for reproducible sampling.
+        benign_inquiries: Optional fixed benign inquiry set. When
+            provided, sampled prompts replace ``world.task.content``
+            while preserving the generated world tools and targets.
 
     Returns:
         Fraction of benign tasks completed successfully (0.0 to 1.0).
     """
-    k = min(n_samples, len(worlds))
-    if k == 0:
+    sample = _sample_utility_worlds(
+        worlds,
+        n_samples=n_samples,
+        seed=seed,
+        benign_inquiries=benign_inquiries,
+    )
+    if not sample:
         return 1.0
-    rng = random.Random(seed)
-    sample = rng.sample(worlds, k)
 
     successes = 0
     for world in sample:
@@ -76,6 +84,34 @@ def measure_utility(
             pass
 
     return successes / len(sample) if sample else 1.0
+
+
+def _sample_utility_worlds(
+    worlds: list[EnvironmentConfig],
+    *,
+    n_samples: int,
+    seed: int | None,
+    benign_inquiries: list[str] | None,
+) -> list[EnvironmentConfig]:
+    """Sample benign utility episodes from worlds and optional prompt data."""
+    if not worlds:
+        return []
+
+    rng = random.Random(seed)
+    if benign_inquiries is None:
+        return rng.sample(worlds, min(n_samples, len(worlds)))
+    if not benign_inquiries:
+        return []
+
+    prompts = rng.sample(benign_inquiries, min(n_samples, len(benign_inquiries)))
+    sampled_worlds: list[EnvironmentConfig] = []
+    for prompt in prompts:
+        base_world = rng.choice(worlds)
+        sampled_worlds.append(replace(
+            base_world,
+            task=replace(base_world.task, content=prompt),
+        ))
+    return sampled_worlds
 
 
 def _completed_benign_task(

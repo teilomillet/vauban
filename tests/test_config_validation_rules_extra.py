@@ -22,7 +22,14 @@ from vauban.config._validation_rules import (
     _rule_refusal_phrases,
     _rule_surface_prompts,
 )
-from vauban.types import AIActConfig, EvalConfig, PipelineConfig, SurfaceConfig
+from vauban.types import (
+    AIActConfig,
+    EvalConfig,
+    ObjectiveConfig,
+    ObjectiveMetricSpec,
+    PipelineConfig,
+    SurfaceConfig,
+)
 
 
 def _write_jsonl(path: Path, count: int) -> None:
@@ -38,6 +45,7 @@ def _make_context(
     surface_config: SurfaceConfig | None = None,
     ai_act_config: AIActConfig | None = None,
     borderline_path: Path | None = None,
+    objective_config: ObjectiveConfig | None = None,
 ) -> ValidationContext:
     config = PipelineConfig(
         model_path="test-model",
@@ -47,6 +55,7 @@ def _make_context(
         surface=surface_config,
         ai_act=ai_act_config,
         borderline_path=borderline_path,
+        objective=objective_config,
         output_dir=Path("/tmp/output"),
     )
     return ValidationContext(
@@ -85,6 +94,37 @@ class TestRulePromptSourcesExtra:
         rendered = collector.render()
         assert any("highly imbalanced" in item for item in rendered)
         assert any("[data].borderline" in item for item in rendered)
+
+    def test_objective_dataset_is_validated(self, tmp_path: Path) -> None:
+        harmful = tmp_path / "harmful.jsonl"
+        harmless = tmp_path / "harmless.jsonl"
+        benign = tmp_path / "benign.jsonl"
+        _write_jsonl(harmful, 4)
+        _write_jsonl(harmless, 4)
+        benign.write_text('{"prompt": ""}\n')
+
+        ctx = _make_context(
+            harmful_path=harmful,
+            harmless_path=harmless,
+            objective_config=ObjectiveConfig(
+                name="customer_support_gate",
+                benign_inquiry_source="dataset",
+                benign_inquiries_path=benign,
+                utility=[
+                    ObjectiveMetricSpec(
+                        metric="utility_score",
+                        threshold=0.90,
+                        comparison="at_least",
+                    ),
+                ],
+            ),
+        )
+        collector = ValidationCollector()
+
+        _rule_prompt_sources(ctx, collector)
+
+        rendered = collector.render()
+        assert any("[objective].benign_inquiries" in item for item in rendered)
 
 
 class TestRuleEvalPromptsExtra:

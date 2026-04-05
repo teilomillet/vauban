@@ -29,6 +29,7 @@ FLYWHEEL_OBJECTIVE_METRICS: frozenset[str] = frozenset({
 OBJECTIVE_COMPARISONS: tuple[str, ...] = ("at_least", "at_most")
 OBJECTIVE_AGGREGATES: tuple[str, ...] = ("final", "mean", "min", "max")
 OBJECTIVE_ACCESS_MODES: tuple[str, ...] = ("weights", "api", "hybrid", "system")
+OBJECTIVE_BENIGN_INQUIRY_SOURCES: tuple[str, ...] = ("generated", "dataset")
 
 
 def assess_flywheel_objective(

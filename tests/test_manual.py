@@ -107,6 +107,13 @@ def test_ai_act_topic_mentions_readiness() -> None:
     assert "company_name" in text
 
 
+def test_objective_topic_mentions_dataset_backed_utility() -> None:
+    text = render_manual("objective")
+    assert "SECTION [objective]" in text
+    assert "benign_inquiry_source" in text
+    assert "benign_inquiries" in text
+
+
 def test_unknown_topic_raises() -> None:
     with pytest.raises(ValueError, match="Unknown manual topic"):
         render_manual("does-not-exist")

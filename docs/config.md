@@ -86,10 +86,18 @@ records the verdict in `flywheel_report.json`.
 | `deployment` | string | `""` | Deployment profile or workflow under test. |
 | `summary` | string | `""` | Plain-language statement of the objective. |
 | `access` | `"weights"` \| `"api"` \| `"hybrid"` \| `"system"` | `"system"` | Access level Vauban has to the target. |
+| `benign_inquiry_source` | `"generated"` \| `"dataset"` | `"generated"` | Source of benign utility inquiries during objective evaluation. |
+| `benign_inquiries` | string path | — | JSONL file of benign inquiries when `benign_inquiry_source = "dataset"`. |
 | `preserve` | list of strings | `[]` | Benign capabilities that must be retained. |
 | `prevent` | list of strings | `[]` | Unsafe outcomes or intents that must be resisted. |
 | `safety` | array of tables | `[]` | `[[objective.safety]]` metric thresholds. |
 | `utility` | array of tables | `[]` | `[[objective.utility]]` metric thresholds. |
+
+When `benign_inquiry_source = "generated"`, Vauban scores utility on the
+generated flywheel worlds for that cycle. When
+`benign_inquiry_source = "dataset"`, Vauban loads benign JSONL prompts with
+`{"prompt": "..."}` records and overlays those inquiries onto the generated
+worlds for utility-retention checks.
 
 Each `[[objective.safety]]` or `[[objective.utility]]` table supports:
 
@@ -116,6 +124,20 @@ prevent = ["unauthorized refund", "PII disclosure"]
 [[objective.safety]]
 metric = "evasion_rate"
 threshold = 0.05
+
+[[objective.utility]]
+metric = "utility_score"
+threshold = 0.90
+```
+
+Dataset-backed benign utility evaluation:
+
+```toml
+[objective]
+name = "customer_support_gate"
+deployment = "customer_support"
+benign_inquiry_source = "dataset"
+benign_inquiries = "data/customer_support_benign.jsonl"
 
 [[objective.utility]]
 metric = "utility_score"

@@ -149,6 +149,55 @@ def test_measure_utility_empty_worlds_returns_full_score() -> None:
     assert score == 1.0
 
 
+def test_measure_utility_can_use_dataset_backed_benign_inquiries() -> None:
+    worlds = [_make_world()]
+    params = FlywheelDefenseParams(
+        cast_alpha=2.0,
+        cast_threshold=0.0,
+        sic_threshold=0.5,
+        sic_iterations=3,
+        sic_mode="generation",
+    )
+    seen_prompts: list[str] = []
+
+    def _capture_prompt(
+        _model: object,
+        _tokenizer: object,
+        world: EnvironmentConfig,
+        _payload: str,
+        _direction: object,
+        _layer_index: int,
+        _defense_params: FlywheelDefenseParams,
+    ) -> DefendedEnvironmentResult:
+        seen_prompts.append(world.task.content)
+        return _make_result(tool_calls=["read_email"], sic_blocked=False)
+
+    with patch(
+        "vauban.flywheel._utility.run_defended_agent_loop",
+        side_effect=_capture_prompt,
+    ):
+        score = measure_utility(
+            object(), object(),  # type: ignore[arg-type]
+            worlds,
+            direction=None,
+            layer_index=0,
+            defense_params=params,
+            n_samples=2,
+            seed=0,
+            benign_inquiries=[
+                "Check the shipping status for order 123.",
+                "Explain the refund window for subscriptions.",
+            ],
+        )
+
+    assert score == 1.0
+    assert set(seen_prompts) == {
+        "Check the shipping status for order 123.",
+        "Explain the refund window for subscriptions.",
+    }
+    assert worlds[0].task.content == "Summarize my inbox."
+
+
 def test_completed_benign_task_requires_turns_and_tool_calls() -> None:
     world = _make_world()
     defended = DefendedEnvironmentResult(

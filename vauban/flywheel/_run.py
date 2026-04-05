@@ -22,6 +22,7 @@ from vauban.flywheel._payloads import extend_library, load_payload_library
 from vauban.flywheel._state import save_state
 from vauban.flywheel._utility import measure_utility
 from vauban.flywheel._worldgen import generate_worlds
+from vauban.measure import load_prompts
 from vauban.types import (
     DefendedTrace,
     FlywheelCycleMetrics,
@@ -100,6 +101,7 @@ def run_flywheel(
     total_evasions = 0
     convergence_cycle: int | None = None
     objective_assessment: ObjectiveAssessment | None = None
+    benign_inquiries = _load_objective_benign_inquiries(objective)
 
     for cycle in range(config.n_cycles):
         if verbose:
@@ -174,6 +176,7 @@ def run_flywheel(
             layer_index, defense,
             n_samples=min(20, len(worlds)),
             seed=utility_seed,
+            benign_inquiries=benign_inquiries,
         )
 
         # 6. Validate previous evasions against current defense
@@ -377,7 +380,7 @@ def _write_report(
         "n_cycles": len(metrics),
         "cycles": [asdict(m) for m in metrics],
         "defense_history": [asdict(d) for d in defense_history],
-        "objective": asdict(objective) if objective is not None else None,
+        "objective": objective.to_dict() if objective is not None else None,
         "objective_assessment": (
             asdict(objective_assessment)
             if objective_assessment is not None
@@ -386,3 +389,25 @@ def _write_report(
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2))
+
+
+def _load_objective_benign_inquiries(
+    objective: ObjectiveConfig | None,
+) -> list[str] | None:
+    """Load an objective-scoped benign inquiry dataset when configured."""
+    if objective is None or objective.benign_inquiry_source != "dataset":
+        return None
+    if objective.benign_inquiries_path is None:
+        msg = (
+            '[objective].benign_inquiry_source = "dataset" requires'
+            " [objective].benign_inquiries"
+        )
+        raise ValueError(msg)
+    prompts = load_prompts(objective.benign_inquiries_path)
+    if not prompts:
+        msg = (
+            "[objective].benign_inquiries must contain at least one prompt"
+            f" in {objective.benign_inquiries_path}"
+        )
+        raise ValueError(msg)
+    return prompts
