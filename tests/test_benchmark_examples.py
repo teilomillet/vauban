@@ -13,6 +13,10 @@ from vauban.environment import list_scenarios
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _EXAMPLE_DIR = _REPO_ROOT / "examples" / "benchmarks"
+_SPDX_HEADER = (
+    "# SPDX-FileCopyrightText: 2026 Teilo Millet\n"
+    "# SPDX-License-Identifier: Apache-2.0\n"
+)
 
 
 def _example_path(name: str) -> Path:
@@ -24,6 +28,15 @@ def test_benchmark_example_pack_matches_builtin_scenarios() -> None:
     """The checked-in example set should track the live scenario registry."""
     example_names = sorted(path.stem for path in _EXAMPLE_DIR.glob("*.toml"))
     assert example_names == list_scenarios()
+
+
+@pytest.mark.parametrize("name", list_scenarios())
+def test_benchmark_examples_carry_spdx_headers(name: str) -> None:
+    """Every checked-in benchmark config should carry the managed SPDX block."""
+    path = _example_path(name)
+
+    assert path.exists()
+    assert path.read_text(encoding="utf-8").startswith(_SPDX_HEADER)
 
 
 @pytest.mark.parametrize("name", list_scenarios())
