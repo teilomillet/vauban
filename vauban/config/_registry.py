@@ -32,6 +32,7 @@ from vauban.config._parse_lora_analysis import _parse_lora_analysis
 from vauban.config._parse_lora_export import _parse_lora_export
 from vauban.config._parse_lora_load import _parse_lora_load
 from vauban.config._parse_measure import _parse_measure
+from vauban.config._parse_objective import _parse_objective
 from vauban.config._parse_optimize import _parse_optimize
 from vauban.config._parse_policy import _parse_policy
 from vauban.config._parse_probe import _parse_probe
@@ -70,6 +71,7 @@ from vauban.types import (
     LoraExportConfig,
     LoraLoadConfig,
     MeasureConfig,
+    ObjectiveConfig,
     OptimizeConfig,
     PolicyConfig,
     ProbeConfig,
@@ -116,6 +118,7 @@ type _SectionParserResult = (  # pragma: no cover
     | LoraExportConfig
     | LoraLoadConfig
     | MeasureConfig
+    | ObjectiveConfig
     | OptimizeConfig
     | PolicyConfig
     | RepBendConfig
@@ -188,6 +191,7 @@ class ParsedSectionValues:
     circuit: CircuitConfig | None
     features: FeaturesConfig | None
     linear_probe: LinearProbeConfig | None
+    objective: ObjectiveConfig | None
     flywheel: FlywheelConfig | None
     remote: RemoteConfig | None
     fusion: FusionConfig | None
@@ -295,6 +299,7 @@ SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     SectionParseSpec(
         "lora_analysis", "lora_analysis", _parse_lora_analysis, 190,
     ),
+    SectionParseSpec("objective", "objective", _parse_objective, 192),
     SectionParseSpec("flywheel", "flywheel", _parse_flywheel, 195),
     SectionParseSpec("remote", "remote", _parse_remote, 200),
 )

@@ -11,6 +11,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from vauban._objective import assess_flywheel_objective
 from vauban.flywheel._attack import warmstart_gcg_payloads
 from vauban.flywheel._convergence import check_convergence
 from vauban.flywheel._defend import defend_traces, triage
@@ -35,6 +36,8 @@ if TYPE_CHECKING:
         CausalLM,
         EnvironmentConfig,
         FlywheelConfig,
+        ObjectiveAssessment,
+        ObjectiveConfig,
         Payload,
         Tokenizer,
     )
@@ -47,6 +50,7 @@ def run_flywheel(
     direction: Array | None,
     layer_index: int,
     output_dir: Path,
+    objective: ObjectiveConfig | None = None,
     verbose: bool = True,
     t0: float = 0.0,
 ) -> FlywheelResult:
@@ -95,6 +99,7 @@ def run_flywheel(
     total_worlds = 0
     total_evasions = 0
     convergence_cycle: int | None = None
+    objective_assessment: ObjectiveAssessment | None = None
 
     for cycle in range(config.n_cycles):
         if verbose:
@@ -242,6 +247,8 @@ def run_flywheel(
             sic_block_fraction=sic_block_frac,
         )
         all_metrics.append(cycle_metrics)
+        if objective is not None:
+            objective_assessment = assess_flywheel_objective(objective, all_metrics)
 
         # Track evasions for next cycle validation
         previous_evasions = evaded
@@ -264,6 +271,8 @@ def run_flywheel(
         _write_report(
             output_dir / "flywheel_report.json",
             all_metrics, defense_history,
+            objective=objective,
+            objective_assessment=objective_assessment,
         )
         save_state(
             output_dir / "flywheel_state.json",
@@ -304,6 +313,8 @@ def run_flywheel(
         total_worlds=total_worlds,
         total_evasions=total_evasions,
         total_payloads=len(payloads),
+        objective=objective,
+        objective_assessment=objective_assessment,
     )
 
 
@@ -357,12 +368,21 @@ def _write_report(
     path: Path,
     metrics: list[FlywheelCycleMetrics],
     defense_history: list[FlywheelDefenseParams],
+    *,
+    objective: ObjectiveConfig | None = None,
+    objective_assessment: ObjectiveAssessment | None = None,
 ) -> None:
     """Write the cumulative report JSON."""
     report: dict[str, object] = {
         "n_cycles": len(metrics),
         "cycles": [asdict(m) for m in metrics],
         "defense_history": [asdict(d) for d in defense_history],
+        "objective": asdict(objective) if objective is not None else None,
+        "objective_assessment": (
+            asdict(objective_assessment)
+            if objective_assessment is not None
+            else None
+        ),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2))

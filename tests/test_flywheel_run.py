@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
@@ -23,6 +24,8 @@ from vauban.types import (
     EnvironmentTask,
     FlywheelConfig,
     FlywheelTrace,
+    ObjectiveConfig,
+    ObjectiveMetricSpec,
     Payload,
     ToolCall,
     ToolSchema,
@@ -256,6 +259,77 @@ class TestRunFlywheel:
 
         # Alpha should remain unchanged when harden=False
         assert result.final_defense.cast_alpha == 2.0
+
+    def test_objective_assessment_is_attached_and_reported(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        config = FlywheelConfig(
+            n_cycles=1,
+            worlds_per_cycle=1,
+            payloads_per_world=1,
+            skeletons=["email"],
+            model_expand=False,
+            harden=False,
+        )
+        objective = ObjectiveConfig(
+            name="customer_support_gate",
+            deployment="customer_support",
+            access="api",
+            safety=[
+                ObjectiveMetricSpec(
+                    metric="evasion_rate",
+                    threshold=1.0,
+                    comparison="at_most",
+                ),
+            ],
+            utility=[
+                ObjectiveMetricSpec(
+                    metric="utility_score",
+                    threshold=0.90,
+                    comparison="at_least",
+                ),
+            ],
+        )
+
+        with (
+            patch(
+                "vauban.flywheel._run.generate_worlds",
+                side_effect=_stub_generate_worlds,
+            ),
+            patch(
+                "vauban.flywheel._run.execute_attack_matrix",
+                side_effect=_stub_execute,
+            ),
+            patch(
+                "vauban.flywheel._run.defend_traces",
+                side_effect=_stub_defend,
+            ),
+            patch(
+                "vauban.flywheel._run.measure_utility",
+                return_value=0.95,
+            ),
+        ):
+            result = run_flywheel(
+                MagicMock(), MagicMock(), config,
+                direction=None, layer_index=0,
+                output_dir=tmp_path, objective=objective, verbose=False,
+            )
+
+        assert result.objective == objective
+        assert result.objective_assessment is not None
+        assert result.objective_assessment.passed is True
+        assert result.objective_assessment.safety_passed is True
+        assert result.objective_assessment.utility_passed is True
+
+        report = json.loads((tmp_path / "flywheel_report.json").read_text())
+        assert report["objective"]["name"] == "customer_support_gate"
+        assert report["objective_assessment"]["summary"] == "Objective met"
+        checks = report["objective_assessment"]["checks"]
+        assert [check["metric"] for check in checks] == [
+            "evasion_rate",
+            "utility_score",
+        ]
 
     def test_payload_selection_includes_recent(
         self, tmp_path: Path,

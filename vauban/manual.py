@@ -3191,6 +3191,92 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
         ),
     ),
     SectionSpec(
+        name="objective",
+        description=(
+            "Deployment objective contract for deciding whether"
+            " an attack-defense run is acceptable."
+        ),
+        config_class="ObjectiveConfig",
+        fields=(
+            FieldSpec(
+                key="name",
+                description="Short name for the objective or launch gate.",
+                constraints="required non-empty string.",
+                required=True,
+            ),
+            FieldSpec(
+                key="deployment",
+                description="Deployment profile or workflow being assessed.",
+                constraints="string.",
+            ),
+            FieldSpec(
+                key="summary",
+                description="Short plain-language statement of the objective.",
+                constraints="string.",
+            ),
+            FieldSpec(
+                key="access",
+                description="Access level Vauban has to the target system.",
+                constraints='one of: "weights", "api", "hybrid", "system".',
+            ),
+            FieldSpec(
+                key="preserve",
+                description="Benign capabilities that must be retained.",
+                constraints="list of strings.",
+            ),
+            FieldSpec(
+                key="prevent",
+                description="Unsafe outcomes or intents that must be resisted.",
+                constraints="list of strings.",
+            ),
+            FieldSpec(
+                key="safety",
+                description="Quantitative safety thresholds.",
+                constraints="list of [[objective.safety]] tables.",
+                notes=(
+                    "Each [[objective.safety]] table has:"
+                    " metric (required),"
+                    " threshold (required number),"
+                    ' comparison ("at_most" by default),'
+                    ' aggregate ("final" by default),'
+                    " label (optional),"
+                    " description (optional).",
+                ),
+            ),
+            FieldSpec(
+                key="utility",
+                description="Quantitative benign-utility thresholds.",
+                constraints="list of [[objective.utility]] tables.",
+                notes=(
+                    "Each [[objective.utility]] table has:"
+                    " metric (required),"
+                    " threshold (required number),"
+                    ' comparison ("at_least" by default),'
+                    ' aggregate ("final" by default),'
+                    " label (optional),"
+                    " description (optional).",
+                ),
+            ),
+        ),
+        notes=(
+            (
+                "Current quantitative enforcement is implemented for"
+                " [flywheel] runs."
+            ),
+            (
+                "Supported objective metrics today: attack_success_rate,"
+                " defense_block_rate, evasion_rate, utility_score,"
+                " cast_block_fraction, sic_block_fraction,"
+                " n_new_payloads, n_previous_blocked."
+            ),
+            (
+                "Use [objective] to state what must be preserved"
+                " and what must be prevented before you read"
+                " ASR and utility numbers as a verdict."
+            ),
+        ),
+    ),
+    SectionSpec(
         name="flywheel",
         description=(
             "Closed-loop attack-defense co-evolution flywheel."

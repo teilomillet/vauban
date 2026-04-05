@@ -2640,6 +2640,61 @@ class JailbreakResult:
 
 
 @dataclass(frozen=True, slots=True)
+class ObjectiveMetricSpec:
+    """One quantitative acceptance check for a deployment objective."""
+
+    metric: str
+    threshold: float
+    comparison: Literal["at_least", "at_most"]
+    aggregate: Literal["final", "mean", "min", "max"] = "final"
+    label: str = ""
+    description: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectiveConfig:
+    """Deployment objective contract shared across attack/defense loops."""
+
+    name: str
+    deployment: str = ""
+    summary: str = ""
+    access: Literal["weights", "api", "hybrid", "system"] = "system"
+    preserve: list[str] = field(default_factory=list)
+    prevent: list[str] = field(default_factory=list)
+    safety: list[ObjectiveMetricSpec] = field(default_factory=list)
+    utility: list[ObjectiveMetricSpec] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectiveMetricAssessment:
+    """Outcome of evaluating one quantitative objective check."""
+
+    kind: Literal["safety", "utility"]
+    metric: str
+    threshold: float
+    actual: float
+    comparison: Literal["at_least", "at_most"]
+    aggregate: Literal["final", "mean", "min", "max"]
+    passed: bool
+    label: str = ""
+    description: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectiveAssessment:
+    """Assessment verdict for a deployment objective."""
+
+    objective_name: str
+    deployment: str
+    access: Literal["weights", "api", "hybrid", "system"]
+    passed: bool
+    safety_passed: bool
+    utility_passed: bool
+    summary: str
+    checks: list[ObjectiveMetricAssessment]
+
+
+@dataclass(frozen=True, slots=True)
 class FlywheelConfig:
     """Configuration for the flywheel attack-defense co-evolution mode."""
 
@@ -2774,6 +2829,8 @@ class FlywheelResult:
     total_worlds: int
     total_evasions: int
     total_payloads: int
+    objective: ObjectiveConfig | None = None
+    objective_assessment: ObjectiveAssessment | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -2970,6 +3027,7 @@ class PipelineConfig:
     circuit: CircuitConfig | None = None
     features: FeaturesConfig | None = None
     linear_probe: LinearProbeConfig | None = None
+    objective: ObjectiveConfig | None = None
     fusion: FusionConfig | None = None
     repbend: RepBendConfig | None = None
     lora_export: LoraExportConfig | None = None

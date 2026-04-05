@@ -27,6 +27,10 @@ from vauban.types import (
     FlywheelDefenseParams,
     FlywheelResult,
     LoraLoadConfig,
+    ObjectiveAssessment,
+    ObjectiveConfig,
+    ObjectiveMetricAssessment,
+    ObjectiveMetricSpec,
 )
 
 if TYPE_CHECKING:
@@ -57,6 +61,54 @@ def _make_flywheel_result() -> FlywheelResult:
         sic_mode="direction",
         cast_layers=[0, 1],
     )
+    objective = ObjectiveConfig(
+        name="customer_support_gate",
+        deployment="customer_support",
+        access="api",
+        safety=[
+            ObjectiveMetricSpec(
+                metric="evasion_rate",
+                threshold=0.30,
+                comparison="at_most",
+            ),
+        ],
+        utility=[
+            ObjectiveMetricSpec(
+                metric="utility_score",
+                threshold=0.85,
+                comparison="at_least",
+            ),
+        ],
+    )
+    assessment = ObjectiveAssessment(
+        objective_name=objective.name,
+        deployment=objective.deployment,
+        access=objective.access,
+        passed=True,
+        safety_passed=True,
+        utility_passed=True,
+        summary="Objective met",
+        checks=[
+            ObjectiveMetricAssessment(
+                kind="safety",
+                metric="evasion_rate",
+                threshold=0.30,
+                actual=0.25,
+                comparison="at_most",
+                aggregate="final",
+                passed=True,
+            ),
+            ObjectiveMetricAssessment(
+                kind="utility",
+                metric="utility_score",
+                threshold=0.85,
+                actual=0.90,
+                comparison="at_least",
+                aggregate="final",
+                passed=True,
+            ),
+        ],
+    )
     return FlywheelResult(
         cycles=[
             FlywheelCycleMetrics(
@@ -80,6 +132,8 @@ def _make_flywheel_result() -> FlywheelResult:
         total_worlds=2,
         total_evasions=1,
         total_payloads=4,
+        objective=objective,
+        objective_assessment=assessment,
     )
 
 
@@ -223,9 +277,20 @@ class TestFlywheelMode:
         ctx = make_early_mode_context(
             tmp_path,
             flywheel=FlywheelConfig(n_cycles=1),
+            objective=result.objective,
             direction_result=direction_result,
         )
-        calls: list[tuple[object, object, FlywheelConfig, object, int, Path]] = []
+        calls: list[
+            tuple[
+                object,
+                object,
+                FlywheelConfig,
+                object,
+                int,
+                Path,
+                ObjectiveConfig | None,
+            ]
+        ] = []
 
         def _fake_run_flywheel(
             model: object,
@@ -235,12 +300,21 @@ class TestFlywheelMode:
             layer_index: int,
             output_dir: Path,
             *,
+            objective: ObjectiveConfig | None = None,
             verbose: bool = False,
             t0: float = 0.0,
         ) -> FlywheelResult:
             del verbose, t0
             calls.append(
-                (model, tokenizer, config, direction, layer_index, output_dir),
+                (
+                    model,
+                    tokenizer,
+                    config,
+                    direction,
+                    layer_index,
+                    output_dir,
+                    objective,
+                ),
             )
             return result
 
@@ -256,12 +330,15 @@ class TestFlywheelMode:
                 direction_result.direction,
                 1,
                 tmp_path,
+                ctx.config.objective,
             ),
         ]
         report = json.loads((tmp_path / "flywheel_report.json").read_text())
         assert report["n_cycles"] == 1
         assert report["converged"] is True
         assert report["total_evasions"] == 1
+        assert report["objective"]["name"] == "customer_support_gate"
+        assert report["objective_assessment"]["passed"] is True
 
         entries = [
             json.loads(line)
@@ -276,6 +353,9 @@ class TestFlywheelMode:
             "n_cycles": 1.0,
             "converged": 1.0,
             "total_evasions": 1.0,
+            "objective_passed": 1.0,
+            "objective_safety_passed": 1.0,
+            "objective_utility_passed": 1.0,
         }
 
 

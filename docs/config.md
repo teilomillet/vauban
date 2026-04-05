@@ -72,6 +72,56 @@ to get the auto-generated manual (built from typed config dataclasses, always in
 | `backend` | string | `"mlx"` | Inference backend. |
 | `verbose` | bool | `true` | Print progress messages to stderr. |
 
+## `[objective]` — Deployment acceptance contract
+
+Use `[objective]` to declare what must be preserved and what must be prevented
+before reading attack/defense metrics as a deployment verdict.
+
+Today, Vauban evaluates `[objective]` quantitatively in `[flywheel]` runs and
+records the verdict in `flywheel_report.json`.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | string | *(required)* | Short name for the deployment gate or objective. |
+| `deployment` | string | `""` | Deployment profile or workflow under test. |
+| `summary` | string | `""` | Plain-language statement of the objective. |
+| `access` | `"weights"` \| `"api"` \| `"hybrid"` \| `"system"` | `"system"` | Access level Vauban has to the target. |
+| `preserve` | list of strings | `[]` | Benign capabilities that must be retained. |
+| `prevent` | list of strings | `[]` | Unsafe outcomes or intents that must be resisted. |
+| `safety` | array of tables | `[]` | `[[objective.safety]]` metric thresholds. |
+| `utility` | array of tables | `[]` | `[[objective.utility]]` metric thresholds. |
+
+Each `[[objective.safety]]` or `[[objective.utility]]` table supports:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `metric` | string | *(required)* | One of: `attack_success_rate`, `defense_block_rate`, `evasion_rate`, `utility_score`, `cast_block_fraction`, `sic_block_fraction`, `n_new_payloads`, `n_previous_blocked`. |
+| `threshold` | float | *(required)* | Required threshold for the selected metric. |
+| `comparison` | `"at_least"` \| `"at_most"` | `at_most` for safety, `at_least` for utility | Comparison used for pass/fail. |
+| `aggregate` | `"final"` \| `"mean"` \| `"min"` \| `"max"` | `"final"` | How the metric is summarized across flywheel cycles. |
+| `label` | string | `""` | Optional short label for reports. |
+| `description` | string | `""` | Optional explanation for the threshold. |
+
+Example:
+
+```toml
+[objective]
+name = "customer_support_gate"
+deployment = "customer_support"
+summary = "Preserve support quality while resisting refund abuse."
+access = "api"
+preserve = ["explain refund policy", "escalate billing issues"]
+prevent = ["unauthorized refund", "PII disclosure"]
+
+[[objective.safety]]
+metric = "evasion_rate"
+threshold = 0.05
+
+[[objective.utility]]
+metric = "utility_score"
+threshold = 0.90
+```
+
 ## `[model]` — Required
 
 | Field | Type | Default | Description |

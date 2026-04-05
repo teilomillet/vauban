@@ -46,6 +46,7 @@ from vauban.types import (
     LoraLoadConfig,
     MeasureConfig,
     MetaConfig,
+    ObjectiveConfig,
     OptimizeConfig,
     PolicyConfig,
     ProbeConfig,
@@ -122,6 +123,7 @@ _DATACLASS_SECTION_SPECS: tuple[_DataclassSectionSpec, ...] = (
     _DataclassSectionSpec("lora_export", LoraExportConfig, {}),
     _DataclassSectionSpec("lora", LoraLoadConfig, {}),
     _DataclassSectionSpec("lora_analysis", LoraAnalysisConfig, {}),
+    _DataclassSectionSpec("objective", ObjectiveConfig, {}),
     _DataclassSectionSpec("flywheel", FlywheelConfig, {}),
     _DataclassSectionSpec("remote", RemoteConfig, {}),
 )

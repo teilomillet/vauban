@@ -44,8 +44,23 @@ def _run_flywheel_mode(context: EarlyModeContext) -> None:
     result = run_flywheel(
         model, tokenizer, config.flywheel,
         direction, layer_index, config.output_dir,
+        objective=config.objective,
         verbose=v, t0=context.t0,
     )
+
+    metrics: dict[str, object] = {
+        "n_cycles": float(len(result.cycles)),
+        "converged": float(result.converged),
+        "total_evasions": float(result.total_evasions),
+    }
+    if result.objective_assessment is not None:
+        metrics["objective_passed"] = float(result.objective_assessment.passed)
+        metrics["objective_safety_passed"] = float(
+            result.objective_assessment.safety_passed,
+        )
+        metrics["objective_utility_passed"] = float(
+            result.objective_assessment.utility_passed,
+        )
 
     report_path = write_mode_report(
         config.output_dir,
@@ -61,9 +76,5 @@ def _run_flywheel_mode(context: EarlyModeContext) -> None:
         context,
         "flywheel",
         ["flywheel_report.json", "flywheel_failures.jsonl"],
-        {
-            "n_cycles": len(result.cycles),
-            "converged": float(result.converged),
-            "total_evasions": result.total_evasions,
-        },
+        metrics,
     )

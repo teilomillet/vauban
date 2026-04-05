@@ -74,6 +74,7 @@ _EXPECTED_SECTION_ORDER: list[str] = [
     "repbend",
     "lora_export",
     "lora_analysis",
+    "objective",
     "flywheel",
     "remote",
 ]
@@ -297,6 +298,7 @@ def test_parse_registered_sections_with_empty_raw(
     assert parsed.depth is None
     assert parsed.cast is None
     assert parsed.softprompt is None
+    assert parsed.objective is None
     assert parsed.flywheel is None
 
 
