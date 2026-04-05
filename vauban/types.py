@@ -2037,6 +2037,7 @@ class EnvironmentConfig:
     rollout_top_n: int = 8
     rollout_every_n: int = 1
     temperature: float = 0.0  # 0.0 = greedy (argmax)
+    scenario: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

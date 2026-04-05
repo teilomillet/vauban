@@ -49,6 +49,10 @@ def test_generate_config_schema_uses_toml_key_aliases() -> None:
     assert "prompts" in surface_properties
     assert "prompts_path" not in surface_properties
 
+    environment_schema = _object_dict(properties["environment"])
+    environment_properties = _object_dict(environment_schema["properties"])
+    assert "scenario" in environment_properties
+
 
 def test_generate_config_schema_contains_nested_defs() -> None:
     schema = generate_config_schema()
@@ -111,4 +115,4 @@ def test_pyproject_uses_dynamic_version_source() -> None:
 
     assert pyproject["project"]["dynamic"] == ["version"]
     assert pyproject["tool"]["hatch"]["version"]["path"] == "vauban/_version.py"
-    assert vauban.__version__ == "0.3.4"
+    assert vauban.__version__ == "0.3.5"

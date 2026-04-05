@@ -62,6 +62,26 @@ class TestInitConfig:
         assert "probe" in parsed
         assert "prompts" in parsed["probe"]
 
+    def test_scenario_implies_softprompt_and_serializes_environment(self) -> None:
+        import tomllib
+
+        content = init_config(scenario="share_doc")
+        parsed = tomllib.loads(content)
+
+        assert "softprompt" in parsed
+        assert parsed["softprompt"]["mode"] == "gcg"
+        assert parsed["output"]["dir"] == "output/share_doc"
+        assert parsed["environment"]["scenario"] == "share_doc"
+        assert "target" not in parsed["environment"]
+
+    def test_scenario_rejects_incompatible_mode(self) -> None:
+        with pytest.raises(ValueError, match="only supported with mode 'softprompt'"):
+            init_config("probe", scenario="share_doc")
+
+    def test_unknown_scenario_raises(self) -> None:
+        with pytest.raises(ValueError, match="Unknown environment scenario"):
+            init_config("softprompt", scenario="nonexistent")
+
     def test_unknown_mode_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown mode"):
             init_config("nonexistent")
@@ -209,6 +229,25 @@ class TestInitRoundtrip:
         assert isinstance(missing_markers, list)
         assert "replace_scaffold_placeholders" in missing_markers
 
+    def test_scenario_scaffold_roundtrips_environment_fields(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from vauban.config import load_config
+
+        out = tmp_path / "share_doc.toml"
+        init_config("softprompt", output_path=out, scenario="share_doc")
+        config = load_config(out)
+
+        assert config.environment is not None
+        assert config.environment.scenario == "share_doc"
+        assert config.environment.injection_position == "infix"
+        assert config.environment.benign_expected_tools == [
+            "read_document_content",
+        ]
+        assert config.environment.rollout_every_n == 1
+        assert config.environment.target.function == "share_drive_file"
+
 
 class TestPublicApiLazyImport:
     def test_tuple_backed_lazy_import_resolves_original_name(self) -> None:
@@ -265,6 +304,30 @@ class TestInitCli:
         assert exc.value.code == 0
         assert "[probe]" in out.read_text()
 
+    def test_init_with_scenario(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        tmp_path: Path,
+    ) -> None:
+        out = tmp_path / "share_doc.toml"
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["vauban", "init", "--scenario", "share_doc", "--output", str(out)],
+        )
+        from vauban.__main__ import main
+
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        content = out.read_text()
+        assert "[softprompt]" in content
+        assert "[environment]" in content
+        assert 'scenario = "share_doc"' in content
+        captured = capsys.readouterr()
+        assert "share_doc scenario" in captured.err
+
     def test_init_ai_act_mentions_scaffold(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -305,6 +368,32 @@ class TestInitCli:
         captured = capsys.readouterr()
         assert "Unknown mode" in captured.err
 
+    def test_init_bad_scenario_fails(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        tmp_path: Path,
+    ) -> None:
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "vauban",
+                "init",
+                "--scenario",
+                "nonexistent",
+                "--output",
+                str(tmp_path / "x.toml"),
+            ],
+        )
+        from vauban.__main__ import main
+
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 1
+        captured = capsys.readouterr()
+        assert "Unknown environment scenario" in captured.err
+
     def test_init_unexpected_arg_fails(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -337,3 +426,4 @@ class TestInitCli:
         captured = capsys.readouterr()
         assert "Usage: vauban init" in captured.out
         assert "Modes:" in captured.out
+        assert "Scenarios:" in captured.out

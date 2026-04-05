@@ -80,6 +80,20 @@ Scaffold a starter config:
 vauban init --mode default --output run.toml
 ```
 
+Scaffold a named indirect prompt-injection benchmark:
+
+```bash
+vauban init --scenario share_doc --output share_doc.toml
+```
+
+Or keep the benchmark choice directly in TOML and override only what you need:
+
+```toml
+[environment]
+scenario = "share_doc"
+max_turns = 5
+```
+
 All pipeline modes can be scaffolded. See the full list with:
 
 ```bash

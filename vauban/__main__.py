@@ -7,7 +7,7 @@ Usage:
     vauban <config.toml>
     vauban --validate <config.toml>
     vauban schema [--output FILE]
-    vauban init [--mode MODE] [--model PATH] [--output FILE] [--force]
+    vauban init [--mode MODE] [--model PATH] [--scenario NAME] [--output FILE] [--force]
     vauban diff [--format text|markdown] [--threshold FLOAT] <dir_a> <dir_b>
     vauban tree [directory] [--format text|mermaid] [--status STATUS] [--tag TAG]
     vauban man [topic]
@@ -21,7 +21,8 @@ from pathlib import Path
 USAGE = """\
 Usage: vauban [--validate] <config.toml>
        vauban schema [--output FILE]
-       vauban init [--mode MODE] [--model PATH] [--output FILE] [--force]
+       vauban init [--mode MODE] [--model PATH] [--scenario NAME]
+                   [--output FILE] [--force]
        vauban diff [--format text|markdown] [--threshold FLOAT] <dir_a> <dir_b>
        vauban tree [directory] [--format text|mermaid] [--status STATUS] [--tag TAG]
        vauban man [topic]
@@ -45,11 +46,12 @@ Options:
 """
 
 _INIT_USAGE = (
-    "Usage: vauban init [--mode MODE] [--model PATH]"
+    "Usage: vauban init [--mode MODE] [--model PATH] [--scenario NAME]"
     " [--output FILE] [--force]\n"
     "\n"
     "Notes:\n"
     "  ai_act mode also scaffolds draft evidence templates in ./evidence/\n"
+    "  --scenario implies softprompt mode when --mode is omitted\n"
 )
 
 _DIFF_USAGE = (
@@ -90,6 +92,14 @@ def _format_mode_list() -> str:
     return "Modes:\n" + "\n".join(lines) + "\n"
 
 
+def _format_scenario_list() -> str:
+    """Format built-in environment benchmark scenario names for help output."""
+    from vauban.environment import list_scenarios
+
+    names = ", ".join(list_scenarios())
+    return f"Scenarios:\n  {names}\n"
+
+
 def _run_init(args: list[str]) -> None:
     """Handle `vauban init` subcommand."""
     from vauban._init import init_config
@@ -97,10 +107,12 @@ def _run_init(args: list[str]) -> None:
     if len(args) == 1 and args[0] in ("--help", "-h"):
         sys.stdout.write(_INIT_USAGE)
         sys.stdout.write(_format_mode_list())
+        sys.stdout.write(_format_scenario_list())
         return
 
     mode = "default"
     model = "mlx-community/Llama-3.2-3B-Instruct-4bit"
+    scenario: str | None = None
     output = "run.toml"
     force = False
 
@@ -109,12 +121,16 @@ def _run_init(args: list[str]) -> None:
         if args[i] in ("--help", "-h"):
             sys.stdout.write(_INIT_USAGE)
             sys.stdout.write(_format_mode_list())
+            sys.stdout.write(_format_scenario_list())
             return
         if args[i] == "--mode" and i + 1 < len(args):
             mode = args[i + 1]
             i += 2
         elif args[i] == "--model" and i + 1 < len(args):
             model = args[i + 1]
+            i += 2
+        elif args[i] == "--scenario" and i + 1 < len(args):
+            scenario = args[i + 1]
             i += 2
         elif args[i] == "--output" and i + 1 < len(args):
             output = args[i + 1]
@@ -128,16 +144,26 @@ def _run_init(args: list[str]) -> None:
             )
             sys.stderr.write(_INIT_USAGE)
             sys.stderr.write(_format_mode_list())
+            sys.stderr.write(_format_scenario_list())
             raise SystemExit(1)
 
     output_path = Path(output)
     try:
-        init_config(mode, model, output_path, force=force)
+        init_config(
+            mode,
+            model,
+            output_path,
+            force=force,
+            scenario=scenario,
+        )
     except (ValueError, FileExistsError) as exc:
         sys.stderr.write(f"Error: {exc}\n")
         raise SystemExit(1) from exc
 
-    label = mode if mode != "default" else "measure → cut → export"
+    if scenario is not None:
+        label = f"softprompt + {scenario} scenario"
+    else:
+        label = mode if mode != "default" else "measure → cut → export"
     sys.stderr.write(f"Created {output_path} ({label} mode)\n")
     if mode == "ai_act":
         sys.stderr.write(

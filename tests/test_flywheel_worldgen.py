@@ -26,7 +26,14 @@ if TYPE_CHECKING:
 class TestSkeletons:
     def test_all_builtins_exist(self) -> None:
         assert set(BUILTIN_SKELETONS) == {
-            "email", "doc", "code", "calendar", "search",
+            "email",
+            "doc",
+            "code",
+            "calendar",
+            "search",
+            "home_assistant",
+            "drive_share",
+            "landing_review",
         }
 
     def test_get_skeleton_valid(self) -> None:
@@ -42,6 +49,9 @@ class TestSkeletons:
     def test_list_skeletons(self) -> None:
         names = list_skeletons()
         assert "email" in names
+        assert "home_assistant" in names
+        assert "drive_share" in names
+        assert "landing_review" in names
         assert names == sorted(names)
 
     def test_each_skeleton_has_valid_structure(self) -> None:
@@ -55,6 +65,21 @@ class TestSkeletons:
             assert len(skel.task_templates) >= 3
             assert len(skel.expected_tools_by_template) == len(skel.task_templates)
             assert len(skel.detail_pools) >= 2
+
+    def test_dev_derived_skeletons_keep_their_unique_targets(self) -> None:
+        expectations = {
+            "home_assistant": ("activate_device", "read_email"),
+            "drive_share": ("share_drive_file", "read_document"),
+            "landing_review": (
+                "submit_policy_assessment",
+                "get_landing_page_draft",
+            ),
+        }
+
+        for name, (target_name, injection_surface) in expectations.items():
+            skeleton = get_skeleton(name)
+            assert skeleton.target.function == target_name
+            assert skeleton.injection_surface == injection_surface
 
 
 class TestGenerateWorlds:
@@ -119,7 +144,7 @@ class TestGenerateWorlds:
 
     def test_multiple_skeletons(self) -> None:
         worlds = generate_worlds(
-            skeletons=["email", "code", "search"],
+            skeletons=["email", "code", "search", "landing_review"],
             n_worlds=50,
             difficulty_range=(1, 5),
             positions=["infix"],
@@ -127,6 +152,31 @@ class TestGenerateWorlds:
         )
         domains_seen = {meta.domain for _, meta in worlds}
         assert len(domains_seen) >= 2
+
+    def test_realistic_dev_ports_generate_valid_worlds(self) -> None:
+        worlds = generate_worlds(
+            skeletons=["home_assistant", "drive_share", "landing_review"],
+            n_worlds=12,
+            difficulty_range=(1, 5),
+            positions=["prefix", "suffix"],
+            seed=7,
+        )
+
+        domains_seen = {meta.domain for _, meta in worlds}
+        assert domains_seen <= {
+            "home_assistant",
+            "drive_share",
+            "landing_review",
+        }
+        assert domains_seen
+
+        for env_config, meta in worlds:
+            tool_names = {tool.name for tool in env_config.tools}
+            assert env_config.injection_surface in tool_names
+            assert env_config.target.function in tool_names
+            assert env_config.task.content
+            assert env_config.benign_expected_tools
+            assert meta.position in {"prefix", "suffix"}
 
     def test_model_expansion_uses_mlx_generate(self) -> None:
         class _DummyModel:

@@ -6,6 +6,7 @@
 Generates minimal, opinionated TOML starter configs for each pipeline mode.
 """
 
+import json
 from pathlib import Path
 
 from vauban.config._mode_registry import EARLY_MODE_DESCRIPTION_BY_MODE
@@ -560,12 +561,104 @@ def _write_ai_act_supporting_files(
     return written_paths
 
 
+def _toml_string(value: str) -> str:
+    """Render *value* as a TOML basic string."""
+    return json.dumps(value, ensure_ascii=True)
+
+
+def _toml_list(values: list[str]) -> str:
+    """Render a list of strings as a TOML array."""
+    return "[" + ", ".join(_toml_string(value) for value in values) + "]"
+
+
+def _toml_inline_table(values: dict[str, str]) -> str:
+    """Render a string dictionary as a TOML inline table."""
+    if not values:
+        return "{}"
+    parts = [
+        f"{_toml_string(str(key))} = {_toml_string(str(value))}"
+        for key, value in values.items()
+    ]
+    return "{ " + ", ".join(parts) + " }"
+
+
+def _render_environment_tool_block(
+    name: str,
+    description: str,
+    parameters: dict[str, str],
+    result: str | None,
+) -> list[str]:
+    """Render one ``[[environment.tools]]`` TOML block."""
+    lines = [
+        "[[environment.tools]]",
+        f"name = {_toml_string(name)}",
+        f"description = {_toml_string(description)}",
+        f"parameters = {_toml_inline_table(parameters)}",
+    ]
+    if result is not None:
+        lines.append(f"result = {_toml_string(result)}")
+    return lines
+
+
+def _render_scenario_environment_template(scenario_name: str) -> str:
+    """Render a scenario-backed softprompt + environment scaffold."""
+    from vauban.environment import get_scenario
+
+    try:
+        scenario = get_scenario(scenario_name)
+    except KeyError as exc:
+        msg = str(exc).strip("'")
+        raise ValueError(msg) from exc
+
+    lines = [
+        "",
+        "[softprompt]",
+        'mode = "gcg"',
+        "n_tokens = 24",
+        "n_steps = 250",
+        'token_position = "suffix"',
+        'target_prefixes = ["Sure", "Here"]',
+        "",
+        f"# Scenario benchmark: {scenario.title}",
+        f"# Description: {scenario.description}",
+    ]
+    if scenario.recommended_payload is not None:
+        lines.append(
+            f"# Reference payload: {scenario.recommended_payload}",
+        )
+    if scenario.success_condition is not None:
+        lines.append(
+            f"# Success condition: {scenario.success_condition}",
+        )
+    if scenario.trigger_prompt is not None:
+        lines.append(
+            f"# Trigger prompt: {scenario.trigger_prompt}",
+        )
+
+    lines.extend([
+        "",
+        "[output]",
+        f'dir = "output/{scenario.key}"',
+        "",
+        "[environment]",
+        f"scenario = {_toml_string(scenario.key)}",
+        "# Optional: override any scenario field below if you want to tweak",
+        "# the benchmark without copying the full environment definition.",
+        "# max_turns = 5",
+        "# rollout_every_n = 2",
+        "",
+    ])
+
+    return "\n".join(lines)
+
+
 def init_config(
     mode: str = "default",
     model: str = _DEFAULT_MODEL,
     output_path: Path | None = None,
     *,
     force: bool = False,
+    scenario: str | None = None,
 ) -> str:
     """Generate a starter TOML config for the given pipeline mode.
 
@@ -574,6 +667,10 @@ def init_config(
         model: Model path or HuggingFace ID.
         output_path: Where to write the file. None means don't write.
         force: Overwrite existing file if True.
+        scenario: Optional named environment benchmark scenario. When set
+            and ``mode`` is left as ``"default"``, the scaffold switches to
+            the softprompt pipeline and emits ``[environment].scenario`` in
+            the generated TOML.
 
     Returns:
         The generated TOML content string.
@@ -589,21 +686,38 @@ def init_config(
         )
         raise ValueError(msg)
 
+    effective_mode = (
+        "softprompt"
+        if scenario is not None and mode == "default"
+        else mode
+    )
+    if scenario is not None and effective_mode != "softprompt":
+        msg = (
+            "--scenario is only supported with mode 'softprompt'"
+            " (or omitted mode, which implies softprompt)"
+        )
+        raise ValueError(msg)
+
     # Standalone modes have self-contained templates (no [model]/[data]).
-    if mode in _STANDALONE_TEMPLATES:
-        content = _STANDALONE_TEMPLATES[mode]
+    if effective_mode in _STANDALONE_TEMPLATES:
+        content = _STANDALONE_TEMPLATES[effective_mode]
+    elif scenario is not None:
+        content = (
+            _BASE.format(model=model)
+            + _render_scenario_environment_template(scenario)
+        )
     else:
-        content = _BASE.format(model=model) + _MODE_TEMPLATES[mode]
+        content = _BASE.format(model=model) + _MODE_TEMPLATES[effective_mode]
 
     # Roundtrip validation: parse generated TOML to catch template bugs
     import tomllib
 
     parsed = tomllib.loads(content)
-    if mode not in _STANDALONE_TEMPLATES and (
+    if effective_mode not in _STANDALONE_TEMPLATES and (
         "model" not in parsed or "data" not in parsed
     ):
         msg = (
-            f"Internal error: generated config for mode {mode!r}"
+            f"Internal error: generated config for mode {effective_mode!r}"
             " is missing required sections"
         )
         raise ValueError(msg)
@@ -617,7 +731,7 @@ def init_config(
             raise FileExistsError(msg)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(content)
-        if mode == "ai_act":
+        if effective_mode == "ai_act":
             _write_ai_act_supporting_files(output_path, force=force)
 
     return content

@@ -58,9 +58,12 @@ class TestParseEnvironment:
         assert cfg is not None
         assert cfg.system_prompt == "You are an assistant."
         assert cfg.injection_surface == "calendar"
+        assert cfg.injection_position == "suffix"
+        assert cfg.benign_expected_tools == []
         assert cfg.max_turns == 6
         assert cfg.max_gen_tokens == 200
         assert cfg.rollout_top_n == 8
+        assert cfg.rollout_every_n == 1
         assert cfg.temperature == 0.0
         assert len(cfg.tools) == 2
         assert cfg.target.function == "send_email"
@@ -91,6 +94,24 @@ class TestParseEnvironment:
         with pytest.raises(ValueError, match="max_turns"):
             _parse_environment(raw)
 
+    def test_injection_position_type_error(self) -> None:
+        raw = _minimal_env()
+        raw["environment"]["injection_position"] = 1  # type: ignore[index]
+        with pytest.raises(TypeError, match="injection_position"):
+            _parse_environment(raw)
+
+    def test_injection_position_invalid(self) -> None:
+        raw = _minimal_env()
+        raw["environment"]["injection_position"] = "middle"  # type: ignore[index]
+        with pytest.raises(ValueError, match="injection_position"):
+            _parse_environment(raw)
+
+    def test_benign_expected_tools_type_error(self) -> None:
+        raw = _minimal_env()
+        raw["environment"]["benign_expected_tools"] = "calendar"  # type: ignore[index]
+        with pytest.raises(TypeError, match="benign_expected_tools"):
+            _parse_environment(raw)
+
     def test_max_gen_tokens_type_error(self) -> None:
         raw = _minimal_env()
         raw["environment"]["max_gen_tokens"] = "bad"  # type: ignore[index]
@@ -113,6 +134,18 @@ class TestParseEnvironment:
         raw = _minimal_env()
         raw["environment"]["rollout_top_n"] = 0  # type: ignore[index]
         with pytest.raises(ValueError, match="rollout_top_n"):
+            _parse_environment(raw)
+
+    def test_rollout_every_n_type_error(self) -> None:
+        raw = _minimal_env()
+        raw["environment"]["rollout_every_n"] = "bad"  # type: ignore[index]
+        with pytest.raises(TypeError, match="rollout_every_n"):
+            _parse_environment(raw)
+
+    def test_rollout_every_n_range(self) -> None:
+        raw = _minimal_env()
+        raw["environment"]["rollout_every_n"] = 0  # type: ignore[index]
+        with pytest.raises(ValueError, match="rollout_every_n"):
             _parse_environment(raw)
 
     def test_temperature_type_error(self) -> None:
@@ -185,16 +218,57 @@ class TestParseEnvironment:
 
     def test_custom_scalars(self) -> None:
         raw = _minimal_env()
+        raw["environment"]["injection_position"] = "infix"  # type: ignore[index]
+        raw["environment"]["benign_expected_tools"] = ["calendar"]  # type: ignore[index]
         raw["environment"]["max_turns"] = 10  # type: ignore[index]
         raw["environment"]["max_gen_tokens"] = 300  # type: ignore[index]
         raw["environment"]["rollout_top_n"] = 16  # type: ignore[index]
+        raw["environment"]["rollout_every_n"] = 3  # type: ignore[index]
         raw["environment"]["temperature"] = 0.5  # type: ignore[index]
         cfg = _parse_environment(raw)
         assert cfg is not None
+        assert cfg.injection_position == "infix"
+        assert cfg.benign_expected_tools == ["calendar"]
         assert cfg.max_turns == 10
         assert cfg.max_gen_tokens == 300
         assert cfg.rollout_top_n == 16
+        assert cfg.rollout_every_n == 3
         assert cfg.temperature == 0.5
+
+    def test_scenario_seeds_environment_defaults(self) -> None:
+        cfg = _parse_environment({"environment": {"scenario": "share_doc"}})
+
+        assert cfg is not None
+        assert cfg.scenario == "share_doc"
+        assert cfg.injection_surface == "read_document_content"
+        assert cfg.injection_position == "infix"
+        assert cfg.target.function == "share_drive_file"
+        assert cfg.task.content
+
+    def test_scenario_allows_scalar_overrides(self) -> None:
+        cfg = _parse_environment({
+            "environment": {
+                "scenario": "share_doc",
+                "max_turns": 9,
+                "rollout_every_n": 3,
+                "temperature": 0.2,
+            },
+        })
+
+        assert cfg is not None
+        assert cfg.scenario == "share_doc"
+        assert cfg.max_turns == 9
+        assert cfg.rollout_every_n == 3
+        assert cfg.temperature == 0.2
+        assert cfg.target.function == "share_drive_file"
+
+    def test_unknown_scenario_raises(self) -> None:
+        with pytest.raises(ValueError, match="Unknown environment scenario"):
+            _parse_environment({"environment": {"scenario": "missing"}})
+
+    def test_scenario_type_error(self) -> None:
+        with pytest.raises(TypeError, match="scenario"):
+            _parse_environment({"environment": {"scenario": 3}})
 
 
 # ── _parse_tools ─────────────────────────────────────────────────────

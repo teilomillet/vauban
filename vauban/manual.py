@@ -152,6 +152,10 @@ _VALIDATE_NOTES: tuple[str, ...] = (
 
 _PLAYBOOK_NOTES: tuple[str, ...] = (
     "1. Scaffold a config: vauban init --mode default --output run.toml",
+    (
+        "   For a built-in agent benchmark:"
+        " vauban init --scenario share_doc --output share_doc.toml"
+    ),
     "2. Validate and iterate until warnings are understood/fixed.",
     "3. Run one experiment per TOML file for reproducibility.",
     "4. Compare two runs with: vauban diff out_a out_b",
@@ -167,6 +171,8 @@ _QUICK_NOTES: tuple[str, ...] = (
 _EXAMPLE_NOTES: tuple[str, ...] = (
     "Scaffold a starter config:",
     "  vauban init --mode default --output run.toml",
+    "Scaffold a built-in indirect prompt-injection benchmark:",
+    "  vauban init --scenario share_doc --output share_doc.toml",
     "Validate before expensive runs:",
     "  vauban --validate run.toml",
     "Run default pipeline:",
@@ -2296,6 +2302,14 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
         config_class="EnvironmentConfig",
         fields=(
             FieldSpec(
+                key="scenario",
+                description="Built-in benchmark scenario name.",
+                constraints=(
+                    "string or null; seeds environment defaults from a named"
+                    " scenario."
+                ),
+            ),
+            FieldSpec(
                 key="system_prompt",
                 description="System prompt defining the agent persona.",
                 constraints="required string.",
@@ -2405,9 +2419,14 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
         ),
         notes=(
             (
-                "Define [[environment.tools]], [environment.target], and"
-                " [environment.task] sub-tables to configure the agent"
-                " tools, target action, and benign task."
+                "Set [environment].scenario to load a built-in benchmark."
+                " Explicit fields in [environment] and its sub-tables"
+                " override the scenario defaults."
+            ),
+            (
+                "Without a scenario, define [[environment.tools]],"
+                " [environment.target], and [environment.task] sub-tables to"
+                " configure the agent tools, target action, and benign task."
             ),
         ),
     ),
@@ -3185,7 +3204,8 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 description="Skeleton domains for world generation.",
                 constraints=(
                     "non-empty list of strings from:"
-                    " email, doc, code, calendar, search."
+                    " email, doc, code, calendar, search,"
+                    " home_assistant, drive_share, landing_review."
                 ),
             ),
             FieldSpec(
@@ -3942,7 +3962,7 @@ def render_manual(topic: str | None = None) -> str:
     lines.append("    vauban --validate <config.toml>")
     lines.append("    vauban schema [--output FILE]")
     lines.append(
-        "    vauban init [--mode MODE] [--model PATH]"
+        "    vauban init [--mode MODE] [--model PATH] [--scenario NAME]"
         " [--output FILE] [--force]",
     )
     lines.append(
@@ -3985,11 +4005,15 @@ def render_manual(topic: str | None = None) -> str:
         lines.append("    vauban schema [--output FILE]")
         lines.append("      Print or write the current JSON Schema for TOML configs.")
         lines.append(
-            "    vauban init [--mode MODE] [--model PATH]"
+            "    vauban init [--mode MODE] [--model PATH] [--scenario NAME]"
             " [--output FILE] [--force]",
         )
         lines.append("      Generate a starter config file.")
         lines.append(f"      known modes: {', '.join(_known_init_modes())}")
+        lines.append(
+            "      --scenario: seed [environment] from a built-in benchmark;"
+            " omitting --mode implies softprompt.",
+        )
         lines.append(
             "    vauban diff [--format text|markdown]"
             " [--threshold FLOAT] <dir_a> <dir_b>",

@@ -588,13 +588,24 @@ Defines a simulated agent environment for indirect prompt injection testing. The
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
+| `scenario` | string | — | Optional built-in benchmark scenario name. Seeds the environment with a named baseline such as `share_doc`; explicit TOML fields override the seeded defaults. |
 | `system_prompt` | string | *(required)* | System prompt for the agent. |
 | `injection_surface` | string | *(required)* | Name of the tool whose output contains the injection payload. Must match a defined tool name. |
+| `injection_position` | `"prefix"` \| `"suffix"` \| `"infix"` | `"suffix"` | Where the injected payload is inserted into the tool result. |
+| `benign_expected_tools` | list of strings | `[]` | Tools expected during benign execution. Used by flywheel utility checks and benchmark scenarios. |
 | `max_turns` | int >= 1 | `6` | Maximum agent loop turns. |
 | `max_gen_tokens` | int >= 1 | `200` | Max tokens per agent generation step. |
 | `temperature` | float >= 0 | `0.0` | Sampling temperature. 0.0 = greedy (argmax). |
 | `rollout_top_n` | int >= 1 | `8` | Number of top candidates to evaluate via environment rollout. |
 | `rollout_every_n` | int >= 1 | `1` | Run environment rollouts every N optimization steps. 1 = every step. |
+
+Built-in scenarios are available through `vauban init --help`. A minimal scenario-backed harness can be as short as:
+
+```toml
+[environment]
+scenario = "share_doc"
+max_turns = 5
+```
 
 ### `[environment.target]`
 

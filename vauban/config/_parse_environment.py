@@ -3,9 +3,10 @@
 
 """Parse the [environment] section of a TOML config."""
 
-from typing import cast
+from typing import Literal, cast
 
 from vauban.config._types import TomlDict
+from vauban.environment import get_scenario
 from vauban.types import (
     EnvironmentConfig,
     EnvironmentTarget,
@@ -13,6 +14,8 @@ from vauban.types import (
     ToolCallPolicy,
     ToolSchema,
 )
+
+_VALID_INJECTION_POSITIONS = ("prefix", "suffix", "infix")
 
 
 def _parse_environment(raw: TomlDict) -> EnvironmentConfig | None:
@@ -29,14 +32,41 @@ def _parse_environment(raw: TomlDict) -> EnvironmentConfig | None:
 
     env = cast("dict[str, object]", sec)
 
+    scenario_name: str | None = None
+    scenario_config: EnvironmentConfig | None = None
+    scenario_raw = env.get("scenario")
+    if scenario_raw is not None:
+        if not isinstance(scenario_raw, str):
+            msg = (
+                "[environment].scenario must be a string,"
+                f" got {type(scenario_raw).__name__}"
+            )
+            raise TypeError(msg)
+        scenario_name = scenario_raw
+        try:
+            scenario_config = get_scenario(scenario_name).config
+        except KeyError as exc:
+            msg = str(exc).strip("'")
+            raise ValueError(msg) from exc
+
     # -- system_prompt (required) --
-    system_prompt_raw = env.get("system_prompt")
+    system_prompt_raw = env.get(
+        "system_prompt",
+        scenario_config.system_prompt if scenario_config is not None else None,
+    )
     if not isinstance(system_prompt_raw, str):
         msg = "[environment].system_prompt is required and must be a string"
         raise TypeError(msg)
 
     # -- injection_surface (required) --
-    injection_surface_raw = env.get("injection_surface")
+    injection_surface_raw = env.get(
+        "injection_surface",
+        (
+            scenario_config.injection_surface
+            if scenario_config is not None
+            else None
+        ),
+    )
     if not isinstance(injection_surface_raw, str):
         msg = (
             "[environment].injection_surface is required"
@@ -44,8 +74,50 @@ def _parse_environment(raw: TomlDict) -> EnvironmentConfig | None:
         )
         raise TypeError(msg)
 
+    injection_position_raw = env.get(
+        "injection_position",
+        (
+            scenario_config.injection_position
+            if scenario_config is not None
+            else "suffix"
+        ),
+    )
+    if not isinstance(injection_position_raw, str):
+        msg = (
+            "[environment].injection_position must be a string,"
+            f" got {type(injection_position_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if injection_position_raw not in _VALID_INJECTION_POSITIONS:
+        msg = (
+            "[environment].injection_position must be one of"
+            f" {_VALID_INJECTION_POSITIONS}, got {injection_position_raw!r}"
+        )
+        raise ValueError(msg)
+
+    benign_expected_tools_raw = env.get(
+        "benign_expected_tools",
+        (
+            list(scenario_config.benign_expected_tools)
+            if scenario_config is not None
+            else []
+        ),
+    )
+    if not isinstance(benign_expected_tools_raw, list):
+        msg = (
+            "[environment].benign_expected_tools must be a list,"
+            f" got {type(benign_expected_tools_raw).__name__}"
+        )
+        raise TypeError(msg)
+    benign_expected_tools = [
+        str(item) for item in list(benign_expected_tools_raw)
+    ]
+
     # -- max_turns --
-    max_turns_raw = env.get("max_turns", 6)
+    max_turns_raw = env.get(
+        "max_turns",
+        scenario_config.max_turns if scenario_config is not None else 6,
+    )
     if not isinstance(max_turns_raw, int):
         msg = (
             f"[environment].max_turns must be an integer,"
@@ -57,7 +129,10 @@ def _parse_environment(raw: TomlDict) -> EnvironmentConfig | None:
         raise ValueError(msg)
 
     # -- max_gen_tokens --
-    max_gen_tokens_raw = env.get("max_gen_tokens", 200)
+    max_gen_tokens_raw = env.get(
+        "max_gen_tokens",
+        scenario_config.max_gen_tokens if scenario_config is not None else 200,
+    )
     if not isinstance(max_gen_tokens_raw, int):
         msg = (
             f"[environment].max_gen_tokens must be an integer,"
@@ -72,7 +147,10 @@ def _parse_environment(raw: TomlDict) -> EnvironmentConfig | None:
         raise ValueError(msg)
 
     # -- rollout_top_n --
-    rollout_top_n_raw = env.get("rollout_top_n", 8)
+    rollout_top_n_raw = env.get(
+        "rollout_top_n",
+        scenario_config.rollout_top_n if scenario_config is not None else 8,
+    )
     if not isinstance(rollout_top_n_raw, int):
         msg = (
             f"[environment].rollout_top_n must be an integer,"
@@ -86,8 +164,28 @@ def _parse_environment(raw: TomlDict) -> EnvironmentConfig | None:
         )
         raise ValueError(msg)
 
+    rollout_every_n_raw = env.get(
+        "rollout_every_n",
+        scenario_config.rollout_every_n if scenario_config is not None else 1,
+    )
+    if not isinstance(rollout_every_n_raw, int):
+        msg = (
+            f"[environment].rollout_every_n must be an integer,"
+            f" got {type(rollout_every_n_raw).__name__}"
+        )
+        raise TypeError(msg)
+    if rollout_every_n_raw < 1:
+        msg = (
+            f"[environment].rollout_every_n must be >= 1,"
+            f" got {rollout_every_n_raw}"
+        )
+        raise ValueError(msg)
+
     # -- temperature --
-    temperature_raw = env.get("temperature", 0.0)
+    temperature_raw = env.get(
+        "temperature",
+        scenario_config.temperature if scenario_config is not None else 0.0,
+    )
     if not isinstance(temperature_raw, (int, float)):
         msg = (
             f"[environment].temperature must be a number,"
@@ -104,29 +202,47 @@ def _parse_environment(raw: TomlDict) -> EnvironmentConfig | None:
 
     # -- tools (required, list of tables) --
     tools_raw = env.get("tools")
-    if not isinstance(tools_raw, list):
-        msg = "[environment].tools is required and must be a list of tables"
-        raise TypeError(msg)
-    tools_list: list[object] = list(tools_raw)
-    tools = _parse_tools(tools_list)
+    if tools_raw is None:
+        if scenario_config is None:
+            msg = "[environment].tools is required and must be a list of tables"
+            raise TypeError(msg)
+        tools = list(scenario_config.tools)
+    else:
+        if not isinstance(tools_raw, list):
+            msg = "[environment].tools is required and must be a list of tables"
+            raise TypeError(msg)
+        tools_list: list[object] = list(tools_raw)
+        tools = _parse_tools(tools_list)
 
     # -- target (required, table) --
     target_raw = env.get("target")
-    if not isinstance(target_raw, dict):
-        msg = "[environment].target is required and must be a table"
-        raise TypeError(msg)
-    target = _parse_target(cast("dict[str, object]", target_raw))
+    if target_raw is None:
+        if scenario_config is None:
+            msg = "[environment].target is required and must be a table"
+            raise TypeError(msg)
+        target = scenario_config.target
+    else:
+        if not isinstance(target_raw, dict):
+            msg = "[environment].target is required and must be a table"
+            raise TypeError(msg)
+        target = _parse_target(cast("dict[str, object]", target_raw))
 
     # -- task (required, table) --
     task_raw = env.get("task")
-    if not isinstance(task_raw, dict):
-        msg = "[environment].task is required and must be a table"
-        raise TypeError(msg)
-    task = _parse_task(cast("dict[str, object]", task_raw))
+    if task_raw is None:
+        if scenario_config is None:
+            msg = "[environment].task is required and must be a table"
+            raise TypeError(msg)
+        task = scenario_config.task
+    else:
+        if not isinstance(task_raw, dict):
+            msg = "[environment].task is required and must be a table"
+            raise TypeError(msg)
+        task = _parse_task(cast("dict[str, object]", task_raw))
 
     # -- policy (optional, table) --
     policy_raw = env.get("policy")
-    policy: ToolCallPolicy | None = None
+    policy = scenario_config.policy if scenario_config is not None else None
     if policy_raw is not None:
         if not isinstance(policy_raw, dict):
             msg = "[environment].policy must be a table"
@@ -157,11 +273,18 @@ def _parse_environment(raw: TomlDict) -> EnvironmentConfig | None:
         target=target,
         task=task,
         injection_surface=injection_surface_raw,
+        injection_position=cast(
+            'Literal["prefix", "suffix", "infix"]',
+            injection_position_raw,
+        ),
+        benign_expected_tools=benign_expected_tools,
         max_turns=max_turns_raw,
         max_gen_tokens=max_gen_tokens_raw,
         policy=policy,
         rollout_top_n=rollout_top_n_raw,
+        rollout_every_n=rollout_every_n_raw,
         temperature=temperature_val,
+        scenario=scenario_name,
     )
 
 
