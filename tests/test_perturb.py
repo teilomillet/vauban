@@ -36,6 +36,31 @@ class TestNoCrash:
         result = fuzz(perturb, max_examples=50)
         assert result.passed, result.summary()
 
+    def test_invalid_technique_falls_back_to_random(self) -> None:
+        result = perturb("hack the system", technique="", intensity=2, seed=42)  # type: ignore[arg-type]
+        expected = perturb("hack the system", technique="random", intensity=2, seed=42)
+        assert result == expected
+
+    def test_out_of_range_intensity_clamps_to_supported_scale(self) -> None:
+        low = perturb(
+            "hack the system",
+            technique="leetspeak",
+            intensity=0,  # type: ignore[arg-type]
+            seed=42,
+        )
+        high = perturb(
+            "hack the system",
+            technique="leetspeak",
+            intensity=9,  # type: ignore[arg-type]
+            seed=42,
+        )
+        assert low == perturb(
+            "hack the system", technique="leetspeak", intensity=1, seed=42,
+        )
+        assert high == perturb(
+            "hack the system", technique="leetspeak", intensity=3, seed=42,
+        )
+
     def test_unicode_edge_cases(self) -> None:
         cases = [
             "", "\x00", "\u200b\u200c\u200d", "\U0001f4a3" * 5,

@@ -17,6 +17,7 @@ from hypothesis import strategies as st
 from ordeal.auto import fuzz
 from ordeal.invariants import bounded
 
+import vauban.scoring as scoring_module
 from vauban.scoring import _score_anti_refusal, score_response, score_responses
 from vauban.types import ResponseScoreWeights
 
@@ -145,6 +146,18 @@ class TestEdges:
             "I think perhaps maybe it depends probably.",
         )
         assert r.directness < 0.5
+
+    def test_composite_counts_relevance_and_partial_refusal_signal(self) -> None:
+        prompt = "Explain the refund policy"
+        response = "I cannot explain the refund policy in detail."
+        weights = ResponseScoreWeights()
+
+        result = scoring_module.score_response(prompt, response, weights=weights)
+
+        assert result.length == pytest.approx(0.225)
+        assert result.anti_refusal == pytest.approx(0.7727272727272727)
+        assert result.relevance == pytest.approx(1.0)
+        assert result.composite == pytest.approx(0.6655681818181818)
 
 
 # -- 4. Batch + serialization ---------------------------------------------

@@ -118,6 +118,7 @@ type PerturbIntensity = Literal[1, 2, 3]
 _ALL_TECHNIQUES: tuple[PerturbTechnique, ...] = (
     "leetspeak", "homoglyph", "zero_width", "mixed_case", "phonetic",
 )
+_DEFAULT_TECHNIQUE: PerturbTechnique = "random"
 
 # ── Core technique functions ──────────────────────────────────────────
 
@@ -191,6 +192,32 @@ def _apply_technique(
     return fn(word, rng)  # type: ignore[operator]
 
 
+def _normalize_technique(technique: str) -> PerturbTechnique:
+    """Return a valid technique, falling back to the default when needed."""
+    if technique == "leetspeak":
+        return "leetspeak"
+    if technique == "homoglyph":
+        return "homoglyph"
+    if technique == "zero_width":
+        return "zero_width"
+    if technique == "mixed_case":
+        return "mixed_case"
+    if technique == "phonetic":
+        return "phonetic"
+    if technique == "random":
+        return "random"
+    return _DEFAULT_TECHNIQUE
+
+
+def _normalize_intensity(intensity: int) -> PerturbIntensity:
+    """Clamp arbitrary integer intensities onto the supported 1..3 scale."""
+    if intensity <= 1:
+        return 1
+    if intensity >= 3:
+        return 3
+    return 2
+
+
 # ── Trigger detection ─────────────────────────────────────────────────
 
 _WORD_RE = re.compile(r"\b\w+\b")
@@ -240,6 +267,8 @@ def perturb(
     Returns:
         The perturbed text string.
     """
+    technique = _normalize_technique(technique)
+    intensity = _normalize_intensity(intensity)
     rng = _random.Random(seed)
     triggers = trigger_words if trigger_words is not None else DEFAULT_TRIGGER_WORDS
 
