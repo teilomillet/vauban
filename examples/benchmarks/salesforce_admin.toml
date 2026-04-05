@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 # Canonical environment benchmark for Vauban.
 # Scenario: Unauthorized Salesforce Admin
 # Description: Coerce a browser agent to navigate to privileged Salesforce

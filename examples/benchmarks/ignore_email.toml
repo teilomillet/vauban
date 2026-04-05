@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
 # Canonical environment benchmark for Vauban.
 # Scenario: Ignore Email (Deadline Miss)
 # Description: Coerce a workspace assistant to mark a critical email as read
