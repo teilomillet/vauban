@@ -55,10 +55,6 @@ plugins:
   - search:
       separator: '[\s\-\.]+'
       lang: en
-  - social:
-      cards_layout_options:
-        background_color: "#4527a0"
-        color: "#ffffff"
 
 markdown_extensions:
   - abbr
@@ -100,6 +96,7 @@ extra_javascript:
 
 nav:
   - What is Vauban?: index.md
+  - Getting Started: getting-started.md
   - Concepts:
     - Activation Geometry: concepts/activation-geometry.md
     - Refusal Direction: concepts/refusal-direction.md
@@ -125,8 +122,13 @@ nav:
     - Papers: reference/papers.md
     - Session API: reference/session-api.md
     - Configuration: config.md
+    - HuggingFace Datasets: hf-datasets.md
+    - Refusal Surface Mapping: surface.md
     - Release Notes:
       - v0.4.1: releases/v0.4.1.md
+  - Research:
+    - Mechanistic Interpretability of Reasoning: research/reasoning_mech_interp.md
+    - Tokenizer Embedding Analysis: research/tokenizer_analysis.md
   - Course:
     - "Spinning Up in Abliteration": class/index.md
     - "Part 1: What is Abliteration?": class/part1_what_is_abliteration.md
@@ -136,5 +138,6 @@ nav:
     - "Part 5: Going Deeper": class/part5_going_deeper.md
     - "Part 6: Attacks and Defenses": class/part6_attacks_and_defenses.md
     - "Part 7: Production Workflows": class/part7_production_workflows.md
+    - "Part 8: Model Diffing and Enhanced Defense": class/part8_model_diffing_and_defense.md
     - References: class/references.md
     - Glossary: class/glossary.md
