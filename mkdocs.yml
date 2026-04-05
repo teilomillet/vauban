@@ -125,6 +125,8 @@ nav:
     - Papers: reference/papers.md
     - Session API: reference/session-api.md
     - Configuration: config.md
+    - Release Notes:
+      - v0.4.1: releases/v0.4.1.md
   - Course:
     - "Spinning Up in Abliteration": class/index.md
     - "Part 1: What is Abliteration?": class/part1_what_is_abliteration.md
