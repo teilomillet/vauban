@@ -50,7 +50,7 @@ The `[meta]` section in a TOML config tracks experiment metadata:
 [meta]
 id = "exp-061"
 title = "Infix GCG with PPL and paraphrase"
-status = "complete"
+status = "promising"
 parents = ["exp-042", "exp-055"]
 tags = ["infix", "gcg", "ppl", "paraphrase"]
 notes = "Breakthrough config: 85.7% ASR, CAST=0.00"

@@ -48,6 +48,7 @@ def test_quickstart_topic_contains_minimal_config() -> None:
     assert "QUICKSTART" in text
     assert "[model]" in text
     assert 'harmful = "default"' in text
+    assert "examples/benchmarks/share_doc.toml" in text
 
 
 def test_commands_topic_contains_init_and_diff() -> None:
@@ -78,6 +79,8 @@ def test_examples_topic_contains_core_flows() -> None:
     text = render_manual("examples")
     assert "EXAMPLES" in text
     assert "vauban init --mode default --output run.toml" in text
+    assert "vauban --validate examples/benchmarks/share_doc.toml" in text
+    assert "vauban examples/benchmarks/share_doc.toml" in text
     assert "vauban diff runs/baseline runs/experiment_a" in text
     assert "vauban tree experiments/ --format mermaid" in text
 

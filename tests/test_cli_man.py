@@ -21,6 +21,7 @@ def test_main_man_quickstart(
     captured = capsys.readouterr()
     assert "QUICKSTART" in captured.out
     assert "Minimal run.toml" in captured.out
+    assert "examples/benchmarks/share_doc.toml" in captured.out
 
 
 def test_main_man_unknown_topic_fails(

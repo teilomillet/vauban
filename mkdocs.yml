@@ -122,6 +122,7 @@ nav:
     - Papers: reference/papers.md
     - Session API: reference/session-api.md
     - Configuration: config.md
+    - Environment Benchmarks: environment-benchmarks.md
     - HuggingFace Datasets: hf-datasets.md
     - Refusal Surface Mapping: surface.md
     - Release Notes:

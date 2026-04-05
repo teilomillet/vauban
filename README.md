@@ -86,6 +86,13 @@ Scaffold a named indirect prompt-injection benchmark:
 vauban init --scenario share_doc --output share_doc.toml
 ```
 
+Or run one of the checked-in canonical benchmarks directly:
+
+```bash
+vauban --validate examples/benchmarks/share_doc.toml
+vauban examples/benchmarks/share_doc.toml
+```
+
 Or keep the benchmark choice directly in TOML and override only what you need:
 
 ```toml
@@ -99,6 +106,8 @@ All pipeline modes can be scaffolded. See the full list with:
 ```bash
 vauban init --help
 ```
+
+The full checked-in benchmark pack lives under `examples/benchmarks/`.
 
 Validate before a real run:
 

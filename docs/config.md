@@ -480,9 +480,9 @@ Metadata for experiment tracking and tech tree visualization. Does not affect pi
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `id` | string | *(required)* | Unique experiment identifier. |
+| `id` | string | TOML filename stem | Unique experiment identifier. |
 | `title` | string | `""` | Human-readable experiment title. |
-| `status` | string | `"wip"` | Experiment status (e.g. `"wip"`, `"done"`, `"abandoned"`). |
+| `status` | string | `"wip"` | Experiment status: `"wip"`, `"promising"`, `"dead_end"`, `"baseline"`, `"superseded"`, or `"archived"`. |
 | `parents` | list of strings | `[]` | IDs of parent experiments (lineage). |
 | `tags` | list of strings | `[]` | Freeform tags for categorization. |
 | `notes` | string | `""` | Experiment notes. |
@@ -605,6 +605,14 @@ Built-in scenarios are available through `vauban init --help`. A minimal scenari
 [environment]
 scenario = "share_doc"
 max_turns = 5
+```
+
+Canonical checked-in benchmark configs live under `examples/benchmarks/`.
+Use them when you want a reproducible baseline instead of a one-off scaffold:
+
+```bash
+vauban --validate examples/benchmarks/share_doc.toml
+vauban examples/benchmarks/share_doc.toml
 ```
 
 ### `[environment.target]`

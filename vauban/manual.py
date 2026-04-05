@@ -128,7 +128,11 @@ _QUICKSTART_NOTES: tuple[str, ...] = (
     "2. Validate first: vauban --validate run.toml",
     "3. Run: vauban run.toml",
     "4. Inspect outputs in [output].dir (default: output/).",
-    "5. If vauban is installed through uv project deps, use: uv run vauban ...",
+    (
+        "5. For a checked-in benchmark baseline, start from"
+        " examples/benchmarks/share_doc.toml."
+    ),
+    "6. If vauban is installed through uv project deps, use: uv run vauban ...",
 )
 
 _MINIMAL_CONFIG_EXAMPLE: tuple[str, ...] = (
@@ -156,6 +160,10 @@ _PLAYBOOK_NOTES: tuple[str, ...] = (
         "   For a built-in agent benchmark:"
         " vauban init --scenario share_doc --output share_doc.toml"
     ),
+    (
+        "   Or use the checked-in canonical benchmark:"
+        " examples/benchmarks/share_doc.toml"
+    ),
     "2. Validate and iterate until warnings are understood/fixed.",
     "3. Run one experiment per TOML file for reproducibility.",
     "4. Compare two runs with: vauban diff out_a out_b",
@@ -173,6 +181,9 @@ _EXAMPLE_NOTES: tuple[str, ...] = (
     "  vauban init --mode default --output run.toml",
     "Scaffold a built-in indirect prompt-injection benchmark:",
     "  vauban init --scenario share_doc --output share_doc.toml",
+    "Use the checked-in canonical benchmark pack:",
+    "  vauban --validate examples/benchmarks/share_doc.toml",
+    "  vauban examples/benchmarks/share_doc.toml",
     "Validate before expensive runs:",
     "  vauban --validate run.toml",
     "Run default pipeline:",

@@ -4,6 +4,7 @@
 """Tests for generated JSON Schema and version sourcing."""
 
 import json
+import re
 import sys
 import tomllib
 from pathlib import Path
@@ -112,7 +113,10 @@ def test_cli_schema_writes_output_file(
 
 def test_pyproject_uses_dynamic_version_source() -> None:
     pyproject = tomllib.loads(Path("pyproject.toml").read_text())
+    version_source = Path("vauban/_version.py").read_text()
+    match = re.search(r'^__version__ = "([^"]+)"$', version_source, re.MULTILINE)
 
     assert pyproject["project"]["dynamic"] == ["version"]
     assert pyproject["tool"]["hatch"]["version"]["path"] == "vauban/_version.py"
-    assert vauban.__version__ == "0.4.1"
+    assert match is not None
+    assert vauban.__version__ == match.group(1)
