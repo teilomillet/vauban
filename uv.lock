@@ -1092,16 +1092,12 @@ wheels = [
 
 [[package]]
 name = "ordeal"
-version = "0.3.19"
-source = { registry = "https://pypi.org/simple" }
+version = "0.3.21"
+source = { git = "https://github.com/teilomillet/ordeal?rev=v0.3.21#328f8790bcbd7c083535f22e105dee827afdd1fc" }
 dependencies = [
     { name = "coverage" },
     { name = "hypothesis" },
     { name = "pytest" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/38/0c/93a1756ce11e10fca31d1de3ae193bd34539cbb93ffd75174a21f4c2a08a/ordeal-0.3.19.tar.gz", hash = "sha256:268e762052c66db90cb3e78fd4badf205729473a725326223b9676f9074a5a92", size = 553737, upload-time = "2026-04-05T21:43:27.585Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d7/bb/f6d6300819f25846099c601844806aceb5c42e2e95bfc293fd1a7dc9de5d/ordeal-0.3.19-py3-none-any.whl", hash = "sha256:05df759bf81fbfcca0fcb5a44fea38b10dd54e60805ae5b11b982b440f87fe74", size = 412011, upload-time = "2026-04-05T21:43:26.171Z" },
 ]
 
 [[package]]
@@ -1958,7 +1954,7 @@ requires-dist = [
     { name = "mlx", specifier = ">=0.22" },
     { name = "mlx-lm", specifier = ">=0.21" },
     { name = "optuna", marker = "extra == 'optimize'", specifier = ">=4.0" },
-    { name = "ordeal", specifier = ">=0.3.19" },
+    { name = "ordeal", git = "https://github.com/teilomillet/ordeal?rev=v0.3.21" },
     { name = "pypdf", specifier = ">=6.9.2" },
     { name = "reportlab", specifier = ">=4.4.10" },
     { name = "safetensors", marker = "extra == 'torch'", specifier = ">=0.4" },
