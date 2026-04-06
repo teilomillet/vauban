@@ -117,4 +117,4 @@ omit = [
 ]
 
 [tool.uv.sources]
-ordeal = { git = "https://github.com/teilomillet/ordeal", rev = "v0.3.21" }
+ordeal = { git = "https://github.com/teilomillet/ordeal", rev = "v0.3.26" }

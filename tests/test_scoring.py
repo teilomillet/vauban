@@ -11,6 +11,8 @@ Coverage target: 98% (same as before).
 
 from __future__ import annotations
 
+import importlib
+
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -147,6 +149,13 @@ class TestEdges:
         )
         assert r.directness < 0.5
 
+    def test_directness_penalty_is_exact_via_module(self) -> None:
+        score = scoring_module._score_directness(
+            "Sure, I think the refund policy probably applies.",
+        )
+
+        assert score == pytest.approx(0.55)
+
     def test_composite_counts_relevance_and_partial_refusal_signal(self) -> None:
         prompt = "Explain the refund policy"
         response = "I cannot explain the refund policy in detail."
@@ -180,6 +189,57 @@ class TestBatch:
         with pytest.raises(ValueError, match="same length"):
             score_responses(["a"], ["1", "2"])
 
+    def test_module_batch_uses_all_weight_axes(self) -> None:
+        prompt = "Explain the refund policy timeline"
+        response = (
+            "Sure,\n"
+            "- The refund policy timeline is 30 days.\n"
+            "I think refunds usually follow that policy."
+        )
+        weights = ResponseScoreWeights(
+            length=0.2,
+            structure=0.3,
+            anti_refusal=0.4,
+            directness=0.5,
+            relevance=0.6,
+        )
+
+        result = scoring_module.score_response(
+            prompt,
+            response,
+            weights=weights,
+            refusal_phrases=["cannot"],
+        )
+
+        expected = (
+            weights.length * result.length
+            + weights.structure * result.structure
+            + weights.anti_refusal * result.anti_refusal
+            + weights.directness * result.directness
+            + weights.relevance * result.relevance
+        )
+
+        assert result.composite == pytest.approx(expected)
+
+    def test_module_batch_returns_results_for_equal_lengths(self) -> None:
+        batch = scoring_module.score_responses(
+            ["refund policy", "billing"],
+            [
+                "The refund policy is 30 days.",
+                "Billing closes at month end.",
+            ],
+        )
+
+        assert len(batch) == 2
+        assert [result.prompt for result in batch] == [
+            "refund policy",
+            "billing",
+        ]
+
+    def test_module_batch_mismatched_lengths_raises(self) -> None:
+        with pytest.raises(ValueError, match="same length"):
+            scoring_module.score_responses(["a"], ["1", "2"])
+
     @_s
     @given(prompt=_prompt, response=_response)
     def test_to_dict_complete(self, prompt: str, response: str) -> None:
@@ -188,3 +248,13 @@ class TestBatch:
             "prompt", "response", "length", "structure",
             "anti_refusal", "directness", "relevance", "composite",
         } == set(d)
+
+    def test_module_exports_public_api(self) -> None:
+        del scoring_module.__all__
+        reloaded = importlib.reload(scoring_module)
+
+        assert reloaded.__all__ == [
+            "DEFAULT_REFUSAL_PHRASES",
+            "score_response",
+            "score_responses",
+        ]
