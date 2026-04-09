@@ -25,6 +25,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Git metadata sanity
+        run: git submodule status --recursive > /dev/null
+
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -41,26 +44,34 @@ jobs:
             ${{ runner.os }}-py312-uv-
 
       - name: Sync dependencies
-        run: uv sync --frozen --group dev
+        run: uv sync --frozen --group dev --python 3.12 --no-python-downloads
+
+      - name: Interpreter sanity
+        run: |
+          .venv/bin/python - <<'PY'
+          import sys
+          assert sys.version_info[:2] == (3, 12), sys.version
+          print(sys.version)
+          PY
 
       - name: Ruff
-        run: uv run ruff check .
+        run: .venv/bin/ruff check .
 
       - name: Ty
-        run: uv run ty check
+        run: .venv/bin/ty check
 
       - name: SPDX headers
-        run: uv run python scripts/license_headers.py --check
+        run: .venv/bin/python scripts/license_headers.py --check
 
       - name: Benchmark examples
         run: |
-          uv run pytest tests/test_benchmark_examples.py tests/test_benchmark_cli.py -q
+          .venv/bin/pytest tests/test_benchmark_examples.py tests/test_benchmark_cli.py -q
           for config in examples/benchmarks/*.toml; do
-            uv run vauban --validate "$config"
+            .venv/bin/vauban --validate "$config"
           done
 
       - name: Pytest
-        run: uv run pytest -q
+        run: .venv/bin/pytest -q
 
   bump-and-publish:
     if: github.event_name == 'push'
