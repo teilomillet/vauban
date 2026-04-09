@@ -351,3 +351,12 @@ class TestDatasetEdgesExtra:
             pytest.raises(ValueError, match="Unexpected API response structure"),
         ):
             _fetch_page(ref, 0, 10)
+
+    def test_fetch_page_rejects_non_http_api_base(self) -> None:
+        ref = DatasetRef(repo_id="test/dataset")
+
+        with (
+            patch("vauban.dataset._API_BASE", "file:///tmp/data.json"),
+            pytest.raises(ValueError, match="datasets server URL must use"),
+        ):
+            _fetch_page(ref, 0, 10)

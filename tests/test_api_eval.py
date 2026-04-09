@@ -481,6 +481,23 @@ class TestEvaluateSuffixViaApi:
 
         assert results[0].success_rate == 1.0
 
+    def test_rejects_non_http_endpoint_url(self) -> None:
+        endpoint = ApiEvalEndpoint(
+            name="bad-endpoint",
+            base_url="file:///tmp/api",
+            model="test-model",
+            api_key_env="TEST_API_KEY",
+        )
+
+        with pytest.raises(ValueError, match="API endpoint URL for bad-endpoint"):
+            _call_chat_api(
+                endpoint=endpoint,
+                api_key="sk-test",
+                messages=[{"role": "user", "content": "hello"}],
+                max_tokens=10,
+                timeout=5,
+            )
+
     def test_infix_position_replaces_marker(
         self,
         config: ApiEvalConfig,

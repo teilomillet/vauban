@@ -15,6 +15,7 @@ import pytest
 from vauban.benchmarks import (
     KNOWN_BENCHMARKS,
     BenchmarkSpec,
+    _download,
     _parse_csv,
     _read_jsonl,
     _write_jsonl,
@@ -271,6 +272,11 @@ class TestResolveBenchmark:
             pytest.raises(ValueError, match="expected >="),
         ):
             resolve_benchmark("advbench")
+
+    def test_download_rejects_non_http_scheme(self) -> None:
+        """Unexpected URL schemes are rejected before urlopen()."""
+        with pytest.raises(ValueError, match="benchmark URL must use"):
+            _download("file:///tmp/benchmark.csv")
 
 
 # ---------------------------------------------------------------------------

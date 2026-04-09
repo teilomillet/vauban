@@ -580,15 +580,22 @@ class TestProxyRuntime:
 
         server = FakeHTTPServer.instances[0]
         err = capsys.readouterr().err
-        assert server.address == ("0.0.0.0", 9123)
+        assert server.address == ("127.0.0.1", 9123)
         assert server.handler_class is proxy.GuardProxyHandler
         assert server.serve_calls == 1
         assert proxy.GuardProxyHandler.target_url == "https://api.example/v1"
         assert proxy.GuardProxyHandler.api_key == "key-123"
         assert proxy.GuardProxyHandler.block_mode == "warn"
         assert proxy.GuardProxyHandler.audit._path == "audit-log.jsonl"
-        assert "[vauban proxy] Listening on :9123" in err
+        assert "[vauban proxy] Listening on 127.0.0.1:9123" in err
         assert "[vauban proxy] Stopped." in err
+
+    def test_run_proxy_rejects_non_http_target(self) -> None:
+        with pytest.raises(ValueError, match="proxy target URL must use"):
+            proxy.run_proxy(
+                target_url="file:///tmp/upstream",
+                api_key="key-123",
+            )
 
 
 class TestProxyCli:
@@ -671,9 +678,10 @@ class TestProxyCli:
             "type[proxy.GuardProxyHandler]",
             server.handler_class,
         )
-        assert server.address == ("0.0.0.0", 9900)
+        assert server.address == ("127.0.0.1", 9900)
         assert handler_class.target_url == "https://proxy.example/v1"
         assert handler_class.api_key == "dotenv-key"
         assert handler_class.block_mode == "warn"
         assert handler_class.audit._path == "cli-audit.jsonl"
+        assert module_globals["args"].host == "127.0.0.1"
         assert module_globals["args"].target == "https://proxy.example/v1/"

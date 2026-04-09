@@ -1092,8 +1092,8 @@ wheels = [
 
 [[package]]
 name = "ordeal"
-version = "0.3.26"
-source = { git = "https://github.com/teilomillet/ordeal?rev=v0.3.26#2d4275a67a8b7f3c6972e653b604514636d8c3d5" }
+version = "0.3.33"
+source = { git = "https://github.com/teilomillet/ordeal?rev=v0.3.33#4447396a0a8adce58e73d0dc2346dd46899903ea" }
 dependencies = [
     { name = "coverage" },
     { name = "hypothesis" },
@@ -1954,7 +1954,7 @@ requires-dist = [
     { name = "mlx", specifier = ">=0.22" },
     { name = "mlx-lm", specifier = ">=0.21" },
     { name = "optuna", marker = "extra == 'optimize'", specifier = ">=4.0" },
-    { name = "ordeal", git = "https://github.com/teilomillet/ordeal?rev=v0.3.26" },
+    { name = "ordeal", git = "https://github.com/teilomillet/ordeal?rev=v0.3.33" },
     { name = "pypdf", specifier = ">=6.9.2" },
     { name = "reportlab", specifier = ">=4.4.10" },
     { name = "safetensors", marker = "extra == 'torch'", specifier = ">=0.4" },

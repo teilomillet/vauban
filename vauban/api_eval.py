@@ -15,6 +15,7 @@ if sys.version_info >= (3, 13):
 else:  # pragma: no cover
     from typing_extensions import TypeIs
 
+from vauban._network import validate_http_url
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES
 from vauban.types import ApiEvalConfig, ApiEvalEndpoint, TransferEvalResult
 
@@ -351,6 +352,7 @@ def _call_chat_api(
         Tuple of (response_text, is_refused).
     """
     url = endpoint.base_url.rstrip("/") + "/chat/completions"
+    validate_http_url(url, context=f"API endpoint URL for {endpoint.name}")
     body = json.dumps({
         "model": endpoint.model,
         "messages": messages,

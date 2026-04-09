@@ -8,6 +8,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from vauban._network import validate_http_url
 from vauban.measure import load_prompts
 from vauban.types import DatasetRef
 
@@ -103,6 +104,7 @@ def _fetch_page(
         params += f"&config={_url_quote(ref.config)}"
 
     url = f"{_API_BASE}?{params}"
+    validate_http_url(url, context="datasets server URL")
     req = urllib.request.Request(url)
     req.add_header("User-Agent", "vauban/0.1")
 

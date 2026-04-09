@@ -34,6 +34,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import ClassVar
 from urllib.request import Request, urlopen
 
+from vauban._network import validate_http_url
+
 # ---------------------------------------------------------------------------
 # Safety checks (text-level — works with any remote API)
 # ---------------------------------------------------------------------------
@@ -352,6 +354,7 @@ def run_proxy(
     *,
     target_url: str,
     api_key: str,
+    host: str = "127.0.0.1",
     port: int = 8000,
     mode: str = "log",
     audit_path: str = "proxy_audit.jsonl",
@@ -361,13 +364,17 @@ def run_proxy(
     Args:
         target_url: Target API base URL (e.g. https://api.openai.com/v1).
         api_key: API key for the target.
+        host: Local interface to bind.
         port: Local port to listen on.
         mode: "log" (monitor only), "block" (reject harmful),
             or "warn" (append warning to response).
         audit_path: Path for the JSONL audit log.
     """
     # Strip trailing slash
-    target_url = target_url.rstrip("/")
+    target_url = validate_http_url(
+        target_url.rstrip("/"),
+        context="proxy target URL",
+    )
 
     GuardProxyHandler.target_url = target_url
     GuardProxyHandler.api_key = api_key
@@ -377,9 +384,9 @@ def run_proxy(
         "total": 0, "blocked": 0, "passed": 0, "errors": 0,
     }
 
-    server = HTTPServer(("0.0.0.0", port), GuardProxyHandler)
+    server = HTTPServer((host, port), GuardProxyHandler)
     print(
-        f"[vauban proxy] Listening on :{port}"
+        f"[vauban proxy] Listening on {host}:{port}"
         f" → {target_url} (mode={mode})",
         file=sys.stderr,
     )
@@ -419,6 +426,10 @@ if __name__ == "__main__":
         help="API key for target (default: $OPENROUTER_API_KEY)",
     )
     parser.add_argument(
+        "--host", default="127.0.0.1",
+        help="Interface to bind (default: 127.0.0.1)",
+    )
+    parser.add_argument(
         "--port", type=int, default=8000,
     )
     parser.add_argument(
@@ -451,6 +462,7 @@ if __name__ == "__main__":
     run_proxy(
         target_url=args.target,
         api_key=args.api_key,
+        host=args.host,
         port=args.port,
         mode=args.mode,
         audit_path=args.audit_log,

@@ -27,6 +27,8 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from vauban._network import validate_http_url
+
 _log = logging.getLogger(__name__)
 
 
@@ -264,6 +266,7 @@ def _download(url: str, *, benchmark_name: str = "") -> str:
 
     Wraps network errors in :class:`RuntimeError` with context.
     """
+    validate_http_url(url, context="benchmark URL")
     req = urllib.request.Request(url)
     req.add_header("User-Agent", "vauban/0.1")
     try:
