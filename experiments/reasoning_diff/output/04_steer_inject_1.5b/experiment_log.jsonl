@@ -1,1 +1,0 @@
-{"timestamp": "2026-02-27T22:59:32+00:00", "config_path": "/Users/teilomillet/Code/vauban/experiments/reasoning_diff/04_steer_inject_1.5b.toml", "model_path": "mlx-community/Qwen2.5-1.5B-Instruct-bf16", "pipeline_mode": "steer", "output_dir": "experiments/reasoning_diff/output/04_steer_inject_1.5b", "reports": ["steer_report.json"], "metrics": {}, "elapsed_seconds": 134.41}
