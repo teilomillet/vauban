@@ -2065,6 +2065,107 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
         ),
     ),
     SectionSpec(
+        name="intervention_eval",
+        description="Controlled intervention evaluation across prompt families.",
+        early_return=True,
+        config_class="InterventionEvalConfig",
+        fields=(
+            FieldSpec(
+                key="prompts",
+                description="Prompt list or typed prompt-family entries.",
+                constraints=(
+                    "list of strings, or array of tables with id/prompt_id"
+                    " and text; optional category."
+                ),
+                required=True,
+            ),
+            FieldSpec(
+                key="alphas",
+                description="Intervention strengths to evaluate.",
+                constraints="non-empty list of numbers; include baseline_alpha.",
+            ),
+            FieldSpec(
+                key="baseline_alpha",
+                description="Condition used as the behavioral baseline.",
+                constraints="number present in alphas; default 0.0.",
+            ),
+            FieldSpec(
+                key="layers",
+                description="Layer subset to intervene on.",
+                constraints="list of integers or null (null means all layers).",
+            ),
+            FieldSpec(
+                key="max_tokens",
+                description="Generation cap per prompt and alpha.",
+                constraints="integer >= 1.",
+            ),
+            FieldSpec(
+                key="target",
+                description="Human-readable target direction or intervention name.",
+                constraints='string; default: "measured_direction".',
+            ),
+            FieldSpec(
+                key="kind",
+                description="Behavior-report intervention kind.",
+                constraints=(
+                    "one of activation_steering, activation_ablation,"
+                    " activation_addition, weight_projection,"
+                    " weight_arithmetic, prompt_template, sampling, other."
+                ),
+            ),
+            FieldSpec(
+                key="behavior_metric",
+                description="Behavior metric label used in emitted report rows.",
+                constraints='string; default: "refusal_style_rate".',
+            ),
+            FieldSpec(
+                key="activation_metric",
+                description="Activation metric label used in emitted report rows.",
+                constraints='string; default: "mean_projection_delta".',
+            ),
+            FieldSpec(
+                key="refusal_phrases",
+                description="Phrase list for simple refusal-style scoring.",
+                constraints="non-empty list of strings; defaults to built-ins.",
+            ),
+            FieldSpec(
+                key="record_outputs",
+                description="Whether to include generated text in JSON output.",
+                constraints="boolean; default false.",
+            ),
+            FieldSpec(
+                key="json_filename",
+                description="JSON artifact filename inside [output].dir.",
+                constraints='string; default: "intervention_eval_report.json".',
+            ),
+            FieldSpec(
+                key="markdown_filename",
+                description="Markdown artifact filename inside [output].dir.",
+                constraints='string; default: "intervention_eval_report.md".',
+            ),
+            FieldSpec(
+                key="toml_fragment_filename",
+                description="TOML fragment containing behavior-report rows.",
+                constraints='string; default: "intervention_results.toml".',
+            ),
+            FieldSpec(
+                key="limitations",
+                description="Limitations attached to emitted intervention results.",
+                constraints="list of strings.",
+            ),
+        ),
+        notes=(
+            (
+                "This mode runs after [measure], sweeps every prompt across"
+                " every alpha, and returns before cut/export."
+            ),
+            (
+                "It intentionally uses simple phrase and projection metrics so"
+                " larger prompt-family sweeps are cheap and reproducible."
+            ),
+        ),
+    ),
+    SectionSpec(
         name="sss",
         description="Sensitivity-scaled steering via Jacobian analysis.",
         early_return=True,
@@ -4185,7 +4286,7 @@ def _known_quick_functions() -> tuple[str, ...]:
 
 _MODE_CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Core Pipeline", ("default", "optimize", "lora_export", "lora_analysis")),
-    ("Runtime Inspection", ("probe", "steer", "depth")),
+    ("Runtime Inspection", ("probe", "steer", "intervention_eval", "depth")),
     ("Defense", ("guard", "cast", "sic", "defend", "repbend")),
     ("Adversarial", ("softprompt", "fusion", "sss", "flywheel")),
     ("Analysis", (

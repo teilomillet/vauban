@@ -210,6 +210,31 @@ evidence = ["probe_report"]
 limitations = ["Single small prompt family."]
 ```
 
+The empirical runner for this is `[intervention_eval]`. It is intentionally
+simple: measure a direction, sweep prompt-family examples across alpha
+conditions, score generated outputs with cheap phrase/projection metrics, and
+emit both a machine-readable report and a TOML fragment for
+`[[behavior_report.intervention_results]]`.
+
+```toml
+[intervention_eval]
+alphas = [-1.0, 0.0, 1.0]
+baseline_alpha = 0.0
+layers = [23]
+target = "measured_refusal_direction"
+kind = "activation_steering"
+record_outputs = false
+
+[[intervention_eval.prompts]]
+id = "benign-001"
+category = "benign_request"
+text = "Explain why rainbows form."
+```
+
+That is the bitter-lesson version of the feature: make the loop cheap,
+repeatable, and scalable first; let stronger judges and richer metrics be
+replaceable scoring layers later.
+
 ## Reproduction Targets
 
 Vauban should become credible by reproducing and extending model-behavior work

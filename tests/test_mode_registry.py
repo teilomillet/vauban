@@ -21,6 +21,8 @@ from vauban.types import (
     DefenseStackConfig,
     DepthConfig,
     EvalConfig,
+    InterventionEvalConfig,
+    InterventionEvalPrompt,
     OptimizeConfig,
     PipelineConfig,
     ProbeConfig,
@@ -99,6 +101,19 @@ class TestEarlyModePredicates:
     def test_has_steer(self) -> None:
         config = _minimal_config(steer=SteerConfig(prompts=["test"], alpha=1.0))
         assert "[steer]" in active_early_modes(config)
+
+    def test_has_intervention_eval(self) -> None:
+        config = _minimal_config(
+            intervention_eval=InterventionEvalConfig(
+                prompts=[
+                    InterventionEvalPrompt(
+                        prompt_id="p1",
+                        prompt="Explain rainbows.",
+                    ),
+                ],
+            ),
+        )
+        assert "[intervention_eval]" in active_early_modes(config)
 
     def test_has_cast(self) -> None:
         config = _minimal_config(cast=CastConfig(prompts=["test"], threshold=0.1))
@@ -260,6 +275,7 @@ class TestEarlyModeSpecs:
         assert spec_map["[features]"].requires_direction is False
         assert spec_map["[probe]"].requires_direction is True
         assert spec_map["[steer]"].requires_direction is True
+        assert spec_map["[intervention_eval]"].requires_direction is True
         assert spec_map["[cast]"].requires_direction is True
         assert spec_map["[sic]"].requires_direction is False
         assert spec_map["[optimize]"].requires_direction is True
@@ -277,6 +293,7 @@ class TestEarlyModeSpecs:
         assert spec_map["[features]"].phase == "before_prompts"
         assert spec_map["[probe]"].phase == "after_measure"
         assert spec_map["[steer]"].phase == "after_measure"
+        assert spec_map["[intervention_eval]"].phase == "after_measure"
         assert spec_map["[cast]"].phase == "after_measure"
         assert spec_map["[sic]"].phase == "after_measure"
         assert spec_map["[optimize]"].phase == "after_measure"

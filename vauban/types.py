@@ -1373,6 +1373,92 @@ class SteerConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class InterventionEvalPrompt:
+    """One prompt-family member for controlled intervention evaluation."""
+
+    prompt_id: str
+    prompt: str
+    category: str = "default"
+
+
+@dataclass(frozen=True, slots=True)
+class InterventionEvalConfig:
+    """Configuration for controlled activation-intervention evaluation."""
+
+    prompts: list[InterventionEvalPrompt]
+    alphas: list[float] = field(default_factory=lambda: [-1.0, 0.0, 1.0])
+    baseline_alpha: float = 0.0
+    layers: list[int] | None = None
+    max_tokens: int = 80
+    target: str = "measured_direction"
+    kind: str = "activation_steering"
+    behavior_metric: str = "refusal_style_rate"
+    activation_metric: str = "mean_projection_delta"
+    refusal_phrases: list[str] = field(default_factory=list)
+    limitations: list[str] = field(default_factory=list)
+    record_outputs: bool = False
+    json_filename: str = "intervention_eval_report.json"
+    markdown_filename: str = "intervention_eval_report.md"
+    toml_fragment_filename: str = "intervention_results.toml"
+
+
+@dataclass(frozen=True, slots=True)
+class InterventionPromptResult:
+    """One generated intervention-evaluation observation."""
+
+    prompt_id: str
+    category: str
+    alpha: float
+    refused: bool
+    mean_projection_before: float
+    mean_projection_after: float
+    output_text: str | None = None
+
+    @property
+    def projection_delta(self) -> float:
+        """Return after-minus-before mean projection delta."""
+        return self.mean_projection_after - self.mean_projection_before
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to a JSON-compatible dictionary."""
+        payload: dict[str, object] = {
+            "prompt_id": self.prompt_id,
+            "category": self.category,
+            "alpha": self.alpha,
+            "refused": self.refused,
+            "mean_projection_before": self.mean_projection_before,
+            "mean_projection_after": self.mean_projection_after,
+            "projection_delta": self.projection_delta,
+        }
+        if self.output_text is not None:
+            payload["output_text"] = self.output_text
+        return payload
+
+
+@dataclass(frozen=True, slots=True)
+class InterventionConditionSummary:
+    """Aggregate metrics for one intervention alpha condition."""
+
+    alpha: float
+    n_prompts: int
+    refusal_style_rate: float
+    mean_projection_before: float
+    mean_projection_after: float
+    mean_projection_delta: float
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to a JSON-compatible dictionary."""
+        return {
+            "alpha": self.alpha,
+            "n_prompts": self.n_prompts,
+            "refusal_style_rate": self.refusal_style_rate,
+            "mean_projection_before": self.mean_projection_before,
+            "mean_projection_after": self.mean_projection_after,
+            "mean_projection_delta": self.mean_projection_delta,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class SSSConfig:
     """Configuration for Sensitivity-Scaled Steering (SSS).
 
@@ -3044,6 +3130,7 @@ class PipelineConfig:
     depth: DepthConfig | None = None
     probe: ProbeConfig | None = None
     steer: SteerConfig | None = None
+    intervention_eval: InterventionEvalConfig | None = None
     sss: SSSConfig | None = None
     awareness: AwarenessConfig | None = None
     cast: CastConfig | None = None

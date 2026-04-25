@@ -58,6 +58,7 @@ _EXPECTED_SECTION_ORDER: list[str] = [
     "svf",
     "probe",
     "steer",
+    "intervention_eval",
     "sss",
     "awareness",
     "eval",

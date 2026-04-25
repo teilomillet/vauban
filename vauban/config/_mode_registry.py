@@ -152,6 +152,20 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "steer_report.json.",
     ),
     EarlyModeSpec(
+        "[intervention_eval]",
+        "intervention_eval",
+        "after_measure",
+        True,
+        _field_is_set("intervention_eval"),
+        "Controlled intervention evaluation across prompt families.",
+        "controlled intervention evaluation",
+        "[intervention_eval] section present.",
+        (
+            "intervention_eval_report.json + intervention_eval_report.md +"
+            " intervention_results.toml."
+        ),
+    ),
+    EarlyModeSpec(
         "[sss]",
         "sss",
         "after_measure",

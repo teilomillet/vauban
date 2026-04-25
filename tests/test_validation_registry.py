@@ -32,6 +32,8 @@ from vauban.types import (
     FlywheelConfig,
     FusionConfig,
     GuardConfig,
+    InterventionEvalConfig,
+    InterventionEvalPrompt,
     JailbreakConfig,
     LinearProbeConfig,
     LoraAnalysisConfig,
@@ -72,6 +74,7 @@ _EXPECTED_EARLY_MODE_ORDER: list[str] = [
     "[features]",
     "[probe]",
     "[steer]",
+    "[intervention_eval]",
     "[sss]",
     "[awareness]",
     "[audit]",
@@ -179,7 +182,8 @@ def test_validation_warning_content_and_order_for_conflict_fixture(
             "[HIGH] Multiple early-return modes active: [depth], [probe]"
             " — only the first will run (precedence: remote"
             " > api_eval > ai_act > behavior_report > depth > svf > features"
-            " > probe > steer > sss > awareness > audit > guard > cast > sic"
+            " > probe > steer > intervention_eval > sss > awareness"
+            " > audit > guard > cast > sic"
             " > optimize > compose_optimize"
             " > softprompt > jailbreak > defend > circuit > linear_probe > fusion"
             " > repbend > lora_export > lora_analysis > flywheel)"
@@ -264,6 +268,14 @@ def test_active_early_modes_precedence_matches_legacy_behavior() -> None:
         ),
         probe=ProbeConfig(prompts=["probe"]),
         steer=SteerConfig(prompts=["steer"]),
+        intervention_eval=InterventionEvalConfig(
+            prompts=[
+                InterventionEvalPrompt(
+                    prompt_id="p1",
+                    prompt="Explain rainbows.",
+                ),
+            ],
+        ),
         sss=SSSConfig(prompts=["sss"]),
         awareness=AwarenessConfig(prompts=["awareness"]),
         guard=GuardConfig(prompts=["guard"]),

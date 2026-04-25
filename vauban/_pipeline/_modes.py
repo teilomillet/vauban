@@ -22,6 +22,7 @@ from vauban._pipeline._mode_features import _run_features_mode
 from vauban._pipeline._mode_flywheel import _run_flywheel_mode
 from vauban._pipeline._mode_fusion import _run_fusion_mode
 from vauban._pipeline._mode_guard import _run_guard_mode
+from vauban._pipeline._mode_intervention_eval import _run_intervention_eval_mode
 from vauban._pipeline._mode_jailbreak import _run_jailbreak_mode
 from vauban._pipeline._mode_linear_probe import _run_linear_probe_mode
 from vauban._pipeline._mode_lora_analysis import _run_lora_analysis_mode
@@ -53,6 +54,7 @@ EARLY_MODE_RUNNERS: dict[str, EarlyModeRunner] = {
     "features": _run_features_mode,
     "probe": _run_probe_mode,
     "steer": _run_steer_mode,
+    "intervention_eval": _run_intervention_eval_mode,
     "sss": _run_sss_mode,
     "awareness": _run_awareness_mode,
     "guard": _run_guard_mode,

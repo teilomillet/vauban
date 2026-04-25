@@ -16,6 +16,8 @@ from vauban.config._mode_registry import (
 )
 from vauban.types import (
     DepthConfig,
+    InterventionEvalConfig,
+    InterventionEvalPrompt,
     ProbeConfig,
     SteerConfig,
 )
@@ -70,6 +72,29 @@ class TestDispatchCallsRunner:
             result = dispatch_early_mode("after_measure", ctx)
             assert result is True
             EARLY_MODE_RUNNERS["steer"].assert_called_once_with(ctx)
+
+    def test_intervention_eval_mode_dispatched(self, tmp_path: Path) -> None:
+        eval_cfg = InterventionEvalConfig(
+            prompts=[
+                InterventionEvalPrompt(
+                    prompt_id="p1",
+                    prompt="Explain rainbows.",
+                ),
+            ],
+        )
+        dr = make_direction_result()
+        ctx = make_early_mode_context(
+            tmp_path,
+            intervention_eval=eval_cfg,
+            direction_result=dr,
+        )
+        with patch.dict(
+            EARLY_MODE_RUNNERS,
+            {"intervention_eval": MagicMock()},
+        ):
+            result = dispatch_early_mode("after_measure", ctx)
+            assert result is True
+            EARLY_MODE_RUNNERS["intervention_eval"].assert_called_once_with(ctx)
 
 
 class TestDispatchRequiresDirection:

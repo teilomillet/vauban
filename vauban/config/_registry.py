@@ -27,6 +27,7 @@ from vauban.config._parse_flywheel import _parse_flywheel
 from vauban.config._parse_fusion import _parse_fusion
 from vauban.config._parse_guard import _parse_guard
 from vauban.config._parse_intent import _parse_intent
+from vauban.config._parse_intervention_eval import _parse_intervention_eval
 from vauban.config._parse_jailbreak import _parse_jailbreak
 from vauban.config._parse_linear_probe import _parse_linear_probe
 from vauban.config._parse_lora_analysis import _parse_lora_analysis
@@ -67,6 +68,7 @@ from vauban.types import (
     FusionConfig,
     GuardConfig,
     IntentConfig,
+    InterventionEvalConfig,
     JailbreakConfig,
     LinearProbeConfig,
     LoraAnalysisConfig,
@@ -115,6 +117,7 @@ type _SectionParserResult = (  # pragma: no cover
     | FlywheelConfig
     | FusionConfig
     | IntentConfig
+    | InterventionEvalConfig
     | JailbreakConfig
     | LinearProbeConfig
     | LoraAnalysisConfig
@@ -190,6 +193,7 @@ class ParsedSectionValues:
     scan: ScanConfig | None
     policy: PolicyConfig | None
     intent: IntentConfig | None
+    intervention_eval: InterventionEvalConfig | None
     jailbreak: JailbreakConfig | None
     defend: DefenseStackConfig | None
     circuit: CircuitConfig | None
@@ -271,6 +275,12 @@ SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     SectionParseSpec("svf", "svf", _parse_svf, 95, call="base_dir_raw"),
     SectionParseSpec("probe", "probe", _parse_probe, 100),
     SectionParseSpec("steer", "steer", _parse_steer, 110),
+    SectionParseSpec(
+        "intervention_eval",
+        "intervention_eval",
+        _parse_intervention_eval,
+        111,
+    ),
     SectionParseSpec("sss", "sss", _parse_sss, 112),
     SectionParseSpec("awareness", "awareness", _parse_awareness, 113),
     SectionParseSpec("eval", "eval", _parse_eval, 120, call="base_dir_raw"),
