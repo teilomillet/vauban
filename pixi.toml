@@ -1,0 +1,95 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
+[workspace]
+name = "vauban"
+channels = ["https://prefix.dev/conda-forge"]
+platforms = ["linux-64", "osx-arm64"]
+requires-pixi = ">=0.40"
+
+[dependencies]
+python = ">=3.12,<3.14"
+
+[pypi-dependencies]
+ordeal = { git = "https://github.com/teilomillet/ordeal", rev = "v0.3.33" }
+pypdf = ">=6.9.2"
+reportlab = ">=4.4.10"
+
+[tasks]
+backend = { cmd = "python scripts/check_backend.py", env = { PYTHONPATH = "." } }
+backend-cuda = { cmd = "python scripts/check_backend.py --backend torch --require-cuda", env = { PYTHONPATH = "." } }
+lint = "ruff check ."
+typecheck = "ty check --python $CONDA_PREFIX"
+typecheck-torch = "ty check --python $CONDA_PREFIX --ignore unresolved-import --ignore unused-type-ignore-comment --ignore unused-ignore-comment"
+test = { cmd = "pytest -q", env = { PYTHONPATH = "." } }
+test-torch = { cmd = "pytest -q tests/test_model_backend.py tests/test_torch_backend_fake.py tests/test_config_loader.py tests/test_direction_cli.py tests/test_core_small_modules.py tests/test_ops_contract.py", env = { PYTHONPATH = "." } }
+license-check = "python scripts/license_headers.py --check"
+docs = "mkdocs build"
+build = "python -m build"
+check = { depends-on = ["lint", "typecheck", "license-check", "test"] }
+check-torch = { depends-on = ["lint", "typecheck-torch", "license-check", "test-torch"] }
+
+[feature.dev.pypi-dependencies]
+hypothesis = ">=6.100"
+matplotlib = ">=3.10.8"
+pytest = "*"
+pytest-asyncio = "*"
+pytest-cov = ">=7.1.0"
+ruff = "*"
+scipy = ">=1.17.1"
+ty = "==0.0.18"
+
+[feature.torch]
+platforms = ["linux-64"]
+activation = { env = { VAUBAN_BACKEND = "torch" } }
+
+[feature.torch.system-requirements]
+cuda = "12"
+
+[feature.torch.dependencies]
+pytorch-gpu = "*"
+cuda-version = "12.6.*"
+
+[feature.torch.pypi-dependencies]
+transformers = ">=4.36"
+accelerate = ">=0.26"
+huggingface-hub = ">=0.20"
+safetensors = ">=0.4"
+
+[feature.torch-cpu]
+platforms = ["linux-64"]
+activation = { env = { VAUBAN_BACKEND = "torch" } }
+
+[feature.torch-cpu.dependencies]
+pytorch-cpu = "*"
+
+[feature.torch-cpu.pypi-dependencies]
+transformers = ">=4.36"
+accelerate = ">=0.26"
+huggingface-hub = ">=0.20"
+safetensors = ">=0.4"
+
+[feature.mlx]
+platforms = ["osx-arm64"]
+activation = { env = { VAUBAN_BACKEND = "mlx" } }
+
+[feature.mlx.pypi-dependencies]
+mlx = ">=0.22"
+mlx-lm = ">=0.21"
+
+[feature.docs.pypi-dependencies]
+mkdocs-material = ">=9.5"
+
+[feature.package.pypi-dependencies]
+build = ">=1.3"
+
+[environments]
+default = { features = ["torch", "dev"], solve-group = "torch" }
+torch = { features = ["torch"], solve-group = "torch" }
+torch-dev = { features = ["torch", "dev"], solve-group = "torch" }
+torch-cpu = { features = ["torch-cpu"], solve-group = "torch-cpu" }
+torch-cpu-dev = { features = ["torch-cpu", "dev"], solve-group = "torch-cpu" }
+mlx = { features = ["mlx"], solve-group = "mlx" }
+mlx-dev = { features = ["mlx", "dev"], solve-group = "mlx" }
+docs = { features = ["docs"], solve-group = "docs" }
+package = { features = ["package"], solve-group = "package" }

@@ -99,24 +99,16 @@ def load_config(path: str | Path) -> PipelineConfig:
         raise ValueError(msg)
 
     # -- backend --
-    from vauban._backend import SUPPORTED_BACKENDS
+    from vauban._backend import resolve_backend
 
-    backend = "mlx"
     backend_raw = raw.get("backend")
-    if backend_raw is not None:
-        if not isinstance(backend_raw, str):
-            msg = (
-                f"backend must be a string,"
-                f" got {type(backend_raw).__name__}"
-            )
-            raise TypeError(msg)
-        if backend_raw not in SUPPORTED_BACKENDS:
-            msg = (
-                f"backend must be one of {sorted(SUPPORTED_BACKENDS)},"
-                f" got {backend_raw!r}"
-            )
-            raise ValueError(msg)
-        backend = backend_raw
+    if backend_raw is not None and not isinstance(backend_raw, str):
+        msg = (
+            f"backend must be a string,"
+            f" got {type(backend_raw).__name__}"
+        )
+        raise TypeError(msg)
+    backend = resolve_backend(backend_raw)
 
     # -- verbose --
     verbose = True
@@ -143,7 +135,7 @@ def load_config(path: str | Path) -> PipelineConfig:
         harmful_path=harmful_path,
         harmless_path=harmless_path,
         backend=backend,
-        **section_kwargs,  # type: ignore[arg-type]
+        **section_kwargs,  # ty: ignore[invalid-argument-type]
         meta=meta_config,
         output_dir=output_dir,
         borderline_path=borderline_path,

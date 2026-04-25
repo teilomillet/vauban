@@ -30,8 +30,8 @@ text and records only aggregate metrics.
 | Prompt families | 4 refusal-triggering prompts, 4 benign-control prompts |
 | Intervention prompts | 4 safe/meta-level boundary prompts |
 | Public prompt policy | Prompt text omitted; aggregate metrics only |
-| Diagnostic command | `VAUBAN_INTEGRATION=1 uv run pytest tests/test_integration.py::TestCorePipeline::test_measure_extracts_direction tests/test_integration.py::TestCorePipeline::test_probe_harmful_vs_harmless_contrast -q` |
-| Intervention command | `uv run vauban examples/reproductions/arditi_refusal_direction_intervention.toml` |
+| Diagnostic command | `VAUBAN_INTEGRATION=1 pixi run -e mlx-dev pytest tests/test_integration.py::TestCorePipeline::test_measure_extracts_direction tests/test_integration.py::TestCorePipeline::test_probe_harmful_vs_harmless_contrast -q` |
+| Intervention command | `pixi run -e mlx vauban examples/reproductions/arditi_refusal_direction_intervention.toml` |
 
 ## Observed Result
 
@@ -51,7 +51,7 @@ The integration check passed in repeated local runs.
 The intervention extension was run with:
 
 ```bash
-uv run vauban examples/reproductions/arditi_refusal_direction_intervention.toml
+pixi run -e mlx vauban examples/reproductions/arditi_refusal_direction_intervention.toml
 ```
 
 It used the measured direction at layer 23 and swept alpha values over four
@@ -105,6 +105,6 @@ The intervention config is
 They can be rendered with:
 
 ```bash
-uv run vauban examples/reproductions/arditi_refusal_direction_intervention.toml
-uv run vauban examples/reproductions/arditi_refusal_direction_lite.toml
+pixi run -e mlx vauban examples/reproductions/arditi_refusal_direction_intervention.toml
+pixi run -e mlx vauban examples/reproductions/arditi_refusal_direction_lite.toml
 ```

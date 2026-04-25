@@ -29,9 +29,9 @@ pytestmark = pytest.mark.skipif(
     get_backend() != "mlx", reason="MLX-only integration test",
 )
 
-import mlx.core as mx  # noqa: E402
-import mlx_lm  # noqa: E402
-from mlx.utils import tree_flatten  # noqa: E402
+mx = pytest.importorskip("mlx.core")
+mlx_lm = pytest.importorskip("mlx_lm")
+tree_flatten = pytest.importorskip("mlx.utils").tree_flatten
 
 from vauban.cut import cut, target_weight_keys  # noqa: E402
 from vauban.dequantize import dequantize_model, is_quantized  # noqa: E402

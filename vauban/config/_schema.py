@@ -10,7 +10,6 @@ from dataclasses import MISSING, Field, dataclass, fields, is_dataclass
 from pathlib import Path
 from types import NoneType, UnionType
 from typing import (
-    TYPE_CHECKING,
     Literal,
     Union,
     cast,
@@ -63,9 +62,6 @@ from vauban.types import (
     SurfaceConfig,
     SVFConfig,
 )
-
-if TYPE_CHECKING:  # pragma: no cover
-    from collections.abc import Callable
 
 type JsonSchema = dict[str, object]
 
@@ -202,7 +198,10 @@ def generate_config_schema() -> JsonSchema:
             "type": "string",
             "enum": sorted(SUPPORTED_BACKENDS),
             "default": "mlx",
-            "description": "Runtime tensor backend.",
+            "description": (
+                "Runtime tensor backend. If omitted, VAUBAN_BACKEND selects "
+                "the runtime when set; otherwise MLX is used."
+            ),
         },
         "verbose": {
             "type": "boolean",
@@ -516,8 +515,7 @@ def _default_for_field(field: Field[object]) -> object | None:
     if field.default is not MISSING:
         return _json_compatible_default(field.default)
     if field.default_factory is not MISSING:
-        default_factory = cast("Callable[[], object]", field.default_factory)
-        return _json_compatible_default(default_factory())
+        return _json_compatible_default(field.default_factory())
     return None
 
 

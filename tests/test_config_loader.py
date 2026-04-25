@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -15,6 +16,9 @@ from vauban.config._loader import (
     _is_standalone_behavior_report,
     _resolve_single_data,
 )
+
+if TYPE_CHECKING:
+    from vauban.config._types import TomlDict
 
 
 class TestLoadConfigMinimal:
@@ -277,6 +281,22 @@ class TestOutputDirResolution:
 
 
 class TestBackendValidation:
+    def test_backend_defaults_to_environment_when_omitted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        toml_file = tmp_path / "env_backend.toml"
+        toml_file.write_text(
+            '[model]\npath = "test"\n'
+            "[data]\n"
+            'harmful = "h.jsonl"\n'
+            'harmless = "hl.jsonl"\n'
+        )
+        monkeypatch.setenv("VAUBAN_BACKEND", "torch")
+
+        config = load_config(toml_file)
+
+        assert config.backend == "torch"
+
     def test_backend_must_be_string(self, tmp_path: Path) -> None:
         toml_file = tmp_path / "bad_backend.toml"
         toml_file.write_text(
@@ -317,25 +337,25 @@ class TestIsStandaloneApiEval:
 
     def test_true_with_token_text(self) -> None:
         """Returns True when api_eval has a non-empty token_text string."""
-        raw = {"api_eval": {"token_text": "some suffix"}}
+        raw: TomlDict = {"api_eval": {"token_text": "some suffix"}}
         assert _is_standalone_api_eval(raw) is True
 
     def test_false_without_api_eval(self) -> None:
         """Returns False when no api_eval section exists."""
-        raw = {"model": {"path": "test"}}
+        raw: TomlDict = {"model": {"path": "test"}}
         assert _is_standalone_api_eval(raw) is False
 
     def test_false_with_empty_token_text(self) -> None:
         """Returns False when token_text is an empty string."""
-        raw = {"api_eval": {"token_text": ""}}
+        raw: TomlDict = {"api_eval": {"token_text": ""}}
         assert _is_standalone_api_eval(raw) is False
 
     def test_false_with_non_string_token_text(self) -> None:
         """Returns False when token_text is not a string."""
-        raw = {"api_eval": {"token_text": 42}}
+        raw: TomlDict = {"api_eval": {"token_text": 42}}
         assert _is_standalone_api_eval(raw) is False
 
     def test_false_without_token_text_key(self) -> None:
         """Returns False when api_eval exists but has no token_text."""
-        raw = {"api_eval": {"max_tokens": 100}}
+        raw: TomlDict = {"api_eval": {"max_tokens": 100}}
         assert _is_standalone_api_eval(raw) is False

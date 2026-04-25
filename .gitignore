@@ -15,6 +15,9 @@ venv/
 # uv
 .uv-cache/
 
+# pixi
+.pixi/
+
 # Environment
 .env
 .env.*

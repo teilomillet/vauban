@@ -8,14 +8,15 @@ import importlib
 from types import ModuleType
 from typing import TYPE_CHECKING, cast
 
-import mlx.core as mx
-import mlx.nn as nn
 import pytest
 
-import vauban.dequantize as dequantize_module
-from tests.conftest import MockCausalLM
-from vauban._backend import get_backend
-from vauban.dequantize import dequantize_model, is_quantized
+mx = pytest.importorskip("mlx.core")
+nn = pytest.importorskip("mlx.nn")
+
+import vauban.dequantize as dequantize_module  # noqa: E402
+from tests.conftest import MockCausalLM  # noqa: E402
+from vauban._backend import get_backend  # noqa: E402
+from vauban.dequantize import dequantize_model, is_quantized  # noqa: E402
 
 if TYPE_CHECKING:
     from vauban.types import CausalLM

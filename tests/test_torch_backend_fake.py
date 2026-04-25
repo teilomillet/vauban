@@ -11,11 +11,18 @@ from types import ModuleType
 from typing import TYPE_CHECKING
 
 import numpy as np
+import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
-    import pytest
+
+@pytest.fixture(autouse=True)
+def _reload_real_torch_backend_after_fake_tests() -> Iterator[None]:
+    """Drop fake-backed modules so later tests import the selected backend."""
+    yield
+    sys.modules.pop("vauban._ops_torch", None)
+    sys.modules.pop("vauban._nn_torch", None)
 
 
 class FakeTensor:

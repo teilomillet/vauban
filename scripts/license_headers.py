@@ -30,6 +30,7 @@ TARGET_PATTERNS: tuple[str, ...] = (
     "examples/**/*.toml",
     "*.md",
     "pyproject.toml",
+    "pixi.toml",
     "mkdocs.yml",
     ".readthedocs.yaml",
 )

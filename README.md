@@ -90,36 +90,52 @@ defensive analysis, and reproducible research on model changes.
 
 ## Requirements
 
-- Apple Silicon Mac
+- Apple Silicon Mac for the MLX backend, or Linux with an NVIDIA GPU for the
+  PyTorch backend
 - Python 3.12+
-- [uv](https://docs.astral.sh/uv/)
+- [Pixi](https://pixi.sh/) for reproducible local and CI environments
 
 ## Install
 
-Install the released CLI:
+Install the project environment from this repo:
 
 ```bash
-uv tool install vauban
+pixi install -e torch-dev
 ```
 
-If your shell cannot find `vauban`, update your shell config once:
+On a Linux NVIDIA machine, verify the Torch/CUDA backend:
 
 ```bash
-uv tool update-shell
+pixi run -e torch-dev backend-cuda
 ```
 
-Then open a new shell and check the command:
+On Apple Silicon, use the MLX environment:
 
 ```bash
-vauban --help
-vauban man workflows
+pixi run -e mlx-dev backend
 ```
 
-For development from this repo:
+Run checks through the backend environment you are using:
 
 ```bash
-uv tool install --editable .
+pixi run -e torch-dev check-torch
+pixi run -e mlx-dev check
 ```
+
+`check-torch` is the current Torch backend-contract gate. The full legacy test
+suite still runs in the MLX environment while backend-neutral coverage is being
+expanded.
+
+Run the CLI through Pixi:
+
+```bash
+pixi run -e torch vauban --help
+pixi run -e mlx vauban man workflows
+```
+
+Use `backend = "torch"` in a TOML config for CUDA/PyTorch runs. Omit it, or set
+`backend = "mlx"`, for the MLX path. If `backend` is omitted, the active
+`VAUBAN_BACKEND` environment variable selects the runtime.
 
 Contributor workflow and repo policy live in [CONTRIBUTING.md](CONTRIBUTING.md).
 

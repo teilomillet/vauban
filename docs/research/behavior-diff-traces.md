@@ -31,8 +31,8 @@ checkpoints as long as both sides produce the same observation schema.
    evidence to add.
 
 ```bash
-uv run vauban examples/behavior_trace/refusal_boundary_lite.toml
-uv run vauban examples/behavior_diff/refusal_boundary_lite.toml
+pixi run -e mlx vauban examples/behavior_trace/refusal_boundary_lite.toml
+pixi run -e mlx vauban examples/behavior_diff/refusal_boundary_lite.toml
 ```
 
 The first command emits a trace such as

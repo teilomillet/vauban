@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 import sys
 from types import ModuleType
 from typing import cast
@@ -57,12 +58,16 @@ class TestBackendModule:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        original_backend = os.environ.get("VAUBAN_BACKEND")
         monkeypatch.setenv("VAUBAN_BACKEND", "torch")
         reloaded = importlib.reload(backend_module)
 
         assert reloaded.get_backend() == "torch"
 
-        monkeypatch.delenv("VAUBAN_BACKEND", raising=False)
+        if original_backend is None:
+            monkeypatch.delenv("VAUBAN_BACKEND", raising=False)
+        else:
+            monkeypatch.setenv("VAUBAN_BACKEND", original_backend)
         importlib.reload(backend_module)
 
     def test_set_backend_validates_and_respects_lock(

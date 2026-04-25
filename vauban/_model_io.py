@@ -7,12 +7,58 @@ Centralizes all model loading behind a small backend switch so callers can
 load a model without knowing which runtime is active.
 """
 
-from typing import cast
+import importlib
+from typing import Protocol, cast
 
 from vauban._backend import get_backend
 from vauban.types import CausalLM, Tokenizer
 
 _BACKEND = get_backend()
+
+
+class _MlxLmModule(Protocol):
+    """Subset of ``mlx_lm`` needed for model loading."""
+
+    def load(
+        self, model_path: str,
+    ) -> tuple[object, object, *tuple[object, ...]]:
+        """Load an MLX model and tokenizer."""
+
+
+class _AutoModelForCausalLM(Protocol):
+    """Subset of Transformers AutoModelForCausalLM used here."""
+
+    @classmethod
+    def from_pretrained(cls, model_path: str, **kwargs: object) -> "_LoadedHfModel":
+        """Load a HuggingFace causal LM."""
+
+
+class _AutoTokenizer(Protocol):
+    """Subset of Transformers AutoTokenizer used here."""
+
+    @classmethod
+    def from_pretrained(cls, model_path: str) -> object:
+        """Load a HuggingFace tokenizer."""
+
+
+class _TorchModule(Protocol):
+    """Subset of torch needed for model loading."""
+
+    float16: object
+
+
+class _LoadedHfModel(Protocol):
+    """Subset of a loaded HuggingFace model needed before wrapping."""
+
+    def eval(self) -> object:
+        """Switch the model to evaluation mode."""
+
+
+class _TransformersModule(Protocol):
+    """Subset of the Transformers module used here."""
+
+    AutoModelForCausalLM: type[_AutoModelForCausalLM]
+    AutoTokenizer: type[_AutoTokenizer]
 
 
 def _load_model_mlx(model_path: str) -> tuple[CausalLM, Tokenizer]:
@@ -24,10 +70,10 @@ def _load_model_mlx(model_path: str) -> tuple[CausalLM, Tokenizer]:
     Returns:
         ``(model, tokenizer)`` tuple.
     """
-    import mlx_lm
+    mlx_lm = cast("_MlxLmModule", importlib.import_module("mlx_lm"))
 
     model, tokenizer, *_ = mlx_lm.load(model_path)
-    return model, tokenizer  # type: ignore[return-value]
+    return cast("CausalLM", model), cast("Tokenizer", tokenizer)
 
 
 def _load_model_torch(model_path: str) -> tuple[CausalLM, Tokenizer]:
@@ -39,16 +85,18 @@ def _load_model_torch(model_path: str) -> tuple[CausalLM, Tokenizer]:
     Returns:
         ``(model, tokenizer)`` tuple.
     """
-    import torch  # ty: ignore[unresolved-import]
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-
+    torch = cast("_TorchModule", importlib.import_module("torch"))
+    transformers = cast(
+        "_TransformersModule",
+        importlib.import_module("transformers"),
+    )
     from vauban._model_torch import TorchCausalLMWrapper
 
-    hf_model = AutoModelForCausalLM.from_pretrained(
+    hf_model = transformers.AutoModelForCausalLM.from_pretrained(
         model_path, dtype=torch.float16, device_map="auto",
     )
     hf_model.eval()
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    tokenizer = transformers.AutoTokenizer.from_pretrained(model_path)
     return (
         cast("CausalLM", TorchCausalLMWrapper(hf_model)),
         cast("Tokenizer", tokenizer),

@@ -3,34 +3,48 @@
 
 # Getting Started
 
-Vauban is an MLX-native toolkit for understanding and reshaping how language models behave — from removing refusal directions to adding guardrails, modifying personas, and steering generation in real time. It operates directly on a model's activation geometry: measure a behavioral direction, cut it from the weights, probe it at inference, or steer around it (including conditional CAST steering).
+Vauban is a backend-aware toolkit for understanding and reshaping how language models behave — from removing refusal directions to adding guardrails, modifying personas, and steering generation in real time. It operates directly on a model's activation geometry: measure a behavioral direction, cut it from the weights, probe it at inference, or steer around it (including conditional CAST steering).
 
 Everything is driven by TOML configs. Write a config, run `vauban config.toml`, get results out.
 
 ## Requirements
 
-- Apple Silicon Mac (M1 or later)
+- Apple Silicon Mac (M1 or later) for MLX, or Linux with an NVIDIA GPU for
+  PyTorch/CUDA
 - Python >= 3.12
-- [uv](https://docs.astral.sh/uv/) (recommended)
+- [Pixi](https://pixi.sh/) for local and CI environments
 
 ## Install
-
-For direct CLI usage (`vauban ...`) from anywhere:
-
-```bash
-uv tool install vauban
-uv tool update-shell
-```
 
 For local development from source:
 
 ```bash
 git clone https://github.com/teilomillet/vauban.git
 cd vauban
-uv sync
+pixi install -e torch-dev
+pixi run -e torch-dev backend-cuda
 ```
 
-This installs `mlx`, `mlx-lm`, and dev tools (`ruff`, `ty`, `pytest`).
+On Apple Silicon, use:
+
+```bash
+pixi install -e mlx-dev
+pixi run -e mlx-dev backend
+```
+
+Run checks through your backend environment:
+
+```bash
+pixi run -e torch-dev check-torch
+pixi run -e mlx-dev check
+```
+
+`check-torch` is the current Torch backend-contract gate. The full legacy test
+suite still runs in the MLX environment while backend-neutral coverage is being
+expanded.
+
+Use `backend = "torch"` in a TOML config for CUDA/PyTorch runs. If `backend` is
+omitted, the active `VAUBAN_BACKEND` environment variable selects the runtime.
 
 ## Your first run
 

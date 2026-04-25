@@ -13,8 +13,6 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "mlx>=0.22",
-    "mlx-lm>=0.21",
     "ordeal>=0.3.21",
     "pypdf>=6.9.2",
     "reportlab>=4.4.10",
@@ -24,6 +22,10 @@ dependencies = [
 vauban = "vauban.__main__:main"
 
 [project.optional-dependencies]
+mlx = [
+    "mlx>=0.22",
+    "mlx-lm>=0.21",
+]
 optimize = ["optuna>=4.0"]
 torch = [
     "torch>=2.0",
@@ -48,9 +50,15 @@ dev = [
 [tool.ty.src]
 exclude = [".claude/**", "tests/**", "tmp/**"]
 
-# Torch backend: suppress unresolved-import for envs without torch installed.
+# Backend dispatch: suppress optional backend imports in single-backend envs.
 [[tool.ty.overrides]]
-include = ["vauban/_ops_torch.py", "vauban/_nn_torch.py", "vauban/_model_torch.py"]
+include = [
+    "vauban/_array.py",
+    "vauban/types.py",
+    "vauban/_ops_torch.py",
+    "vauban/_nn_torch.py",
+    "vauban/_model_torch.py",
+]
 [tool.ty.overrides.rules]
 unresolved-import = "ignore"
 

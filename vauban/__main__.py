@@ -309,9 +309,11 @@ def _set_backend_from_config(path: str) -> None:
     try:
         with open(path, "rb") as f:
             raw = tomllib.load(f)
-        backend = raw.get("backend", "mlx")
+        backend = raw.get("backend")
         if isinstance(backend, str):
             os.environ["VAUBAN_BACKEND"] = backend
+        elif "VAUBAN_BACKEND" not in os.environ:
+            os.environ["VAUBAN_BACKEND"] = "mlx"
     except Exception:
         pass  # Fall through — config errors will surface in load_config()
 

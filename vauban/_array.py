@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     import mlx.core as mx
 
     Array = mx.array
-    """Tensor type used throughout vauban. Currently mx.array (MLX)."""
+    """Tensor type used throughout vauban. Runtime selects MLX or Torch."""
 else:
     from vauban._backend import get_backend
 

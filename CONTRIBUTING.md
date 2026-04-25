@@ -5,22 +5,29 @@
 
 ## Setup
 
-Use the same local toolchain that CI runs:
+Use the same local toolchain that CI runs. Pick the environment that matches
+your backend:
 
 ```bash
-uv sync --frozen --group dev
+pixi install -e torch-dev
+pixi run -e torch-dev backend-cuda
 ```
+
+On Apple Silicon, use `pixi install -e mlx-dev` and
+`pixi run -e mlx-dev backend`.
 
 ## Required Checks
 
-Before opening a PR, run:
+Before opening a PR on Linux/Torch, run:
 
 ```bash
-uv run ruff check .
-uv run ty check
-uv run python scripts/license_headers.py --write
-uv run pytest -q
+pixi run -e torch-dev check-torch
 ```
+
+`check-torch` runs lint, a Torch-aware typecheck, SPDX validation, and the
+backend-contract tests. On Apple Silicon, run `pixi run -e mlx-dev check` for
+the full MLX suite. For Linux CPU-only CI parity, run
+`pixi run -e torch-cpu-dev check-torch`.
 
 CI also enforces the header check in `--check` mode, so missing SPDX headers
 will fail the build.
@@ -42,6 +49,7 @@ Current scope:
 - `examples/**/*.toml`
 - root `*.md`
 - `pyproject.toml`
+- `pixi.toml`
 - `mkdocs.yml`
 - `.readthedocs.yaml`
 
@@ -57,5 +65,5 @@ that is a maintainer action and should be done by editing
 `scripts/license_headers.py`, then re-running:
 
 ```bash
-uv run python scripts/license_headers.py --write
+pixi run -e torch-dev python scripts/license_headers.py --write
 ```

@@ -146,34 +146,48 @@ class TestBestDirection:
 
 
 class TestSetBackendFromConfig:
-    def test_sets_env_var(self, tmp_path: Path) -> None:
+    def test_sets_env_var(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         from vauban.__main__ import _set_backend_from_config
 
         config = tmp_path / "run.toml"
         config.write_text('backend = "torch"\n[model]\npath = "test"\n')
 
-        # Clear any existing value
-        os.environ.pop("VAUBAN_BACKEND", None)
+        monkeypatch.delenv("VAUBAN_BACKEND", raising=False)
         _set_backend_from_config(str(config))
         assert os.environ.get("VAUBAN_BACKEND") == "torch"
-        # Cleanup
-        os.environ.pop("VAUBAN_BACKEND", None)
 
-    def test_defaults_to_mlx(self, tmp_path: Path) -> None:
+    def test_defaults_to_mlx(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         from vauban.__main__ import _set_backend_from_config
 
         config = tmp_path / "run.toml"
         config.write_text('[model]\npath = "test"\n')
 
-        os.environ.pop("VAUBAN_BACKEND", None)
+        monkeypatch.delenv("VAUBAN_BACKEND", raising=False)
         _set_backend_from_config(str(config))
         assert os.environ.get("VAUBAN_BACKEND") == "mlx"
-        os.environ.pop("VAUBAN_BACKEND", None)
 
-    def test_invalid_file_silently_fails(self) -> None:
+    def test_preserves_existing_env_when_config_omits_backend(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         from vauban.__main__ import _set_backend_from_config
 
-        os.environ.pop("VAUBAN_BACKEND", None)
+        config = tmp_path / "run.toml"
+        config.write_text('[model]\npath = "test"\n')
+
+        monkeypatch.setenv("VAUBAN_BACKEND", "torch")
+        _set_backend_from_config(str(config))
+        assert os.environ.get("VAUBAN_BACKEND") == "torch"
+
+    def test_invalid_file_silently_fails(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from vauban.__main__ import _set_backend_from_config
+
+        monkeypatch.delenv("VAUBAN_BACKEND", raising=False)
         # Should not raise
         _set_backend_from_config("/nonexistent/file.toml")
 

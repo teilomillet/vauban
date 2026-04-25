@@ -35,6 +35,18 @@ class LayerModule(Protocol):
     ) -> Array: ...
 
 
+class HeadModule(Protocol):
+    """Callable language-model head interface used by forward helpers."""
+
+    def __call__(self, h: Array) -> Array: ...
+
+
+class HasLMHead(Protocol):
+    """Model shape for architectures with an explicit language-model head."""
+
+    lm_head: HeadModule
+
+
 def get_transformer(model: CausalLM) -> TransformerModel:
     """Access the inner transformer, auto-detecting architecture."""
     from vauban._arch import get_inner_model, normalize_transformer
@@ -181,8 +193,7 @@ if TYPE_CHECKING or _BACKEND == "mlx":
     def lm_head_forward(model: CausalLM, h: Array) -> Array:
         """Apply the language model head (lm_head or tied embeddings)."""
         if hasattr(model, "lm_head"):
-            lm_head: nn.Module = model.lm_head  # type: ignore[attr-defined]
-            return lm_head(h)
+            return cast("HasLMHead", model).lm_head(h)
         return get_transformer(model).embed_tokens.as_linear(h)
 
     def extract_logits(result: Array | tuple[Array, ...]) -> Array:

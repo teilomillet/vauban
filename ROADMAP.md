@@ -54,9 +54,8 @@ tests. The next step is to tighten the gate, not to invent it from scratch.
 
 ```
 .github/workflows/ci.yml
-├── uv run ruff check .
-├── uv run ty check
-└── uv run pytest -q
+├── pixi run -e mlx-dev check
+└── pixi run -e torch-cpu-dev check-torch
 
 tests/test_integration.py
 ├── measure → probe → cut → evaluate on a real model

@@ -3,13 +3,14 @@
 
 """Tests for vauban._backend, _ops, _ops_mlx, _nn, and _array."""
 
-import mlx.core as mx
 import numpy as np
 import pytest
 
 from vauban._backend import SUPPORTED_BACKENDS, get_backend
 from vauban._nn_contract import NN_CONTRACT
 from vauban._ops_contract import OPS_CONTRACT
+
+mx = pytest.importorskip("mlx.core")
 
 # ── _backend ─────────────────────────────────────────────────────────
 
