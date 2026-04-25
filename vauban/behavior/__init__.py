@@ -5,8 +5,11 @@
 
 from vauban.behavior._markdown import render_behavior_report_markdown
 from vauban.behavior._primitives import (
+    AccessLevel,
+    AccessPolicy,
     ActivationFinding,
     BehaviorChatMessage,
+    BehaviorClaim,
     BehaviorExample,
     BehaviorMetric,
     BehaviorMetricDelta,
@@ -16,6 +19,10 @@ from vauban.behavior._primitives import (
     BehaviorSuite,
     BehaviorSuiteRef,
     ChatRole,
+    ClaimStatus,
+    ClaimStrength,
+    EvidenceKind,
+    EvidenceRef,
     ExampleRedaction,
     ExpectedBehavior,
     FindingSeverity,
@@ -26,12 +33,18 @@ from vauban.behavior._primitives import (
     ModelRole,
     ReportModelRef,
     ReproducibilityInfo,
+    ReproductionTarget,
+    TransformationKind,
+    TransformationRef,
     compare_behavior_metrics,
 )
 
 __all__ = [
+    "AccessLevel",
+    "AccessPolicy",
     "ActivationFinding",
     "BehaviorChatMessage",
+    "BehaviorClaim",
     "BehaviorExample",
     "BehaviorMetric",
     "BehaviorMetricDelta",
@@ -41,6 +54,10 @@ __all__ = [
     "BehaviorSuite",
     "BehaviorSuiteRef",
     "ChatRole",
+    "ClaimStatus",
+    "ClaimStrength",
+    "EvidenceKind",
+    "EvidenceRef",
     "ExampleRedaction",
     "ExpectedBehavior",
     "FindingSeverity",
@@ -51,6 +68,9 @@ __all__ = [
     "ModelRole",
     "ReportModelRef",
     "ReproducibilityInfo",
+    "ReproductionTarget",
+    "TransformationKind",
+    "TransformationRef",
     "compare_behavior_metrics",
     "render_behavior_report_markdown",
 ]

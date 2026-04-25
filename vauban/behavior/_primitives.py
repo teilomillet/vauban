@@ -20,6 +20,55 @@ type MetricQuality = Literal["improved", "regressed", "unchanged", "neutral"]
 type ExampleRedaction = Literal["safe", "redacted", "omitted"]
 type FindingSeverity = Literal["info", "low", "medium", "high", "critical"]
 type ChatRole = Literal["system", "user", "assistant"]
+type TransformationKind = Literal[
+    "fine_tune",
+    "reinforcement_fine_tune",
+    "checkpoint_update",
+    "prompt_template",
+    "quantization",
+    "merge",
+    "adapter_merge",
+    "steering",
+    "endpoint_update",
+    "evaluation_only",
+    "other",
+]
+type AccessLevel = Literal[
+    "single_snapshot",
+    "paired_outputs",
+    "logprobs",
+    "weights",
+    "activations",
+    "base_and_transformed",
+]
+type ClaimStrength = Literal[
+    "behavioral_profile",
+    "black_box_behavioral_diff",
+    "distributional_diff",
+    "weight_diff",
+    "activation_diagnostic",
+    "model_change_audit",
+]
+type ClaimStatus = Literal[
+    "planned",
+    "replicated",
+    "partially_replicated",
+    "not_replicated",
+    "inconclusive",
+    "extended",
+]
+type EvidenceKind = Literal[
+    "suite",
+    "trace",
+    "metric",
+    "run_report",
+    "logprobs",
+    "activation",
+    "weights",
+    "paper",
+    "manual_review",
+    "other",
+]
 type ExpectedBehavior = Literal[
     "refuse",
     "comply",
@@ -29,6 +78,23 @@ type ExpectedBehavior = Literal[
     "unknown",
 ]
 type MetricIdentity = tuple[str, str, str]
+
+_ACCESS_LEVEL_RANK: dict[AccessLevel, int] = {
+    "single_snapshot": 0,
+    "paired_outputs": 1,
+    "logprobs": 2,
+    "weights": 3,
+    "activations": 4,
+    "base_and_transformed": 5,
+}
+_CLAIM_STRENGTH_RANK: dict[ClaimStrength, int] = {
+    "behavioral_profile": 0,
+    "black_box_behavioral_diff": 1,
+    "distributional_diff": 2,
+    "weight_diff": 3,
+    "activation_diagnostic": 4,
+    "model_change_audit": 5,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -251,6 +317,179 @@ class BehaviorSuite:
             "metric_specs": [
                 metric_spec.to_dict() for metric_spec in self.metric_specs
             ],
+        })
+
+
+@dataclass(frozen=True, slots=True)
+class TransformationRef:
+    """The model transformation being audited by a behavior report."""
+
+    kind: TransformationKind
+    summary: str
+    before: str | None = None
+    after: str | None = None
+    method: str | None = None
+    source_ref: str | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+    metadata: dict[str, JsonValue] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate transformation metadata."""
+        _require_non_empty(self.summary, "summary")
+        if self.before is not None:
+            _require_non_empty(self.before, "before")
+        if self.after is not None:
+            _require_non_empty(self.after, "after")
+        if self.method is not None:
+            _require_non_empty(self.method, "method")
+        if self.source_ref is not None:
+            _require_non_empty(self.source_ref, "source_ref")
+        _require_non_empty_items(self.notes, "notes", allow_empty=True)
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        """Serialize to a JSON-compatible dictionary."""
+        return _drop_none({
+            "kind": self.kind,
+            "summary": self.summary,
+            "before": self.before,
+            "after": self.after,
+            "method": self.method,
+            "source_ref": self.source_ref,
+            "notes": list(self.notes),
+            "metadata": dict(self.metadata),
+        })
+
+
+@dataclass(frozen=True, slots=True)
+class AccessPolicy:
+    """Epistemic boundary for what a behavior report can claim."""
+
+    level: AccessLevel
+    claim_strength: ClaimStrength
+    available_evidence: tuple[str, ...] = field(default_factory=tuple)
+    missing_evidence: tuple[str, ...] = field(default_factory=tuple)
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Validate access-policy evidence labels."""
+        _require_non_empty_items(
+            self.available_evidence,
+            "available_evidence",
+            allow_empty=True,
+        )
+        _require_non_empty_items(
+            self.missing_evidence,
+            "missing_evidence",
+            allow_empty=True,
+        )
+        _require_non_empty_items(self.notes, "notes", allow_empty=True)
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        """Serialize to a JSON-compatible dictionary."""
+        return {
+            "level": self.level,
+            "claim_strength": self.claim_strength,
+            "available_evidence": list(self.available_evidence),
+            "missing_evidence": list(self.missing_evidence),
+            "notes": list(self.notes),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class EvidenceRef:
+    """One named evidence artifact used by claims in a report."""
+
+    evidence_id: str
+    kind: EvidenceKind
+    path_or_url: str | None = None
+    description: str | None = None
+
+    def __post_init__(self) -> None:
+        """Validate evidence identity and optional reference text."""
+        _require_non_empty(self.evidence_id, "evidence_id")
+        if self.path_or_url is not None:
+            _require_non_empty(self.path_or_url, "path_or_url")
+        if self.description is not None:
+            _require_non_empty(self.description, "description")
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        """Serialize to a JSON-compatible dictionary."""
+        return _drop_none({
+            "id": self.evidence_id,
+            "kind": self.kind,
+            "path_or_url": self.path_or_url,
+            "description": self.description,
+        })
+
+
+@dataclass(frozen=True, slots=True)
+class BehaviorClaim:
+    """A report claim with explicit access level, strength, and evidence."""
+
+    claim_id: str
+    statement: str
+    strength: ClaimStrength
+    access_level: AccessLevel
+    status: ClaimStatus = "planned"
+    evidence: tuple[str, ...] = field(default_factory=tuple)
+    limitations: tuple[str, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Validate claim identity, statement, and evidence references."""
+        _require_non_empty(self.claim_id, "claim_id")
+        _require_non_empty(self.statement, "statement")
+        _require_non_empty_items(self.evidence, "evidence", allow_empty=True)
+        _require_non_empty_items(
+            self.limitations,
+            "limitations",
+            allow_empty=True,
+        )
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        """Serialize to a JSON-compatible dictionary."""
+        return {
+            "id": self.claim_id,
+            "statement": self.statement,
+            "strength": self.strength,
+            "access_level": self.access_level,
+            "status": self.status,
+            "evidence": list(self.evidence),
+            "limitations": list(self.limitations),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ReproductionTarget:
+    """A paper or external claim that this report calibrates or extends."""
+
+    target_id: str
+    title: str
+    original_claim: str
+    planned_extension: str
+    source_url: str | None = None
+    status: ClaimStatus = "planned"
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Validate reproduction-target metadata."""
+        _require_non_empty(self.target_id, "target_id")
+        _require_non_empty(self.title, "title")
+        _require_non_empty(self.original_claim, "original_claim")
+        _require_non_empty(self.planned_extension, "planned_extension")
+        if self.source_url is not None:
+            _require_non_empty(self.source_url, "source_url")
+        _require_non_empty_items(self.notes, "notes", allow_empty=True)
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        """Serialize to a JSON-compatible dictionary."""
+        return _drop_none({
+            "id": self.target_id,
+            "title": self.title,
+            "source_url": self.source_url,
+            "original_claim": self.original_claim,
+            "planned_extension": self.planned_extension,
+            "status": self.status,
+            "notes": list(self.notes),
         })
 
 
@@ -495,11 +734,18 @@ class BehaviorReport:
     candidate: ReportModelRef
     suite: BehaviorSuiteRef
     target_change: str | None = None
+    transformation: TransformationRef | None = None
+    access: AccessPolicy | None = None
+    claims: tuple[BehaviorClaim, ...] = field(default_factory=tuple)
+    evidence: tuple[EvidenceRef, ...] = field(default_factory=tuple)
     findings: tuple[str, ...] = field(default_factory=tuple)
     metrics: tuple[BehaviorMetric, ...] = field(default_factory=tuple)
     metric_deltas: tuple[BehaviorMetricDelta, ...] = field(default_factory=tuple)
     activation_findings: tuple[ActivationFinding, ...] = field(default_factory=tuple)
     examples: tuple[BehaviorExample, ...] = field(default_factory=tuple)
+    reproduction_targets: tuple[ReproductionTarget, ...] = field(
+        default_factory=tuple,
+    )
     limitations: tuple[str, ...] = field(default_factory=tuple)
     recommendation: str | None = None
     reproducibility: ReproducibilityInfo | None = None
@@ -513,6 +759,20 @@ class BehaviorReport:
             _require_non_empty(self.target_change, "target_change")
         if self.recommendation is not None:
             _require_non_empty(self.recommendation, "recommendation")
+        _reject_duplicate_strings(
+            tuple(claim.claim_id for claim in self.claims),
+            "claims.id",
+        )
+        _reject_duplicate_strings(
+            tuple(evidence.evidence_id for evidence in self.evidence),
+            "evidence.id",
+        )
+        _reject_duplicate_strings(
+            tuple(target.target_id for target in self.reproduction_targets),
+            "reproduction_targets.id",
+        )
+        _validate_claim_evidence_refs(self.claims, self.evidence)
+        _validate_claim_bounds(self.access, self.claims)
         _require_non_empty_items(
             self.findings,
             "findings",
@@ -533,6 +793,14 @@ class BehaviorReport:
             "candidate": self.candidate.to_dict(),
             "suite": self.suite.to_dict(),
             "target_change": self.target_change,
+            "transformation": (
+                self.transformation.to_dict()
+                if self.transformation is not None
+                else None
+            ),
+            "access": self.access.to_dict() if self.access is not None else None,
+            "claims": [claim.to_dict() for claim in self.claims],
+            "evidence": [evidence.to_dict() for evidence in self.evidence],
             "findings": list(self.findings),
             "metrics": [metric.to_dict() for metric in self.metrics],
             "metric_deltas": [
@@ -542,6 +810,9 @@ class BehaviorReport:
                 finding.to_dict() for finding in self.activation_findings
             ],
             "examples": [example.to_dict() for example in self.examples],
+            "reproduction_targets": [
+                target.to_dict() for target in self.reproduction_targets
+            ],
             "limitations": list(self.limitations),
             "recommendation": self.recommendation,
             "reproducibility": (
@@ -557,7 +828,8 @@ class BehaviorReport:
             f"BehaviorReport: {self.baseline.label} vs {self.candidate.label},"
             f" suite={self.suite.name},"
             f" metrics={len(self.metrics)},"
-            f" deltas={len(self.metric_deltas)}"
+            f" deltas={len(self.metric_deltas)},"
+            f" claims={len(self.claims)}"
         )
 
 
@@ -603,6 +875,48 @@ def _index_metrics(
             raise ValueError(msg)
         indexed[metric.identity] = metric
     return indexed
+
+
+def _validate_claim_evidence_refs(
+    claims: tuple[BehaviorClaim, ...],
+    evidence_refs: tuple[EvidenceRef, ...],
+) -> None:
+    """Require claim evidence IDs to exist when a report declares evidence."""
+    if not evidence_refs:
+        return
+    known = {evidence.evidence_id for evidence in evidence_refs}
+    for claim in claims:
+        missing = tuple(ref for ref in claim.evidence if ref not in known)
+        if missing:
+            msg = (
+                f"claim {claim.claim_id!r} references undeclared evidence"
+                f" ids: {missing!r}"
+            )
+            raise ValueError(msg)
+
+
+def _validate_claim_bounds(
+    access: AccessPolicy | None,
+    claims: tuple[BehaviorClaim, ...],
+) -> None:
+    """Reject claims stronger than the report's declared access policy."""
+    if access is None:
+        return
+    max_strength = _CLAIM_STRENGTH_RANK[access.claim_strength]
+    max_access = _ACCESS_LEVEL_RANK[access.level]
+    for claim in claims:
+        if _CLAIM_STRENGTH_RANK[claim.strength] > max_strength:
+            msg = (
+                f"claim {claim.claim_id!r} strength {claim.strength!r}"
+                f" exceeds report claim_strength {access.claim_strength!r}"
+            )
+            raise ValueError(msg)
+        if _ACCESS_LEVEL_RANK[claim.access_level] > max_access:
+            msg = (
+                f"claim {claim.claim_id!r} access_level {claim.access_level!r}"
+                f" exceeds report access level {access.level!r}"
+            )
+            raise ValueError(msg)
 
 
 def _drop_none(data: dict[str, JsonValue]) -> dict[str, JsonValue]:

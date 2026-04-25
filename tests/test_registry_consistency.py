@@ -81,7 +81,7 @@ class TestModeRunnersCoverSpecs:
 # Sections that are parsed but don't come from a dataclass spec
 # (they have manual schema definitions in generate_config_schema).
 _MANUAL_SCHEMA_SECTIONS: frozenset[str] = frozenset({
-    "model", "data", "output",
+    "behavior_report", "model", "data", "output",
 })
 
 

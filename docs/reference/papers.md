@@ -65,6 +65,24 @@ Academic foundations organized by topic area. Each entry: authors, year, title, 
 
 **Lermen et al. (2025)** — "Weight Arithmetic Steering." Combines SVD of weight diffs across layers with arithmetic steering. Captures distributed safety effects. [arXiv:2511.05408](https://arxiv.org/abs/2511.05408)
 
+## Model transformations and model diffing
+
+**Panickssery et al. (2024)** — "Steering Llama 2 via Contrastive Activation Addition." Computes steering vectors from contrastive activation differences and applies them during inference; a clean calibration target for activation-aware behavior reports. [arXiv:2312.06681](https://arxiv.org/abs/2312.06681)
+
+**Wortsman et al. (2022)** — "Model soups: averaging weights of multiple fine-tuned models improves accuracy without increasing inference time." Weight averaging can improve accuracy and robustness without runtime cost, making it a useful model-transformation target for behavioral drift reports. [arXiv:2203.05482](https://arxiv.org/abs/2203.05482)
+
+**Yadav et al. (2023)** — "TIES-Merging: Resolving Interference When Merging Models." Frames model merging as an interference problem across fine-tuned task models, which maps naturally to Vauban's behavior-composition reports. [arXiv:2306.01708](https://arxiv.org/abs/2306.01708)
+
+**Anthropic (2024)** — "Insights on Crosscoder Model Diffing." Uses crosscoders to compare models through shared and model-specific features; useful background for access-aware activation diagnostics. [Anthropic](https://www.anthropic.com/research/crosscoder-model-diffing)
+
+**Transformer Circuits (2024)** — "Sparse Crosscoders for Cross-Layer Features and Model Diffing." Introduces cross-layer crosscoders and discusses model comparison/diffing as an interpretability method. [Transformer Circuits](https://transformer-circuits.pub/2024/crosscoders/index.html)
+
+**Anthropic (2026)** — "A diff tool for AI: Finding behavioral differences in new models." Frames model diffing by analogy to software diff and motivates finding behavioral differences introduced by model updates. [Anthropic](https://www.anthropic.com/research/diff-tool)
+
+**Aranguri & McGrath (2025)** — "Discovering Undesired Rare Behaviors via Model Diff Amplification." Amplifies before/after model differences to surface rare undesired behaviors after post-training. [Goodfire Research](https://www.goodfire.ai/research/model-diff-amplification)
+
+**Joad et al. (2026)** — "There Is More to Refusal in Large Language Models than a Single Direction." Argues refusal and non-compliance categories can be geometrically distinct while still sharing a refusal/over-refusal steering trade-off. [arXiv:2602.02132](https://arxiv.org/abs/2602.02132)
+
 ## Adaptive and dual-direction steering
 
 **AdaSteer — Anonymous (2025)** — Separate detect and steer directions for conditional activation steering. [arXiv:2504.09466](https://arxiv.org/abs/2504.09466)

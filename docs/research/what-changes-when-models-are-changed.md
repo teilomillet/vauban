@@ -151,7 +151,57 @@ findings = [
   "Uncertainty expression decreased under underspecification.",
 ]
 recommendation = "Run additional benign-request regression testing before deployment."
+
+[behavior_report.transformation]
+kind = "checkpoint_update"
+summary = "Compare checkpoint 1200 with checkpoint 2000 from one post-training run."
+before = "checkpoint-1200"
+after = "checkpoint-2000"
+method = "reinforcement_fine_tuning"
+
+[behavior_report.access]
+level = "base_and_transformed"
+claim_strength = "model_change_audit"
+available_evidence = ["paired_outputs", "behavior_metrics", "activations"]
+missing_evidence = ["training_data", "optimizer_state"]
+
+[[behavior_report.evidence]]
+id = "surface_report"
+kind = "run_report"
+path_or_url = "surface_report.json"
+
+[[behavior_report.claims]]
+id = "claim-overrefusal-regression"
+statement = "The later checkpoint increased over-refusal on ambiguous benign cases."
+strength = "model_change_audit"
+access_level = "base_and_transformed"
+evidence = ["surface_report"]
+limitations = ["Small behavior suite; rerun with paraphrase coverage."]
+
+[[behavior_report.reproduction_targets]]
+id = "arditi-2024-refusal-direction"
+title = "Refusal in Language Models Is Mediated by a Single Direction"
+source_url = "https://arxiv.org/abs/2406.11717"
+original_claim = "Refusal can be mediated by a one-dimensional activation-space direction."
+planned_extension = "Separate safety refusal, unsupported refusal, ambiguity, and over-refusal."
 ```
+
+## Reproduction Targets
+
+Vauban should become credible by reproducing and extending model-behavior work
+through the same report format. Each target should become a TOML-declared
+`[[behavior_report.reproduction_targets]]` entry, not just prose in a notebook.
+
+| Target | Why it matters for Vauban | Vauban-native extension |
+|---|---|---|
+| [Contrastive Activation Addition](https://arxiv.org/abs/2312.06681) | Clean activation-steering baseline. | Report side effects: refusal, uncertainty, verbosity, prompt sensitivity. |
+| [Refusal in Language Models Is Mediated by a Single Direction](https://arxiv.org/abs/2406.11717) | Foundational refusal-direction claim. | Split refusal into safety refusal, unsupported refusal, ambiguity, and over-refusal. |
+| [There Is More to Refusal than a Single Direction](https://arxiv.org/abs/2602.02132) | Tests whether refusal categories are geometrically distinct. | Compare single-direction and category-specific diagnostics in one report. |
+| [Editing Models with Task Arithmetic](https://arxiv.org/abs/2212.04089) | Treats fine-tune weight deltas as reusable task vectors. | Add behavioral side-effect diffs for task arithmetic operations. |
+| [Model Soups](https://arxiv.org/abs/2203.05482) | Shows weight averaging can improve performance without inference cost. | Audit whether averaging changes refusal, uncertainty, calibration, or style. |
+| [TIES-Merging](https://arxiv.org/abs/2306.01708) | Makes model merging an explicit interference problem. | Report behavior composition and regressions after merge operations. |
+| [Anthropic model diffing](https://www.anthropic.com/research/diff-tool) and [crosscoders](https://transformer-circuits.pub/2024/crosscoders/index.html) | Establish model diffing as a research neighborhood. | Keep Vauban's product surface report-shaped and access-aware. |
+| [Goodfire model diff amplification](https://www.goodfire.ai/research/model-diff-amplification) | Focuses diffs on rare undesired behaviors introduced by post-training. | Add rare-behavior surfacing as a future evidence source in reports. |
 
 ## What This Means for Vauban
 
@@ -174,4 +224,3 @@ reports.
 The first-order identity is therefore:
 
 > Vauban produces access-aware behavioral reports of model transformations.
-

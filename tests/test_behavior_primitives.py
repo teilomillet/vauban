@@ -8,8 +8,10 @@ from dataclasses import FrozenInstanceError
 import pytest
 
 from vauban.behavior import (
+    AccessPolicy,
     ActivationFinding,
     BehaviorChatMessage,
+    BehaviorClaim,
     BehaviorExample,
     BehaviorMetric,
     BehaviorMetricDelta,
@@ -18,8 +20,11 @@ from vauban.behavior import (
     BehaviorReport,
     BehaviorSuite,
     BehaviorSuiteRef,
+    EvidenceRef,
     ReportModelRef,
     ReproducibilityInfo,
+    ReproductionTarget,
+    TransformationRef,
     compare_behavior_metrics,
     render_behavior_report_markdown,
 )
@@ -189,6 +194,53 @@ def test_behavior_report_serializes_nested_primitives() -> None:
         candidate=candidate,
         suite=suite,
         target_change="base -> instruction-tuned",
+        transformation=TransformationRef(
+            kind="fine_tune",
+            summary="Base model compared with its instruction-tuned variant.",
+            before="base",
+            after="instruct",
+            method="instruction_tuning",
+            source_ref="run_manifest.json",
+        ),
+        access=AccessPolicy(
+            level="base_and_transformed",
+            claim_strength="model_change_audit",
+            available_evidence=(
+                "paired_outputs",
+                "behavior_metrics",
+                "activation_diagnostics",
+            ),
+            missing_evidence=("training_data",),
+            notes=("Internal claims require rerunning local probes.",),
+        ),
+        evidence=(
+            EvidenceRef(
+                evidence_id="surface_report",
+                kind="run_report",
+                path_or_url="surface_report.json",
+                description="Boundary-suite output metrics.",
+            ),
+            EvidenceRef(
+                evidence_id="probe_report",
+                kind="activation",
+                path_or_url="probe_report.json",
+                description="Layer-wise refusal projection diagnostics.",
+            ),
+        ),
+        claims=(
+            BehaviorClaim(
+                claim_id="claim-refusal-boundary-shift",
+                statement=(
+                    "Instruction tuning shifted refusal behavior and upper-layer"
+                    " refusal projections."
+                ),
+                strength="model_change_audit",
+                access_level="base_and_transformed",
+                status="extended",
+                evidence=("surface_report", "probe_report"),
+                limitations=("Prompt suite is small.",),
+            ),
+        ),
         findings=(
             "Target-task behavior improved.",
             "Over-refusal increased in ambiguous benign cases.",
@@ -215,6 +267,22 @@ def test_behavior_report_serializes_nested_primitives() -> None:
                 baseline_response="[redacted]",
                 candidate_response="[redacted]",
                 note="Representative safe example; harmful details omitted.",
+            ),
+        ),
+        reproduction_targets=(
+            ReproductionTarget(
+                target_id="arditi-2024-refusal-direction",
+                title="Refusal in Language Models Is Mediated by a Single Direction",
+                source_url="https://arxiv.org/abs/2406.11717",
+                original_claim=(
+                    "Refusal behavior can be mediated by a one-dimensional"
+                    " residual-stream direction."
+                ),
+                planned_extension=(
+                    "Report refusal, over-refusal, ambiguity, and activation"
+                    " diagnostics as separate behavior-change claims."
+                ),
+                status="planned",
             ),
         ),
         limitations=("Prompt suite is small.",),
@@ -255,6 +323,55 @@ def test_behavior_report_serializes_nested_primitives() -> None:
         "safety_policy": "aggregate_or_redacted_examples",
     }
     assert data["target_change"] == "base -> instruction-tuned"
+    assert data["transformation"] == {
+        "kind": "fine_tune",
+        "summary": "Base model compared with its instruction-tuned variant.",
+        "before": "base",
+        "after": "instruct",
+        "method": "instruction_tuning",
+        "source_ref": "run_manifest.json",
+        "notes": [],
+        "metadata": {},
+    }
+    assert data["access"] == {
+        "level": "base_and_transformed",
+        "claim_strength": "model_change_audit",
+        "available_evidence": [
+            "paired_outputs",
+            "behavior_metrics",
+            "activation_diagnostics",
+        ],
+        "missing_evidence": ["training_data"],
+        "notes": ["Internal claims require rerunning local probes."],
+    }
+    assert data["evidence"] == [
+        {
+            "id": "surface_report",
+            "kind": "run_report",
+            "path_or_url": "surface_report.json",
+            "description": "Boundary-suite output metrics.",
+        },
+        {
+            "id": "probe_report",
+            "kind": "activation",
+            "path_or_url": "probe_report.json",
+            "description": "Layer-wise refusal projection diagnostics.",
+        },
+    ]
+    assert data["claims"] == [
+        {
+            "id": "claim-refusal-boundary-shift",
+            "statement": (
+                "Instruction tuning shifted refusal behavior and upper-layer"
+                " refusal projections."
+            ),
+            "strength": "model_change_audit",
+            "access_level": "base_and_transformed",
+            "status": "extended",
+            "evidence": ["surface_report", "probe_report"],
+            "limitations": ["Prompt suite is small."],
+        },
+    ]
     assert data["findings"] == [
         "Target-task behavior improved.",
         "Over-refusal increased in ambiguous benign cases.",
@@ -279,8 +396,26 @@ def test_behavior_report_serializes_nested_primitives() -> None:
             "family": "behavior",
         },
     ]
+    assert data["reproduction_targets"] == [
+        {
+            "id": "arditi-2024-refusal-direction",
+            "title": "Refusal in Language Models Is Mediated by a Single Direction",
+            "source_url": "https://arxiv.org/abs/2406.11717",
+            "original_claim": (
+                "Refusal behavior can be mediated by a one-dimensional"
+                " residual-stream direction."
+            ),
+            "planned_extension": (
+                "Report refusal, over-refusal, ambiguity, and activation"
+                " diagnostics as separate behavior-change claims."
+            ),
+            "status": "planned",
+            "notes": [],
+        },
+    ]
     assert "Prompt suite is small." in data["limitations"]
     assert "metrics=2" in report.summary()
+    assert "claims=1" in report.summary()
 
 
 def test_behavior_primitives_are_frozen() -> None:
@@ -288,6 +423,71 @@ def test_behavior_primitives_are_frozen() -> None:
 
     with pytest.raises(FrozenInstanceError):
         model.label = "other"  # type: ignore[misc]
+
+
+def test_behavior_report_rejects_unknown_claim_evidence_when_registry_exists() -> None:
+    baseline = ReportModelRef(label="base", model_path="base", role="baseline")
+    candidate = ReportModelRef(label="candidate", model_path="candidate")
+    suite = BehaviorSuiteRef(
+        name="suite",
+        description="Behavior suite.",
+        categories=("benign_request",),
+        metrics=("refusal_rate",),
+    )
+
+    with pytest.raises(ValueError, match="undeclared evidence"):
+        BehaviorReport(
+            title="Bad Evidence Report",
+            baseline=baseline,
+            candidate=candidate,
+            suite=suite,
+            evidence=(
+                EvidenceRef(
+                    evidence_id="declared",
+                    kind="run_report",
+                ),
+            ),
+            claims=(
+                BehaviorClaim(
+                    claim_id="claim-1",
+                    statement="This claim cites missing evidence.",
+                    strength="black_box_behavioral_diff",
+                    access_level="paired_outputs",
+                    evidence=("missing",),
+                ),
+            ),
+        )
+
+
+def test_behavior_report_rejects_claims_stronger_than_access_policy() -> None:
+    baseline = ReportModelRef(label="base", model_path="base", role="baseline")
+    candidate = ReportModelRef(label="candidate", model_path="candidate")
+    suite = BehaviorSuiteRef(
+        name="suite",
+        description="Behavior suite.",
+        categories=("benign_request",),
+        metrics=("refusal_rate",),
+    )
+
+    with pytest.raises(ValueError, match="exceeds report claim_strength"):
+        BehaviorReport(
+            title="Overclaim Report",
+            baseline=baseline,
+            candidate=candidate,
+            suite=suite,
+            access=AccessPolicy(
+                level="paired_outputs",
+                claim_strength="black_box_behavioral_diff",
+            ),
+            claims=(
+                BehaviorClaim(
+                    claim_id="claim-1",
+                    statement="This claim needs internals.",
+                    strength="activation_diagnostic",
+                    access_level="activations",
+                ),
+            ),
+        )
 
 
 def test_behavior_suite_requires_categories_and_metrics() -> None:
@@ -444,6 +644,34 @@ def test_render_behavior_report_markdown() -> None:
         candidate=candidate,
         suite=suite,
         target_change="base -> candidate",
+        transformation=TransformationRef(
+            kind="checkpoint_update",
+            summary="Compare two checkpoints from one post-training run.",
+            before="checkpoint-1200",
+            after="checkpoint-2000",
+        ),
+        access=AccessPolicy(
+            level="activations",
+            claim_strength="activation_diagnostic",
+            available_evidence=("paired_outputs", "activations"),
+            missing_evidence=("optimizer_state",),
+        ),
+        evidence=(
+            EvidenceRef(
+                evidence_id="probe_report",
+                kind="activation",
+                path_or_url="probe_report.json",
+            ),
+        ),
+        claims=(
+            BehaviorClaim(
+                claim_id="claim-1",
+                statement="The checkpoint update changed refusal behavior.",
+                strength="activation_diagnostic",
+                access_level="activations",
+                evidence=("probe_report",),
+            ),
+        ),
         findings=(
             "Refusal behavior changed.",
             "The model became more assertive under underspecification.",
@@ -465,6 +693,15 @@ def test_render_behavior_report_markdown() -> None:
                 redaction="safe",
             ),
         ),
+        reproduction_targets=(
+            ReproductionTarget(
+                target_id="caa-2024",
+                title="Steering Llama 2 via Contrastive Activation Addition",
+                source_url="https://arxiv.org/abs/2312.06681",
+                original_claim="Activation additions can steer behavior.",
+                planned_extension="Measure side effects in behavior reports.",
+            ),
+        ),
         limitations=("Small suite.",),
         recommendation="Run more benign-request regression tests before shipping.",
         reproducibility=ReproducibilityInfo(
@@ -480,6 +717,16 @@ def test_render_behavior_report_markdown() -> None:
     assert "Model Behavior Change Report" in markdown
     assert "## Target Change" in markdown
     assert "- base -> candidate" in markdown
+    assert "## Transformation" in markdown
+    assert "- Kind: `checkpoint_update`" in markdown
+    assert "## Access And Claim Strength" in markdown
+    assert "- Access level: `activations`" in markdown
+    assert "## Evidence" in markdown
+    assert "| probe_report | activation | probe_report.json |  |" in markdown
+    assert "## Claims" in markdown
+    assert "| claim-1 | planned | activation_diagnostic | activations |" in markdown
+    assert "## Reproduction Targets" in markdown
+    assert "https://arxiv.org/abs/2312.06681" in markdown
     assert "## Findings" in markdown
     assert "- Refusal behavior changed." in markdown
     assert "- The model became more assertive under underspecification." in markdown

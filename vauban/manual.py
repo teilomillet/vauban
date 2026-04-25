@@ -946,6 +946,41 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 required=True,
             ),
             FieldSpec(
+                key="transformation",
+                description="The model transformation being audited.",
+                constraints=(
+                    "table with kind and summary; optional before, after,"
+                    " method, source_ref, notes. kind is one of fine_tune,"
+                    " reinforcement_fine_tune, checkpoint_update,"
+                    " prompt_template, quantization, merge, adapter_merge,"
+                    " steering, endpoint_update, evaluation_only, other."
+                ),
+            ),
+            FieldSpec(
+                key="access",
+                description="Access level and maximum defensible claim strength.",
+                constraints=(
+                    "table with level and claim_strength; optional"
+                    " available_evidence, missing_evidence, notes."
+                ),
+            ),
+            FieldSpec(
+                key="evidence",
+                description="Named evidence artifacts referenced by claims.",
+                constraints=(
+                    "array of tables with id/evidence_id and kind; optional"
+                    " path_or_url and description."
+                ),
+            ),
+            FieldSpec(
+                key="claims",
+                description="Access-aware claims made by the report.",
+                constraints=(
+                    "array of tables with id/claim_id and statement; optional"
+                    " strength, access_level, status, evidence, limitations."
+                ),
+            ),
+            FieldSpec(
                 key="metrics",
                 description="Metric observations used to compute deltas.",
                 constraints=(
@@ -970,6 +1005,18 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 ),
             ),
             FieldSpec(
+                key="reproduction_targets",
+                description=(
+                    "Papers or external claims this report tries to reproduce"
+                    " or extend."
+                ),
+                constraints=(
+                    "array of tables with id/target_id, title,"
+                    " original_claim, planned_extension; optional source_url,"
+                    " status, notes."
+                ),
+            ),
+            FieldSpec(
                 key="reproducibility",
                 description="Command, config, code, data, seed, and notes.",
                 constraints="table; command is required when present.",
@@ -984,6 +1031,11 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
             (
                 "Metric deltas are computed automatically by matching baseline"
                 " and candidate rows with the same name, category, and unit."
+            ),
+            (
+                "Use [behavior_report.access] and"
+                " [[behavior_report.claims]] to separate observed behavior"
+                " from stronger causal or internal claims."
             ),
             (
                 "Use safe or redacted examples. The report should not become"

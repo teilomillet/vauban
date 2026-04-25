@@ -8,17 +8,27 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from vauban.behavior import (
+    AccessLevel,
+    AccessPolicy,
     ActivationFinding,
+    BehaviorClaim,
     BehaviorExample,
     BehaviorMetric,
     BehaviorReport,
     BehaviorSuiteRef,
+    ClaimStatus,
+    ClaimStrength,
+    EvidenceKind,
+    EvidenceRef,
     ExampleRedaction,
     FindingSeverity,
     MetricPolarity,
     ModelRole,
     ReportModelRef,
     ReproducibilityInfo,
+    ReproductionTarget,
+    TransformationKind,
+    TransformationRef,
     compare_behavior_metrics,
 )
 from vauban.config._parse_helpers import SectionReader, require_toml_table
@@ -49,6 +59,55 @@ _REDACTION_CHOICES: tuple[ExampleRedaction, ...] = (
     "safe",
     "redacted",
     "omitted",
+)
+_TRANSFORMATION_KIND_CHOICES: tuple[TransformationKind, ...] = (
+    "fine_tune",
+    "reinforcement_fine_tune",
+    "checkpoint_update",
+    "prompt_template",
+    "quantization",
+    "merge",
+    "adapter_merge",
+    "steering",
+    "endpoint_update",
+    "evaluation_only",
+    "other",
+)
+_ACCESS_LEVEL_CHOICES: tuple[AccessLevel, ...] = (
+    "single_snapshot",
+    "paired_outputs",
+    "logprobs",
+    "weights",
+    "activations",
+    "base_and_transformed",
+)
+_CLAIM_STRENGTH_CHOICES: tuple[ClaimStrength, ...] = (
+    "behavioral_profile",
+    "black_box_behavioral_diff",
+    "distributional_diff",
+    "weight_diff",
+    "activation_diagnostic",
+    "model_change_audit",
+)
+_CLAIM_STATUS_CHOICES: tuple[ClaimStatus, ...] = (
+    "planned",
+    "replicated",
+    "partially_replicated",
+    "not_replicated",
+    "inconclusive",
+    "extended",
+)
+_EVIDENCE_KIND_CHOICES: tuple[EvidenceKind, ...] = (
+    "suite",
+    "trace",
+    "metric",
+    "run_report",
+    "logprobs",
+    "activation",
+    "weights",
+    "paper",
+    "manual_review",
+    "other",
 )
 
 
@@ -93,6 +152,10 @@ def _parse_behavior_report(raw: TomlDict) -> BehaviorReportConfig | None:
         candidate=candidate,
         suite=suite,
         target_change=reader.optional_string("target_change"),
+        transformation=_parse_transformation(reader.data.get("transformation")),
+        access=_parse_access(reader.data.get("access")),
+        claims=tuple(_parse_claims(reader.data.get("claims"))),
+        evidence=tuple(_parse_evidence_refs(reader.data.get("evidence"))),
         findings=tuple(reader.string_list("findings", default=[])),
         metrics=metrics,
         metric_deltas=metric_deltas,
@@ -100,6 +163,9 @@ def _parse_behavior_report(raw: TomlDict) -> BehaviorReportConfig | None:
             _parse_activation_findings(reader.data.get("activation_findings")),
         ),
         examples=tuple(_parse_examples(reader.data.get("examples"))),
+        reproduction_targets=tuple(
+            _parse_reproduction_targets(reader.data.get("reproduction_targets")),
+        ),
         limitations=tuple(reader.string_list("limitations", default=[])),
         recommendation=reader.optional_string("recommendation"),
         reproducibility=_parse_reproducibility(
@@ -148,6 +214,127 @@ def _parse_suite_ref(raw: object) -> BehaviorSuiteRef:
             "safety_policy",
             default="aggregate_or_redacted_examples",
         ),
+    )
+
+
+def _parse_transformation(raw: object) -> TransformationRef | None:
+    """Parse optional [behavior_report.transformation] metadata."""
+    if raw is None:
+        return None
+    section = "[behavior_report.transformation]"
+    reader = SectionReader(section, require_toml_table(section, raw))
+    return TransformationRef(
+        kind=reader.literal("kind", _TRANSFORMATION_KIND_CHOICES),
+        summary=reader.string("summary"),
+        before=reader.optional_string("before"),
+        after=reader.optional_string("after"),
+        method=reader.optional_string("method"),
+        source_ref=reader.optional_string("source_ref"),
+        notes=tuple(reader.string_list("notes", default=[])),
+    )
+
+
+def _parse_access(raw: object) -> AccessPolicy | None:
+    """Parse optional [behavior_report.access] epistemic boundary."""
+    if raw is None:
+        return None
+    section = "[behavior_report.access]"
+    reader = SectionReader(section, require_toml_table(section, raw))
+    return AccessPolicy(
+        level=reader.literal("level", _ACCESS_LEVEL_CHOICES),
+        claim_strength=reader.literal(
+            "claim_strength",
+            _CLAIM_STRENGTH_CHOICES,
+        ),
+        available_evidence=tuple(
+            reader.string_list("available_evidence", default=[]),
+        ),
+        missing_evidence=tuple(reader.string_list("missing_evidence", default=[])),
+        notes=tuple(reader.string_list("notes", default=[])),
+    )
+
+
+def _parse_evidence_refs(raw: object) -> list[EvidenceRef]:
+    """Parse optional [[behavior_report.evidence]] entries."""
+    rows = _array_of_tables("[[behavior_report.evidence]]", raw, allow_empty=True)
+    return [
+        _parse_evidence_ref(row, f"[[behavior_report.evidence]][{index}]")
+        for index, row in enumerate(rows)
+    ]
+
+
+def _parse_evidence_ref(raw: TomlDict, section: str) -> EvidenceRef:
+    """Parse one report evidence reference."""
+    reader = SectionReader(section, raw)
+    return EvidenceRef(
+        evidence_id=_required_alias_string(reader, section, "evidence_id", "id"),
+        kind=reader.literal("kind", _EVIDENCE_KIND_CHOICES),
+        path_or_url=_optional_any_string(reader, ("path_or_url", "path", "url")),
+        description=reader.optional_string("description"),
+    )
+
+
+def _parse_claims(raw: object) -> list[BehaviorClaim]:
+    """Parse optional [[behavior_report.claims]] entries."""
+    rows = _array_of_tables("[[behavior_report.claims]]", raw, allow_empty=True)
+    return [
+        _parse_claim(row, f"[[behavior_report.claims]][{index}]")
+        for index, row in enumerate(rows)
+    ]
+
+
+def _parse_claim(raw: TomlDict, section: str) -> BehaviorClaim:
+    """Parse one access-aware report claim."""
+    reader = SectionReader(section, raw)
+    return BehaviorClaim(
+        claim_id=_required_alias_string(reader, section, "claim_id", "id"),
+        statement=reader.string("statement"),
+        strength=reader.literal(
+            "strength",
+            _CLAIM_STRENGTH_CHOICES,
+            default="behavioral_profile",
+        ),
+        access_level=reader.literal(
+            "access_level",
+            _ACCESS_LEVEL_CHOICES,
+            default="single_snapshot",
+        ),
+        status=reader.literal("status", _CLAIM_STATUS_CHOICES, default="planned"),
+        evidence=tuple(reader.string_list("evidence", default=[])),
+        limitations=tuple(reader.string_list("limitations", default=[])),
+    )
+
+
+def _parse_reproduction_targets(raw: object) -> list[ReproductionTarget]:
+    """Parse optional [[behavior_report.reproduction_targets]] entries."""
+    rows = _array_of_tables(
+        "[[behavior_report.reproduction_targets]]",
+        raw,
+        allow_empty=True,
+    )
+    return [
+        _parse_reproduction_target(
+            row,
+            f"[[behavior_report.reproduction_targets]][{index}]",
+        )
+        for index, row in enumerate(rows)
+    ]
+
+
+def _parse_reproduction_target(
+    raw: TomlDict,
+    section: str,
+) -> ReproductionTarget:
+    """Parse one reproduction target entry."""
+    reader = SectionReader(section, raw)
+    return ReproductionTarget(
+        target_id=_required_alias_string(reader, section, "target_id", "id"),
+        title=reader.string("title"),
+        source_url=reader.optional_string("source_url"),
+        original_claim=reader.string("original_claim"),
+        planned_extension=reader.string("planned_extension"),
+        status=reader.literal("status", _CLAIM_STATUS_CHOICES, default="planned"),
+        notes=tuple(reader.string_list("notes", default=[])),
     )
 
 
@@ -272,6 +459,35 @@ def _parse_reproducibility(raw: object) -> ReproducibilityInfo | None:
         seed=seed,
         notes=tuple(reader.string_list("notes", default=[])),
     )
+
+
+def _required_alias_string(
+    reader: SectionReader,
+    section: str,
+    primary: str,
+    alias: str,
+) -> str:
+    """Read a required string that may use a primary key or alias."""
+    value = reader.optional_string(primary)
+    if value is not None:
+        return value
+    value = reader.optional_string(alias)
+    if value is not None:
+        return value
+    msg = f"{section}.{primary} is required"
+    raise ValueError(msg)
+
+
+def _optional_any_string(
+    reader: SectionReader,
+    keys: tuple[str, ...],
+) -> str | None:
+    """Read the first present optional string from a list of aliases."""
+    for key in keys:
+        value = reader.optional_string(key)
+        if value is not None:
+            return value
+    return None
 
 
 def _array_of_tables(

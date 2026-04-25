@@ -498,6 +498,107 @@ base_url = "https://openrouter.ai/api/v1"
 model = "meta-llama/llama-3.3-70b-instruct"
 api_key_env = "OPENROUTER_API_KEY"
 """,
+    "behavior_report": """\
+# Standalone Model Behavior Change Report.
+# No local model needed. Assemble a report from already-collected evidence.
+
+[output]
+dir = "output"
+
+[behavior_report]
+title = "Model Behavior Change Report"
+target_change = "base -> fine-tuned"
+findings = [
+  "Target-task performance improved.",
+  "Over-refusal increased in ambiguous benign cases.",
+]
+recommendation = "Run additional benign-request regression testing before deployment."
+limitations = ["Small suite; rerun with broader coverage before shipping."]
+
+[behavior_report.baseline]
+label = "base"
+model_path = "mlx-community/example-base"
+role = "baseline"
+
+[behavior_report.candidate]
+label = "fine-tuned"
+model_path = "mlx-community/example-finetuned"
+role = "candidate"
+
+[behavior_report.suite]
+name = "behavior-change-suite"
+description = "Measures target behavior and side-effect regressions."
+categories = ["target_task", "benign_request", "ambiguous_request"]
+metrics = ["target_success_rate", "over_refusal_rate"]
+version = "v1"
+
+[behavior_report.transformation]
+kind = "fine_tune"
+summary = "Base model compared with a fine-tuned candidate."
+before = "base"
+after = "fine-tuned"
+method = "supervised_fine_tuning"
+
+[behavior_report.access]
+level = "paired_outputs"
+claim_strength = "black_box_behavioral_diff"
+available_evidence = ["paired_outputs", "behavior_metrics"]
+missing_evidence = ["weights", "activations", "training_data"]
+
+[[behavior_report.evidence]]
+id = "suite_metrics"
+kind = "metric"
+path_or_url = "metrics.json"
+description = "Aggregate metrics from the behavior-change suite."
+
+[[behavior_report.claims]]
+id = "claim-behavior-changed"
+statement = "The candidate changed behavior on the declared suite."
+strength = "black_box_behavioral_diff"
+access_level = "paired_outputs"
+evidence = ["suite_metrics"]
+limitations = ["No activation or weight access, so this is not an internal claim."]
+
+[[behavior_report.metrics]]
+name = "target_success_rate"
+model_label = "base"
+category = "target_task"
+value = 0.70
+polarity = "higher_is_better"
+
+[[behavior_report.metrics]]
+name = "target_success_rate"
+model_label = "fine-tuned"
+category = "target_task"
+value = 0.82
+polarity = "higher_is_better"
+
+[[behavior_report.metrics]]
+name = "over_refusal_rate"
+model_label = "base"
+category = "benign_request"
+value = 0.04
+polarity = "lower_is_better"
+
+[[behavior_report.metrics]]
+name = "over_refusal_rate"
+model_label = "fine-tuned"
+category = "benign_request"
+value = 0.10
+polarity = "lower_is_better"
+
+[[behavior_report.examples]]
+id = "safe-example-1"
+category = "benign_request"
+prompt = "[safe representative prompt]"
+redaction = "safe"
+note = "Keep examples safe or redacted."
+
+[behavior_report.reproducibility]
+command = "vauban behavior_report.toml"
+config_path = "behavior_report.toml"
+data_refs = ["behavior-change-suite:v1"]
+""",
     "remote": """\
 # Standalone remote probe — queries models via batch inference API.
 # No local model needed.

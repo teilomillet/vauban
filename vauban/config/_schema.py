@@ -91,9 +91,14 @@ _BEHAVIOR_REPORT_SECTION_KEYS: frozenset[str] = frozenset({
     "baseline",
     "candidate",
     "suite",
+    "transformation",
+    "access",
+    "claims",
+    "evidence",
     "metrics",
     "activation_findings",
     "examples",
+    "reproduction_targets",
     "reproducibility",
 })
 
@@ -329,6 +334,19 @@ def _behavior_report_section_schema() -> JsonSchema:
             "baseline": {"type": "object", "additionalProperties": True},
             "candidate": {"type": "object", "additionalProperties": True},
             "suite": {"type": "object", "additionalProperties": True},
+            "transformation": {
+                "type": "object",
+                "additionalProperties": True,
+            },
+            "access": {"type": "object", "additionalProperties": True},
+            "claims": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": True},
+            },
+            "evidence": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": True},
+            },
             "metrics": {
                 "type": "array",
                 "items": {"type": "object", "additionalProperties": True},
@@ -338,6 +356,10 @@ def _behavior_report_section_schema() -> JsonSchema:
                 "items": {"type": "object", "additionalProperties": True},
             },
             "examples": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": True},
+            },
+            "reproduction_targets": {
                 "type": "array",
                 "items": {"type": "object", "additionalProperties": True},
             },

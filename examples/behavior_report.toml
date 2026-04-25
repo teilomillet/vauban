@@ -51,6 +51,63 @@ metrics = [
 version = "example-v1"
 safety_policy = "aggregate_or_redacted_examples"
 
+[behavior_report.transformation]
+kind = "fine_tune"
+summary = "Base model compared with an instruction-tuned candidate."
+before = "base"
+after = "instruct"
+method = "instruction_tuning"
+source_ref = "run_manifest.json"
+notes = [
+  "This example demonstrates report shape; it does not claim a real training run.",
+]
+
+[behavior_report.access]
+level = "base_and_transformed"
+claim_strength = "model_change_audit"
+available_evidence = [
+  "paired_outputs",
+  "behavior_metrics",
+  "activation_diagnostics",
+]
+missing_evidence = [
+  "training_data",
+  "optimizer_state",
+]
+notes = [
+  "If only API outputs are available, downgrade internal claims to black_box_behavioral_diff.",
+]
+
+[[behavior_report.evidence]]
+id = "surface_report"
+kind = "run_report"
+path_or_url = "surface_report.json"
+description = "Aggregate refusal-boundary metric output."
+
+[[behavior_report.evidence]]
+id = "probe_report"
+kind = "activation"
+path_or_url = "probe_report.json"
+description = "Layer-wise refusal-associated projection diagnostics."
+
+[[behavior_report.claims]]
+id = "claim-refusal-boundary-shift"
+statement = "Instruction tuning increased safety refusal and benign over-refusal in this illustrative suite."
+strength = "model_change_audit"
+access_level = "base_and_transformed"
+status = "extended"
+evidence = ["surface_report", "probe_report"]
+limitations = ["Tiny illustrative suite; rerun on a larger suite before deployment."]
+
+[[behavior_report.claims]]
+id = "claim-internal-signal"
+statement = "Activation diagnostics suggest a stronger refusal-associated direction in later layers."
+strength = "activation_diagnostic"
+access_level = "activations"
+status = "planned"
+evidence = ["probe_report"]
+limitations = ["Direction-level evidence is correlational unless paired with intervention tests."]
+
 [[behavior_report.metrics]]
 name = "safety_refusal_rate"
 model_label = "base"
@@ -90,7 +147,7 @@ layers = [18, 19, 20]
 score = 0.42
 metric_name = "mean_projection_delta"
 severity = "info"
-evidence = ["surface_report.json", "probe_report.json"]
+evidence = ["surface_report", "probe_report"]
 
 [[behavior_report.examples]]
 id = "safe-boundary-001"
@@ -101,10 +158,30 @@ candidate_response = "[redacted]"
 redaction = "redacted"
 note = "Safe or redacted examples keep the report from becoming a prompt pack."
 
+[[behavior_report.reproduction_targets]]
+id = "arditi-2024-refusal-direction"
+title = "Refusal in Language Models Is Mediated by a Single Direction"
+source_url = "https://arxiv.org/abs/2406.11717"
+original_claim = "Refusal behavior can be mediated by a one-dimensional activation-space direction."
+planned_extension = "Report safety refusal, benign over-refusal, ambiguity handling, and activation diagnostics as separate behavior-change claims."
+status = "planned"
+
+[[behavior_report.reproduction_targets]]
+id = "caa-2024"
+title = "Steering Llama 2 via Contrastive Activation Addition"
+source_url = "https://arxiv.org/abs/2312.06681"
+original_claim = "Contrastive activation additions can steer model behavior during inference."
+planned_extension = "Measure side effects such as over-refusal, uncertainty drift, and prompt sensitivity in a Vauban report."
+status = "planned"
+
 [behavior_report.reproducibility]
 command = "vauban examples/behavior_report.toml"
 config_path = "examples/behavior_report.toml"
-data_refs = ["refusal-boundary:example-v1"]
+data_refs = [
+  "refusal-boundary:example-v1",
+  "https://arxiv.org/abs/2406.11717",
+  "https://arxiv.org/abs/2312.06681",
+]
 notes = ["Standalone report assembled from TOML-declared evidence."]
 
 [output]
