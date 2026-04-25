@@ -1,0 +1,22 @@
+# Gemma 4 scorecard example built from existing Vauban outputs.
+
+[output]
+dir = "output/gemma4_scorecard"
+
+[benchmark]
+title = "Gemma 4 Safety Scorecard"
+description = "Quick comparison bundle for the Gemma 4 E2B IT example runs."
+markdown_report = true
+
+[benchmark.weights]
+behavioral_safety = 0.6
+tamper_resistance = 0.2
+evidence_readiness = 0.2
+
+[[benchmark.models]]
+label = "gemma-4-e2b-it-bf16"
+model_path = "mlx-community/gemma-4-e2b-it-bf16"
+report_dir = "output/gemma4_audit_quick"
+detect_report = "output/gemma4_detect_fast/detect_report.json"
+guard_report = "output/gemma4_guard_smoke/guard_report.json"
+notes = "Combines the quick audit bundle with the guard smoke run."

@@ -15,6 +15,8 @@ from vauban.config._mode_registry import (
 from vauban.types import (
     AIActConfig,
     BehaviorReportConfig,
+    BenchmarkConfig,
+    BenchmarkModelConfig,
     CastConfig,
     ComposeOptimizeConfig,
     CutConfig,
@@ -28,6 +30,7 @@ from vauban.types import (
     SoftPromptConfig,
     SteerConfig,
     SVFConfig,
+    TokenAuditConfig,
 )
 
 
@@ -86,11 +89,23 @@ class TestEarlyModePredicates:
         )
         assert active_early_modes(config) == ["[ai_act]"]
 
+    def test_has_benchmark(self) -> None:
+        config = _minimal_config(
+            benchmark=BenchmarkConfig(
+                models=[BenchmarkModelConfig(label="gemma-4")],
+            ),
+        )
+        assert active_early_modes(config) == ["[benchmark]"]
+
     def test_has_behavior_report(self) -> None:
         config = _minimal_config(
             behavior_report=_minimal_behavior_report_config(),
         )
         assert active_early_modes(config) == ["[behavior_report]"]
+
+    def test_has_token_audit(self) -> None:
+        config = _minimal_config(token_audit=TokenAuditConfig())
+        assert active_early_modes(config) == ["[token_audit]"]
 
     def test_has_probe(self) -> None:
         config = _minimal_config(probe=ProbeConfig(prompts=["test"]))
@@ -184,6 +199,16 @@ class TestActiveEarlyModeForPhase:
         assert spec is not None
         assert spec.mode == "ai_act"
 
+    def test_standalone_returns_benchmark(self) -> None:
+        config = _minimal_config(
+            benchmark=BenchmarkConfig(
+                models=[BenchmarkModelConfig(label="gemma-4")],
+            ),
+        )
+        spec = active_early_mode_for_phase(config, "standalone")
+        assert spec is not None
+        assert spec.mode == "benchmark"
+
     def test_standalone_returns_behavior_report(self) -> None:
         config = _minimal_config(
             behavior_report=_minimal_behavior_report_config(),
@@ -191,6 +216,12 @@ class TestActiveEarlyModeForPhase:
         spec = active_early_mode_for_phase(config, "standalone")
         assert spec is not None
         assert spec.mode == "behavior_report"
+
+    def test_standalone_returns_token_audit(self) -> None:
+        config = _minimal_config(token_audit=TokenAuditConfig())
+        spec = active_early_mode_for_phase(config, "standalone")
+        assert spec is not None
+        assert spec.mode == "token_audit"
 
     def test_before_prompts_returns_svf(self) -> None:
         config = _minimal_config(
@@ -255,7 +286,9 @@ class TestEarlyModeSpecs:
         spec_map = {s.section: s for s in EARLY_MODE_SPECS}
         assert spec_map["[depth]"].requires_direction is False
         assert spec_map["[ai_act]"].requires_direction is False
+        assert spec_map["[benchmark]"].requires_direction is False
         assert spec_map["[behavior_report]"].requires_direction is False
+        assert spec_map["[token_audit]"].requires_direction is False
         assert spec_map["[svf]"].requires_direction is False
         assert spec_map["[features]"].requires_direction is False
         assert spec_map["[probe]"].requires_direction is True
@@ -271,7 +304,9 @@ class TestEarlyModeSpecs:
     def test_phase_assignments(self) -> None:
         spec_map = {s.section: s for s in EARLY_MODE_SPECS}
         assert spec_map["[ai_act]"].phase == "standalone"
+        assert spec_map["[benchmark]"].phase == "standalone"
         assert spec_map["[behavior_report]"].phase == "standalone"
+        assert spec_map["[token_audit]"].phase == "standalone"
         assert spec_map["[depth]"].phase == "before_prompts"
         assert spec_map["[svf]"].phase == "before_prompts"
         assert spec_map["[features]"].phase == "before_prompts"

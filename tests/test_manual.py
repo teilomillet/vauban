@@ -39,6 +39,7 @@ def test_topics_include_quickstart_and_sections() -> None:
     assert "examples" in topics
     assert "print" in topics
     assert "ai_act" in topics
+    assert "token_audit" in topics
     assert "cut" in topics
     assert "softprompt" in topics
 
@@ -105,6 +106,13 @@ def test_ai_act_topic_mentions_readiness() -> None:
     assert "SECTION [ai_act]" in text
     assert "readiness report" in text.lower()
     assert "company_name" in text
+
+
+def test_token_audit_topic_mentions_redaction() -> None:
+    text = render_manual("token_audit")
+    assert "SECTION [token_audit]" in text
+    assert "redacted" in text.lower()
+    assert "max_token_id" in text
 
 
 def test_objective_topic_mentions_dataset_backed_utility() -> None:

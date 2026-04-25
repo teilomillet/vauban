@@ -855,6 +855,64 @@ def _rule_ai_act_readiness(
         )
 
 
+def _rule_benchmark_artifacts(
+    context: ValidationContext,
+    collector: ValidationCollector,
+) -> None:
+    """Validate [benchmark] evidence references."""
+    benchmark = context.config.benchmark
+    if benchmark is None:
+        return
+    for index, model in enumerate(benchmark.models):
+        section = f"[benchmark].models[{index}]"
+        explicit_paths = [
+            path
+            for path in (
+                model.audit_report,
+                model.detect_report,
+                model.guard_report,
+                model.ai_act_report,
+                model.eval_report,
+            )
+            if path is not None
+        ]
+        if model.report_dir is None and not explicit_paths:
+            collector.add(
+                "MEDIUM",
+                f"{section} has no report_dir or explicit report paths",
+                fix=(
+                    "set report_dir to a Vauban output directory or attach at"
+                    " least one explicit *_report path"
+                ),
+            )
+        if model.report_dir is not None and not model.report_dir.exists():
+            collector.add(
+                "LOW",
+                f"{section}.report_dir does not exist yet: {model.report_dir}",
+                fix=(
+                    "create the run output directory first, or point report_dir"
+                    " at an existing Vauban output bundle"
+                ),
+            )
+        for field_name, path in (
+            ("audit_report", model.audit_report),
+            ("detect_report", model.detect_report),
+            ("guard_report", model.guard_report),
+            ("ai_act_report", model.ai_act_report),
+            ("eval_report", model.eval_report),
+        ):
+            if path is None or path.exists():
+                continue
+            collector.add(
+                "LOW",
+                f"{section}.{field_name} does not exist yet: {path}",
+                fix=(
+                    f"point {section}.{field_name} at an existing JSON report,"
+                    " or omit it and rely on report_dir auto-discovery"
+                ),
+            )
+
+
 def _rule_early_mode_conflicts(
     context: ValidationContext,
     collector: ValidationCollector,
@@ -973,6 +1031,7 @@ VALIDATION_RULE_SPECS: tuple[ValidationRuleSpec, ...] = (
     ValidationRuleSpec("surface_prompts", 50, _rule_surface_prompts),
     ValidationRuleSpec("output_dir", 60, _rule_output_dir),
     ValidationRuleSpec("ai_act_readiness", 65, _rule_ai_act_readiness),
+    ValidationRuleSpec("benchmark_artifacts", 67, _rule_benchmark_artifacts),
     ValidationRuleSpec("early_mode_conflicts", 70, _rule_early_mode_conflicts),
     ValidationRuleSpec("depth_extract_direction", 80, _rule_depth_extract_direction),
     ValidationRuleSpec("eval_without_prompts", 90, _rule_eval_without_prompts),

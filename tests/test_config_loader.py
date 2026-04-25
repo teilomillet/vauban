@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Teilo Millet
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for vauban.config._loader: load_config and _is_standalone_api_eval."""
+"""Tests for vauban.config._loader standalone detection and config loading."""
 
 from __future__ import annotations
 
@@ -13,6 +13,8 @@ from vauban.config import load_config
 from vauban.config._loader import (
     _is_standalone_api_eval,
     _is_standalone_behavior_report,
+    _is_standalone_benchmark,
+    _is_standalone_token_audit,
     _resolve_single_data,
 )
 
@@ -153,6 +155,49 @@ class TestStandaloneApiEval:
             load_config(toml_file)
 
 
+class TestStandaloneBenchmark:
+    """Standalone benchmark mode: [benchmark] skips [model] and [data]."""
+
+    def test_standalone_loads_without_model(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "benchmark.toml"
+        toml_file.write_text(
+            "[benchmark]\n"
+            'title = "Safety"\n'
+            "[[benchmark.models]]\n"
+            'label = "gemma-4"\n'
+            'report_dir = "runs/gemma-4"\n'
+        )
+        config = load_config(toml_file)
+        assert config.model_path == ""
+        assert config.benchmark is not None
+        assert config.benchmark.models[0].label == "gemma-4"
+        assert config.benchmark.models[0].report_dir == tmp_path / "runs/gemma-4"
+
+    def test_standalone_preserves_optional_model_path(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "benchmark_with_model.toml"
+        toml_file.write_text(
+            "[model]\n"
+            'path = "optional-model"\n'
+            "[benchmark]\n"
+            'title = "Safety"\n'
+            "[[benchmark.models]]\n"
+            'label = "gemma-4"\n'
+            'report_dir = "runs/gemma-4"\n'
+        )
+        config = load_config(toml_file)
+        assert config.model_path == "optional-model"
+
+
+class TestStandaloneBenchmarkHelper:
+    """Unit tests for _is_standalone_benchmark helper."""
+
+    def test_present_returns_true(self) -> None:
+        assert _is_standalone_benchmark({"benchmark": {}}) is True
+
+    def test_absent_returns_false(self) -> None:
+        assert _is_standalone_benchmark({"audit": {}}) is False
+
+
 class TestStandaloneBehaviorReport:
     """Standalone behavior_report mode: [behavior_report] skips model/data."""
 
@@ -187,6 +232,45 @@ class TestStandaloneBehaviorReportHelper:
 
     def test_absent_returns_false(self) -> None:
         assert _is_standalone_behavior_report({"audit": {}}) is False
+
+
+class TestStandaloneTokenAudit:
+    """Standalone token_audit mode: [token_audit] skips [data]."""
+
+    def test_standalone_loads_without_data(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "token_audit.toml"
+        toml_file.write_text(
+            "[model]\n"
+            'path = "mlx-community/gemma-4-e2b-it-bf16"\n'
+            "[token_audit]\n"
+            "max_token_id = 127\n"
+            "include_duplicate_surface_scan = false\n"
+        )
+        config = load_config(toml_file)
+        assert config.model_path == "mlx-community/gemma-4-e2b-it-bf16"
+        assert config.token_audit is not None
+        assert config.token_audit.max_token_id == 127
+        assert config.token_audit.include_duplicate_surface_scan is False
+
+    def test_standalone_without_model_keeps_empty_model_path(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        toml_file = tmp_path / "token_audit_no_model.toml"
+        toml_file.write_text("[token_audit]\n")
+        config = load_config(toml_file)
+        assert config.model_path == ""
+        assert config.token_audit is not None
+
+
+class TestStandaloneTokenAuditHelper:
+    """Unit tests for _is_standalone_token_audit helper."""
+
+    def test_present_returns_true(self) -> None:
+        assert _is_standalone_token_audit({"token_audit": {}}) is True
+
+    def test_absent_returns_false(self) -> None:
+        assert _is_standalone_token_audit({"audit": {}}) is False
 
 
 class TestDepthOnlyConfig:

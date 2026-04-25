@@ -378,6 +378,46 @@ convergence_window = 3
 
 # Standalone templates that don't need [model] or [data].
 _STANDALONE_TEMPLATES: dict[str, str] = {
+    "benchmark": """\
+# Standalone benchmark scorecard from existing Vauban report bundles.
+# No local model needed.
+
+[output]
+dir = "output/benchmark"
+
+[benchmark]
+title = "Model Safety Benchmark"
+description = "Compare existing audit, guard, detect, eval, and AI Act outputs."
+markdown_report = true
+
+[benchmark.weights]
+behavioral_safety = 0.6
+tamper_resistance = 0.2
+evidence_readiness = 0.2
+
+[[benchmark.models]]
+label = "gemma-4"
+report_dir = "runs/gemma-4"
+notes = "Attach explicit report paths instead of report_dir when needed."
+
+[[benchmark.models]]
+label = "candidate-b"
+report_dir = "runs/candidate-b"
+""",
+    "token_audit": """\
+# Standalone tokenizer/control-plane audit.
+# Requires [model], but skips [data] and the measure/cut pipeline.
+
+[model]
+path = "mlx-community/gemma-4-e2b-it-bf16"
+
+[output]
+dir = "output/token_audit"
+
+[token_audit]
+# max_token_id = 8191
+include_duplicate_surface_scan = true
+""",
     "ai_act": """\
 # Standalone AI Act deployer-readiness report.
 # No local model needed unless you want to attach technical evidence from

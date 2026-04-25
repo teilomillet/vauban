@@ -23,6 +23,8 @@ from vauban.types import (
     AuditConfig,
     AwarenessConfig,
     BehaviorReportConfig,
+    BenchmarkConfig,
+    BenchmarkModelConfig,
     CastConfig,
     CircuitConfig,
     ComposeOptimizeConfig,
@@ -46,6 +48,7 @@ from vauban.types import (
     SSSConfig,
     SteerConfig,
     SVFConfig,
+    TokenAuditConfig,
 )
 
 _EXPECTED_RULE_ORDER: list[str] = [
@@ -56,6 +59,7 @@ _EXPECTED_RULE_ORDER: list[str] = [
     "surface_prompts",
     "output_dir",
     "ai_act_readiness",
+    "benchmark_artifacts",
     "early_mode_conflicts",
     "depth_extract_direction",
     "eval_without_prompts",
@@ -66,7 +70,9 @@ _EXPECTED_EARLY_MODE_ORDER: list[str] = [
     "[remote]",
     "[api_eval]",
     "[ai_act]",
+    "[benchmark]",
     "[behavior_report]",
+    "[token_audit]",
     "[depth]",
     "[svf]",
     "[features]",
@@ -178,11 +184,11 @@ def test_validation_warning_content_and_order_for_conflict_fixture(
         (
             "[HIGH] Multiple early-return modes active: [depth], [probe]"
             " — only the first will run (precedence: remote"
-            " > api_eval > ai_act > behavior_report > depth > svf > features"
-            " > probe > steer > sss > awareness > audit > guard > cast > sic"
-            " > optimize > compose_optimize"
-            " > softprompt > jailbreak > defend > circuit > linear_probe > fusion"
-            " > repbend > lora_export > lora_analysis > flywheel)"
+            " > api_eval > ai_act > benchmark > behavior_report > token_audit"
+            " > depth > svf > features > probe > steer > sss > awareness"
+            " > audit > guard > cast > sic > optimize > compose_optimize"
+            " > softprompt > jailbreak > defend > circuit > linear_probe"
+            " > fusion > repbend > lora_export > lora_analysis > flywheel)"
             " — fix: keep one early-return mode per config,"
             " and split other modes into separate TOML files"
         ),
@@ -236,6 +242,9 @@ def test_active_early_modes_precedence_matches_legacy_behavior() -> None:
             system_name="Customer Assistant",
             intended_purpose="Answers customer questions.",
         ),
+        benchmark=BenchmarkConfig(
+            models=[BenchmarkModelConfig(label="gemma-4")],
+        ),
         behavior_report=BehaviorReportConfig(
             report=BehaviorReport(
                 title="Behavior Report",
@@ -256,6 +265,7 @@ def test_active_early_modes_precedence_matches_legacy_behavior() -> None:
                 ),
             ),
         ),
+        token_audit=TokenAuditConfig(),
         audit=AuditConfig(company_name="Test", system_name="Test"),
         depth=DepthConfig(prompts=["a", "b"]),
         svf=SVFConfig(

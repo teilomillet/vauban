@@ -1857,6 +1857,43 @@ class AIActConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class BenchmarkModelConfig:
+    """One model/run entry in a benchmark scorecard."""
+
+    label: str
+    report_dir: Path | None = None
+    model_path: str = ""
+    audit_report: Path | None = None
+    detect_report: Path | None = None
+    guard_report: Path | None = None
+    ai_act_report: Path | None = None
+    eval_report: Path | None = None
+    notes: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class BenchmarkWeightsConfig:
+    """Axis weights for the benchmark scorecard aggregate."""
+
+    behavioral_safety: float = 0.6
+    tamper_resistance: float = 0.2
+    evidence_readiness: float = 0.2
+
+
+@dataclass(frozen=True, slots=True)
+class BenchmarkConfig:
+    """Configuration for model safety/evidence scorecard generation."""
+
+    title: str = "Safety Benchmark"
+    description: str = ""
+    models: list[BenchmarkModelConfig] = field(default_factory=list)
+    weights: BenchmarkWeightsConfig = field(
+        default_factory=BenchmarkWeightsConfig,
+    )
+    markdown_report: bool = True
+
+
+@dataclass(frozen=True, slots=True)
 class BehaviorReportConfig:
     """Configuration for standalone model behavior change report generation."""
 
@@ -1864,6 +1901,47 @@ class BehaviorReportConfig:
     markdown_report: bool = True
     json_filename: str = "behavior_report.json"
     markdown_filename: str = "behavior_report.md"
+
+
+@dataclass(frozen=True, slots=True)
+class TokenAuditConfig:
+    """Configuration for tokenizer/control-plane robustness inventory."""
+
+    max_token_id: int | None = None
+    include_duplicate_surface_scan: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class TokenAuditResult:
+    """Aggregated tokenizer/control-plane audit result."""
+
+    model_path: str
+    tokenizer_class: str
+    vocab_size: int
+    scanned_token_count: int
+    declared_special_token_count: int | None
+    chat_template_declared: bool
+    category_counts: dict[str, int]
+    duplicate_surface_count: int | None
+    duplicate_token_count: int | None
+    findings: list[str]
+    notes: list[str]
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize the result to a JSON-compatible dictionary."""
+        return {
+            "model_path": self.model_path,
+            "tokenizer_class": self.tokenizer_class,
+            "vocab_size": self.vocab_size,
+            "scanned_token_count": self.scanned_token_count,
+            "declared_special_token_count": self.declared_special_token_count,
+            "chat_template_declared": self.chat_template_declared,
+            "category_counts": self.category_counts,
+            "duplicate_surface_count": self.duplicate_surface_count,
+            "duplicate_token_count": self.duplicate_token_count,
+            "findings": self.findings,
+            "notes": self.notes,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -3035,7 +3113,9 @@ class PipelineConfig:
     cut: CutConfig = field(default_factory=CutConfig)
     measure: MeasureConfig = field(default_factory=MeasureConfig)
     ai_act: AIActConfig | None = None
+    benchmark: BenchmarkConfig | None = None
     behavior_report: BehaviorReportConfig | None = None
+    token_audit: TokenAuditConfig | None = None
     surface: SurfaceConfig | None = None
     detect: DetectConfig | None = None
     optimize: OptimizeConfig | None = None

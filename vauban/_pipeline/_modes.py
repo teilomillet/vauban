@@ -13,6 +13,7 @@ from vauban._pipeline._mode_api_eval import _run_api_eval_mode
 from vauban._pipeline._mode_audit import _run_audit_mode
 from vauban._pipeline._mode_awareness import _run_awareness_mode
 from vauban._pipeline._mode_behavior_report import _run_behavior_report_mode
+from vauban._pipeline._mode_benchmark import _run_benchmark_mode
 from vauban._pipeline._mode_cast import _run_cast_mode
 from vauban._pipeline._mode_circuit import _run_circuit_mode
 from vauban._pipeline._mode_compose_optimize import _run_compose_optimize_mode
@@ -35,6 +36,7 @@ from vauban._pipeline._mode_softprompt import _run_softprompt_mode
 from vauban._pipeline._mode_sss import _run_sss_mode
 from vauban._pipeline._mode_steer import _run_steer_mode
 from vauban._pipeline._mode_svf import _run_svf_mode
+from vauban._pipeline._mode_token_audit import _run_token_audit_mode
 from vauban.config._mode_registry import (
     EarlyModePhase,
     active_early_mode_for_phase,
@@ -46,7 +48,9 @@ EARLY_MODE_RUNNERS: dict[str, EarlyModeRunner] = {
     "remote": _run_remote_mode,
     "api_eval": _run_api_eval_mode,
     "ai_act": _run_ai_act_mode,
+    "benchmark": _run_benchmark_mode,
     "behavior_report": _run_behavior_report_mode,
+    "token_audit": _run_token_audit_mode,
     "audit": _run_audit_mode,
     "depth": _run_depth_mode,
     "svf": _run_svf_mode,

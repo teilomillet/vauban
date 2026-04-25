@@ -40,7 +40,9 @@ def load_config(path: str | Path) -> PipelineConfig:
         _is_standalone_api_eval(raw)
         or _is_standalone_remote(raw)
         or _is_standalone_ai_act(raw)
+        or _is_standalone_benchmark(raw)
         or _is_standalone_behavior_report(raw)
+        or _is_standalone_token_audit(raw)
     )
 
     model_section = raw.get("model")
@@ -299,6 +301,16 @@ def _is_standalone_ai_act(raw: TomlDict) -> bool:
     return "ai_act" in raw
 
 
+def _is_standalone_benchmark(raw: TomlDict) -> bool:
+    """Check whether the raw TOML represents a standalone benchmark."""
+    return "benchmark" in raw
+
+
 def _is_standalone_behavior_report(raw: TomlDict) -> bool:
     """Check whether the raw TOML represents a standalone behavior report."""
     return "behavior_report" in raw
+
+
+def _is_standalone_token_audit(raw: TomlDict) -> bool:
+    """Check whether the raw TOML represents a standalone token audit."""
+    return "token_audit" in raw

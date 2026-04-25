@@ -867,6 +867,69 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
         ),
     ),
     SectionSpec(
+        name="benchmark",
+        description=(
+            "Standalone scorecard mode that compares existing Vauban"
+            " reports across models or runs."
+        ),
+        early_return=True,
+        config_class="BenchmarkConfig",
+        fields=(
+            FieldSpec(
+                key="title",
+                description="Human-readable title for the scorecard.",
+                constraints='string; default: "Safety Benchmark".',
+            ),
+            FieldSpec(
+                key="description",
+                description="Optional description shown in the output bundle.",
+                constraints='string; empty by default.',
+            ),
+            FieldSpec(
+                key="markdown_report",
+                description="Whether to emit a Markdown companion report.",
+                constraints="boolean; true by default.",
+            ),
+            FieldSpec(
+                key="models",
+                description="Array of model/run entries to compare.",
+                constraints=(
+                    "required non-empty array of tables; each table needs"
+                    " label and may set report_dir, audit_report,"
+                    " detect_report, guard_report, ai_act_report,"
+                    " eval_report, model_path, notes."
+                ),
+                required=True,
+            ),
+            FieldSpec(
+                key="weights",
+                description="Optional score weights for the aggregate rank.",
+                constraints=(
+                    "table with behavioral_safety, tamper_resistance,"
+                    " evidence_readiness; each must be >= 0 and the total"
+                    " must be > 0."
+                ),
+            ),
+        ),
+        notes=(
+            (
+                "This mode never runs a model. It summarizes existing"
+                " Vauban evidence bundles such as audit_report.json,"
+                " detect_report.json, guard_report.json,"
+                " ai_act_readiness_report.json, and eval_report.json."
+            ),
+            (
+                "Use report_dir to auto-discover standard filenames, or"
+                " point individual *_report keys at explicit JSON files."
+            ),
+            (
+                "The output is comparative evidence, not an absolute safety"
+                " certificate. Missing evidence stays missing and is surfaced"
+                " in the report."
+            ),
+        ),
+    ),
+    SectionSpec(
         name="behavior_report",
         description=(
             "Standalone Model Behavior Change Report assembled from"
@@ -988,6 +1051,48 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
             (
                 "Use safe or redacted examples. The report should not become"
                 " a prompt pack or bypass recipe."
+            ),
+        ),
+    ),
+    SectionSpec(
+        name="token_audit",
+        description=(
+            "Standalone tokenizer/control-plane audit that inventories"
+            " risky token classes without exposing raw token strings."
+        ),
+        early_return=True,
+        config_class="TokenAuditConfig",
+        fields=(
+            FieldSpec(
+                key="max_token_id",
+                description=(
+                    "Optional upper bound on token IDs to scan, inclusive."
+                ),
+                constraints="integer >= 0; scans the full vocabulary by default.",
+            ),
+            FieldSpec(
+                key="include_duplicate_surface_scan",
+                description=(
+                    "Whether to compute duplicate decoded-surface counts."
+                ),
+                constraints="boolean; true by default.",
+            ),
+        ),
+        notes=(
+            (
+                "This mode requires [model].path but does not require [data]."
+                " Vauban loads the model/tokenizer, scans the tokenizer space,"
+                " and exits after writing token_audit_report.json."
+            ),
+            (
+                "The report is intentionally redacted: it emits aggregate"
+                " counts and qualitative findings only, not raw token strings,"
+                " token IDs, or candidate bypass sequences."
+            ),
+            (
+                "Use it to compare tokenizer/control-plane brittleness across"
+                " model snapshots, applications, or providers without turning"
+                " the output into a jailbreak recipe."
             ),
         ),
     ),

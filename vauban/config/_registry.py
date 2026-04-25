@@ -13,6 +13,7 @@ from vauban.config._parse_api_eval import _parse_api_eval
 from vauban.config._parse_audit import _parse_audit
 from vauban.config._parse_awareness import _parse_awareness
 from vauban.config._parse_behavior_report import _parse_behavior_report
+from vauban.config._parse_benchmark import _parse_benchmark
 from vauban.config._parse_cast import _parse_cast
 from vauban.config._parse_circuit import _parse_circuit
 from vauban.config._parse_compose_optimize import _parse_compose_optimize
@@ -46,6 +47,7 @@ from vauban.config._parse_sss import _parse_sss
 from vauban.config._parse_steer import _parse_steer
 from vauban.config._parse_surface import _parse_surface
 from vauban.config._parse_svf import _parse_svf
+from vauban.config._parse_token_audit import _parse_token_audit
 from vauban.config._types import TomlDict
 from vauban.types import (
     AIActConfig,
@@ -53,6 +55,7 @@ from vauban.types import (
     AuditConfig,
     AwarenessConfig,
     BehaviorReportConfig,
+    BenchmarkConfig,
     CastConfig,
     CircuitConfig,
     ComposeOptimizeConfig,
@@ -86,6 +89,7 @@ from vauban.types import (
     SteerConfig,
     SurfaceConfig,
     SVFConfig,
+    TokenAuditConfig,
 )
 
 
@@ -102,7 +106,9 @@ type _SectionParserResult = (  # pragma: no cover
     | None
     | ApiEvalConfig
     | AIActConfig
+    | BenchmarkConfig
     | BehaviorReportConfig
+    | TokenAuditConfig
     | AuditConfig
     | CastConfig
     | CircuitConfig
@@ -167,7 +173,9 @@ class ParsedSectionValues:
 
     depth: DepthConfig | None
     ai_act: AIActConfig | None
+    benchmark: BenchmarkConfig | None
     behavior_report: BehaviorReportConfig | None
+    token_audit: TokenAuditConfig | None
     audit: AuditConfig | None
     cast: CastConfig | None
     guard: GuardConfig | None
@@ -250,8 +258,16 @@ SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     SectionParseSpec("lora", "lora_load", _parse_lora_load, 5),
     SectionParseSpec("depth", "depth", _parse_depth, 10),
     SectionParseSpec("ai_act", "ai_act", _parse_ai_act, 15, call="base_dir_raw"),
-    SectionParseSpec("behavior_report", "behavior_report", _parse_behavior_report, 16),
-    SectionParseSpec("audit", "audit", _parse_audit, 17),
+    SectionParseSpec(
+        "benchmark",
+        "benchmark",
+        _parse_benchmark,
+        16,
+        call="base_dir_raw",
+    ),
+    SectionParseSpec("behavior_report", "behavior_report", _parse_behavior_report, 17),
+    SectionParseSpec("token_audit", "token_audit", _parse_token_audit, 18),
+    SectionParseSpec("audit", "audit", _parse_audit, 19),
     SectionParseSpec("cast", "cast", _parse_cast, 20),
     SectionParseSpec("guard", "guard", _parse_guard, 22),
     SectionParseSpec("cut", "cut", _parse_cut, 30, call="section_table"),

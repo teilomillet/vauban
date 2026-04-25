@@ -1,0 +1,10 @@
+# Gemma 4 tokenizer/control-plane audit example.
+
+[model]
+path = "mlx-community/gemma-4-e2b-it-bf16"
+
+[output]
+dir = "output/gemma4_token_audit"
+
+[token_audit]
+include_duplicate_surface_scan = true
