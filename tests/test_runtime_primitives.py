@@ -21,15 +21,19 @@ from vauban.runtime import (
     TokenizeRequest,
     access_boundary_for_capabilities,
     access_level_for_capabilities,
+    access_policy_for_capabilities,
+    access_policy_for_trace,
     available_runtime_backends,
     create_runtime,
     declared_capabilities,
     forward_trace_summary,
+    max_capabilities,
     mlx_capabilities,
     profile_stage,
     runtime_capabilities,
     runtime_capability_snapshot,
     runtime_evidence_refs,
+    runtime_report_evidence,
     torch_capabilities,
 )
 
@@ -240,12 +244,30 @@ class TestRuntimeCapabilities:
         boundary = access_boundary_for_capabilities(caps)
         assert boundary.claim_strength == "activation_diagnostic"
 
+    def test_capability_access_policy_lists_available_and_missing_evidence(
+        self,
+    ) -> None:
+        policy = access_policy_for_capabilities(mlx_capabilities())
+        assert policy.level == "activations"
+        assert "Runtime activation traces (full)" in policy.available_evidence
+        assert policy.missing_evidence == ()
+        assert policy.notes == ()
+
     def test_torch_runtime_contract_declares_partial_adapter_support(self) -> None:
         caps = torch_capabilities()
         assert caps.support_level("activations") == "partial"
         assert caps.support_level("interventions") == "partial"
         assert caps.support_level("kv_cache") == "unsupported"
         assert access_level_for_capabilities(caps) == "activations"
+
+    def test_partial_capabilities_preserve_epistemic_notes(self) -> None:
+        policy = access_policy_for_capabilities(torch_capabilities())
+        assert policy.level == "activations"
+        assert "Runtime KV-cache access" in policy.missing_evidence
+        assert (
+            "Runtime activation traces support is partial for backend torch."
+            in policy.notes
+        )
 
     def test_declared_capabilities_reject_unknown_backend(self) -> None:
         with pytest.raises(ValueError, match="Unknown runtime backend"):
@@ -409,6 +431,64 @@ class TestMlxRuntime:
             "logprobs",
             "activation",
         )
+
+    def test_trace_access_policy_uses_collected_evidence(self) -> None:
+        runtime = create_runtime("mlx")
+        trace = runtime.forward(
+            _loaded_fake_model(),
+            ForwardRequest(
+                prompt_ids=(1, 2),
+                return_logits=True,
+                return_logprobs=False,
+            ),
+        )
+
+        policy = access_policy_for_trace(mlx_capabilities(), trace)
+
+        assert policy.level == "logprobs"
+        assert "Runtime logits" in policy.available_evidence
+        assert "Runtime activation traces not collected" in policy.missing_evidence
+
+    def test_trace_access_policy_rejects_unsupported_evidence(self) -> None:
+        trace = ForwardTrace(
+            logits=mx.ones((1, 1, 4)),
+            logprobs=None,
+            activations={},
+            device=DeviceRef(kind="gpu", label="mlx-gpu"),
+        )
+
+        with pytest.raises(ValueError, match="logits unsupported"):
+            access_policy_for_trace(max_capabilities(), trace)
+
+    def test_runtime_report_evidence_packages_report_inputs(self) -> None:
+        runtime = create_runtime("mlx")
+        trace = runtime.forward(
+            _loaded_fake_model(),
+            ForwardRequest(
+                prompt_ids=(1, 2),
+                collect_layers=(0,),
+                return_logits=True,
+                return_logprobs=True,
+            ),
+        )
+
+        package = runtime_report_evidence(
+            mlx_capabilities(),
+            trace,
+            prefix="behavior_trace.prompt_a",
+        )
+        payload = package.to_dict()
+
+        assert package.access.level == "activations"
+        assert tuple(ref.evidence_id for ref in package.evidence) == (
+            "behavior_trace.prompt_a.capabilities",
+            "behavior_trace.prompt_a.trace",
+            "behavior_trace.prompt_a.logprobs",
+            "behavior_trace.prompt_a.activations",
+        )
+        assert payload["access"]["claim_strength"] == "activation_diagnostic"
+        assert payload["trace"]["activation_shapes"] == {"0": [1, 2, 4]}
+        assert payload["capabilities"]["name"] == "mlx"
 
     def test_runtime_capability_snapshot_is_stable(self) -> None:
         assert runtime_capability_snapshot(mlx_capabilities()) == {

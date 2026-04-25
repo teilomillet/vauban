@@ -5,9 +5,11 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from vauban.behavior import EvidenceRef
+from vauban.behavior import AccessPolicy, EvidenceRef, JsonValue
+from vauban.runtime._capabilities import access_policy_for_trace
 
 if TYPE_CHECKING:
     from vauban.runtime._types import (
@@ -15,6 +17,45 @@ if TYPE_CHECKING:
         ForwardTrace,
         RuntimeValue,
         TensorLike,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeReportEvidence:
+    """Report-ready runtime evidence with an explicit access policy."""
+
+    access: AccessPolicy
+    evidence: tuple[EvidenceRef, ...]
+    capabilities: dict[str, RuntimeValue]
+    trace: dict[str, RuntimeValue]
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        """Serialize runtime evidence for JSON report payloads."""
+        return {
+            "access": self.access.to_dict(),
+            "evidence": [ref.to_dict() for ref in self.evidence],
+            "capabilities": _runtime_dict_to_json(self.capabilities),
+            "trace": _runtime_dict_to_json(self.trace),
+        }
+
+
+def runtime_report_evidence(
+    capabilities: BackendCapabilities,
+    trace: ForwardTrace,
+    *,
+    prefix: str = "runtime",
+) -> RuntimeReportEvidence:
+    """Build a report-ready evidence package from one runtime trace."""
+    capability_ref = EvidenceRef(
+        evidence_id=f"{prefix}.capabilities",
+        kind="run_report",
+        description="Runtime capability declaration used for access boundaries.",
+    )
+    return RuntimeReportEvidence(
+        access=access_policy_for_trace(capabilities, trace),
+        evidence=(capability_ref, *runtime_evidence_refs(trace, prefix=prefix)),
+        capabilities=runtime_capability_snapshot(capabilities),
+        trace=forward_trace_summary(trace),
     )
 
 
@@ -106,3 +147,20 @@ def _shape_or_none(tensor: TensorLike | None) -> list[RuntimeValue] | None:
 def _shape(tensor: TensorLike) -> list[RuntimeValue]:
     """Serialize tensor shape as JSON-compatible runtime values."""
     return [int(dim) for dim in tensor.shape]
+
+
+def _runtime_dict_to_json(data: dict[str, RuntimeValue]) -> dict[str, JsonValue]:
+    """Convert runtime JSON-compatible values to behavior JSON-compatible values."""
+    return {key: _runtime_value_to_json(value) for key, value in data.items()}
+
+
+def _runtime_value_to_json(value: RuntimeValue) -> JsonValue:
+    """Convert a runtime value into the behavior-report JSON alias."""
+    if isinstance(value, list):
+        return [_runtime_value_to_json(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: _runtime_value_to_json(item)
+            for key, item in value.items()
+        }
+    return value
