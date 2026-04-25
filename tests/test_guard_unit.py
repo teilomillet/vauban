@@ -10,10 +10,12 @@ import pytest
 
 from tests.conftest import MockCausalLM, MockTokenizer
 from vauban._array import Array
+from vauban._forward import LayerRuntime
 from vauban.guard import (
     GuardSession,
     _classify_zone,
     _restore_cache,
+    _rewind_with_defense,
     _snapshot_cache,
     guard_generate,
 )
@@ -526,3 +528,65 @@ class TestGuardGenerateBranches:
         assert result.total_rewinds == 1
         assert result.circuit_broken is False
         assert any(event.action == "rewind" for event in result.events)
+
+    def test_rewind_with_defense_uses_prefixed_runtime(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+        direction: Array,
+    ) -> None:
+        """Defensive rewind should route through the shared prefixed runtime."""
+        from unittest.mock import patch
+
+        from vauban import _ops as ops
+
+        token_ids = ops.array([[1, 2]], dtype=ops.int32)
+        defensive_embeds = ops.zeros((1, 1, direction.shape[0]))
+        cache = cast("list[LayerCache]", [object()])
+        runtime_cache = cast("list[LayerCache | None]", cache)
+        hidden = ops.zeros((1, 3, direction.shape[0]))
+        runtime = LayerRuntime(
+            hidden=hidden,
+            masks=[],
+            cache=runtime_cache,
+            per_layer_inputs=[],
+        )
+        transformer = type("Transformer", (), {"layers": [object(), object()]})()
+        advanced = [
+            ops.ones(hidden.shape),
+            ops.ones(hidden.shape) * 2.0,
+        ]
+        ops.eval(token_ids, defensive_embeds, hidden, *advanced)
+
+        with (
+            patch("vauban.guard.encode_chat_prompt", return_value=token_ids),
+            patch("vauban.guard.make_cache", return_value=cache),
+            patch("vauban.guard.get_transformer", return_value=transformer),
+            patch(
+                "vauban.guard.prepare_prefixed_layer_runtime",
+                return_value=runtime,
+            ) as mock_prepare,
+            patch(
+                "vauban.guard.advance_layer",
+                side_effect=advanced,
+            ) as mock_advance,
+        ):
+            restored_cache = _rewind_with_defense(
+                mock_model,
+                mock_tokenizer,
+                [{"role": "user", "content": "test"}],
+                defensive_embeds,
+                layers=[0],
+                direction=direction,
+                tiers=[],
+                condition_direction=None,
+            )
+
+        assert restored_cache is cache
+        mock_prepare.assert_called_once_with(
+            transformer,
+            defensive_embeds,
+            token_ids,
+            cache,
+        )
+        assert mock_advance.call_count == 2

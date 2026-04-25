@@ -19,15 +19,14 @@ from typing import TYPE_CHECKING as _TC
 
 from vauban import _ops as ops
 from vauban._forward import (
-    embed_and_mask,
-    embed_and_mask_with_prefix,
+    advance_layer,
     encode_chat_prompt,
     force_eval,
     get_transformer,
     lm_head_forward,
     make_cache,
-    make_ssm_mask,
-    select_mask,
+    prepare_layer_runtime,
+    prepare_prefixed_layer_runtime,
 )
 from vauban.types import (
     GuardConfig,
@@ -150,18 +149,18 @@ def _guard_forward(
         ``(logits, mean_projection, zone, alpha_applied)``
     """
     transformer = get_transformer(model)
-    h, mask = embed_and_mask(transformer, token_ids)
+    runtime = prepare_layer_runtime(transformer, token_ids, cache)
+    h = runtime.hidden
 
     detect_dir = condition_direction if condition_direction is not None else direction
     guard_layer_set = set(guard_layers)
     projections: list[float] = []
-    ssm_mask = make_ssm_mask(transformer, h)
 
     # Accumulate the max detection projection across guard layers
     max_detect_value = float("-inf")
 
-    for i, layer in enumerate(transformer.layers):
-        h = layer(h, select_mask(layer, mask, ssm_mask), cache=cache[i])
+    for i, _layer in enumerate(transformer.layers):
+        h = advance_layer(transformer, runtime, i)
 
         if i not in guard_layer_set:
             continue
@@ -197,6 +196,7 @@ def _guard_forward(
         h_list = [h[0, j, :] for j in range(h.shape[1])]
         h_list[-1] = h_list[-1] - correction
         h = ops.stack(h_list)[None, :, :]
+        runtime.hidden = h
 
     h = transformer.norm(h)
     logits = lm_head_forward(model, h)
@@ -422,11 +422,16 @@ def _rewind_with_defense(
     token_ids = encode_chat_prompt(tokenizer, messages)
     new_cache = make_cache(model)
     transformer = get_transformer(model)
-    h, mask = embed_and_mask_with_prefix(transformer, defensive_embeds, token_ids)
-    ssm_mask = make_ssm_mask(transformer, h)
+    runtime = prepare_prefixed_layer_runtime(
+        transformer,
+        defensive_embeds,
+        token_ids,
+        new_cache,
+    )
+    h = runtime.hidden
 
-    for i, layer in enumerate(transformer.layers):
-        h = layer(h, select_mask(layer, mask, ssm_mask), cache=new_cache[i])
+    for i, _layer in enumerate(transformer.layers):
+        h = advance_layer(transformer, runtime, i)
 
     force_eval(h)
     return new_cache
@@ -471,12 +476,11 @@ def calibrate_guard_thresholds(
         messages = [{"role": "user", "content": prompt_text}]
         token_ids = encode_chat_prompt(tokenizer, messages)
         transformer = get_transformer(model)
-        h, mask = embed_and_mask(transformer, token_ids)
-        ssm_mask = make_ssm_mask(transformer, h)
         cache = make_cache(model)
+        runtime = prepare_layer_runtime(transformer, token_ids, cache)
 
-        for i, layer in enumerate(transformer.layers):
-            h = layer(h, select_mask(layer, mask, ssm_mask), cache=cache[i])
+        for i, _layer in enumerate(transformer.layers):
+            h = advance_layer(transformer, runtime, i)
             if i in guard_layer_set:
                 # Collect projections for all token positions
                 for pos in range(h.shape[1]):

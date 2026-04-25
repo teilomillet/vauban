@@ -8,14 +8,13 @@ from typing import TYPE_CHECKING
 from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import (
-    embed_and_mask,
+    advance_layer,
     encode_user_prompt,
     force_eval,
     get_transformer,
     lm_head_forward,
     make_cache,
-    make_ssm_mask,
-    select_mask,
+    prepare_layer_runtime,
 )
 from vauban.types import CausalLM, LayerCache, ProbeResult, SteerResult, Tokenizer
 
@@ -37,12 +36,11 @@ def probe(
     token_ids = encode_user_prompt(tokenizer, prompt)
 
     transformer = get_transformer(model)
-    h, mask = embed_and_mask(transformer, token_ids)
+    runtime = prepare_layer_runtime(transformer, token_ids)
 
     projections: list[float] = []
-    ssm_mask = make_ssm_mask(transformer, h)
-    for layer in transformer.layers:
-        h = layer(h, select_mask(layer, mask, ssm_mask))
+    for layer_index, _layer in enumerate(transformer.layers):
+        h = advance_layer(transformer, runtime, layer_index)
         last_token = h[0, -1, :]
         proj = ops.sum(last_token * direction)
         force_eval(proj)
@@ -128,15 +126,14 @@ def _steered_forward(
     Cache is mutated in-place.
     """
     transformer = get_transformer(model)
-    h, mask = embed_and_mask(transformer, token_ids)
+    runtime = prepare_layer_runtime(transformer, token_ids, cache)
 
     proj_before: list[float] = []
     proj_after: list[float] = []
     steer_set = set(steer_layers)
-    ssm_mask = make_ssm_mask(transformer, h)
 
-    for i, layer in enumerate(transformer.layers):
-        h = layer(h, select_mask(layer, mask, ssm_mask), cache=cache[i])
+    for i, _layer in enumerate(transformer.layers):
+        h = advance_layer(transformer, runtime, i)
 
         if i in steer_set:
             last_token = h[0, -1, :]
@@ -150,6 +147,7 @@ def _steered_forward(
                 h_list = [h[0, j, :] for j in range(h.shape[1])]
                 h_list[-1] = h_list[-1] - correction
                 h = ops.stack(h_list)[None, :, :]
+                runtime.hidden = h
 
             last_after = h[0, -1, :]
             proj_a = ops.sum(last_after * direction)
@@ -223,15 +221,15 @@ def _svf_steered_forward(
     from vauban.svf import svf_gradient
 
     transformer = get_transformer(model)
-    h, mask = embed_and_mask(transformer, token_ids)
+    runtime = prepare_layer_runtime(transformer, token_ids, cache)
+    h = runtime.hidden
 
     scores_before: list[float] = []
     scores_after: list[float] = []
     steer_set = set(steer_layers)
-    ssm_mask = make_ssm_mask(transformer, h)
 
-    for i, layer in enumerate(transformer.layers):
-        h = layer(h, select_mask(layer, mask, ssm_mask), cache=cache[i])
+    for i, _layer in enumerate(transformer.layers):
+        h = advance_layer(transformer, runtime, i)
 
         if i in steer_set:
             last_token = h[0, -1, :]
@@ -243,6 +241,7 @@ def _svf_steered_forward(
                 h_list = [h[0, j, :] for j in range(h.shape[1])]
                 h_list[-1] = h_list[-1] - correction
                 h = ops.stack(h_list)[None, :, :]
+                runtime.hidden = h
 
             # Score after steering
             last_after = h[0, -1, :]

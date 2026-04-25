@@ -6,12 +6,11 @@
 from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import (
-    embed_and_mask,
+    advance_layer,
     encode_user_prompt,
     force_eval,
     get_transformer,
-    make_ssm_mask,
-    select_mask,
+    prepare_layer_runtime,
 )
 from vauban.types import CausalLM, Tokenizer
 
@@ -135,14 +134,11 @@ def _forward_collect(
             Defaults to -1 (last token).
     """
     transformer = get_transformer(model)
-    h, attn_mask = embed_and_mask(transformer, token_ids)
-
-    # Build SSM mask for hybrid architectures (Qwen3.5 GatedDeltaNet)
-    ssm_mask = make_ssm_mask(transformer, h)
+    runtime = prepare_layer_runtime(transformer, token_ids)
 
     residuals: list[Array] = []
-    for layer in transformer.layers:
-        h = layer(h, select_mask(layer, attn_mask, ssm_mask))
+    for layer_index, _layer in enumerate(transformer.layers):
+        h = advance_layer(transformer, runtime, layer_index)
         # Upcast to float32 for numerical stability (like Heretic)
         activation = h[0, token_position, :].astype(ops.float32)
         residuals.append(activation)

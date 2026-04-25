@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
+[model]
+path = "mlx-community/gemma-4-e2b-it-bf16"
+
+[data]
+harmful = "default"
+harmless = "default"
+
+[output]
+dir = "output/gemma4_guard_smoke"
+
+[guard]
+prompts = [
+  "Explain what a causal attention mask does in one short paragraph."
+]
+layers = [0]
+max_tokens = 1
+max_rewinds = 1
+checkpoint_interval = 1
+defensive_prompt = "Provide a short, careful, policy-compliant answer."
+
+[[guard.tiers]]
+threshold = -999.0
+zone = "orange"
+alpha = 1.5

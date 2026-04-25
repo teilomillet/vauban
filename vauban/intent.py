@@ -13,14 +13,13 @@ from typing import TYPE_CHECKING
 
 from vauban import _ops as ops
 from vauban._forward import (
-    embed_and_mask,
+    advance_layer,
     encode_user_prompt,
     extract_logits,
     force_eval,
     get_transformer,
     make_cache,
-    make_ssm_mask,
-    select_mask,
+    prepare_layer_runtime,
 )
 
 if TYPE_CHECKING:
@@ -57,12 +56,12 @@ def _extract_activation_at_layer(
     token_ids = encode_user_prompt(tokenizer, text_content)
 
     transformer = get_transformer(model)
-    h, mask = embed_and_mask(transformer, token_ids)
+    runtime = prepare_layer_runtime(transformer, token_ids)
 
     activation: Array | None = None
-    ssm_mask = make_ssm_mask(transformer, h)
-    for i, layer_module in enumerate(transformer.layers):
-        h = layer_module(h, select_mask(layer_module, mask, ssm_mask))
+    h = runtime.hidden
+    for i, _layer_module in enumerate(transformer.layers):
+        h = advance_layer(transformer, runtime, i)
         if i == target_layer:
             activation = h[0, -1, :]
             force_eval(activation)

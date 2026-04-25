@@ -13,8 +13,8 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "mlx>=0.22",
-    "mlx-lm>=0.21",
+    "mlx>=0.31.1",
+    "mlx-lm>=0.31.2",
     "ordeal>=0.3.21",
     "pypdf>=6.9.2",
     "reportlab>=4.4.10",

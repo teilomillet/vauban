@@ -11,6 +11,7 @@ import pytest
 from tests.conftest import MockCausalLM, MockTokenizer
 from vauban import _ops as ops
 from vauban._array import Array
+from vauban._forward import LayerRuntime
 from vauban.sic import (
     _detect,
     _detect_adversarial_direction,
@@ -59,6 +60,35 @@ class TestDetectAdversarialDirection:
             mock_model, mock_tokenizer, "Hello", direction, 999,
         )
         assert isinstance(score, float)
+
+    def test_uses_runtime_helper(
+        self, mock_model: MockCausalLM, mock_tokenizer: MockTokenizer,
+        direction: Array,
+    ) -> None:
+        token_ids = ops.zeros((1, 1), dtype=ops.int32)
+        initial = ops.zeros((1, 1, direction.shape[0]))
+        stepped = direction[None, None, :] * 2.0
+        runtime = LayerRuntime(
+            hidden=initial,
+            masks=[],
+            cache=[],
+            per_layer_inputs=[],
+        )
+        transformer = type("Transformer", (), {"layers": [object()]})()
+        ops.eval(token_ids, initial, stepped)
+
+        with (
+            patch("vauban.sic.encode_user_prompt", return_value=token_ids),
+            patch("vauban.sic.get_transformer", return_value=transformer),
+            patch("vauban.sic.prepare_layer_runtime", return_value=runtime),
+            patch("vauban.sic.advance_layer", return_value=stepped) as mock_advance,
+        ):
+            score = _detect_adversarial_direction(
+                mock_model, mock_tokenizer, "Hello", direction, 0,
+            )
+
+        assert mock_advance.call_count == 1
+        assert score == pytest.approx(2.0)
 
 
 class TestDetectAdversarialGeneration:

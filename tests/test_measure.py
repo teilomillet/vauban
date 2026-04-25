@@ -367,6 +367,19 @@ class TestDetectLayerTypes:
         mock_model.model.args = FakeArgs()
         assert detect_layer_types(mock_model) is None
 
+    def test_uses_config_layer_types_for_gemma4_style_models(
+        self, mock_model: MockCausalLM,
+    ) -> None:
+        """Gemma 4 stores layer interleaving metadata on ``config``."""
+
+        class FakeConfig:
+            def __init__(self) -> None:
+                self.layer_types = ["sliding_attention", "full_attention"]
+
+        mock_model.model.config = FakeConfig()
+        result = detect_layer_types(mock_model)
+        assert result == ["sliding", "global"]
+
 
 class TestSelectTargetLayersWithTypeFilter:
     def test_no_filter_unchanged_behavior(self) -> None:

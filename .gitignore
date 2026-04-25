@@ -47,6 +47,7 @@ special_tokens_map.json
 added_tokens.json
 vocab.json
 merges.txt
+examples/output/
 experiments/
 ideas.md
 

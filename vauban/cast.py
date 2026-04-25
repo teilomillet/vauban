@@ -8,14 +8,13 @@ from typing import TYPE_CHECKING
 from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import (
-    embed_and_mask,
+    advance_layer,
     encode_chat_prompt,
     force_eval,
     get_transformer,
     lm_head_forward,
     make_cache,
-    make_ssm_mask,
-    select_mask,
+    prepare_layer_runtime,
 )
 from vauban.types import AlphaTier, CastResult, CausalLM, LayerCache, Tokenizer
 
@@ -251,7 +250,8 @@ def _cast_forward(
         where ``considered`` is the number of cast layers visited in this step.
     """
     transformer = get_transformer(model)
-    h, mask = embed_and_mask(transformer, token_ids)
+    runtime = prepare_layer_runtime(transformer, token_ids, cache)
+    h = runtime.hidden
 
     # Use condition_direction for gating if provided, else primary direction
     detect_dir = condition_direction if condition_direction is not None else direction
@@ -263,10 +263,9 @@ def _cast_forward(
     considered = 0
     displacement_interventions = 0
     max_displacement = 0.0
-    ssm_mask = make_ssm_mask(transformer, h)
 
-    for i, layer in enumerate(transformer.layers):
-        h = layer(h, select_mask(layer, mask, ssm_mask), cache=cache[i])
+    for i, _layer in enumerate(transformer.layers):
+        h = advance_layer(transformer, runtime, i)
 
         if i not in cast_layer_set:
             continue
@@ -310,6 +309,7 @@ def _cast_forward(
             h_list = [h[0, j, :] for j in range(h.shape[1])]
             h_list[-1] = h_list[-1] - correction
             h = ops.stack(h_list)[None, :, :]
+            runtime.hidden = h
             interventions += 1
 
         last_after = h[0, -1, :]
@@ -409,17 +409,17 @@ def _cast_forward_svf(
     from vauban.svf import svf_gradient
 
     transformer = get_transformer(model)
-    h, mask = embed_and_mask(transformer, token_ids)
+    runtime = prepare_layer_runtime(transformer, token_ids, cache)
+    h = runtime.hidden
 
     scores_before: list[float] = []
     scores_after: list[float] = []
     cast_set = set(cast_layers)
     interventions = 0
     considered = 0
-    ssm_mask = make_ssm_mask(transformer, h)
 
-    for i, layer in enumerate(transformer.layers):
-        h = layer(h, select_mask(layer, mask, ssm_mask), cache=cache[i])
+    for i, _layer in enumerate(transformer.layers):
+        h = advance_layer(transformer, runtime, i)
 
         if i not in cast_set:
             continue
@@ -436,6 +436,7 @@ def _cast_forward_svf(
             h = ops.concatenate(
                 [h[:, :-1, :], steered_last[None, None, :]], axis=1,
             )
+            runtime.hidden = h
             interventions += 1
 
         last_after = h[0, -1, :]

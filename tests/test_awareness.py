@@ -11,6 +11,7 @@ from unittest.mock import patch
 import pytest
 
 from vauban import _ops as ops
+from vauban._forward import LayerRuntime
 from vauban._serializers import _awareness_result_to_dict
 from vauban.sensitivity import LayerSensitivity, SensitivityProfile
 from vauban.types import (
@@ -232,13 +233,18 @@ class TestAwarenessDetect:
         )
         token_ids = ops.zeros((1, 2), dtype=ops.int32)
         h = ops.zeros((1, 2, 2))
-        mask = ops.zeros((1, 2), dtype=ops.int32)
-        ops.eval(token_ids, h, mask)
+        runtime = LayerRuntime(
+            hidden=h,
+            masks=[],
+            cache=[],
+            per_layer_inputs=[],
+        )
+        ops.eval(token_ids, h)
 
         with (
             patch("vauban.awareness.encode_user_prompt", return_value=token_ids),
             patch("vauban.awareness.get_transformer", return_value=object()),
-            patch("vauban.awareness.embed_and_mask", return_value=(h, mask)),
+            patch("vauban.awareness.prepare_layer_runtime", return_value=runtime),
             patch(
                 "vauban.awareness.compute_sensitivity_profile",
                 return_value=test_profile,
@@ -300,13 +306,18 @@ class TestAwarenessDetect:
         )
         token_ids = ops.zeros((1, 1), dtype=ops.int32)
         h = ops.zeros((1, 1, 2))
-        mask = ops.zeros((1, 1), dtype=ops.int32)
-        ops.eval(token_ids, h, mask)
+        runtime = LayerRuntime(
+            hidden=h,
+            masks=[],
+            cache=[],
+            per_layer_inputs=[],
+        )
+        ops.eval(token_ids, h)
 
         with (
             patch("vauban.awareness.encode_user_prompt", return_value=token_ids),
             patch("vauban.awareness.get_transformer", return_value=object()),
-            patch("vauban.awareness.embed_and_mask", return_value=(h, mask)),
+            patch("vauban.awareness.prepare_layer_runtime", return_value=runtime),
             patch(
                 "vauban.awareness._fast_gain_profile",
                 return_value=test_profile,
@@ -337,13 +348,18 @@ class TestAwarenessDetect:
         baseline = SensitivityProfile(layers=[], valley_layers=[])
         token_ids = ops.zeros((1, 1), dtype=ops.int32)
         h = ops.zeros((1, 1, 2))
-        mask = ops.zeros((1, 1), dtype=ops.int32)
-        ops.eval(token_ids, h, mask)
+        runtime = LayerRuntime(
+            hidden=h,
+            masks=[],
+            cache=[],
+            per_layer_inputs=[],
+        )
+        ops.eval(token_ids, h)
 
         with (
             patch("vauban.awareness.encode_user_prompt", return_value=token_ids),
             patch("vauban.awareness.get_transformer", return_value=object()),
-            patch("vauban.awareness.embed_and_mask", return_value=(h, mask)),
+            patch("vauban.awareness.prepare_layer_runtime", return_value=runtime),
             patch(
                 "vauban.awareness.compute_sensitivity_profile",
                 return_value=SensitivityProfile(layers=[], valley_layers=[]),
@@ -376,16 +392,16 @@ class TestFastGainProfile:
         direction: Array,
     ) -> None:
         """Fast profile has gain populated and sentinel rank/correlation."""
-        from vauban._forward import embed_and_mask, get_transformer
+        from vauban._forward import get_transformer, prepare_layer_runtime
         from vauban.awareness import _fast_gain_profile
 
         transformer = get_transformer(mock_model)
         token_ids = ops.zeros((1, 4), dtype=ops.int32)
-        h, mask = embed_and_mask(transformer, token_ids)
-        ops.eval(h, mask)
+        runtime = prepare_layer_runtime(transformer, token_ids)
+        ops.eval(runtime.hidden)
 
         config = AwarenessConfig(prompts=["test"], mode="fast")
-        profile = _fast_gain_profile(mock_model, h, mask, direction, config)
+        profile = _fast_gain_profile(mock_model, runtime, direction, config)
 
         n_layers = len(transformer.layers)
         assert len(profile.layers) == n_layers
@@ -415,14 +431,19 @@ class TestFastGainProfile:
         )
         token_ids = ops.zeros((1, 1), dtype=ops.int32)
         h = ops.zeros((1, 1, 2))
-        mask = ops.zeros((1, 1), dtype=ops.int32)
+        runtime = LayerRuntime(
+            hidden=h,
+            masks=[],
+            cache=[],
+            per_layer_inputs=[],
+        )
         profile = SensitivityProfile(layers=[], valley_layers=[])
-        ops.eval(token_ids, h, mask)
+        ops.eval(token_ids, h)
 
         with (
             patch("vauban.awareness.encode_user_prompt", return_value=token_ids),
             patch("vauban.awareness.get_transformer", return_value=object()),
-            patch("vauban.awareness.embed_and_mask", return_value=(h, mask)),
+            patch("vauban.awareness.prepare_layer_runtime", return_value=runtime),
             patch(
                 "vauban.awareness.compute_sensitivity_profile",
                 return_value=profile,
@@ -440,12 +461,13 @@ class TestFastGainProfile:
         mock_compute.assert_called_once_with(
             mock_model,
             h,
-            mask,
+            None,
             direction,
             n_power_iterations=7,
             fd_epsilon=1e-3,
             valley_window=5,
             top_k_valleys=2,
+            runtime=runtime,
         )
 
     def test_calibrate_fast_mode_uses_fast_gain_profile(
@@ -460,14 +482,19 @@ class TestFastGainProfile:
         config = AwarenessConfig(prompts=["test"], mode="fast")
         token_ids = ops.zeros((1, 1), dtype=ops.int32)
         h = ops.zeros((1, 1, 2))
-        mask = ops.zeros((1, 1), dtype=ops.int32)
+        runtime = LayerRuntime(
+            hidden=h,
+            masks=[],
+            cache=[],
+            per_layer_inputs=[],
+        )
         profile = SensitivityProfile(layers=[], valley_layers=[])
-        ops.eval(token_ids, h, mask)
+        ops.eval(token_ids, h)
 
         with (
             patch("vauban.awareness.encode_user_prompt", return_value=token_ids),
             patch("vauban.awareness.get_transformer", return_value=object()),
-            patch("vauban.awareness.embed_and_mask", return_value=(h, mask)),
+            patch("vauban.awareness.prepare_layer_runtime", return_value=runtime),
             patch(
                 "vauban.awareness._fast_gain_profile",
                 return_value=profile,
@@ -484,8 +511,7 @@ class TestFastGainProfile:
         assert result is profile
         mock_fast.assert_called_once_with(
             mock_model,
-            h,
-            mask,
+            runtime,
             direction,
             config,
         )

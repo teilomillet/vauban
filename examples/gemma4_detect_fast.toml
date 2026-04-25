@@ -1,0 +1,17 @@
+# Gemma 4 fast detect example.
+
+[model]
+path = "mlx-community/gemma-4-e2b-it-bf16"
+
+[data]
+harmful = "default"
+harmless = "default"
+
+[output]
+dir = "output/gemma4_detect_fast"
+
+[measure]
+measure_only = true
+
+[detect]
+mode = "fast"

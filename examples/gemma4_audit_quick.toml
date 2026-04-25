@@ -1,0 +1,17 @@
+# Gemma 4 quick audit example.
+
+[model]
+path = "mlx-community/gemma-4-e2b-it-bf16"
+
+[data]
+harmful = "default"
+harmless = "default"
+
+[output]
+dir = "output/gemma4_audit_quick"
+
+[audit]
+company_name = "Vauban Examples"
+system_name = "Gemma 4 E2B IT"
+thoroughness = "quick"
+pdf_report = false

@@ -61,11 +61,107 @@ class FakeLayer:
         return h + self.delta
 
 
+class FakeGemmaLayer:
+    """Gemma-4-like layer stub returning hidden state plus shared KV info."""
+
+    def __init__(self, delta: Array, shared_value: Array | None = None) -> None:
+        self.delta = delta
+        self.shared_value = shared_value
+        self.calls: list[dict[str, object]] = []
+
+    def __call__(
+        self,
+        h: Array,
+        mask: Array | None,
+        *,
+        cache: object | None = None,
+        per_layer_input: Array | None = None,
+        shared_kv: object | None = None,
+        offset: object | None = None,
+    ) -> tuple[Array, object | None, object | None]:
+        """Record the call and emit tuple-style Gemma runtime outputs."""
+        out = h + self.delta
+        if per_layer_input is not None:
+            out = out + per_layer_input
+        if isinstance(shared_kv, tuple) and len(shared_kv) > 0:
+            shared_array = cast("Array", shared_kv[0])
+            out = out + shared_array
+        self.calls.append(
+            {
+                "mask": mask,
+                "cache": cache,
+                "per_layer_input": per_layer_input,
+                "shared_kv": shared_kv,
+                "offset": offset,
+            },
+        )
+        next_shared = (
+            (self.shared_value, self.shared_value)
+            if self.shared_value is not None else None
+        )
+        next_offset = 7 if self.shared_value is not None else offset
+        return out, next_shared, next_offset
+
+
 class FakeTransformer:
     """Transformer stub exposing layers."""
 
     def __init__(self, layers: list[FakeLayer]) -> None:
         self.layers = layers
+
+
+class FakeGemmaEmbedTokens:
+    """Embedding stub for Gemma-style manual stepping tests."""
+
+    def __call__(self, token_ids: Array) -> Array:
+        """Expand token IDs into a 1D embedding channel."""
+        return token_ids.astype(ops.float32)[..., None]
+
+
+class FakeGemmaTransformer:
+    """Transformer stub covering Gemma 4 specific runtime branches."""
+
+    def __init__(self, layers: list[FakeGemmaLayer]) -> None:
+        self.layers = layers
+        self.embed_tokens = FakeGemmaEmbedTokens()
+        self.embed_scale = 2.0
+        self.hidden_size_per_layer_input = 1
+        self.previous_kvs = [0, 0]
+        self.mask_calls: list[list[object | None]] = []
+
+    def _make_masks(
+        self,
+        h: Array,
+        cache: list[object | None],
+    ) -> list[Array]:
+        """Return per-layer masks and record the padded cache list."""
+        seq_len = h.shape[1]
+        self.mask_calls.append(cache)
+        return [
+            ops.full((1, seq_len, seq_len), 10.0),
+            ops.full((1, seq_len, seq_len), 20.0),
+        ]
+
+    def _get_per_layer_inputs(
+        self,
+        token_ids: Array,
+        input_embeddings: Array,
+    ) -> Array:
+        """Return deterministic per-layer inputs for two decoder layers."""
+        del token_ids, input_embeddings
+        return ops.array(
+            [[[[0.1], [0.2]], [[0.3], [0.4]]]],
+            dtype=ops.float32,
+        )
+
+    def _project_per_layer_inputs(
+        self,
+        hidden: Array,
+        per_layer_inputs: Array,
+    ) -> Array:
+        """Pass through precomputed per-layer inputs."""
+        del hidden
+        return per_layer_inputs
 
 
 class FakeEmbedTokens:
@@ -346,6 +442,103 @@ class TestForwardBranches:
 
         assert cache_layers[0].calls[0][2] is cache[0]
         assert cache_layers[1].calls[0][2] is cache[1]
+
+    def test_prepare_layer_runtime_and_advance_layer_cover_gemma4_path(self) -> None:
+        shared = ops.full((1, 2, 1), 0.5, dtype=ops.float32)
+        layers = [
+            FakeGemmaLayer(
+                ops.full((1, 2, 1), 1.0, dtype=ops.float32),
+                shared,
+            ),
+            FakeGemmaLayer(
+                ops.full((1, 2, 1), 2.0, dtype=ops.float32),
+            ),
+        ]
+        transformer = FakeGemmaTransformer(layers)
+        token_ids = ops.array([[1.0, 2.0]], dtype=ops.float32)
+        runtime = forward_module.prepare_layer_runtime(
+            cast("TransformerModel", transformer),
+            token_ids,
+            cache=cast("list[LayerCache]", [object()]),
+        )
+
+        first_hidden = forward_module.advance_layer(
+            cast("TransformerModel", transformer),
+            runtime,
+            0,
+        )
+        second_hidden = forward_module.advance_layer(
+            cast("TransformerModel", transformer),
+            runtime,
+            1,
+        )
+        forward_module.force_eval(first_hidden, second_hidden)
+
+        assert transformer.mask_calls == [[runtime.cache[0], runtime.cache[1]]]
+        assert layers[0].calls[0]["cache"] is runtime.cache[0]
+        assert layers[1].calls[0]["cache"] is None
+        assert layers[0].calls[0]["mask"] is runtime.masks[0]
+        assert layers[1].calls[0]["mask"] is runtime.masks[1]
+        assert layers[0].calls[0]["per_layer_input"] is not None
+        assert layers[1].calls[0]["per_layer_input"] is not None
+        assert layers[1].calls[0]["shared_kv"] is not None
+        assert layers[1].calls[0]["offset"] == 7
+        assert np.allclose(np.array(first_hidden), np.array([[[3.1], [5.3]]]))
+        assert np.allclose(np.array(second_hidden), np.array([[[5.8], [8.2]]]))
+
+    def test_prepare_prefixed_layer_runtime_covers_gemma4_path(self) -> None:
+        shared = ops.full((1, 3, 1), 0.5, dtype=ops.float32)
+        layers = [
+            FakeGemmaLayer(
+                ops.full((1, 3, 1), 1.0, dtype=ops.float32),
+                shared,
+            ),
+            FakeGemmaLayer(
+                ops.full((1, 3, 1), 2.0, dtype=ops.float32),
+            ),
+        ]
+        transformer = FakeGemmaTransformer(layers)
+        token_ids = ops.array([[1.0, 2.0]], dtype=ops.float32)
+        prefix_embeddings = ops.full((1, 1, 1), 5.0, dtype=ops.float32)
+        runtime = forward_module.prepare_prefixed_layer_runtime(
+            cast("TransformerModel", transformer),
+            prefix_embeddings,
+            token_ids,
+            cache=cast("list[LayerCache]", [object()]),
+        )
+
+        first_hidden = forward_module.advance_layer(
+            cast("TransformerModel", transformer),
+            runtime,
+            0,
+        )
+        second_hidden = forward_module.advance_layer(
+            cast("TransformerModel", transformer),
+            runtime,
+            1,
+        )
+        forward_module.force_eval(first_hidden, second_hidden)
+
+        assert transformer.mask_calls == [[runtime.cache[0], runtime.cache[1]]]
+        assert runtime.hidden.shape == (1, 3, 1)
+        assert runtime.per_layer_inputs[0] is not None
+        assert runtime.per_layer_inputs[1] is not None
+        assert np.allclose(
+            np.array(runtime.per_layer_inputs[0]),
+            np.array([[[0.0], [0.1], [0.3]]]),
+        )
+        assert np.allclose(
+            np.array(runtime.per_layer_inputs[1]),
+            np.array([[[0.0], [0.2], [0.4]]]),
+        )
+        assert np.allclose(
+            np.array(first_hidden),
+            np.array([[[11.0], [3.1], [5.3]]]),
+        )
+        assert np.allclose(
+            np.array(second_hidden),
+            np.array([[[13.5], [5.8], [8.2]]]),
+        )
 
     def test_ste_layer_forward_covers_linear_and_attention_paths(self) -> None:
         linear_layer = FakeLayer(ops.full((1, 1, 2), 3.0), is_linear=True)

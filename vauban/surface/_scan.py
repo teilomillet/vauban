@@ -10,14 +10,13 @@ from typing import TYPE_CHECKING
 
 from vauban import _ops as ops
 from vauban._forward import (
-    embed_and_mask,
+    advance_layer,
     encode_chat_prompt,
     extract_logits,
     force_eval,
     get_transformer,
     make_cache,
-    make_ssm_mask,
-    select_mask,
+    prepare_layer_runtime,
 )
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES, _judge_single
 from vauban.types import CausalLM, SurfacePoint, SurfacePrompt, Tokenizer
@@ -124,12 +123,11 @@ def _probe_with_messages(
     token_ids = encode_chat_prompt(tokenizer, messages)
 
     transformer = get_transformer(model)
-    h, mask = embed_and_mask(transformer, token_ids)
+    runtime = prepare_layer_runtime(transformer, token_ids)
 
     projections: list[float] = []
-    ssm_mask = make_ssm_mask(transformer, h)
-    for layer in transformer.layers:
-        h = layer(h, select_mask(layer, mask, ssm_mask))
+    for layer_index, _layer in enumerate(transformer.layers):
+        h = advance_layer(transformer, runtime, layer_index)
         last_token = h[0, -1, :]
         proj = ops.sum(last_token * direction)
         force_eval(proj)

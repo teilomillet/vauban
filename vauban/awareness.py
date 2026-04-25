@@ -18,15 +18,14 @@ Algorithm:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from vauban._forward import (
-    LayerModule,
-    embed_and_mask,
+    LayerRuntime,
+    advance_layer,
     encode_user_prompt,
     get_transformer,
-    make_ssm_mask,
-    select_mask,
+    prepare_layer_runtime,
 )
 from vauban.sensitivity import (
     SensitivityProfile,
@@ -73,17 +72,18 @@ def awareness_calibrate(
     """
     ids = encode_user_prompt(tokenizer, calibration_prompt)
     transformer = get_transformer(model)
-    h, mask = embed_and_mask(transformer, ids)
+    runtime = prepare_layer_runtime(transformer, ids)
 
     if config.mode == "fast":
-        return _fast_gain_profile(model, h, mask, direction, config)
+        return _fast_gain_profile(model, runtime, direction, config)
 
     return compute_sensitivity_profile(
-        model, h, mask, direction,
+        model, runtime.hidden, None, direction,
         n_power_iterations=config.n_power_iterations,
         fd_epsilon=config.fd_epsilon,
         valley_window=config.valley_window,
         top_k_valleys=config.top_k_valleys,
+        runtime=runtime,
     )
 
 
@@ -93,8 +93,7 @@ def awareness_calibrate(
 
 def _fast_gain_profile(
     model: CausalLM,
-    h: Array,
-    mask: Array,
+    runtime: LayerRuntime,
     direction: Array,
     config: AwarenessConfig,
 ) -> SensitivityProfile:
@@ -116,21 +115,28 @@ def _fast_gain_profile(
     from vauban.sensitivity import LayerSensitivity
 
     transformer = get_transformer(model)
-    ssm_mask = make_ssm_mask(transformer, h)
     layer_results: list[LayerSensitivity] = []
 
-    def _make_layer_fn(
-        _layer: LayerModule, _mask: Array | None,
-    ) -> Callable[[Array], Array]:
+    def _make_layer_fn(layer_index: int) -> Callable[[Array], Array]:
         def fn(x: Array) -> Array:
-            return _layer(x, _mask)
+            local_runtime = LayerRuntime(
+                hidden=x,
+                masks=runtime.masks,
+                cache=runtime.cache,
+                per_layer_inputs=runtime.per_layer_inputs,
+                previous_kvs=runtime.previous_kvs,
+                intermediates=(
+                    None if runtime.intermediates is None
+                    else list(runtime.intermediates)
+                ),
+            )
+            return advance_layer(transformer, local_runtime, layer_index)
+
         return fn
 
-    h_cur = h
-    for i, layer in enumerate(transformer.layers):
-        typed_layer = cast("LayerModule", layer)
-        layer_mask = select_mask(layer, mask, ssm_mask)
-        layer_fn = _make_layer_fn(typed_layer, layer_mask)
+    h_cur = runtime.hidden
+    for i, _layer in enumerate(transformer.layers):
+        layer_fn = _make_layer_fn(i)
 
         gain = directional_gain(layer_fn, h_cur, direction, config.fd_epsilon)
 
@@ -141,7 +147,7 @@ def _fast_gain_profile(
             effective_rank=1.0,  # sentinel — not computed in fast mode
         ))
 
-        h_cur = typed_layer(h_cur, layer_mask)
+        h_cur = advance_layer(transformer, runtime, i)
 
     return SensitivityProfile(layers=layer_results, valley_layers=[])
 
@@ -240,17 +246,18 @@ def awareness_detect(
     # Compute test profile
     ids = encode_user_prompt(tokenizer, prompt)
     transformer = get_transformer(model)
-    h, mask = embed_and_mask(transformer, ids)
+    runtime = prepare_layer_runtime(transformer, ids)
 
     if config.mode == "fast":
-        test_profile = _fast_gain_profile(model, h, mask, direction, config)
+        test_profile = _fast_gain_profile(model, runtime, direction, config)
     else:
         test_profile = compute_sensitivity_profile(
-            model, h, mask, direction,
+            model, runtime.hidden, None, direction,
             n_power_iterations=config.n_power_iterations,
             fd_epsilon=config.fd_epsilon,
             valley_window=config.valley_window,
             top_k_valleys=config.top_k_valleys,
+            runtime=runtime,
         )
 
     # Compare per-layer

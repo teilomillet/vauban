@@ -3,9 +3,12 @@
 
 """Tests for intent alignment functional layer and defense stack composition."""
 
+from unittest.mock import patch
+
 from tests.conftest import D_MODEL, MockCausalLM, MockTokenizer
 from vauban import _ops as ops
 from vauban._array import Array
+from vauban._forward import LayerRuntime
 from vauban.intent import (
     _extract_activation_at_layer,
     capture_intent,
@@ -63,6 +66,37 @@ class TestExtractActivation:
         )
         ops.eval(act)
         assert act.shape == (D_MODEL,)
+
+    def test_uses_runtime_helper(
+        self,
+        mock_model: MockCausalLM,
+        mock_tokenizer: MockTokenizer,
+    ) -> None:
+        token_ids = ops.zeros((1, 1), dtype=ops.int32)
+        initial = ops.zeros((1, 1, D_MODEL))
+        stepped = ops.ones((1, 1, D_MODEL))
+        runtime = LayerRuntime(
+            hidden=initial,
+            masks=[],
+            cache=[],
+            per_layer_inputs=[],
+        )
+        transformer = type("Transformer", (), {"layers": [object()]})()
+        ops.eval(token_ids, initial, stepped)
+
+        with (
+            patch("vauban.intent.encode_user_prompt", return_value=token_ids),
+            patch("vauban.intent.get_transformer", return_value=transformer),
+            patch("vauban.intent.prepare_layer_runtime", return_value=runtime),
+            patch("vauban.intent.advance_layer", return_value=stepped) as mock_advance,
+        ):
+            act = _extract_activation_at_layer(
+                mock_model, mock_tokenizer, "runtime path", target_layer=0,
+            )
+
+        ops.eval(act)
+        assert mock_advance.call_count == 1
+        assert act.tolist() == stepped[0, -1, :].tolist()
 
 
 # ── capture_intent ───────────────────────────────────────────────────

@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING, cast
 from vauban import _ops as ops
 from vauban._forward import (
     LayerModule,
+    LayerRuntime,
+    advance_layer,
     force_eval,
     get_transformer,
     make_ssm_mask,
@@ -197,12 +199,13 @@ def find_compression_valleys(
 def compute_sensitivity_profile(
     model: CausalLM,
     h: Array,
-    mask: Array,
+    mask: Array | None,
     direction: Array,
     n_power_iterations: int = 5,
     fd_epsilon: float = 1e-4,
     valley_window: int = 3,
     top_k_valleys: int = 3,
+    runtime: LayerRuntime | None = None,
 ) -> SensitivityProfile:
     """Compute full sensitivity profile for all transformer layers.
 
@@ -219,29 +222,52 @@ def compute_sensitivity_profile(
         fd_epsilon: Finite-difference epsilon.
         valley_window: Window for valley detection.
         top_k_valleys: Max valleys to return.
+        runtime: Optional prepared layer runtime for architectures that
+            need per-layer masks or auxiliary inputs during manual layer
+            stepping.
 
     Returns:
         Full sensitivity profile with per-layer metrics and valley layers.
     """
     transformer = get_transformer(model)
-    ssm_mask = make_ssm_mask(transformer, h)
     layer_sensitivities: list[LayerSensitivity] = []
     ranks: list[float] = []
 
-    h_cur = h
+    ssm_mask = make_ssm_mask(transformer, h) if runtime is None else None
+    h_cur = runtime.hidden if runtime is not None else h
     for i, layer in enumerate(transformer.layers):
-        layer_mask = select_mask(layer, mask, ssm_mask)
+        if runtime is None:
+            layer_mask = select_mask(layer, mask, ssm_mask)
+            typed_layer = cast("LayerModule", layer)
 
-        # Build a closure that captures the current hidden state context
-        def _make_layer_fn(
-            _layer: LayerModule, _mask: Array | None,
-        ) -> LayerFn:
-            def fn(x: Array) -> Array:
+            # Build a closure that captures the current hidden state context.
+            def fn(
+                x: Array,
+                *,
+                _layer: LayerModule = typed_layer,
+                _mask: Array | None = layer_mask,
+            ) -> Array:
                 return _layer(x, _mask)
-            return fn
 
-        typed_layer = cast("LayerModule", layer)
-        layer_fn = _make_layer_fn(typed_layer, layer_mask)
+            layer_fn: LayerFn = fn
+        else:
+            # Reuse the same per-layer runtime configuration while cloning the
+            # mutable hidden/intermediate state for each finite-difference call.
+            def fn(x: Array, *, _layer_index: int = i) -> Array:
+                local_runtime = LayerRuntime(
+                    hidden=x,
+                    masks=runtime.masks,
+                    cache=runtime.cache,
+                    per_layer_inputs=runtime.per_layer_inputs,
+                    previous_kvs=runtime.previous_kvs,
+                    intermediates=(
+                        None if runtime.intermediates is None
+                        else list(runtime.intermediates)
+                    ),
+                )
+                return advance_layer(transformer, local_runtime, _layer_index)
+
+            layer_fn = fn
 
         # Directional gain
         gain = directional_gain(layer_fn, h_cur, direction, fd_epsilon)
@@ -265,7 +291,10 @@ def compute_sensitivity_profile(
         ))
 
         # Advance hidden state through this layer
-        h_cur = typed_layer(h_cur, layer_mask)
+        if runtime is None:
+            h_cur = typed_layer(h_cur, layer_mask)
+        else:
+            h_cur = advance_layer(transformer, runtime, i)
 
     valley_layers = find_compression_valleys(ranks, valley_window, top_k_valleys)
 

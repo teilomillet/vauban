@@ -15,15 +15,14 @@ import math
 from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import (
-    embed_and_mask,
+    advance_layer,
     encode_chat_prompt,
     encode_user_prompt,
     extract_logits,
     force_eval,
     get_transformer,
     make_cache,
-    make_ssm_mask,
-    select_mask,
+    prepare_layer_runtime,
 )
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES
 from vauban.types import (
@@ -302,11 +301,11 @@ def _detect_adversarial_direction(
     token_ids = encode_user_prompt(tokenizer, prompt)
 
     transformer = get_transformer(model)
-    h, mask = embed_and_mask(transformer, token_ids)
-    ssm_mask = make_ssm_mask(transformer, h)
+    runtime = prepare_layer_runtime(transformer, token_ids)
+    h = runtime.hidden
 
-    for i, layer in enumerate(transformer.layers):
-        h = layer(h, select_mask(layer, mask, ssm_mask))
+    for i, _layer in enumerate(transformer.layers):
+        h = advance_layer(transformer, runtime, i)
         if i == target_layer:
             last_token = h[0, -1, :]
             proj = ops.sum(last_token * direction)
@@ -349,11 +348,11 @@ def _detect_adversarial_svf(
 
     token_ids = encode_user_prompt(tokenizer, prompt)
 
-    h, mask = embed_and_mask(transformer, token_ids)
-    ssm_mask = make_ssm_mask(transformer, h)
+    runtime = prepare_layer_runtime(transformer, token_ids)
+    h = runtime.hidden
 
-    for i, layer in enumerate(transformer.layers):
-        h = layer(h, select_mask(layer, mask, ssm_mask))
+    for i, _layer in enumerate(transformer.layers):
+        h = advance_layer(transformer, runtime, i)
         if i == target_layer:
             last_token = h[0, -1, :]
             score = boundary.forward(last_token, i)

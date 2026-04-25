@@ -13,14 +13,13 @@ import math
 from vauban import _ops as ops
 from vauban._array import Array
 from vauban._forward import (
-    embed_and_mask,
+    advance_layer,
     encode_user_prompt,
     force_eval,
     get_transformer,
     lm_head_forward,
     make_cache,
-    make_ssm_mask,
-    select_mask,
+    prepare_layer_runtime,
 )
 from vauban.types import (
     CausalLM,
@@ -49,13 +48,12 @@ def depth_profile(
     token_ids_list: list[int] = token_ids[0].tolist()  # type: ignore[assignment]
 
     transformer = get_transformer(model)
-    h, mask = embed_and_mask(transformer, token_ids)
+    runtime = prepare_layer_runtime(transformer, token_ids)
 
     # Collect hidden states at each layer
     hidden_states: list[Array] = []
-    ssm_mask = make_ssm_mask(transformer, h)
-    for layer in transformer.layers:
-        h = layer(h, select_mask(layer, mask, ssm_mask))
+    for layer_index, _layer in enumerate(transformer.layers):
+        h = advance_layer(transformer, runtime, layer_index)
         hidden_states.append(h)
         force_eval(h)
 
@@ -306,11 +304,10 @@ def _prefill_cache(
 ) -> Array:
     """Run input tokens through the model to populate the KV cache."""
     transformer = get_transformer(model)
-    h, mask = embed_and_mask(transformer, token_ids)
-
-    ssm_mask = make_ssm_mask(transformer, h)
-    for i, layer in enumerate(transformer.layers):
-        h = layer(h, select_mask(layer, mask, ssm_mask), cache=cache[i])
+    runtime = prepare_layer_runtime(transformer, token_ids, cache)
+    h = runtime.hidden
+    for i, _layer in enumerate(transformer.layers):
+        h = advance_layer(transformer, runtime, i)
     force_eval(h)
     return h
 
@@ -322,12 +319,11 @@ def _forward_collect_hidden(
 ) -> list[Array]:
     """Forward pass collecting hidden states at each layer."""
     transformer = get_transformer(model)
-    h, mask = embed_and_mask(transformer, token_ids)
+    runtime = prepare_layer_runtime(transformer, token_ids, cache)
 
     hidden_states: list[Array] = []
-    ssm_mask = make_ssm_mask(transformer, h)
-    for i, layer in enumerate(transformer.layers):
-        h = layer(h, select_mask(layer, mask, ssm_mask), cache=cache[i])
+    for i, _layer in enumerate(transformer.layers):
+        h = advance_layer(transformer, runtime, i)
         hidden_states.append(h)
         force_eval(h)
 
@@ -341,15 +337,10 @@ def _cached_forward_all_hidden(
 ) -> Array:
     """Full forward pass returning logits (for initial token selection)."""
     transformer = get_transformer(model)
-    h, mask = embed_and_mask(transformer, token_ids)
-
-    ssm_mask = make_ssm_mask(transformer, h)
-    if cache is not None:
-        for i, layer in enumerate(transformer.layers):
-            h = layer(h, select_mask(layer, mask, ssm_mask), cache=cache[i])
-    else:
-        for layer in transformer.layers:
-            h = layer(h, select_mask(layer, mask, ssm_mask))
+    runtime = prepare_layer_runtime(transformer, token_ids, cache)
+    h = runtime.hidden
+    for i, _layer in enumerate(transformer.layers):
+        h = advance_layer(transformer, runtime, i)
 
     h = transformer.norm(h)
     logits = lm_head_forward(model, h)

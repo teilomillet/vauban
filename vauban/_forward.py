@@ -8,6 +8,7 @@ surface, depth, sic, and softprompt modules: KV cache creation, embed + mask
 setup, LM head application, and logit extraction.
 """
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, cast
 
 from vauban._array import Array
@@ -33,6 +34,37 @@ class LayerModule(Protocol):
         *,
         cache: LayerCache | None = None,
     ) -> Array: ...
+
+
+class ExtendedLayerModule(Protocol):
+    """Callable layer interface for decoders with extra runtime state.
+
+    Gemma 4 style decoder layers accept shared KV state, per-layer inputs,
+    and return a tuple carrying updated shared KV information.
+    """
+
+    def __call__(
+        self,
+        h: Array,
+        mask: Array | None,
+        *,
+        cache: LayerCache | None = None,
+        per_layer_input: Array | None = None,
+        shared_kv: object | None = None,
+        offset: object | None = None,
+    ) -> object: ...
+
+
+@dataclass(slots=True)
+class LayerRuntime:
+    """Mutable runtime state for manual layer-by-layer decoding."""
+
+    hidden: Array
+    masks: list[Array | None]
+    cache: list[LayerCache | None]
+    per_layer_inputs: list[Array | None]
+    previous_kvs: list[int] | None = None
+    intermediates: list[tuple[object | None, object | None]] | None = None
 
 
 def get_transformer(model: CausalLM) -> TransformerModel:
@@ -91,6 +123,341 @@ def select_mask(
     if ssm_mask is not None and getattr(layer, "is_linear", False):
         return ssm_mask
     return attn_mask
+
+
+def _scale_input_embeddings(
+    transformer: TransformerModel,
+    input_embeddings: Array,
+) -> Array:
+    """Apply architecture-specific input scaling when present."""
+    embed_scale = getattr(transformer, "embed_scale", None)
+    if embed_scale is None:
+        return input_embeddings
+    return input_embeddings * embed_scale
+
+
+def _expand_layer_cache(
+    transformer: TransformerModel,
+    cache: list[LayerCache] | None,
+) -> list[LayerCache | None]:
+    """Pad caches to one entry per layer.
+
+    Some architectures such as Gemma 4 only materialize caches for the
+    non-shared KV layers and pad the remainder with ``None`` internally.
+    """
+    num_layers = len(transformer.layers)
+    if cache is None:
+        return [None] * num_layers
+    return [
+        cache[i] if i < len(cache) else None
+        for i in range(num_layers)
+    ]
+
+
+def _build_layer_masks(
+    transformer: TransformerModel,
+    hidden: Array,
+    cache: list[LayerCache | None],
+) -> list[Array | None]:
+    """Build one mask per layer.
+
+    Uses architecture-provided mask builders when available, falling back
+    to the generic causal-mask + SSM handling used elsewhere in Vauban.
+    """
+    make_masks = getattr(transformer, "_make_masks", None)
+    if callable(make_masks):
+        raw_masks = make_masks(hidden, cache)
+        if not isinstance(raw_masks, list):
+            msg = "_make_masks() must return list[Array | None]"
+            raise TypeError(msg)
+        if len(raw_masks) != len(transformer.layers):
+            msg = (
+                "_make_masks() returned wrong number of masks: "
+                f"{len(raw_masks)} != {len(transformer.layers)}"
+            )
+            raise ValueError(msg)
+        return [cast("Array | None", mask) for mask in raw_masks]
+
+    attn_mask = create_attention_mask(hidden)
+    ssm_mask = make_ssm_mask(transformer, hidden)
+    return [
+        select_mask(layer, attn_mask, ssm_mask)
+        for layer in transformer.layers
+    ]
+
+
+def _build_per_layer_inputs(
+    transformer: TransformerModel,
+    token_ids: Array,
+    input_embeddings: Array,
+    hidden: Array,
+) -> list[Array | None]:
+    """Build per-layer inputs for architectures that require them."""
+    num_layers = len(transformer.layers)
+    hidden_size_per_layer_input = getattr(
+        transformer, "hidden_size_per_layer_input", None,
+    )
+    if hidden_size_per_layer_input in (None, 0):
+        return [None] * num_layers
+
+    get_per_layer_inputs = getattr(transformer, "_get_per_layer_inputs", None)
+    project_per_layer_inputs = getattr(
+        transformer, "_project_per_layer_inputs", None,
+    )
+    if not callable(get_per_layer_inputs) or not callable(project_per_layer_inputs):
+        return [None] * num_layers
+
+    raw_inputs = get_per_layer_inputs(token_ids, input_embeddings)
+    projected_inputs = project_per_layer_inputs(hidden, raw_inputs)
+    if projected_inputs is None:
+        return [None] * num_layers
+
+    return [
+        projected_inputs[:, :, i, :]
+        for i, _layer in enumerate(transformer.layers)
+    ]
+
+
+def _combine_input_embeddings(
+    prompt_embeddings: Array,
+    prefix_embeddings: Array,
+    *,
+    token_position: str = "prefix",
+    infix_split: int | None = None,
+) -> Array:
+    """Combine prompt and prefix embeddings in the requested position."""
+    from vauban import _ops as ops
+
+    if token_position == "suffix":
+        return ops.concatenate([prompt_embeddings, prefix_embeddings], axis=1)
+    if token_position == "infix" and infix_split is not None:
+        part1 = prompt_embeddings[:, :infix_split, :]
+        part2 = prompt_embeddings[:, infix_split:, :]
+        return ops.concatenate([part1, prefix_embeddings, part2], axis=1)
+    return ops.concatenate([prefix_embeddings, prompt_embeddings], axis=1)
+
+
+def _build_prefixed_per_layer_inputs(
+    transformer: TransformerModel,
+    token_ids: Array,
+    prompt_embeddings: Array,
+    prefix_embeddings: Array,
+    *,
+    token_position: str = "prefix",
+    infix_split: int | None = None,
+) -> list[Array | None]:
+    """Build per-layer inputs for prompt tokens and pad synthetic prefix slots.
+
+    Architectures like Gemma 4 E2B/E4B use additional per-layer token inputs.
+    Synthetic prefix embeddings do not correspond to token IDs, so their
+    auxiliary inputs are zero-filled while prompt-token inputs are computed
+    exactly as the model would for the original prompt.
+    """
+    from vauban import _ops as ops
+
+    num_layers = len(transformer.layers)
+    hidden_size_per_layer_input = getattr(
+        transformer, "hidden_size_per_layer_input", None,
+    )
+    if hidden_size_per_layer_input in (None, 0):
+        return [None] * num_layers
+
+    get_per_layer_inputs = getattr(transformer, "_get_per_layer_inputs", None)
+    project_per_layer_inputs = getattr(
+        transformer, "_project_per_layer_inputs", None,
+    )
+    if not callable(get_per_layer_inputs) or not callable(project_per_layer_inputs):
+        return [None] * num_layers
+
+    prompt_hidden = _scale_input_embeddings(transformer, prompt_embeddings)
+    raw_prompt_inputs = get_per_layer_inputs(token_ids, prompt_embeddings)
+    projected_prompt_inputs = project_per_layer_inputs(
+        prompt_hidden, raw_prompt_inputs,
+    )
+    if projected_prompt_inputs is None:
+        return [None] * num_layers
+
+    prefix_len = prefix_embeddings.shape[1]
+    prefix_inputs = ops.zeros(
+        (
+            projected_prompt_inputs.shape[0],
+            prefix_len,
+            projected_prompt_inputs.shape[2],
+            projected_prompt_inputs.shape[3],
+        ),
+        dtype=projected_prompt_inputs.dtype,
+    )
+    combined_inputs = _combine_input_embeddings(
+        projected_prompt_inputs,
+        prefix_inputs,
+        token_position=token_position,
+        infix_split=infix_split,
+    )
+    return [
+        combined_inputs[:, :, i, :]
+        for i, _layer in enumerate(transformer.layers)
+    ]
+
+
+def prepare_layer_runtime(
+    transformer: TransformerModel,
+    token_ids: Array,
+    cache: list[LayerCache] | None = None,
+) -> LayerRuntime:
+    """Prepare runtime state for manual layer stepping.
+
+    This handles several architecture-specific behaviors that the older
+    helpers assumed away:
+    - scaled token embeddings,
+    - per-layer mask selection,
+    - shortened cache lists for shared-KV decoders,
+    - per-layer token inputs used by Gemma 4 E2B/E4B,
+    - shared-KV bookkeeping for tuple-returning decoder layers.
+    """
+    input_embeddings = transformer.embed_tokens(token_ids)
+    hidden = _scale_input_embeddings(transformer, input_embeddings)
+    expanded_cache = _expand_layer_cache(transformer, cache)
+    masks = _build_layer_masks(transformer, hidden, expanded_cache)
+    per_layer_inputs = _build_per_layer_inputs(
+        transformer, token_ids, input_embeddings, hidden,
+    )
+
+    raw_previous_kvs = getattr(transformer, "previous_kvs", None)
+    previous_kvs: list[int] | None = None
+    intermediates: list[tuple[object | None, object | None]] | None = None
+    if isinstance(raw_previous_kvs, list):
+        if len(raw_previous_kvs) != len(transformer.layers):
+            msg = (
+                "previous_kvs length must match number of layers: "
+                f"{len(raw_previous_kvs)} != {len(transformer.layers)}"
+            )
+            raise ValueError(msg)
+        previous_kvs = [int(idx) for idx in raw_previous_kvs]
+        intermediates = [(None, None)] * len(transformer.layers)
+
+    return LayerRuntime(
+        hidden=hidden,
+        masks=masks,
+        cache=expanded_cache,
+        per_layer_inputs=per_layer_inputs,
+        previous_kvs=previous_kvs,
+        intermediates=intermediates,
+    )
+
+
+def prepare_prefixed_layer_runtime(
+    transformer: TransformerModel,
+    prefix_embeddings: Array,
+    token_ids: Array,
+    cache: list[LayerCache] | None = None,
+    *,
+    token_position: str = "prefix",
+    infix_split: int | None = None,
+) -> LayerRuntime:
+    """Prepare runtime state for manual stepping with synthetic embeddings.
+
+    This is the prefix-aware analogue of :func:`prepare_layer_runtime`. It is
+    used when callers prepend or splice embeddings that do not come from token
+    IDs, such as defensive prefixes or soft prompts.
+    """
+    prompt_embeddings = transformer.embed_tokens(token_ids)
+    input_embeddings = _combine_input_embeddings(
+        prompt_embeddings,
+        prefix_embeddings,
+        token_position=token_position,
+        infix_split=infix_split,
+    )
+    hidden = _scale_input_embeddings(transformer, input_embeddings)
+    expanded_cache = _expand_layer_cache(transformer, cache)
+    masks = _build_layer_masks(transformer, hidden, expanded_cache)
+    per_layer_inputs = _build_prefixed_per_layer_inputs(
+        transformer,
+        token_ids,
+        prompt_embeddings,
+        prefix_embeddings,
+        token_position=token_position,
+        infix_split=infix_split,
+    )
+
+    raw_previous_kvs = getattr(transformer, "previous_kvs", None)
+    previous_kvs: list[int] | None = None
+    intermediates: list[tuple[object | None, object | None]] | None = None
+    if isinstance(raw_previous_kvs, list):
+        if len(raw_previous_kvs) != len(transformer.layers):
+            msg = (
+                "previous_kvs length must match number of layers: "
+                f"{len(raw_previous_kvs)} != {len(transformer.layers)}"
+            )
+            raise ValueError(msg)
+        previous_kvs = [int(idx) for idx in raw_previous_kvs]
+        intermediates = [(None, None)] * len(transformer.layers)
+
+    return LayerRuntime(
+        hidden=hidden,
+        masks=masks,
+        cache=expanded_cache,
+        per_layer_inputs=per_layer_inputs,
+        previous_kvs=previous_kvs,
+        intermediates=intermediates,
+    )
+
+
+def _unpack_layer_result(
+    result: object,
+) -> tuple[Array, object | None, object | None]:
+    """Normalize layer outputs to ``(hidden, shared_kv, offset)``."""
+    if isinstance(result, tuple):
+        if len(result) == 0:
+            msg = "Layer returned an empty tuple"
+            raise ValueError(msg)
+        hidden = cast("Array", result[0])
+        shared_kv = result[1] if len(result) > 1 else None
+        offset = result[2] if len(result) > 2 else None
+        return hidden, shared_kv, offset
+    return cast("Array", result), None, None
+
+
+def advance_layer(
+    transformer: TransformerModel,
+    runtime: LayerRuntime,
+    layer_index: int,
+) -> Array:
+    """Advance one transformer layer using ``runtime`` state."""
+    layer = transformer.layers[layer_index]
+    mask = runtime.masks[layer_index]
+    cache = runtime.cache[layer_index]
+    per_layer_input = runtime.per_layer_inputs[layer_index]
+
+    if runtime.previous_kvs is None and per_layer_input is None:
+        typed_layer = cast("LayerModule", layer)
+        if cache is None:
+            result = typed_layer(runtime.hidden, mask)
+        else:
+            result = typed_layer(runtime.hidden, mask, cache=cache)
+        hidden, _shared_kv, _offset = _unpack_layer_result(result)
+        runtime.hidden = hidden
+        return hidden
+
+    shared_kv: object | None = None
+    offset: object | None = None
+    if runtime.previous_kvs is not None and runtime.intermediates is not None:
+        previous_idx = runtime.previous_kvs[layer_index]
+        shared_kv, offset = runtime.intermediates[previous_idx]
+
+    typed_layer = cast("ExtendedLayerModule", layer)
+    result = typed_layer(
+        runtime.hidden,
+        mask,
+        cache=cache,
+        per_layer_input=per_layer_input,
+        shared_kv=shared_kv,
+        offset=offset,
+    )
+    hidden, next_shared_kv, next_offset = _unpack_layer_result(result)
+    runtime.hidden = hidden
+    if runtime.intermediates is not None:
+        runtime.intermediates[layer_index] = (next_shared_kv, next_offset)
+    return hidden
 
 
 def run_transformer_layers(
@@ -166,6 +533,11 @@ if TYPE_CHECKING or _BACKEND == "mlx":
     import mlx.core as mx
     import mlx.nn as nn
 
+    def create_attention_mask(hidden: Array) -> Array:
+        """Create the default additive causal mask for MLX layers."""
+        mask = nn.MultiHeadAttention.create_additive_causal_mask(hidden.shape[1])
+        return mask.astype(hidden.dtype)
+
     def make_cache(model: CausalLM) -> list[LayerCache]:
         """Create a KV cache for the model.
 
@@ -201,8 +573,7 @@ if TYPE_CHECKING or _BACKEND == "mlx":
             Tuple of (hidden_states, causal_mask).
         """
         h = transformer.embed_tokens(token_ids)
-        mask = nn.MultiHeadAttention.create_additive_causal_mask(h.shape[1])
-        mask = mask.astype(h.dtype)
+        mask = create_attention_mask(h)
         return h, mask
 
     def embed_and_mask_with_prefix(
@@ -229,8 +600,7 @@ if TYPE_CHECKING or _BACKEND == "mlx":
             h = mx.concatenate([part1, prefix_embeds, part2], axis=1)
         else:
             h = mx.concatenate([prefix_embeds, prompt_embeds], axis=1)
-        mask = nn.MultiHeadAttention.create_additive_causal_mask(h.shape[1])
-        mask = mask.astype(h.dtype)
+        mask = create_attention_mask(h)
         return h, mask
 
     # -------------------------------------------------------------------
@@ -260,6 +630,11 @@ if TYPE_CHECKING or _BACKEND == "mlx":
 
 elif _BACKEND == "torch":
     import torch as _torch
+
+    def create_attention_mask(hidden: Array) -> Array | None:
+        """HF decoder layers build causal masks internally."""
+        del hidden
+        return None
 
     def force_eval(*args: Array) -> None:
         """No-op — PyTorch is eager, no lazy evaluation needed."""
