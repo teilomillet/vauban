@@ -1982,6 +1982,8 @@ class BehaviorDiffConfig:
 
     baseline_trace: Path
     candidate_trace: Path
+    baseline_report: Path | None = None
+    candidate_report: Path | None = None
     baseline_label: str = "baseline"
     candidate_label: str = "candidate"
     baseline_model_path: str | None = None

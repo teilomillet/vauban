@@ -75,10 +75,26 @@ def _parse_behavior_diff(
     if max_examples < 0:
         msg = "[behavior_diff].max_examples must be >= 0"
         raise ValueError(msg)
+    baseline_report = _optional_path(
+        base_dir,
+        reader.optional_string("baseline_report"),
+    )
+    candidate_report = _optional_path(
+        base_dir,
+        reader.optional_string("candidate_report"),
+    )
+    if (baseline_report is None) != (candidate_report is None):
+        msg = (
+            "[behavior_diff] baseline_report and candidate_report"
+            " must be provided together"
+        )
+        raise ValueError(msg)
 
     return BehaviorDiffConfig(
         baseline_trace=base_dir / reader.string("baseline_trace"),
         candidate_trace=base_dir / reader.string("candidate_trace"),
+        baseline_report=baseline_report,
+        candidate_report=candidate_report,
         baseline_label=reader.string("baseline_label", default="baseline"),
         candidate_label=reader.string("candidate_label", default="candidate"),
         baseline_model_path=reader.optional_string("baseline_model_path"),
@@ -128,6 +144,13 @@ def _parse_behavior_diff(
             default="model_behavior_change_report.md",
         ),
     )
+
+
+def _optional_path(base_dir: Path, raw: str | None) -> Path | None:
+    """Resolve an optional path string relative to the config directory."""
+    if raw is None:
+        return None
+    return base_dir / raw
 
 
 def _parse_metric_configs(raw: object) -> list[BehaviorDiffMetricConfig]:

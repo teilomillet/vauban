@@ -579,6 +579,9 @@ dir = "output"
 [behavior_diff]
 baseline_trace = "traces/base.jsonl"
 candidate_trace = "traces/fine_tuned.jsonl"
+# Optional sidecars emitted by [behavior_trace] when collect_runtime_evidence = true.
+# baseline_report = "reports/base_behavior_trace_report.json"
+# candidate_report = "reports/fine_tuned_behavior_trace_report.json"
 baseline_label = "base"
 candidate_label = "fine-tuned"
 baseline_model_path = "mlx-community/example-base"

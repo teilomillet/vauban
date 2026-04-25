@@ -142,6 +142,54 @@ dir = "out"
 """
 
 
+def _runtime_report_json(
+    *,
+    backend: str,
+    prompt_id: str,
+    layer: str,
+) -> str:
+    """Return a tiny behavior_trace JSON sidecar with runtime evidence."""
+    return json.dumps({
+        "report_version": "behavior_trace_v1",
+        "runtime_evidence": {
+            "enabled": True,
+            "backend": backend,
+            "collect_layers": [int(layer)],
+            "return_logprobs": True,
+            "prompts": [
+                {
+                    "prompt_id": prompt_id,
+                    "runtime": {
+                        "access": {
+                            "level": "activations",
+                            "claim_strength": "activation_diagnostic",
+                        },
+                        "evidence": [
+                            {
+                                "id": f"behavior_trace.{prompt_id}.capabilities",
+                                "kind": "run_report",
+                            },
+                            {
+                                "id": f"behavior_trace.{prompt_id}.trace",
+                                "kind": "trace",
+                            },
+                            {
+                                "id": f"behavior_trace.{prompt_id}.activations",
+                                "kind": "activation",
+                            },
+                        ],
+                        "capabilities": {"name": backend},
+                        "trace": {
+                            "activation_shapes": {layer: [1, 8, 16]},
+                            "logprobs_shape": [1, 8, 32],
+                        },
+                    },
+                },
+            ],
+        },
+    }) + "\n"
+
+
 def _write_fixture(tmp_path: Path) -> Path:
     """Write fixture traces and config, returning the config path."""
     traces_dir = tmp_path / "traces"
@@ -151,6 +199,29 @@ def _write_fixture(tmp_path: Path) -> Path:
     config_path = tmp_path / "behavior_diff.toml"
     config_path.write_text(_behavior_diff_toml())
     return config_path
+
+
+def _write_runtime_sidecars(tmp_path: Path) -> tuple[Path, Path]:
+    """Write tiny runtime sidecar reports for behavior_diff fixtures."""
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    baseline_report = reports_dir / "base_behavior_trace_report.json"
+    candidate_report = reports_dir / "candidate_behavior_trace_report.json"
+    baseline_report.write_text(
+        _runtime_report_json(
+            backend="mlx",
+            prompt_id="benign-001",
+            layer="0",
+        ),
+    )
+    candidate_report.write_text(
+        _runtime_report_json(
+            backend="mlx",
+            prompt_id="benign-001",
+            layer="0",
+        ),
+    )
+    return baseline_report, candidate_report
 
 
 def test_load_behavior_trace_parses_jsonl(tmp_path: Path) -> None:
@@ -176,6 +247,22 @@ def test_load_config_accepts_standalone_behavior_diff(tmp_path: Path) -> None:
     assert config.behavior_diff.access_level == "black_box"
     assert config.behavior_diff.metrics[0].name == "refusal_rate"
     assert config.behavior_diff.thresholds[0].metric == "refusal_rate"
+
+
+def test_load_config_requires_paired_runtime_sidecars(tmp_path: Path) -> None:
+    config_path = _write_fixture(tmp_path)
+    config_path.write_text(
+        config_path.read_text().replace(
+            'candidate_trace = "traces/candidate.jsonl"',
+            (
+                'candidate_trace = "traces/candidate.jsonl"\n'
+                'baseline_report = "reports/base_behavior_trace_report.json"'
+            ),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="provided together"):
+        load_config(config_path)
 
 
 def test_run_behavior_diff_writes_json_and_markdown(tmp_path: Path) -> None:
@@ -229,6 +316,43 @@ def test_run_behavior_diff_writes_json_and_markdown(tmp_path: Path) -> None:
     assert "## What This Report Cannot Claim" in markdown
     assert "Regression Gates" in markdown
     assert "artifact_hashes" in markdown
+
+
+def test_run_behavior_diff_consumes_runtime_sidecars(tmp_path: Path) -> None:
+    config_path = _write_fixture(tmp_path)
+    _write_runtime_sidecars(tmp_path)
+    config_path.write_text(
+        config_path.read_text().replace(
+            'candidate_trace = "traces/candidate.jsonl"',
+            (
+                'candidate_trace = "traces/candidate.jsonl"\n'
+                'baseline_report = "reports/base_behavior_trace_report.json"\n'
+                'candidate_report = "reports/candidate_behavior_trace_report.json"'
+            ),
+        ),
+    )
+
+    run(config_path)
+
+    output_dir = tmp_path / "out"
+    payload = json.loads((output_dir / "behavior_diff_report.json").read_text())
+    runtime_diff = payload["runtime_evidence_diff"]
+
+    assert runtime_diff["baseline"]["backend"] == "mlx"
+    assert runtime_diff["candidate"]["backend"] == "mlx"
+    assert runtime_diff["shared_prompt_ids"] == ["benign-001"]
+    assert runtime_diff["shared_activation_layers"] == ["0"]
+    assert runtime_diff["baseline"]["n_logprobs_prompts"] == 1
+    evidence = payload["report"]["evidence"]
+    assert evidence[2]["id"] == "baseline_runtime_report"
+    assert evidence[3]["id"] == "candidate_runtime_report"
+    artifact_hashes = payload["reproducibility"]["artifact_hashes"]
+    assert len(artifact_hashes["baseline_report"]) == 64
+    assert len(artifact_hashes["candidate_report"]) == 64
+
+    markdown = (output_dir / "model_behavior_change_report.md").read_text()
+    assert "Runtime Evidence Sidecars" in markdown
+    assert "Shared activation layers: 0" in markdown
 
 
 def test_run_behavior_diff_fails_on_threshold_violation(tmp_path: Path) -> None:

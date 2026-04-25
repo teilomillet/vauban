@@ -145,6 +145,7 @@ def build_behavior_diff_result(
     artifact_hashes_value: dict[str, str] | None = None,
     scorer_refs: tuple[str, ...] = (),
     generation: dict[str, JsonValue] | None = None,
+    extra_evidence: tuple[EvidenceRef, ...] = (),
 ) -> BehaviorDiffResult:
     """Build a behavior diff result and embedded behavior report."""
     effective_metric_specs = metric_specs or infer_behavior_metric_specs(
@@ -207,6 +208,7 @@ def build_behavior_diff_result(
         artifact_hashes_value=artifact_hashes_value or {},
         scorer_refs=scorer_refs,
         generation=generation or {},
+        extra_evidence=extra_evidence,
     )
     return BehaviorDiffResult(
         title=title,
@@ -278,6 +280,7 @@ def _build_report(
     artifact_hashes_value: dict[str, str],
     scorer_refs: tuple[str, ...],
     generation: dict[str, JsonValue],
+    extra_evidence: tuple[EvidenceRef, ...],
 ) -> BehaviorReport:
     """Build the standard Model Behavior Change Report for a trace diff."""
     summary = transformation_summary or (
@@ -297,6 +300,7 @@ def _build_report(
             path_or_url=candidate_trace.source_path,
             description="Candidate behavior trace JSONL.",
         ),
+        *extra_evidence,
     )
     access = access_policy_for_level(
         access_level,

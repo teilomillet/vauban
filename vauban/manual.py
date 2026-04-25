@@ -887,6 +887,28 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 required=True,
             ),
             FieldSpec(
+                key="baseline_report",
+                description=(
+                    "Optional baseline behavior_trace JSON sidecar containing"
+                    " runtime_evidence summaries."
+                ),
+                constraints=(
+                    "string path; optional, but must be provided with"
+                    " candidate_report."
+                ),
+            ),
+            FieldSpec(
+                key="candidate_report",
+                description=(
+                    "Optional candidate behavior_trace JSON sidecar containing"
+                    " runtime_evidence summaries."
+                ),
+                constraints=(
+                    "string path; optional, but must be provided with"
+                    " baseline_report."
+                ),
+            ),
+            FieldSpec(
                 key="baseline_label",
                 description="Label for the baseline model state.",
                 constraints='string; default: "baseline".',
@@ -1014,6 +1036,13 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 "Vauban derives refusal_rate from a boolean refused field and"
                 " computes matched baseline/candidate metric deltas by metric"
                 " name, category, and unit."
+            ),
+            (
+                "When baseline_report and candidate_report are supplied,"
+                " Vauban compares runtime-evidence coverage from the sidecars."
+                " This checks which prompts, logprobs, and activation-layer"
+                " summaries are available; it does not reconstruct raw"
+                " activation tensors."
             ),
             (
                 "Examples obey each observation's redaction value: safe,"
