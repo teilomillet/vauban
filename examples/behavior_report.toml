@@ -149,6 +149,22 @@ metric_name = "mean_projection_delta"
 severity = "info"
 evidence = ["surface_report", "probe_report"]
 
+[[behavior_report.intervention_results]]
+id = "negative-refusal-steering"
+kind = "activation_steering"
+summary = "Illustrative intervention row showing how negative steering evidence would be recorded."
+target = "upper_layer_refusal_signal"
+effect = "inconclusive"
+polarity = "negative"
+layers = [18, 19, 20]
+strength = -1.0
+baseline_condition = "unsteered"
+intervention_condition = "negative_alpha"
+behavior_metric = "over_refusal_rate"
+activation_metric = "mean_projection_delta"
+evidence = ["probe_report"]
+limitations = ["Illustrative placeholder; do not treat as observed intervention evidence."]
+
 [[behavior_report.examples]]
 id = "safe-boundary-001"
 category = "benign_request"

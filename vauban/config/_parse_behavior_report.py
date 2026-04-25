@@ -22,6 +22,10 @@ from vauban.behavior import (
     EvidenceRef,
     ExampleRedaction,
     FindingSeverity,
+    InterventionEffect,
+    InterventionKind,
+    InterventionPolarity,
+    InterventionResult,
     MetricPolarity,
     ModelRole,
     ReportModelRef,
@@ -110,6 +114,30 @@ _EVIDENCE_KIND_CHOICES: tuple[EvidenceKind, ...] = (
     "manual_review",
     "other",
 )
+_INTERVENTION_KIND_CHOICES: tuple[InterventionKind, ...] = (
+    "activation_steering",
+    "activation_ablation",
+    "activation_addition",
+    "weight_projection",
+    "weight_arithmetic",
+    "prompt_template",
+    "sampling",
+    "other",
+)
+_INTERVENTION_EFFECT_CHOICES: tuple[InterventionEffect, ...] = (
+    "increased",
+    "decreased",
+    "mixed",
+    "no_observed_change",
+    "inconclusive",
+)
+_INTERVENTION_POLARITY_CHOICES: tuple[InterventionPolarity, ...] = (
+    "positive",
+    "negative",
+    "bidirectional",
+    "control",
+    "other",
+)
 
 
 def _parse_behavior_report(raw: TomlDict) -> BehaviorReportConfig | None:
@@ -169,6 +197,9 @@ def _parse_behavior_report(raw: TomlDict) -> BehaviorReportConfig | None:
         ),
         reproduction_results=tuple(
             _parse_reproduction_results(reader.data.get("reproduction_results")),
+        ),
+        intervention_results=tuple(
+            _parse_intervention_results(reader.data.get("intervention_results")),
         ),
         limitations=tuple(reader.string_list("limitations", default=[])),
         recommendation=reader.optional_string("recommendation"),
@@ -373,6 +404,59 @@ def _parse_reproduction_result(
         ),
         failed_claims=tuple(reader.string_list("failed_claims", default=[])),
         extensions=tuple(reader.string_list("extensions", default=[])),
+        evidence=tuple(reader.string_list("evidence", default=[])),
+        limitations=tuple(reader.string_list("limitations", default=[])),
+    )
+
+
+def _parse_intervention_results(raw: object) -> list[InterventionResult]:
+    """Parse optional [[behavior_report.intervention_results]] entries."""
+    rows = _array_of_tables(
+        "[[behavior_report.intervention_results]]",
+        raw,
+        allow_empty=True,
+    )
+    return [
+        _parse_intervention_result(
+            row,
+            f"[[behavior_report.intervention_results]][{index}]",
+        )
+        for index, row in enumerate(rows)
+    ]
+
+
+def _parse_intervention_result(
+    raw: TomlDict,
+    section: str,
+) -> InterventionResult:
+    """Parse one controlled intervention result entry."""
+    reader = SectionReader(section, raw)
+    return InterventionResult(
+        intervention_id=_required_alias_string(
+            reader,
+            section,
+            "intervention_id",
+            "id",
+        ),
+        kind=reader.literal("kind", _INTERVENTION_KIND_CHOICES),
+        summary=reader.string("summary"),
+        target=reader.string("target"),
+        effect=reader.literal(
+            "effect",
+            _INTERVENTION_EFFECT_CHOICES,
+            default="inconclusive",
+        ),
+        polarity=reader.literal(
+            "polarity",
+            _INTERVENTION_POLARITY_CHOICES,
+            default="other",
+        ),
+        layers=tuple(reader.int_list("layers", default=[])),
+        strength=reader.optional_number("strength"),
+        baseline_condition=reader.optional_string("baseline_condition"),
+        intervention_condition=reader.optional_string("intervention_condition"),
+        behavior_metric=reader.optional_string("behavior_metric"),
+        activation_metric=reader.optional_string("activation_metric"),
         evidence=tuple(reader.string_list("evidence", default=[])),
         limitations=tuple(reader.string_list("limitations", default=[])),
     )

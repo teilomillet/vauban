@@ -21,6 +21,7 @@ from vauban.behavior import (
     BehaviorSuite,
     BehaviorSuiteRef,
     EvidenceRef,
+    InterventionResult,
     ReportModelRef,
     ReproducibilityInfo,
     ReproductionResult,
@@ -300,6 +301,27 @@ def test_behavior_report_serializes_nested_primitives() -> None:
                 limitations=("Single model.",),
             ),
         ),
+        intervention_results=(
+            InterventionResult(
+                intervention_id="steer-refusal-direction-negative",
+                kind="activation_steering",
+                summary=(
+                    "Negative steering moved outputs away from the observed"
+                    " refusal-style metric in a controlled probe."
+                ),
+                target="refusal_direction_lite",
+                effect="decreased",
+                polarity="negative",
+                layers=(23,),
+                strength=-1.0,
+                baseline_condition="unsteered",
+                intervention_condition="negative_alpha",
+                behavior_metric="refusal_style_rate",
+                activation_metric="mean_projection",
+                evidence=("probe_report",),
+                limitations=("Single small prompt family.",),
+            ),
+        ),
         limitations=("Prompt suite is small.",),
         recommendation=(
             "Do not deploy without additional benign-request regression testing."
@@ -443,6 +465,28 @@ def test_behavior_report_serializes_nested_primitives() -> None:
             "limitations": ["Single model."],
         },
     ]
+    assert data["intervention_results"] == [
+        {
+            "id": "steer-refusal-direction-negative",
+            "kind": "activation_steering",
+            "summary": (
+                "Negative steering moved outputs away from the observed"
+                " refusal-style metric in a controlled probe."
+            ),
+            "target": "refusal_direction_lite",
+            "effect": "decreased",
+            "polarity": "negative",
+            "layers": [23],
+            "strength": -1.0,
+            "baseline_condition": "unsteered",
+            "intervention_condition": "negative_alpha",
+            "behavior_metric": "refusal_style_rate",
+            "activation_metric": "mean_projection",
+            "evidence": ["probe_report"],
+            "limitations": ["Single small prompt family."],
+            "metadata": {},
+        },
+    ]
     assert "Prompt suite is small." in data["limitations"]
     assert "metrics=2" in report.summary()
     assert "claims=1" in report.summary()
@@ -549,6 +593,40 @@ def test_behavior_report_rejects_result_for_undeclared_reproduction_target() -> 
                     target_id="missing",
                     status="inconclusive",
                     summary="No matching target.",
+                ),
+            ),
+        )
+
+
+def test_behavior_report_rejects_unknown_intervention_evidence() -> None:
+    baseline = ReportModelRef(label="base", model_path="base", role="baseline")
+    candidate = ReportModelRef(label="candidate", model_path="candidate")
+    suite = BehaviorSuiteRef(
+        name="suite",
+        description="Behavior suite.",
+        categories=("benign_request",),
+        metrics=("refusal_rate",),
+    )
+
+    with pytest.raises(ValueError, match="undeclared evidence"):
+        BehaviorReport(
+            title="Bad Intervention Evidence Report",
+            baseline=baseline,
+            candidate=candidate,
+            suite=suite,
+            evidence=(
+                EvidenceRef(
+                    evidence_id="declared",
+                    kind="run_report",
+                ),
+            ),
+            intervention_results=(
+                InterventionResult(
+                    intervention_id="intervention-1",
+                    kind="activation_steering",
+                    summary="The intervention references missing evidence.",
+                    target="refusal_direction",
+                    evidence=("missing",),
                 ),
             ),
         )

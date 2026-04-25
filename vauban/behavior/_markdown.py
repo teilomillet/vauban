@@ -41,6 +41,7 @@ def render_behavior_report_markdown(report: BehaviorReport) -> str:
     _append_claims(lines, report)
     _append_reproduction_targets(lines, report)
     _append_reproduction_results(lines, report)
+    _append_intervention_results(lines, report)
     _append_findings(lines, report)
     _append_metric_delta_table(lines, report)
     _append_activation_findings(lines, report)
@@ -213,6 +214,59 @@ def _append_named_items(
         return
     joined = "; ".join(_md_text(item) for item in items)
     lines.append(f"- {label}: {joined}")
+
+
+def _append_intervention_results(
+    lines: list[str],
+    report: BehaviorReport,
+) -> None:
+    """Append controlled intervention outcomes."""
+    if not report.intervention_results:
+        return
+    lines.extend(["## Intervention Results", ""])
+    lines.extend([
+        "| ID | Kind | Effect | Target | Summary | Evidence |",
+        "| -- | ---- | ------ | ------ | ------- | -------- |",
+    ])
+    for result in report.intervention_results:
+        evidence = ", ".join(_md_text(item) for item in result.evidence)
+        lines.append(
+            "| "
+            f"{_md_text(result.intervention_id)} | "
+            f"{result.kind} | "
+            f"{result.effect} | "
+            f"{_md_text(result.target)} | "
+            f"{_md_text(result.summary)} | "
+            f"{evidence} |",
+        )
+    lines.append("")
+
+    for result in report.intervention_results:
+        lines.append(f"### {_md_text(result.intervention_id)}")
+        lines.append(f"- Polarity: `{result.polarity}`")
+        if result.strength is not None:
+            lines.append(f"- Strength: `{_format_float(result.strength)}`")
+        if result.layers:
+            joined_layers = ", ".join(str(layer) for layer in result.layers)
+            lines.append(f"- Layers: {joined_layers}")
+        if result.baseline_condition is not None:
+            lines.append(
+                "- Baseline condition:"
+                f" {_md_text(result.baseline_condition)}",
+            )
+        if result.intervention_condition is not None:
+            lines.append(
+                "- Intervention condition:"
+                f" {_md_text(result.intervention_condition)}",
+            )
+        if result.behavior_metric is not None:
+            lines.append(f"- Behavior metric: `{_md_text(result.behavior_metric)}`")
+        if result.activation_metric is not None:
+            lines.append(
+                f"- Activation metric: `{_md_text(result.activation_metric)}`",
+            )
+        _append_named_items(lines, "Limitations", result.limitations)
+        lines.append("")
 
 
 def _append_findings(lines: list[str], report: BehaviorReport) -> None:

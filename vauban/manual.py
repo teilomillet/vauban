@@ -1026,6 +1026,20 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 ),
             ),
             FieldSpec(
+                key="intervention_results",
+                description=(
+                    "Observed outcomes from controlled prompt, activation,"
+                    " weight, sampling, or steering interventions."
+                ),
+                constraints=(
+                    "array of tables with id/intervention_id, kind, summary,"
+                    " target; optional effect, polarity, layers, strength,"
+                    " baseline_condition, intervention_condition,"
+                    " behavior_metric, activation_metric, evidence,"
+                    " limitations."
+                ),
+            ),
+            FieldSpec(
                 key="reproducibility",
                 description="Command, config, code, data, seed, and notes.",
                 constraints="table; command is required when present.",

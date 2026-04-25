@@ -100,6 +100,7 @@ _BEHAVIOR_REPORT_SECTION_KEYS: frozenset[str] = frozenset({
     "examples",
     "reproduction_targets",
     "reproduction_results",
+    "intervention_results",
     "reproducibility",
 })
 
@@ -365,6 +366,10 @@ def _behavior_report_section_schema() -> JsonSchema:
                 "items": {"type": "object", "additionalProperties": True},
             },
             "reproduction_results": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": True},
+            },
+            "intervention_results": {
                 "type": "array",
                 "items": {"type": "object", "additionalProperties": True},
             },

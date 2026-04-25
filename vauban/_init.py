@@ -559,6 +559,19 @@ access_level = "paired_outputs"
 evidence = ["suite_metrics"]
 limitations = ["No activation or weight access, so this is not an internal claim."]
 
+[[behavior_report.intervention_results]]
+id = "prompt-template-control"
+kind = "prompt_template"
+summary = "Compared the old and new prompt templates on the same suite."
+target = "system_prompt"
+effect = "mixed"
+polarity = "control"
+baseline_condition = "old_template"
+intervention_condition = "new_template"
+behavior_metric = "over_refusal_rate"
+evidence = ["suite_metrics"]
+limitations = ["No activation access, so this is behavioral evidence only."]
+
 [[behavior_report.metrics]]
 name = "target_success_rate"
 model_label = "base"

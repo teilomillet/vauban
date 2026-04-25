@@ -123,6 +123,22 @@ extensions = ["Recorded access-aware limitations."]
 evidence = ["surface_report", "probe_report"]
 limitations = ["Single model."]
 
+[[behavior_report.intervention_results]]
+id = "steer-refusal-direction-negative"
+kind = "activation_steering"
+summary = "Negative steering reduced the refusal-style metric in a controlled probe."
+target = "refusal_direction_lite"
+effect = "decreased"
+polarity = "negative"
+layers = [18, 19]
+strength = -1.0
+baseline_condition = "unsteered"
+intervention_condition = "negative_alpha"
+behavior_metric = "refusal_style_rate"
+activation_metric = "mean_projection"
+evidence = ["probe_report"]
+limitations = ["Single controlled probe."]
+
 [behavior_report.reproducibility]
 command = "vauban behavior_report.toml"
 code_revision = "abc123"
@@ -168,6 +184,10 @@ def test_load_config_accepts_standalone_behavior_report(
     assert report.reproduction_results[0].target_id == (
         "arditi-2024-refusal-direction"
     )
+    assert report.intervention_results[0].intervention_id == (
+        "steer-refusal-direction-negative"
+    )
+    assert report.intervention_results[0].effect == "decreased"
     assert len(report.metric_deltas) == 1
     assert report.metric_deltas[0].quality == "improved"
 
@@ -204,6 +224,11 @@ def test_run_behavior_report_writes_json_and_markdown(
         "arditi-2024-refusal-direction"
     )
     assert payload["reproduction_results"][0]["status"] == "partially_replicated"
+    assert payload["intervention_results"][0]["id"] == (
+        "steer-refusal-direction-negative"
+    )
+    assert payload["intervention_results"][0]["kind"] == "activation_steering"
+    assert payload["intervention_results"][0]["effect"] == "decreased"
     assert (
         payload["recommendation"]
         == "Run additional benign-request regression testing before shipping."
@@ -226,6 +251,9 @@ def test_run_behavior_report_writes_json_and_markdown(
     assert "arditi-2024-refusal-direction" in markdown
     assert "## Reproduction Results" in markdown
     assert "Positive direction separation." in markdown
+    assert "## Intervention Results" in markdown
+    assert "steer-refusal-direction-negative" in markdown
+    assert "negative_alpha" in markdown
     assert "## Findings" in markdown
     assert "Refusal behavior changed." in markdown
     assert "upper_layer_shift" in markdown
@@ -237,6 +265,7 @@ def test_run_behavior_report_writes_json_and_markdown(
     assert log_entry["metrics"]["n_claims"] == 1.0
     assert log_entry["metrics"]["n_reproduction_targets"] == 1.0
     assert log_entry["metrics"]["n_reproduction_results"] == 1.0
+    assert log_entry["metrics"]["n_intervention_results"] == 1.0
 
 
 def test_init_behavior_report_scaffold_loads(tmp_path: Path) -> None:

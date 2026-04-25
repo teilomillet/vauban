@@ -135,7 +135,10 @@ The conceptual primitives are simple:
 4. **Diff** — a comparison between two profiles or run artifacts.
 5. **Diagnostic** — optional internal evidence when weights or activations are
    available.
-6. **Report** — the artifact that ties findings, limitations, reproducibility,
+6. **Intervention result** — controlled evidence about whether changing a
+   prompt, activation, weight direction, sampling rule, or steering condition
+   moved the behavior.
+7. **Report** — the artifact that ties findings, limitations, reproducibility,
    and recommendations together.
 
 The CLI remains TOML-first. The durable unit should be a shareable config and a
@@ -170,6 +173,11 @@ id = "surface_report"
 kind = "run_report"
 path_or_url = "surface_report.json"
 
+[[behavior_report.evidence]]
+id = "probe_report"
+kind = "activation"
+path_or_url = "probe_report.json"
+
 [[behavior_report.claims]]
 id = "claim-overrefusal-regression"
 statement = "The later checkpoint increased over-refusal on ambiguous benign cases."
@@ -184,6 +192,22 @@ title = "Refusal in Language Models Is Mediated by a Single Direction"
 source_url = "https://arxiv.org/abs/2406.11717"
 original_claim = "Refusal can be mediated by a one-dimensional activation-space direction."
 planned_extension = "Separate safety refusal, unsupported refusal, ambiguity, and over-refusal."
+
+[[behavior_report.intervention_results]]
+id = "negative-refusal-steering"
+kind = "activation_steering"
+summary = "Negative steering reduced the observed refusal-style metric in a controlled probe."
+target = "refusal_direction_lite"
+effect = "decreased"
+polarity = "negative"
+layers = [23]
+strength = -1.0
+baseline_condition = "unsteered"
+intervention_condition = "negative_alpha"
+behavior_metric = "refusal_style_rate"
+activation_metric = "mean_projection"
+evidence = ["probe_report"]
+limitations = ["Single small prompt family."]
 ```
 
 ## Reproduction Targets

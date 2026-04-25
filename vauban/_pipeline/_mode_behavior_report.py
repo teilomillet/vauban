@@ -66,5 +66,6 @@ def _run_behavior_report_mode(context: EarlyModeContext) -> None:
             "n_examples": len(report.examples),
             "n_reproduction_targets": len(report.reproduction_targets),
             "n_reproduction_results": len(report.reproduction_results),
+            "n_intervention_results": len(report.intervention_results),
         },
     )

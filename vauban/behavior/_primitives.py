@@ -20,6 +20,30 @@ type MetricQuality = Literal["improved", "regressed", "unchanged", "neutral"]
 type ExampleRedaction = Literal["safe", "redacted", "omitted"]
 type FindingSeverity = Literal["info", "low", "medium", "high", "critical"]
 type ChatRole = Literal["system", "user", "assistant"]
+type InterventionKind = Literal[
+    "activation_steering",
+    "activation_ablation",
+    "activation_addition",
+    "weight_projection",
+    "weight_arithmetic",
+    "prompt_template",
+    "sampling",
+    "other",
+]
+type InterventionEffect = Literal[
+    "increased",
+    "decreased",
+    "mixed",
+    "no_observed_change",
+    "inconclusive",
+]
+type InterventionPolarity = Literal[
+    "positive",
+    "negative",
+    "bidirectional",
+    "control",
+    "other",
+]
 type TransformationKind = Literal[
     "fine_tune",
     "reinforcement_fine_tune",
@@ -543,6 +567,71 @@ class ReproductionResult:
 
 
 @dataclass(frozen=True, slots=True)
+class InterventionResult:
+    """Observed behavior or activation outcome from a controlled intervention."""
+
+    intervention_id: str
+    kind: InterventionKind
+    summary: str
+    target: str
+    effect: InterventionEffect = "inconclusive"
+    polarity: InterventionPolarity = "other"
+    layers: tuple[int, ...] = field(default_factory=tuple)
+    strength: float | None = None
+    baseline_condition: str | None = None
+    intervention_condition: str | None = None
+    behavior_metric: str | None = None
+    activation_metric: str | None = None
+    evidence: tuple[str, ...] = field(default_factory=tuple)
+    limitations: tuple[str, ...] = field(default_factory=tuple)
+    metadata: dict[str, JsonValue] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate intervention identity, target, and evidence labels."""
+        _require_non_empty(self.intervention_id, "intervention_id")
+        _require_non_empty(self.summary, "summary")
+        _require_non_empty(self.target, "target")
+        _require_non_negative_items(self.layers, "layers")
+        if self.baseline_condition is not None:
+            _require_non_empty(self.baseline_condition, "baseline_condition")
+        if self.intervention_condition is not None:
+            _require_non_empty(
+                self.intervention_condition,
+                "intervention_condition",
+            )
+        if self.behavior_metric is not None:
+            _require_non_empty(self.behavior_metric, "behavior_metric")
+        if self.activation_metric is not None:
+            _require_non_empty(self.activation_metric, "activation_metric")
+        _require_non_empty_items(self.evidence, "evidence", allow_empty=True)
+        _require_non_empty_items(
+            self.limitations,
+            "limitations",
+            allow_empty=True,
+        )
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        """Serialize to a JSON-compatible dictionary."""
+        return _drop_none({
+            "id": self.intervention_id,
+            "kind": self.kind,
+            "summary": self.summary,
+            "target": self.target,
+            "effect": self.effect,
+            "polarity": self.polarity,
+            "layers": list(self.layers),
+            "strength": self.strength,
+            "baseline_condition": self.baseline_condition,
+            "intervention_condition": self.intervention_condition,
+            "behavior_metric": self.behavior_metric,
+            "activation_metric": self.activation_metric,
+            "evidence": list(self.evidence),
+            "limitations": list(self.limitations),
+            "metadata": dict(self.metadata),
+        })
+
+
+@dataclass(frozen=True, slots=True)
 class BehaviorMetric:
     """One scalar behavior or activation metric in a report."""
 
@@ -798,6 +887,9 @@ class BehaviorReport:
     reproduction_results: tuple[ReproductionResult, ...] = field(
         default_factory=tuple,
     )
+    intervention_results: tuple[InterventionResult, ...] = field(
+        default_factory=tuple,
+    )
     limitations: tuple[str, ...] = field(default_factory=tuple)
     recommendation: str | None = None
     reproducibility: ReproducibilityInfo | None = None
@@ -827,7 +919,17 @@ class BehaviorReport:
             tuple(result.target_id for result in self.reproduction_results),
             "reproduction_results.target_id",
         )
+        _reject_duplicate_strings(
+            tuple(
+                result.intervention_id for result in self.intervention_results
+            ),
+            "intervention_results.id",
+        )
         _validate_claim_evidence_refs(self.claims, self.evidence)
+        _validate_intervention_result_evidence_refs(
+            self.intervention_results,
+            self.evidence,
+        )
         _validate_claim_bounds(self.access, self.claims)
         _validate_reproduction_results(
             self.reproduction_targets,
@@ -876,6 +978,9 @@ class BehaviorReport:
             "reproduction_results": [
                 result.to_dict() for result in self.reproduction_results
             ],
+            "intervention_results": [
+                result.to_dict() for result in self.intervention_results
+            ],
             "limitations": list(self.limitations),
             "recommendation": self.recommendation,
             "reproducibility": (
@@ -892,7 +997,8 @@ class BehaviorReport:
             f" suite={self.suite.name},"
             f" metrics={len(self.metrics)},"
             f" deltas={len(self.metric_deltas)},"
-            f" claims={len(self.claims)}"
+            f" claims={len(self.claims)},"
+            f" interventions={len(self.intervention_results)}"
         )
 
 
@@ -954,6 +1060,24 @@ def _validate_claim_evidence_refs(
             msg = (
                 f"claim {claim.claim_id!r} references undeclared evidence"
                 f" ids: {missing!r}"
+            )
+            raise ValueError(msg)
+
+
+def _validate_intervention_result_evidence_refs(
+    results: tuple[InterventionResult, ...],
+    evidence_refs: tuple[EvidenceRef, ...],
+) -> None:
+    """Require intervention evidence IDs to exist when evidence is declared."""
+    if not evidence_refs:
+        return
+    known = {evidence.evidence_id for evidence in evidence_refs}
+    for result in results:
+        missing = tuple(ref for ref in result.evidence if ref not in known)
+        if missing:
+            msg = (
+                f"intervention result {result.intervention_id!r} references"
+                f" undeclared evidence ids: {missing!r}"
             )
             raise ValueError(msg)
 
