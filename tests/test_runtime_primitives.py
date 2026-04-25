@@ -1,0 +1,250 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
+"""Tests for Vauban runtime primitive contracts."""
+
+from __future__ import annotations
+
+from typing import Protocol, cast
+
+import pytest
+
+from vauban.runtime import (
+    BackendCapabilities,
+    ForwardRequest,
+    ForwardTrace,
+    LoadedModel,
+    ModelRef,
+    StageProfile,
+    TokenizeRequest,
+    access_boundary_for_capabilities,
+    access_level_for_capabilities,
+    available_runtime_backends,
+    create_runtime,
+    declared_capabilities,
+    mlx_capabilities,
+    profile_stage,
+    runtime_capabilities,
+    torch_capabilities,
+)
+from vauban.runtime._types import DeviceRef
+
+mx = pytest.importorskip("mlx.core")
+
+
+class HasShape(Protocol):
+    """Object with tensor-like shape metadata."""
+
+    @property
+    def shape(self) -> tuple[int, ...]: ...
+
+
+class FakeEmbedding:
+    """Small embedding surface for MLX runtime contract tests."""
+
+    def __call__(self, token_ids: object) -> object:
+        """Embed token IDs as deterministic MLX activations."""
+        shape = cast("HasShape", token_ids).shape
+        batch = int(shape[0])
+        seq_len = int(shape[1])
+        return mx.ones((batch, seq_len, 4))
+
+    def as_linear(self, h: object) -> object:
+        """Use hidden states directly as fake logits."""
+        return h
+
+
+class FakeLayer:
+    """Small transformer layer that shifts hidden states."""
+
+    def __init__(self, increment: float) -> None:
+        """Initialize the fake layer."""
+        self.increment = increment
+
+    def __call__(
+        self,
+        h: object,
+        mask: object | None,
+        *,
+        cache: object | None = None,
+    ) -> object:
+        """Apply a deterministic activation shift."""
+        return h + self.increment
+
+
+class FakeNorm:
+    """Identity norm layer."""
+
+    def __call__(self, h: object) -> object:
+        """Return hidden states unchanged."""
+        return h
+
+
+class FakeTransformer:
+    """Minimal transformer surface consumed by MlxRuntime."""
+
+    def __init__(self) -> None:
+        """Initialize fake transformer components."""
+        self.embed_tokens = FakeEmbedding()
+        self.layers = [FakeLayer(1.0), FakeLayer(2.0)]
+        self.norm = FakeNorm()
+
+
+class FakeModel:
+    """Minimal model surface consumed by MlxRuntime."""
+
+    def __init__(self) -> None:
+        """Initialize fake model."""
+        self.model = FakeTransformer()
+
+
+class FakeTokenizer:
+    """Minimal tokenizer surface consumed by MlxRuntime."""
+
+    def encode(self, text: str) -> list[int]:
+        """Encode text into deterministic token IDs."""
+        return [ord(char) % 32 for char in text]
+
+    def decode(self, token_ids: list[int]) -> str:
+        """Decode fake token IDs."""
+        return "".join(str(token_id) for token_id in token_ids)
+
+    def apply_chat_template(
+        self,
+        messages: list[dict[str, str]],
+        tokenize: bool = True,
+    ) -> str | list[int]:
+        """Render a minimal chat template."""
+        rendered = "\n".join(message["content"] for message in messages)
+        if tokenize:
+            return self.encode(rendered)
+        return rendered
+
+
+def _loaded_fake_model() -> LoadedModel:
+    """Build a loaded fake MLX model handle."""
+    return LoadedModel(
+        ref=ModelRef("fake-model"),
+        backend="mlx",
+        capabilities=mlx_capabilities(),
+        model=FakeModel(),
+        tokenizer=FakeTokenizer(),
+    )
+
+
+class TestRuntimeCapabilities:
+    """Capability declarations must be explicit and epistemic."""
+
+    def test_known_backends_are_declared(self) -> None:
+        assert available_runtime_backends() == ("mlx", "torch", "max")
+
+    def test_mlx_capabilities_support_activation_diagnostics(self) -> None:
+        caps = mlx_capabilities()
+        assert caps.supports("activations")
+        assert access_level_for_capabilities(caps) == "activations"
+        boundary = access_boundary_for_capabilities(caps)
+        assert boundary.claim_strength == "activation_diagnostic"
+
+    def test_torch_runtime_contract_is_conservative_until_adapter_exists(self) -> None:
+        caps = torch_capabilities()
+        assert not caps.supports("activations")
+        assert access_level_for_capabilities(caps) == "black_box"
+
+    def test_declared_capabilities_reject_unknown_backend(self) -> None:
+        with pytest.raises(ValueError, match="Unknown runtime backend"):
+            declared_capabilities("not-real")
+
+    def test_runtime_capabilities_uses_explicit_name(self) -> None:
+        assert runtime_capabilities("mlx").name == "mlx"
+
+    def test_capability_validation_requires_device(self) -> None:
+        with pytest.raises(ValueError, match="device_kinds"):
+            BackendCapabilities(
+                name="mlx",
+                device_kinds=(),
+                logits="full",
+                logprobs="full",
+                activations="full",
+                interventions="full",
+                kv_cache="full",
+                weight_access="full",
+                mutable_weights="full",
+            )
+
+
+class TestRuntimeTypes:
+    """Runtime dataclasses must reject inconsistent evidence."""
+
+    def test_forward_request_rejects_empty_prompt(self) -> None:
+        with pytest.raises(ValueError, match="prompt_ids"):
+            ForwardRequest(prompt_ids=())
+
+    def test_forward_request_rejects_logprobs_without_logits(self) -> None:
+        with pytest.raises(ValueError, match="return_logprobs requires"):
+            ForwardRequest(prompt_ids=(1,), return_logits=False, return_logprobs=True)
+
+    def test_loaded_model_backend_must_match_capabilities(self) -> None:
+        with pytest.raises(ValueError, match="backend must match"):
+            LoadedModel(
+                ref=ModelRef("fake-model"),
+                backend="torch",
+                capabilities=mlx_capabilities(),
+                model=FakeModel(),
+            )
+
+    def test_forward_trace_rejects_logprobs_without_logits(self) -> None:
+        with pytest.raises(ValueError, match="logprobs require logits"):
+            ForwardTrace(
+                logits=None,
+                logprobs=mx.ones((1, 1)),
+                activations={},
+                device=DeviceRef(kind="gpu", label="mlx-gpu"),
+            )
+
+    def test_stage_timer_records_profile(self) -> None:
+        with profile_stage("unit") as timer:
+            value = 1 + 1
+        assert value == 2
+        assert isinstance(timer.profile, StageProfile)
+        assert timer.profile.name == "unit"
+        assert timer.profile.duration_s >= 0.0
+
+
+class TestMlxRuntime:
+    """The MLX adapter should satisfy the primitive contract on fake models."""
+
+    def test_create_runtime_returns_mlx_runtime(self) -> None:
+        runtime = create_runtime("mlx")
+        assert runtime.capabilities.name == "mlx"
+
+    def test_torch_runtime_creation_is_explicitly_not_implemented(self) -> None:
+        with pytest.raises(NotImplementedError, match="no execution adapter"):
+            create_runtime("torch")
+
+    def test_tokenize_uses_loaded_tokenizer(self) -> None:
+        runtime = create_runtime("mlx")
+        result = runtime.tokenize(_loaded_fake_model(), TokenizeRequest("abc"))
+        assert result.token_ids == (1, 2, 3)
+        assert result.profile[0].name == "tokenize"
+
+    def test_forward_returns_logits_and_selected_activations(self) -> None:
+        runtime = create_runtime("mlx")
+        trace = runtime.forward(
+            _loaded_fake_model(),
+            ForwardRequest(
+                prompt_ids=(1, 2, 3),
+                collect_layers=(0,),
+                return_logits=True,
+                return_logprobs=True,
+            ),
+        )
+
+        assert trace.logits is not None
+        assert trace.logprobs is not None
+        assert trace.logits.shape == (1, 3, 4)
+        assert trace.activations[0].shape == (1, 3, 4)
+        assert tuple(profile.name for profile in trace.profile) == (
+            "prepare_batch",
+            "forward",
+            "lm_head",
+        )
