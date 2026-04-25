@@ -182,6 +182,7 @@ _LAZY_IMPORTS: dict[str, str | tuple[str, str]] = {
     "RemoteConfig": "vauban.types",
     "RepBendConfig": "vauban.types",
     "ReportModelRef": "vauban.behavior",
+    "ReproductionResult": "vauban.behavior",
     "ReproductionTarget": "vauban.behavior",
     "ResponseScoreResult": "vauban.types",
     "ResponseScoreWeights": "vauban.types",

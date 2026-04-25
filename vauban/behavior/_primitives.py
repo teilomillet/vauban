@@ -494,6 +494,55 @@ class ReproductionTarget:
 
 
 @dataclass(frozen=True, slots=True)
+class ReproductionResult:
+    """Observed reproduction outcome for one declared target."""
+
+    target_id: str
+    status: ClaimStatus
+    summary: str
+    replicated_claims: tuple[str, ...] = field(default_factory=tuple)
+    failed_claims: tuple[str, ...] = field(default_factory=tuple)
+    extensions: tuple[str, ...] = field(default_factory=tuple)
+    evidence: tuple[str, ...] = field(default_factory=tuple)
+    limitations: tuple[str, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Validate reproduction result text and evidence labels."""
+        _require_non_empty(self.target_id, "target_id")
+        _require_non_empty(self.summary, "summary")
+        _require_non_empty_items(
+            self.replicated_claims,
+            "replicated_claims",
+            allow_empty=True,
+        )
+        _require_non_empty_items(
+            self.failed_claims,
+            "failed_claims",
+            allow_empty=True,
+        )
+        _require_non_empty_items(self.extensions, "extensions", allow_empty=True)
+        _require_non_empty_items(self.evidence, "evidence", allow_empty=True)
+        _require_non_empty_items(
+            self.limitations,
+            "limitations",
+            allow_empty=True,
+        )
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        """Serialize to a JSON-compatible dictionary."""
+        return {
+            "target_id": self.target_id,
+            "status": self.status,
+            "summary": self.summary,
+            "replicated_claims": list(self.replicated_claims),
+            "failed_claims": list(self.failed_claims),
+            "extensions": list(self.extensions),
+            "evidence": list(self.evidence),
+            "limitations": list(self.limitations),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class BehaviorMetric:
     """One scalar behavior or activation metric in a report."""
 
@@ -746,6 +795,9 @@ class BehaviorReport:
     reproduction_targets: tuple[ReproductionTarget, ...] = field(
         default_factory=tuple,
     )
+    reproduction_results: tuple[ReproductionResult, ...] = field(
+        default_factory=tuple,
+    )
     limitations: tuple[str, ...] = field(default_factory=tuple)
     recommendation: str | None = None
     reproducibility: ReproducibilityInfo | None = None
@@ -771,8 +823,16 @@ class BehaviorReport:
             tuple(target.target_id for target in self.reproduction_targets),
             "reproduction_targets.id",
         )
+        _reject_duplicate_strings(
+            tuple(result.target_id for result in self.reproduction_results),
+            "reproduction_results.target_id",
+        )
         _validate_claim_evidence_refs(self.claims, self.evidence)
         _validate_claim_bounds(self.access, self.claims)
+        _validate_reproduction_results(
+            self.reproduction_targets,
+            self.reproduction_results,
+        )
         _require_non_empty_items(
             self.findings,
             "findings",
@@ -812,6 +872,9 @@ class BehaviorReport:
             "examples": [example.to_dict() for example in self.examples],
             "reproduction_targets": [
                 target.to_dict() for target in self.reproduction_targets
+            ],
+            "reproduction_results": [
+                result.to_dict() for result in self.reproduction_results
             ],
             "limitations": list(self.limitations),
             "recommendation": self.recommendation,
@@ -915,6 +978,23 @@ def _validate_claim_bounds(
             msg = (
                 f"claim {claim.claim_id!r} access_level {claim.access_level!r}"
                 f" exceeds report access level {access.level!r}"
+            )
+            raise ValueError(msg)
+
+
+def _validate_reproduction_results(
+    targets: tuple[ReproductionTarget, ...],
+    results: tuple[ReproductionResult, ...],
+) -> None:
+    """Require result target IDs to match declared targets when present."""
+    if not targets:
+        return
+    known = {target.target_id for target in targets}
+    for result in results:
+        if result.target_id not in known:
+            msg = (
+                f"reproduction result references undeclared target"
+                f" {result.target_id!r}"
             )
             raise ValueError(msg)
 

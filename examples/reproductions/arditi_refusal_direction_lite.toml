@@ -1,0 +1,229 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
+# Minimal Arditi-style refusal-direction reproduction report.
+# This is a standalone report assembled from a real local Vauban run:
+#
+#   bash -lc 'VAUBAN_INTEGRATION=1 uv run pytest \
+#     tests/test_integration.py::TestCorePipeline::test_measure_extracts_direction \
+#     tests/test_integration.py::TestCorePipeline::test_probe_harmful_vs_harmless_contrast \
+#     -q'
+#
+# Prompt text is intentionally omitted from this report. The run used the
+# integration fixture prompt families in tests/conftest.py.
+
+[behavior_report]
+title = "Arditi Refusal Direction Lite Reproduction Report"
+target_change = "benign control prompt family -> refusal-triggering prompt family"
+findings = [
+  "Vauban recovered a positive activation-space separation on a small open instruction model.",
+  "Refusal-triggering prompt-family probes projected higher than benign-control probes.",
+  "This is a partial reproduction only: it does not reproduce the paper's 13-model sweep or causal intervention results.",
+]
+recommendation = "Use this as calibration evidence for Vauban's report path; do not treat it as a full reproduction of the paper."
+limitations = [
+  "Only one small open model was tested.",
+  "Only four prompts per family were used.",
+  "Prompt text is omitted from the public report.",
+  "No activation intervention or refusal-removal experiment was run.",
+]
+markdown_report = true
+
+[behavior_report.baseline]
+label = "benign_controls"
+model_path = "mlx-community/Qwen2.5-0.5B-Instruct-bf16"
+role = "baseline"
+
+[behavior_report.candidate]
+label = "refusal_triggering"
+model_path = "mlx-community/Qwen2.5-0.5B-Instruct-bf16"
+role = "candidate"
+
+[behavior_report.suite]
+name = "refusal-direction-lite"
+description = "Small integration-fixture prompt-family contrast for refusal-direction calibration."
+categories = [
+  "benign_control",
+  "refusal_triggering",
+]
+metrics = [
+  "direction_max_cosine",
+  "mean_max_projection",
+  "projection_gap",
+]
+version = "2026-04-25"
+safety_policy = "aggregate_only_prompt_text_omitted"
+
+[behavior_report.transformation]
+kind = "evaluation_only"
+summary = "No model transformation; this report contrasts two prompt families on one model to calibrate refusal-direction measurement."
+before = "benign_controls"
+after = "refusal_triggering"
+method = "difference_in_means_direction_plus_probe"
+source_ref = "tests/test_integration.py"
+notes = [
+  "This report is a reproduction-calibration artifact, not a deployment audit.",
+]
+
+[behavior_report.access]
+level = "activations"
+claim_strength = "activation_diagnostic"
+available_evidence = [
+  "local_model_weights",
+  "local_activations",
+  "paired_prompt_families",
+  "direction_metrics",
+  "probe_metrics",
+]
+missing_evidence = [
+  "larger_prompt_suite",
+  "cross_model_replication",
+  "causal_intervention_test",
+  "base_model_comparison",
+]
+notes = [
+  "Activation access supports an internal diagnostic claim, not a broad safety claim.",
+]
+
+[[behavior_report.evidence]]
+id = "direction_run"
+kind = "activation"
+path_or_url = "tests/test_integration.py::TestCorePipeline::test_measure_extracts_direction"
+description = "Measured direction on mlx-community/Qwen2.5-0.5B-Instruct-bf16."
+
+[[behavior_report.evidence]]
+id = "probe_run"
+kind = "activation"
+path_or_url = "tests/test_integration.py::TestCorePipeline::test_probe_harmful_vs_harmless_contrast"
+description = "Compared maximum probe projection across prompt families."
+
+[[behavior_report.evidence]]
+id = "source_paper"
+kind = "paper"
+path_or_url = "https://arxiv.org/abs/2406.11717"
+description = "Arditi et al. refusal-direction paper."
+
+[[behavior_report.claims]]
+id = "claim-positive-separation"
+statement = "Vauban recovered positive refusal-direction separation on the tested model and prompt families."
+strength = "activation_diagnostic"
+access_level = "activations"
+status = "partially_replicated"
+evidence = ["direction_run", "source_paper"]
+limitations = ["Small single-model prompt-family contrast."]
+
+[[behavior_report.claims]]
+id = "claim-probe-ordering"
+statement = "Refusal-triggering prompts projected more strongly onto the measured direction than benign controls."
+strength = "activation_diagnostic"
+access_level = "activations"
+status = "partially_replicated"
+evidence = ["probe_run", "source_paper"]
+limitations = ["Only aggregate projection metrics are reported."]
+
+[[behavior_report.metrics]]
+name = "mean_max_projection"
+model_label = "benign_controls"
+category = "prompt_family_contrast"
+value = 0.6478872597
+unit = "projection"
+polarity = "neutral"
+family = "activation"
+sample_size = 4
+notes = "Mean of per-prompt maximum projection across benign-control prompts."
+
+[[behavior_report.metrics]]
+name = "mean_max_projection"
+model_label = "refusal_triggering"
+category = "prompt_family_contrast"
+value = 1.6690083444
+unit = "projection"
+polarity = "neutral"
+family = "activation"
+sample_size = 4
+notes = "Mean of per-prompt maximum projection across refusal-triggering prompts."
+
+[[behavior_report.metrics]]
+name = "direction_max_cosine"
+model_label = "refusal_triggering"
+category = "prompt_family_contrast"
+value = 6.4148249626
+unit = "cosine_score"
+polarity = "neutral"
+family = "activation"
+sample_size = 8
+notes = "Maximum layer separation score from the measured direction."
+
+[[behavior_report.metrics]]
+name = "projection_gap"
+model_label = "refusal_triggering"
+category = "prompt_family_contrast"
+value = 1.0211210847
+unit = "projection"
+polarity = "neutral"
+family = "activation"
+sample_size = 8
+notes = "Mean maximum projection difference between prompt families."
+
+[[behavior_report.activation_findings]]
+name = "upper_layer_refusal_direction"
+summary = "Best measured direction was at layer 23 with d_model=896 and max cosine score 6.4148249626."
+layers = [23]
+score = 6.4148249626
+metric_name = "direction_max_cosine"
+direction_label = "refusal_direction_lite"
+severity = "info"
+evidence = ["direction_run", "probe_run"]
+
+[[behavior_report.examples]]
+id = "prompt-family-aggregate"
+category = "prompt_family_contrast"
+prompt = "[prompt text omitted; aggregate prompt-family metrics only]"
+redaction = "omitted"
+note = "The report is intentionally aggregate-only to avoid publishing a prompt pack."
+
+[[behavior_report.reproduction_targets]]
+id = "arditi-2024-refusal-direction"
+title = "Refusal in Language Models Is Mediated by a Single Direction"
+source_url = "https://arxiv.org/abs/2406.11717"
+original_claim = "Refusal behavior across open-source chat models can be mediated by a one-dimensional activation-space direction."
+planned_extension = "Record what replicated and what did not in an access-aware Vauban report without publishing unsafe prompts."
+status = "partially_replicated"
+notes = ["This target is intentionally scoped to a minimal single-model calibration run."]
+
+[[behavior_report.reproduction_results]]
+target_id = "arditi-2024-refusal-direction"
+status = "partially_replicated"
+summary = "The local run replicated positive activation separation and probe ordering on one small model, but did not test cross-model generality or causal steering/removal."
+replicated_claims = [
+  "A direction with positive separation was recovered from contrastive prompt-family activations.",
+  "Refusal-triggering prompt-family probes projected higher than benign-control probes.",
+]
+failed_claims = []
+extensions = [
+  "The result is encoded as an access-aware Vauban report with explicit evidence and limitations.",
+  "Prompt text is omitted while preserving aggregate metrics and reproducibility pointers.",
+]
+evidence = ["direction_run", "probe_run", "source_paper"]
+limitations = [
+  "Single small model.",
+  "Small prompt-family fixture.",
+  "No causal intervention.",
+  "No full paper-scale reproduction.",
+]
+
+[behavior_report.reproducibility]
+command = "VAUBAN_INTEGRATION=1 uv run pytest tests/test_integration.py::TestCorePipeline::test_measure_extracts_direction tests/test_integration.py::TestCorePipeline::test_probe_harmful_vs_harmless_contrast -q"
+config_path = "examples/reproductions/arditi_refusal_direction_lite.toml"
+data_refs = [
+  "tests/conftest.py::HARMFUL_PROMPTS (prompt text omitted from report)",
+  "tests/conftest.py::HARMLESS_PROMPTS",
+  "https://arxiv.org/abs/2406.11717",
+]
+notes = [
+  "Empirical metrics were collected locally on 2026-04-25.",
+  "The integration tests passed in repeated local runs.",
+]
+
+[output]
+dir = "../../output/reproductions/arditi_refusal_direction_lite"

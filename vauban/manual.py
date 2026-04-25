@@ -1017,6 +1017,15 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 ),
             ),
             FieldSpec(
+                key="reproduction_results",
+                description="Observed outcomes for declared reproduction targets.",
+                constraints=(
+                    "array of tables with target_id, status, summary;"
+                    " optional replicated_claims, failed_claims, extensions,"
+                    " evidence, limitations."
+                ),
+            ),
+            FieldSpec(
                 key="reproducibility",
                 description="Command, config, code, data, seed, and notes.",
                 constraints="table; command is required when present.",

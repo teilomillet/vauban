@@ -40,6 +40,7 @@ def render_behavior_report_markdown(report: BehaviorReport) -> str:
     _append_evidence(lines, report)
     _append_claims(lines, report)
     _append_reproduction_targets(lines, report)
+    _append_reproduction_results(lines, report)
     _append_findings(lines, report)
     _append_metric_delta_table(lines, report)
     _append_activation_findings(lines, report)
@@ -168,6 +169,50 @@ def _append_reproduction_targets(
             f"{_md_text(target.planned_extension)} |",
         )
     lines.append("")
+
+
+def _append_reproduction_results(
+    lines: list[str],
+    report: BehaviorReport,
+) -> None:
+    """Append observed reproduction outcomes."""
+    if not report.reproduction_results:
+        return
+    lines.extend(["## Reproduction Results", ""])
+    lines.extend([
+        "| Target | Status | Summary | Evidence |",
+        "| ------ | ------ | ------- | -------- |",
+    ])
+    for result in report.reproduction_results:
+        evidence = ", ".join(_md_text(item) for item in result.evidence)
+        lines.append(
+            "| "
+            f"{_md_text(result.target_id)} | "
+            f"{result.status} | "
+            f"{_md_text(result.summary)} | "
+            f"{evidence} |",
+        )
+    lines.append("")
+
+    for result in report.reproduction_results:
+        lines.append(f"### {_md_text(result.target_id)}")
+        _append_named_items(lines, "Replicated", result.replicated_claims)
+        _append_named_items(lines, "Not replicated", result.failed_claims)
+        _append_named_items(lines, "Extensions", result.extensions)
+        _append_named_items(lines, "Limitations", result.limitations)
+        lines.append("")
+
+
+def _append_named_items(
+    lines: list[str],
+    label: str,
+    items: tuple[str, ...],
+) -> None:
+    """Append a compact list of named reproduction-result items."""
+    if not items:
+        return
+    joined = "; ".join(_md_text(item) for item in items)
+    lines.append(f"- {label}: {joined}")
 
 
 def _append_findings(lines: list[str], report: BehaviorReport) -> None:

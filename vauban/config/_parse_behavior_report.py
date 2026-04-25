@@ -26,6 +26,7 @@ from vauban.behavior import (
     ModelRole,
     ReportModelRef,
     ReproducibilityInfo,
+    ReproductionResult,
     ReproductionTarget,
     TransformationKind,
     TransformationRef,
@@ -165,6 +166,9 @@ def _parse_behavior_report(raw: TomlDict) -> BehaviorReportConfig | None:
         examples=tuple(_parse_examples(reader.data.get("examples"))),
         reproduction_targets=tuple(
             _parse_reproduction_targets(reader.data.get("reproduction_targets")),
+        ),
+        reproduction_results=tuple(
+            _parse_reproduction_results(reader.data.get("reproduction_results")),
         ),
         limitations=tuple(reader.string_list("limitations", default=[])),
         recommendation=reader.optional_string("recommendation"),
@@ -335,6 +339,42 @@ def _parse_reproduction_target(
         planned_extension=reader.string("planned_extension"),
         status=reader.literal("status", _CLAIM_STATUS_CHOICES, default="planned"),
         notes=tuple(reader.string_list("notes", default=[])),
+    )
+
+
+def _parse_reproduction_results(raw: object) -> list[ReproductionResult]:
+    """Parse optional [[behavior_report.reproduction_results]] entries."""
+    rows = _array_of_tables(
+        "[[behavior_report.reproduction_results]]",
+        raw,
+        allow_empty=True,
+    )
+    return [
+        _parse_reproduction_result(
+            row,
+            f"[[behavior_report.reproduction_results]][{index}]",
+        )
+        for index, row in enumerate(rows)
+    ]
+
+
+def _parse_reproduction_result(
+    raw: TomlDict,
+    section: str,
+) -> ReproductionResult:
+    """Parse one observed reproduction result entry."""
+    reader = SectionReader(section, raw)
+    return ReproductionResult(
+        target_id=reader.string("target_id"),
+        status=reader.literal("status", _CLAIM_STATUS_CHOICES),
+        summary=reader.string("summary"),
+        replicated_claims=tuple(
+            reader.string_list("replicated_claims", default=[]),
+        ),
+        failed_claims=tuple(reader.string_list("failed_claims", default=[])),
+        extensions=tuple(reader.string_list("extensions", default=[])),
+        evidence=tuple(reader.string_list("evidence", default=[])),
+        limitations=tuple(reader.string_list("limitations", default=[])),
     )
 
 

@@ -129,6 +129,8 @@ nav:
       - v0.4.1: releases/v0.4.1.md
   - Research:
     - What Changes When Models Are Changed?: research/what-changes-when-models-are-changed.md
+    - Reports:
+      - Arditi Refusal Direction Lite: research/reports/arditi-refusal-direction-lite.md
     - Mechanistic Interpretability of Reasoning: research/reasoning_mech_interp.md
     - Tokenizer Embedding Analysis: research/tokenizer_analysis.md
   - Course:

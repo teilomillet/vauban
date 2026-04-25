@@ -23,6 +23,7 @@ from vauban.behavior import (
     EvidenceRef,
     ReportModelRef,
     ReproducibilityInfo,
+    ReproductionResult,
     ReproductionTarget,
     TransformationRef,
     compare_behavior_metrics,
@@ -285,6 +286,20 @@ def test_behavior_report_serializes_nested_primitives() -> None:
                 status="planned",
             ),
         ),
+        reproduction_results=(
+            ReproductionResult(
+                target_id="arditi-2024-refusal-direction",
+                status="partially_replicated",
+                summary=(
+                    "Small-suite run recovered the expected direction"
+                    " separation but did not test causal interventions."
+                ),
+                replicated_claims=("Positive activation-space separation.",),
+                extensions=("Access-aware claim status was recorded.",),
+                evidence=("surface_report", "probe_report"),
+                limitations=("Single model.",),
+            ),
+        ),
         limitations=("Prompt suite is small.",),
         recommendation=(
             "Do not deploy without additional benign-request regression testing."
@@ -413,6 +428,21 @@ def test_behavior_report_serializes_nested_primitives() -> None:
             "notes": [],
         },
     ]
+    assert data["reproduction_results"] == [
+        {
+            "target_id": "arditi-2024-refusal-direction",
+            "status": "partially_replicated",
+            "summary": (
+                "Small-suite run recovered the expected direction"
+                " separation but did not test causal interventions."
+            ),
+            "replicated_claims": ["Positive activation-space separation."],
+            "failed_claims": [],
+            "extensions": ["Access-aware claim status was recorded."],
+            "evidence": ["surface_report", "probe_report"],
+            "limitations": ["Single model."],
+        },
+    ]
     assert "Prompt suite is small." in data["limitations"]
     assert "metrics=2" in report.summary()
     assert "claims=1" in report.summary()
@@ -485,6 +515,40 @@ def test_behavior_report_rejects_claims_stronger_than_access_policy() -> None:
                     statement="This claim needs internals.",
                     strength="activation_diagnostic",
                     access_level="activations",
+                ),
+            ),
+        )
+
+
+def test_behavior_report_rejects_result_for_undeclared_reproduction_target() -> None:
+    baseline = ReportModelRef(label="base", model_path="base", role="baseline")
+    candidate = ReportModelRef(label="candidate", model_path="candidate")
+    suite = BehaviorSuiteRef(
+        name="suite",
+        description="Behavior suite.",
+        categories=("benign_request",),
+        metrics=("refusal_rate",),
+    )
+
+    with pytest.raises(ValueError, match="undeclared target"):
+        BehaviorReport(
+            title="Bad Reproduction Report",
+            baseline=baseline,
+            candidate=candidate,
+            suite=suite,
+            reproduction_targets=(
+                ReproductionTarget(
+                    target_id="declared",
+                    title="Declared Target",
+                    original_claim="Claim.",
+                    planned_extension="Extension.",
+                ),
+            ),
+            reproduction_results=(
+                ReproductionResult(
+                    target_id="missing",
+                    status="inconclusive",
+                    summary="No matching target.",
                 ),
             ),
         )
@@ -702,6 +766,15 @@ def test_render_behavior_report_markdown() -> None:
                 planned_extension="Measure side effects in behavior reports.",
             ),
         ),
+        reproduction_results=(
+            ReproductionResult(
+                target_id="caa-2024",
+                status="partially_replicated",
+                summary="Direction-based steering was represented in the report.",
+                replicated_claims=("Report contains a reproduction outcome.",),
+                limitations=("No generation-side CAA run in this unit test.",),
+            ),
+        ),
         limitations=("Small suite.",),
         recommendation="Run more benign-request regression tests before shipping.",
         reproducibility=ReproducibilityInfo(
@@ -727,6 +800,9 @@ def test_render_behavior_report_markdown() -> None:
     assert "| claim-1 | planned | activation_diagnostic | activations |" in markdown
     assert "## Reproduction Targets" in markdown
     assert "https://arxiv.org/abs/2312.06681" in markdown
+    assert "## Reproduction Results" in markdown
+    assert "partially_replicated" in markdown
+    assert "- Replicated: Report contains a reproduction outcome." in markdown
     assert "## Findings" in markdown
     assert "- Refusal behavior changed." in markdown
     assert "- The model became more assertive under underspecification." in markdown
