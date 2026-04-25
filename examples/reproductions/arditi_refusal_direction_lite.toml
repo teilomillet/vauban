@@ -11,6 +11,9 @@
 #
 # Prompt text is intentionally omitted from this report. The run used the
 # integration fixture prompt families in tests/conftest.py.
+# A causal-lite intervention extension was collected with:
+#
+#   uv run vauban examples/reproductions/arditi_refusal_direction_intervention.toml
 
 [behavior_report]
 title = "Arditi Refusal Direction Lite Reproduction Report"
@@ -18,14 +21,17 @@ target_change = "benign control prompt family -> refusal-triggering prompt famil
 findings = [
   "Vauban recovered a positive activation-space separation on a small open instruction model.",
   "Refusal-triggering prompt-family probes projected higher than benign-control probes.",
-  "This is a partial reproduction only: it does not reproduce the paper's 13-model sweep or causal intervention results.",
+  "A causal-lite intervention sweep found that alpha=-1 increased refusal-style rate on a small safe/meta prompt family.",
+  "Alpha=1 reduced mean projection on the measured direction but did not change the phrase-based refusal-style rate in this small sweep.",
+  "This is a partial reproduction only: it does not reproduce the paper's 13-model sweep or full causal ablation results.",
 ]
-recommendation = "Use this as calibration evidence for Vauban's report path; do not treat it as a full reproduction of the paper."
+recommendation = "Use this as calibration evidence for Vauban's report and intervention path; do not treat it as a full reproduction of the paper."
 limitations = [
   "Only one small open model was tested.",
   "Only four prompts per family were used.",
   "Prompt text is omitted from the public report.",
-  "No activation intervention or refusal-removal experiment was run.",
+  "The intervention extension used four safe/meta-level prompts and phrase-based refusal scoring.",
+  "No paper-scale activation ablation or 13-model intervention sweep was run.",
 ]
 markdown_report = true
 
@@ -50,6 +56,8 @@ metrics = [
   "direction_max_cosine",
   "mean_max_projection",
   "projection_gap",
+  "refusal_style_rate",
+  "mean_projection_delta",
 ]
 version = "2026-04-25"
 safety_policy = "aggregate_only_prompt_text_omitted"
@@ -74,11 +82,12 @@ available_evidence = [
   "paired_prompt_families",
   "direction_metrics",
   "probe_metrics",
+  "intervention_metrics",
 ]
 missing_evidence = [
   "larger_prompt_suite",
   "cross_model_replication",
-  "causal_intervention_test",
+  "paper_scale_intervention_sweep",
   "base_model_comparison",
 ]
 notes = [
@@ -103,6 +112,12 @@ kind = "paper"
 path_or_url = "https://arxiv.org/abs/2406.11717"
 description = "Arditi et al. refusal-direction paper."
 
+[[behavior_report.evidence]]
+id = "intervention_eval_report"
+kind = "run_report"
+path_or_url = "../arditi_refusal_direction_intervention/intervention_eval_report.json"
+description = "Controlled alpha sweep from the causal-lite intervention extension."
+
 [[behavior_report.claims]]
 id = "claim-positive-separation"
 statement = "Vauban recovered positive refusal-direction separation on the tested model and prompt families."
@@ -120,6 +135,19 @@ access_level = "activations"
 status = "partially_replicated"
 evidence = ["probe_run", "source_paper"]
 limitations = ["Only aggregate projection metrics are reported."]
+
+[[behavior_report.claims]]
+id = "claim-causal-lite-intervention"
+statement = "A small controlled alpha sweep changed projection metrics, and one steering condition changed phrase-based refusal-style behavior."
+strength = "activation_diagnostic"
+access_level = "activations"
+status = "extended"
+evidence = ["intervention_eval_report", "source_paper"]
+limitations = [
+  "Small safe/meta-level prompt-family sweep.",
+  "Phrase-based refusal scoring is a cheap diagnostic.",
+  "Positive steering reduced projection but did not change refusal-style rate in this run.",
+]
 
 [[behavior_report.metrics]]
 name = "mean_max_projection"
@@ -165,6 +193,72 @@ family = "activation"
 sample_size = 8
 notes = "Mean maximum projection difference between prompt families."
 
+[[behavior_report.metrics]]
+name = "refusal_style_rate"
+model_label = "alpha_-1"
+category = "causal_lite_intervention"
+value = 0.5
+unit = "ratio"
+polarity = "neutral"
+family = "behavior"
+sample_size = 4
+notes = "Phrase-based refusal-style rate under alpha=-1 steering."
+
+[[behavior_report.metrics]]
+name = "refusal_style_rate"
+model_label = "alpha_0"
+category = "causal_lite_intervention"
+value = 0.25
+unit = "ratio"
+polarity = "neutral"
+family = "behavior"
+sample_size = 4
+notes = "Phrase-based refusal-style rate under baseline alpha=0."
+
+[[behavior_report.metrics]]
+name = "refusal_style_rate"
+model_label = "alpha_1"
+category = "causal_lite_intervention"
+value = 0.25
+unit = "ratio"
+polarity = "neutral"
+family = "behavior"
+sample_size = 4
+notes = "Phrase-based refusal-style rate under alpha=1 steering."
+
+[[behavior_report.metrics]]
+name = "mean_projection_delta"
+model_label = "alpha_-1"
+category = "causal_lite_intervention"
+value = 3.9635744137
+unit = "projection"
+polarity = "neutral"
+family = "activation"
+sample_size = 4
+notes = "Mean after-minus-before projection delta under alpha=-1 steering."
+
+[[behavior_report.metrics]]
+name = "mean_projection_delta"
+model_label = "alpha_0"
+category = "causal_lite_intervention"
+value = 0.0
+unit = "projection"
+polarity = "neutral"
+family = "activation"
+sample_size = 4
+notes = "Mean after-minus-before projection delta under baseline alpha=0."
+
+[[behavior_report.metrics]]
+name = "mean_projection_delta"
+model_label = "alpha_1"
+category = "causal_lite_intervention"
+value = -2.7008530247
+unit = "projection"
+polarity = "neutral"
+family = "activation"
+sample_size = 4
+notes = "Mean after-minus-before projection delta under alpha=1 steering."
+
 [[behavior_report.activation_findings]]
 name = "upper_layer_refusal_direction"
 summary = "Best measured direction was at layer 23 with d_model=896 and max cosine score 6.4148249626."
@@ -174,6 +268,16 @@ metric_name = "direction_max_cosine"
 direction_label = "refusal_direction_lite"
 severity = "info"
 evidence = ["direction_run", "probe_run"]
+
+[[behavior_report.activation_findings]]
+name = "intervention_projection_shift"
+summary = "The intervention sweep changed mean projection on layer 23: alpha=-1 increased projection by 3.9635744137, while alpha=1 decreased it by 2.7008530247."
+layers = [23]
+score = 3.9635744137
+metric_name = "mean_projection_delta"
+direction_label = "refusal_direction_lite"
+severity = "info"
+evidence = ["intervention_eval_report"]
 
 [[behavior_report.examples]]
 id = "prompt-family-aggregate"
@@ -194,35 +298,83 @@ notes = ["This target is intentionally scoped to a minimal single-model calibrat
 [[behavior_report.reproduction_results]]
 target_id = "arditi-2024-refusal-direction"
 status = "partially_replicated"
-summary = "The local run replicated positive activation separation and probe ordering on one small model, but did not test cross-model generality or causal steering/removal."
+summary = "The local run replicated positive activation separation, probe ordering, and a small causal-lite intervention effect on one small model, but did not test cross-model generality or paper-scale steering/removal."
 replicated_claims = [
   "A direction with positive separation was recovered from contrastive prompt-family activations.",
   "Refusal-triggering prompt-family probes projected higher than benign-control probes.",
+  "A controlled alpha sweep changed projection metrics and one steering condition changed phrase-based refusal-style rate on safe/meta-level prompts.",
 ]
 failed_claims = []
 extensions = [
   "The result is encoded as an access-aware Vauban report with explicit evidence and limitations.",
   "Prompt text is omitted while preserving aggregate metrics and reproducibility pointers.",
+  "A generated intervention-results TOML fragment was folded into the behavior report.",
 ]
-evidence = ["direction_run", "probe_run", "source_paper"]
+evidence = ["direction_run", "probe_run", "intervention_eval_report", "source_paper"]
 limitations = [
   "Single small model.",
   "Small prompt-family fixture.",
-  "No causal intervention.",
+  "Small causal-lite intervention prompt suite.",
+  "Phrase-based refusal scoring only.",
   "No full paper-scale reproduction.",
 ]
 
+[[behavior_report.intervention_results]]
+id = "neg_alpha_1_0"
+kind = "activation_steering"
+summary = "Alpha -1 changed refusal-style rate by +0.250 relative to the baseline alpha."
+target = "refusal_direction_lite"
+effect = "increased"
+polarity = "negative"
+layers = [23]
+strength = -1
+baseline_condition = "alpha=0"
+intervention_condition = "alpha=-1"
+behavior_metric = "refusal_style_rate"
+activation_metric = "mean_projection_delta"
+evidence = ["intervention_eval_report"]
+limitations = [
+  "Single small open instruction model.",
+  "Small safe/meta-level prompt-family sweep.",
+  "Phrase-based refusal scoring is a cheap diagnostic, not a safety guarantee.",
+  "This does not reproduce the paper's 13-model intervention sweep.",
+]
+
+[[behavior_report.intervention_results]]
+id = "pos_alpha_1_0"
+kind = "activation_steering"
+summary = "Alpha 1 changed refusal-style rate by +0.000 relative to the baseline alpha."
+target = "refusal_direction_lite"
+effect = "no_observed_change"
+polarity = "positive"
+layers = [23]
+strength = 1
+baseline_condition = "alpha=0"
+intervention_condition = "alpha=1"
+behavior_metric = "refusal_style_rate"
+activation_metric = "mean_projection_delta"
+evidence = ["intervention_eval_report"]
+limitations = [
+  "Single small open instruction model.",
+  "Small safe/meta-level prompt-family sweep.",
+  "Phrase-based refusal scoring is a cheap diagnostic, not a safety guarantee.",
+  "This does not reproduce the paper's 13-model intervention sweep.",
+]
+
 [behavior_report.reproducibility]
-command = "VAUBAN_INTEGRATION=1 uv run pytest tests/test_integration.py::TestCorePipeline::test_measure_extracts_direction tests/test_integration.py::TestCorePipeline::test_probe_harmful_vs_harmless_contrast -q"
+command = "VAUBAN_INTEGRATION=1 uv run pytest tests/test_integration.py::TestCorePipeline::test_measure_extracts_direction tests/test_integration.py::TestCorePipeline::test_probe_harmful_vs_harmless_contrast -q && uv run vauban examples/reproductions/arditi_refusal_direction_intervention.toml"
 config_path = "examples/reproductions/arditi_refusal_direction_lite.toml"
 data_refs = [
   "tests/conftest.py::HARMFUL_PROMPTS (prompt text omitted from report)",
   "tests/conftest.py::HARMLESS_PROMPTS",
+  "examples/reproductions/arditi_refusal_direction_intervention.toml",
+  "output/reproductions/arditi_refusal_direction_intervention/intervention_eval_report.json",
   "https://arxiv.org/abs/2406.11717",
 ]
 notes = [
-  "Empirical metrics were collected locally on 2026-04-25.",
+  "Diagnostic and causal-lite intervention metrics were collected locally on 2026-04-25.",
   "The integration tests passed in repeated local runs.",
+  "The intervention extension used safe/meta-level public prompts and did not record generated text.",
 ]
 
 [output]

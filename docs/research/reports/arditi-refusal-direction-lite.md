@@ -12,7 +12,9 @@ keywords: "Vauban, refusal direction, reproduction report, activation diagnostic
 This is a deliberately small calibration run, not a full reproduction of
 Arditi et al. It tests whether Vauban can recover the first-order signal that
 the paper makes central: a contrastive activation direction associated with
-refusal behavior.
+refusal behavior. It now also includes a causal-lite intervention extension:
+measure the direction, steer a small safe/meta-level prompt family at multiple
+alpha values, and record aggregate side effects.
 
 The source paper is [Refusal in Language Models Is Mediated by a Single
 Direction](https://arxiv.org/abs/2406.11717). The public report omits prompt
@@ -26,8 +28,10 @@ text and records only aggregate metrics.
 | Access level | `activations` |
 | Claim strength | `activation_diagnostic` |
 | Prompt families | 4 refusal-triggering prompts, 4 benign-control prompts |
+| Intervention prompts | 4 safe/meta-level boundary prompts |
 | Public prompt policy | Prompt text omitted; aggregate metrics only |
-| Command | `VAUBAN_INTEGRATION=1 uv run pytest tests/test_integration.py::TestCorePipeline::test_measure_extracts_direction tests/test_integration.py::TestCorePipeline::test_probe_harmful_vs_harmless_contrast -q` |
+| Diagnostic command | `VAUBAN_INTEGRATION=1 uv run pytest tests/test_integration.py::TestCorePipeline::test_measure_extracts_direction tests/test_integration.py::TestCorePipeline::test_probe_harmful_vs_harmless_contrast -q` |
+| Intervention command | `uv run vauban examples/reproductions/arditi_refusal_direction_intervention.toml` |
 
 ## Observed Result
 
@@ -42,6 +46,30 @@ text and records only aggregate metrics.
 
 The integration check passed in repeated local runs.
 
+## Causal-Lite Extension
+
+The intervention extension was run with:
+
+```bash
+uv run vauban examples/reproductions/arditi_refusal_direction_intervention.toml
+```
+
+It used the measured direction at layer 23 and swept alpha values over four
+safe/meta-level prompts. Generated text was not recorded in the public artifact.
+
+| Alpha | Prompts | Refusal-style rate | Mean projection before | Mean projection after | Projection delta |
+|---:|---:|---:|---:|---:|---:|
+| -1.0 | 4 | 0.50 | 2.6676412315 | 6.6312156451 | +3.9635744137 |
+| 0.0 | 4 | 0.25 | 1.5702590009 | 1.5702590009 | +0.0000000000 |
+| 1.0 | 4 | 0.25 | 1.7837318664 | -0.9171211583 | -2.7008530247 |
+
+Observed intervention results:
+
+- `alpha=-1` increased phrase-based refusal-style rate by `+0.25` relative to
+  baseline.
+- `alpha=1` reduced mean projection on the measured direction but did not
+  change phrase-based refusal-style rate in this small prompt sweep.
+
 ## Epistemic Status
 
 What replicated:
@@ -50,17 +78,20 @@ What replicated:
   and prompt families.
 - Refusal-triggering prompt-family probes projected higher than benign-control
   probes on the measured direction.
+- A controlled alpha sweep changed projection metrics, and one steering
+  condition increased phrase-based refusal-style behavior.
 
 What did not replicate:
 
 - The 13-model sweep from the paper.
-- Causal intervention claims from adding/removing the direction.
+- Paper-scale direction-add/remove ablations from the paper.
 - Generality across prompt suites, model families, or larger checkpoints.
 
 The correct claim is therefore narrow:
 
 > On one small open instruction model and one small prompt-family contrast,
-> Vauban recovered the expected refusal-direction diagnostic signal.
+> Vauban recovered the expected refusal-direction diagnostic signal and a
+> limited causal-lite steering effect.
 
 That is useful calibration evidence for Vauban's measurement/report path. It is
 not a safety claim and not a full reproduction of the paper.
@@ -68,8 +99,12 @@ not a safety claim and not a full reproduction of the paper.
 ## Artifact
 
 The report config is `examples/reproductions/arditi_refusal_direction_lite.toml`.
-It can be rendered with:
+The intervention config is
+`examples/reproductions/arditi_refusal_direction_intervention.toml`.
+
+They can be rendered with:
 
 ```bash
+uv run vauban examples/reproductions/arditi_refusal_direction_intervention.toml
 uv run vauban examples/reproductions/arditi_refusal_direction_lite.toml
 ```
