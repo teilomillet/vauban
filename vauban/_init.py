@@ -378,6 +378,46 @@ convergence_window = 3
 
 # Standalone templates that don't need [model] or [data].
 _STANDALONE_TEMPLATES: dict[str, str] = {
+    "behavior_report": """\
+# Standalone model behavior change report.
+# No local model needed; this turns measured or curated deltas into a
+# reproducible report artifact.
+
+[output]
+dir = "output/behavior_report"
+
+[behavior_report]
+title = "Model Behavior Change Report"
+target_change = "Base -> fine-tuned"
+findings = [
+  "Target-task performance improved.",
+  "Over-refusal increased in ambiguous benign cases.",
+  "Uncertainty expression decreased under underspecification.",
+]
+limitations = [
+  "Prompt suite is intentionally small.",
+  "Activation diagnostics require local internals and are not a guarantee of safety.",
+]
+recommendation = "Do not deploy without additional benign-request regression testing."
+markdown_report = true
+
+[behavior_report.baseline]
+label = "base"
+model_path = "mlx-community/example-base"
+role = "baseline"
+
+[behavior_report.candidate]
+label = "fine-tuned"
+model_path = "mlx-community/example-finetuned"
+role = "candidate"
+
+[behavior_report.suite]
+name = "refusal-boundary-lite"
+description = "Small behavior-change suite for refusal, over-refusal, and uncertainty drift."
+categories = ["safety_refusal", "benign_request", "ambiguous_request", "uncertainty"]
+metrics = ["refusal_rate", "over_refusal_rate", "uncertainty_expression"]
+safety_policy = "aggregate_or_redacted_examples"
+""",
     "benchmark": """\
 # Standalone benchmark scorecard from existing Vauban report bundles.
 # No local model needed.

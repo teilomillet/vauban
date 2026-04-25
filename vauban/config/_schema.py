@@ -26,6 +26,7 @@ from vauban.types import (
     AuditConfig,
     AwarenessConfig,
     BenchmarkConfig,
+    BehaviorReportConfig,
     CastConfig,
     CircuitConfig,
     ComposeOptimizeConfig,
@@ -119,6 +120,7 @@ _DATACLASS_SECTION_SPECS: tuple[_DataclassSectionSpec, ...] = (
     _DataclassSectionSpec("depth", DepthConfig, {}),
     _DataclassSectionSpec("ai_act", AIActConfig, {}),
     _DataclassSectionSpec("benchmark", BenchmarkConfig, {}),
+    _DataclassSectionSpec("behavior_report", BehaviorReportConfig, {}),
     _DataclassSectionSpec("token_audit", TokenAuditConfig, {}),
     _DataclassSectionSpec("probe", ProbeConfig, {}),
     _DataclassSectionSpec("steer", SteerConfig, {}),
@@ -157,7 +159,6 @@ _MANUAL_SECTION_KEYS: dict[str, frozenset[str]] = {
 }
 
 KNOWN_SECTION_KEYS: dict[str, frozenset[str]] = {
-    **_MANUAL_SECTION_KEYS,
     **{
         spec.name: frozenset(
             spec.field_aliases.get(field.name, field.name)
@@ -165,6 +166,7 @@ KNOWN_SECTION_KEYS: dict[str, frozenset[str]] = {
         )
         for spec in _DATACLASS_SECTION_SPECS
     },
+    **_MANUAL_SECTION_KEYS,
 }
 
 KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
@@ -204,6 +206,8 @@ def generate_config_schema() -> JsonSchema:
         "behavior_report": _behavior_report_section_schema(),
     }
     for spec in _DATACLASS_SECTION_SPECS:
+        if spec.name == "behavior_report":
+            continue
         properties[spec.name] = _schema_for_dataclass(
             spec.config_type,
             state,
