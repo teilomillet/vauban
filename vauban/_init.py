@@ -413,7 +413,7 @@ role = "candidate"
 
 [behavior_report.suite]
 name = "refusal-boundary-lite"
-description = "Small behavior-change suite for refusal, over-refusal, and uncertainty drift."
+description = "Small behavior-change suite for refusal and uncertainty drift."
 categories = ["safety_refusal", "benign_request", "ambiguous_request", "uncertainty"]
 metrics = ["refusal_rate", "over_refusal_rate", "uncertainty_expression"]
 safety_policy = "aggregate_or_redacted_examples"
