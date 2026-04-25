@@ -8,6 +8,7 @@ from dataclasses import FrozenInstanceError
 import pytest
 
 from vauban.behavior import (
+    AccessClaimBoundary,
     AccessPolicy,
     ActivationFinding,
     BehaviorChatMessage,
@@ -27,7 +28,10 @@ from vauban.behavior import (
     ReproductionResult,
     ReproductionTarget,
     TransformationRef,
+    access_claim_boundary,
+    access_policy_for_level,
     compare_behavior_metrics,
+    max_claim_strength_for_access,
     render_behavior_report_markdown,
 )
 
@@ -380,6 +384,16 @@ def test_behavior_report_serializes_nested_primitives() -> None:
         ],
         "missing_evidence": ["training_data"],
         "notes": ["Internal claims require rerunning local probes."],
+        "can_claim": [
+            "Behavioral differences between the base and transformed model.",
+            "Activation or weight-space diagnostics when those artifacts are present.",
+            "Model-change audit claims bounded by the declared suite and artifacts.",
+        ],
+        "cannot_claim": [
+            "Training-data attribution without training data or optimizer traces.",
+            "Global safety guarantees outside the declared suite and artifacts.",
+            "Causal mechanisms stronger than the interventions actually run.",
+        ],
     }
     assert data["evidence"] == [
         {
@@ -497,6 +511,57 @@ def test_behavior_primitives_are_frozen() -> None:
 
     with pytest.raises(FrozenInstanceError):
         model.label = "other"  # type: ignore[misc]
+
+
+def test_access_policy_for_level_builds_claim_boundary() -> None:
+    policy = access_policy_for_level(
+        "black_box",
+        available_evidence=("paired_outputs",),
+        missing_evidence=("activations",),
+    )
+
+    boundary = access_claim_boundary(policy)
+
+    assert isinstance(boundary, AccessClaimBoundary)
+    assert policy.claim_strength == "black_box_behavioral_diff"
+    assert max_claim_strength_for_access("activations") == "activation_diagnostic"
+    assert "Behavioral differences" in boundary.can_claim[0]
+    assert "Internal causal mechanisms" in boundary.cannot_claim[0]
+    assert policy.to_dict()["can_claim"] == list(boundary.can_claim)
+
+
+def test_access_policy_rejects_claim_strength_above_access_level() -> None:
+    with pytest.raises(ValueError, match="exceeds maximum"):
+        AccessPolicy(
+            level="black_box",
+            claim_strength="activation_diagnostic",
+        )
+
+
+def test_behavior_report_rejects_activation_findings_without_access() -> None:
+    baseline = ReportModelRef(label="base", model_path="base", role="baseline")
+    candidate = ReportModelRef(label="candidate", model_path="candidate")
+    suite = BehaviorSuiteRef(
+        name="suite",
+        description="Behavior suite.",
+        categories=("benign_request",),
+        metrics=("refusal_rate",),
+    )
+
+    with pytest.raises(ValueError, match="activation_findings require"):
+        BehaviorReport(
+            title="Overclaim Report",
+            baseline=baseline,
+            candidate=candidate,
+            suite=suite,
+            access=access_policy_for_level("black_box"),
+            activation_findings=(
+                ActivationFinding(
+                    name="internal_shift",
+                    summary="Unsupported activation claim.",
+                ),
+            ),
+        )
 
 
 def test_behavior_report_rejects_unknown_claim_evidence_when_registry_exists() -> None:
@@ -872,6 +937,9 @@ def test_render_behavior_report_markdown() -> None:
     assert "- Kind: `checkpoint_update`" in markdown
     assert "## Access And Claim Strength" in markdown
     assert "- Access level: `activations`" in markdown
+    assert "## What This Report Can Claim" in markdown
+    assert "Activation-space correlates observed" in markdown
+    assert "## What This Report Cannot Claim" in markdown
     assert "## Evidence" in markdown
     assert "| probe_report | activation | probe_report.json |  |" in markdown
     assert "## Claims" in markdown

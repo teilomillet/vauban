@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from vauban.behavior._primitives import access_claim_boundary
+
 if TYPE_CHECKING:
     from vauban.behavior._primitives import BehaviorReport, JsonValue
 
@@ -37,6 +39,7 @@ def render_behavior_report_markdown(report: BehaviorReport) -> str:
     _append_target_change(lines, report)
     _append_transformation(lines, report)
     _append_access(lines, report)
+    _append_claim_boundary(lines, report)
     _append_evidence(lines, report)
     _append_claims(lines, report)
     _append_reproduction_targets(lines, report)
@@ -101,6 +104,20 @@ def _append_access(lines: list[str], report: BehaviorReport) -> None:
         lines.append(f"- Missing evidence: {joined}")
     for note in access.notes:
         lines.append(f"- Note: {_md_text(note)}")
+    lines.append("")
+
+
+def _append_claim_boundary(lines: list[str], report: BehaviorReport) -> None:
+    """Append what the declared access level can and cannot support."""
+    if report.access is None:
+        return
+    boundary = access_claim_boundary(report.access)
+    lines.extend(["## What This Report Can Claim", ""])
+    for claim in boundary.can_claim:
+        lines.append(f"- {_md_text(claim)}")
+    lines.extend(["", "## What This Report Cannot Claim", ""])
+    for claim in boundary.cannot_claim:
+        lines.append(f"- {_md_text(claim)}")
     lines.append("")
 
 

@@ -141,6 +141,7 @@ candidate_label = "fine-tuned"
 target_change = "base -> fine-tuned"
 suite_name = "refusal-boundary-lite"
 suite_description = "Safe trace fixture for refusal and ambiguity drift."
+access_level = "black_box"
 record_outputs = false
 
 [[behavior_diff.metrics]]
@@ -174,6 +175,21 @@ description = "Fail CI if benign refusal increases too much."
 - `reproducibility`: Vauban version, config SHA-256, baseline/candidate trace
   SHA-256 hashes, scorer list when trace metadata records it, and report
   generation settings.
+
+Behavior diffs are access-aware. Set `access_level` to the strongest evidence
+you actually have:
+
+- `single_snapshot`: one model profile, no paired diff.
+- `black_box`: paired outputs or API traces, no internals.
+- `logprobs`: paired outputs plus token probability traces.
+- `weights`: weight artifacts or weight diffs.
+- `activations`: activation traces, probes, or intervention diagnostics.
+- `base_and_modified`: base and changed model with internal artifacts.
+
+Vauban derives the maximum defensible claim strength from that access level
+unless `claim_strength` is set explicitly. Over-strong claims fail validation,
+and reports include “What This Report Can Claim” and “What This Report Cannot
+Claim” sections.
 
 If any `[[behavior_diff.thresholds]]` with `severity = "fail"` is violated,
 Vauban writes the JSON/Markdown artifacts first and then exits non-zero. This

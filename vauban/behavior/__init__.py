@@ -5,6 +5,7 @@
 
 from vauban.behavior._markdown import render_behavior_report_markdown
 from vauban.behavior._primitives import (
+    AccessClaimBoundary,
     AccessLevel,
     AccessPolicy,
     ActivationFinding,
@@ -47,7 +48,10 @@ from vauban.behavior._primitives import (
     ThresholdSeverity,
     TransformationKind,
     TransformationRef,
+    access_claim_boundary,
+    access_policy_for_level,
     compare_behavior_metrics,
+    max_claim_strength_for_access,
 )
 from vauban.behavior._reproducibility import (
     artifact_hashes,
@@ -97,6 +101,7 @@ __all__ = [
     "EXPECTED_BEHAVIOR_CHOICES",
     "METRIC_POLARITY_CHOICES",
     "REDACTION_CHOICES",
+    "AccessClaimBoundary",
     "AccessLevel",
     "AccessPolicy",
     "ActivationFinding",
@@ -141,6 +146,8 @@ __all__ = [
     "ThresholdSeverity",
     "TransformationKind",
     "TransformationRef",
+    "access_claim_boundary",
+    "access_policy_for_level",
     "aggregate_trace_metrics",
     "artifact_hashes",
     "behavior_metric_specs_for_scorers",
@@ -154,6 +161,7 @@ __all__ = [
     "is_refusal_text",
     "load_behavior_suite_toml",
     "load_behavior_trace",
+    "max_claim_strength_for_access",
     "maybe_sha256_file",
     "parse_behavior_metric_specs",
     "parse_behavior_prompts",

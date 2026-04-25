@@ -37,6 +37,24 @@ _TRANSFORMATION_KIND_CHOICES: tuple[str, ...] = (
     "evaluation_only",
     "other",
 )
+_ACCESS_LEVEL_CHOICES: tuple[str, ...] = (
+    "single_snapshot",
+    "black_box",
+    "paired_outputs",
+    "logprobs",
+    "weights",
+    "activations",
+    "base_and_modified",
+    "base_and_transformed",
+)
+_CLAIM_STRENGTH_CHOICES: tuple[str, ...] = (
+    "behavioral_profile",
+    "black_box_behavioral_diff",
+    "distributional_diff",
+    "weight_diff",
+    "activation_diagnostic",
+    "model_change_audit",
+)
 _THRESHOLD_SEVERITY_CHOICES: tuple[str, ...] = ("warn", "fail")
 
 
@@ -84,6 +102,15 @@ def _parse_behavior_diff(
             default="evaluation_only",
         ),
         transformation_summary=reader.optional_string("transformation_summary"),
+        access_level=reader.literal(
+            "access_level",
+            _ACCESS_LEVEL_CHOICES,
+            default="black_box",
+        ),
+        claim_strength=reader.optional_literal(
+            "claim_strength",
+            _CLAIM_STRENGTH_CHOICES,
+        ),
         metrics=_parse_metric_configs(reader.data.get("metrics")),
         thresholds=_parse_threshold_configs(reader.data.get("thresholds")),
         limitations=reader.string_list("limitations", default=[]),

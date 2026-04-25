@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import time
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from vauban._pipeline._context import EarlyModeContext, log
 from vauban._pipeline._mode_common import (
@@ -31,6 +31,9 @@ from vauban.behavior import (
     render_behavior_report_markdown,
     vauban_version,
 )
+
+if TYPE_CHECKING:
+    from vauban.behavior import AccessLevel, ClaimStrength
 
 
 def _run_behavior_diff_mode(context: EarlyModeContext) -> None:
@@ -86,6 +89,12 @@ def _run_behavior_diff_mode(context: EarlyModeContext) -> None:
             diff_cfg.transformation_kind,
         ),
         transformation_summary=diff_cfg.transformation_summary,
+        access_level=cast("AccessLevel", diff_cfg.access_level),
+        claim_strength=(
+            cast("ClaimStrength", diff_cfg.claim_strength)
+            if diff_cfg.claim_strength is not None
+            else None
+        ),
         limitations=tuple(diff_cfg.limitations),
         recommendation=diff_cfg.recommendation,
         include_examples=diff_cfg.include_examples,

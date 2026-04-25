@@ -583,6 +583,7 @@ suite_name = "refusal-boundary-lite"
 suite_description = "Safe behavior-change trace comparison."
 transformation_kind = "fine_tune"
 transformation_summary = "Compare base and fine-tuned behavior traces."
+access_level = "black_box"
 limitations = ["Starter trace suite; broaden before deployment decisions."]
 recommendation = "Review largest regressions before shipping."
 include_examples = true
@@ -652,7 +653,7 @@ after = "fine-tuned"
 method = "supervised_fine_tuning"
 
 [behavior_report.access]
-level = "paired_outputs"
+level = "black_box"
 claim_strength = "black_box_behavioral_diff"
 available_evidence = ["paired_outputs", "behavior_metrics"]
 missing_evidence = ["weights", "activations", "training_data"]

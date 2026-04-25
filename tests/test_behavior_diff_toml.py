@@ -102,6 +102,7 @@ suite_name = "refusal-boundary-lite"
 suite_description = "Safe behavior trace regression fixture."
 transformation_kind = "fine_tune"
 transformation_summary = "Candidate is a fine-tuned variant of the baseline."
+access_level = "black_box"
 limitations = ["Tiny deterministic fixture."]
 recommendation = "Investigate the largest behavior deltas."
 include_examples = true
@@ -172,6 +173,7 @@ def test_load_config_accepts_standalone_behavior_diff(tmp_path: Path) -> None:
     assert config.model_path == ""
     assert config.behavior_diff is not None
     assert config.behavior_diff.baseline_label == "base"
+    assert config.behavior_diff.access_level == "black_box"
     assert config.behavior_diff.metrics[0].name == "refusal_rate"
     assert config.behavior_diff.thresholds[0].metric == "refusal_rate"
 
@@ -195,10 +197,12 @@ def test_run_behavior_diff_writes_json_and_markdown(tmp_path: Path) -> None:
     assert payload["target_change"] == "base -> fine-tuned"
     assert payload["baseline_trace"]["n_observations"] == 3
     assert payload["candidate_trace"]["n_observations"] == 3
-    assert payload["report"]["access"]["level"] == "paired_outputs"
+    assert payload["report"]["access"]["level"] == "black_box"
     assert payload["report"]["access"]["claim_strength"] == (
         "black_box_behavioral_diff"
     )
+    assert "can_claim" in payload["report"]["access"]
+    assert "cannot_claim" in payload["report"]["access"]
     assert payload["threshold_summary"]["passed"] is True
     assert payload["thresholds"][0]["passed"] is True
     assert payload["reproducibility"]["tool_version"]
@@ -221,6 +225,8 @@ def test_run_behavior_diff_writes_json_and_markdown(tmp_path: Path) -> None:
     assert refusal_deltas[0]["delta"] == 1.0
     markdown = markdown_path.read_text()
     assert "Trace Diff Report" in markdown
+    assert "## What This Report Can Claim" in markdown
+    assert "## What This Report Cannot Claim" in markdown
     assert "Regression Gates" in markdown
     assert "artifact_hashes" in markdown
 
@@ -236,6 +242,21 @@ def test_run_behavior_diff_fails_on_threshold_violation(tmp_path: Path) -> None:
     payload = json.loads((tmp_path / "out/behavior_diff_report.json").read_text())
     assert payload["threshold_summary"]["passed"] is False
     assert payload["thresholds"][0]["passed"] is False
+
+
+def test_run_behavior_diff_rejects_overstrong_claim_strength(
+    tmp_path: Path,
+) -> None:
+    config_path = _write_fixture(tmp_path)
+    text = config_path.read_text()
+    text = text.replace(
+        'access_level = "black_box"',
+        'access_level = "black_box"\nclaim_strength = "activation_diagnostic"',
+    )
+    config_path.write_text(text)
+
+    with pytest.raises(ValueError, match="exceeds maximum"):
+        run(config_path)
 
 
 def test_init_behavior_diff_scaffold_loads(tmp_path: Path) -> None:

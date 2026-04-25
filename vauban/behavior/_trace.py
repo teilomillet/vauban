@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import cast
 
 from vauban.behavior._primitives import (
-    AccessPolicy,
+    AccessLevel,
     BehaviorDiffResult,
     BehaviorExample,
     BehaviorMetric,
@@ -20,6 +20,7 @@ from vauban.behavior._primitives import (
     BehaviorReport,
     BehaviorSuiteRef,
     BehaviorTrace,
+    ClaimStrength,
     EvidenceRef,
     ExampleRedaction,
     ExpectedBehavior,
@@ -28,6 +29,7 @@ from vauban.behavior._primitives import (
     ReproducibilityInfo,
     TransformationKind,
     TransformationRef,
+    access_policy_for_level,
     compare_behavior_metrics,
 )
 
@@ -129,6 +131,8 @@ def build_behavior_diff_result(
     safety_policy: str = "aggregate_or_redacted_examples",
     transformation_kind: TransformationKind = "evaluation_only",
     transformation_summary: str | None = None,
+    access_level: AccessLevel = "black_box",
+    claim_strength: ClaimStrength | None = None,
     limitations: tuple[str, ...] = (),
     recommendation: str | None = None,
     include_examples: bool = True,
@@ -188,6 +192,8 @@ def build_behavior_diff_result(
         target_change=target_change,
         transformation_kind=transformation_kind,
         transformation_summary=transformation_summary,
+        access_level=access_level,
+        claim_strength=claim_strength,
         metrics=metrics,
         metric_deltas=metric_deltas,
         findings=findings,
@@ -257,6 +263,8 @@ def _build_report(
     target_change: str | None,
     transformation_kind: TransformationKind,
     transformation_summary: str | None,
+    access_level: AccessLevel,
+    claim_strength: ClaimStrength | None,
     metrics: tuple[BehaviorMetric, ...],
     metric_deltas: tuple[BehaviorMetricDelta, ...],
     findings: tuple[str, ...],
@@ -290,6 +298,15 @@ def _build_report(
             description="Candidate behavior trace JSONL.",
         ),
     )
+    access = access_policy_for_level(
+        access_level,
+        claim_strength=claim_strength,
+        available_evidence=("paired_outputs", "behavior_traces"),
+        missing_evidence=("weights", "activations", "training_data"),
+        notes=(
+            "Trace diffs support behavioral claims, not internal causal claims.",
+        ),
+    )
     return BehaviorReport(
         title=title,
         baseline=ReportModelRef(
@@ -311,15 +328,7 @@ def _build_report(
             after=candidate_trace.model_label,
             method="behavior_trace_diff",
         ),
-        access=AccessPolicy(
-            level="paired_outputs",
-            claim_strength="black_box_behavioral_diff",
-            available_evidence=("paired_outputs", "behavior_traces"),
-            missing_evidence=("weights", "activations", "training_data"),
-            notes=(
-                "Trace diffs support behavioral claims, not internal causal claims.",
-            ),
-        ),
+        access=access,
         evidence=evidence,
         findings=findings,
         metrics=metrics,

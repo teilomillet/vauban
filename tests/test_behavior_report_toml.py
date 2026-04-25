@@ -218,6 +218,8 @@ def test_run_behavior_report_writes_json_and_markdown(
     ]
     assert payload["transformation"]["kind"] == "fine_tune"
     assert payload["access"]["level"] == "base_and_transformed"
+    assert "can_claim" in payload["access"]
+    assert "cannot_claim" in payload["access"]
     assert payload["claims"][0]["status"] == "extended"
     assert payload["evidence"][1]["kind"] == "activation"
     assert payload["reproduction_targets"][0]["id"] == (
@@ -245,6 +247,8 @@ def test_run_behavior_report_writes_json_and_markdown(
     assert "fine_tune" in markdown
     assert "## Access And Claim Strength" in markdown
     assert "base_and_transformed" in markdown
+    assert "## What This Report Can Claim" in markdown
+    assert "## What This Report Cannot Claim" in markdown
     assert "## Claims" in markdown
     assert "claim-refusal-shift" in markdown
     assert "## Reproduction Targets" in markdown
@@ -283,4 +287,28 @@ def test_init_behavior_report_scaffold_loads(tmp_path: Path) -> None:
     assert config.model_path == ""
     assert config.behavior_report is not None
     assert config.behavior_report.report.access is not None
-    assert config.behavior_report.report.access.level == "paired_outputs"
+    assert config.behavior_report.report.access.level == "black_box"
+
+
+def test_behavior_report_rejects_activation_evidence_for_black_box(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "behavior_report.toml"
+    text = _behavior_report_toml()
+    text = text.replace('level = "base_and_transformed"', 'level = "black_box"')
+    text = text.replace(
+        'claim_strength = "model_change_audit"',
+        'claim_strength = "black_box_behavioral_diff"',
+    )
+    text = text.replace(
+        'strength = "model_change_audit"',
+        'strength = "black_box_behavioral_diff"',
+    )
+    text = text.replace(
+        'access_level = "base_and_transformed"',
+        'access_level = "black_box"',
+    )
+    config_path.write_text(text)
+
+    with pytest.raises(ValueError, match="activation_findings require"):
+        load_config(config_path)

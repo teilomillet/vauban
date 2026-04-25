@@ -80,10 +80,12 @@ _TRANSFORMATION_KIND_CHOICES: tuple[TransformationKind, ...] = (
 )
 _ACCESS_LEVEL_CHOICES: tuple[AccessLevel, ...] = (
     "single_snapshot",
+    "black_box",
     "paired_outputs",
     "logprobs",
     "weights",
     "activations",
+    "base_and_modified",
     "base_and_transformed",
 )
 _CLAIM_STRENGTH_CHOICES: tuple[ClaimStrength, ...] = (

@@ -1995,6 +1995,8 @@ class BehaviorDiffConfig:
     safety_policy: str = "aggregate_or_redacted_examples"
     transformation_kind: str = "evaluation_only"
     transformation_summary: str | None = None
+    access_level: str = "black_box"
+    claim_strength: str | None = None
     metrics: list[BehaviorDiffMetricConfig] = field(default_factory=list)
     thresholds: list[BehaviorDiffThresholdConfig] = field(default_factory=list)
     limitations: list[str] = field(default_factory=list)

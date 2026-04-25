@@ -60,10 +60,12 @@ type TransformationKind = Literal[
 ]
 type AccessLevel = Literal[
     "single_snapshot",
+    "black_box",
     "paired_outputs",
     "logprobs",
     "weights",
     "activations",
+    "base_and_modified",
     "base_and_transformed",
 ]
 type ClaimStrength = Literal[
@@ -106,10 +108,12 @@ type MetricIdentity = tuple[str, str, str]
 
 _ACCESS_LEVEL_RANK: dict[AccessLevel, int] = {
     "single_snapshot": 0,
+    "black_box": 1,
     "paired_outputs": 1,
     "logprobs": 2,
     "weights": 3,
     "activations": 4,
+    "base_and_modified": 5,
     "base_and_transformed": 5,
 }
 _CLAIM_STRENGTH_RANK: dict[ClaimStrength, int] = {
@@ -120,6 +124,122 @@ _CLAIM_STRENGTH_RANK: dict[ClaimStrength, int] = {
     "activation_diagnostic": 4,
     "model_change_audit": 5,
 }
+_DEFAULT_CLAIM_STRENGTH_BY_ACCESS: dict[AccessLevel, ClaimStrength] = {
+    "single_snapshot": "behavioral_profile",
+    "black_box": "black_box_behavioral_diff",
+    "paired_outputs": "black_box_behavioral_diff",
+    "logprobs": "distributional_diff",
+    "weights": "weight_diff",
+    "activations": "activation_diagnostic",
+    "base_and_modified": "model_change_audit",
+    "base_and_transformed": "model_change_audit",
+}
+_CAN_CLAIM_BY_ACCESS: dict[AccessLevel, tuple[str, ...]] = {
+    "single_snapshot": (
+        "Observed behavior profile for one model snapshot on the declared suite.",
+        "Aggregate metrics and representative safe examples from that snapshot.",
+    ),
+    "black_box": (
+        "Behavioral differences between two model states on the declared suite.",
+        "Regression or improvement in measured output-level metrics.",
+        "Prompt, endpoint, checkpoint, or deployment drift visible in outputs.",
+    ),
+    "paired_outputs": (
+        "Behavioral differences between two model states on the declared suite.",
+        "Regression or improvement in measured output-level metrics.",
+        "Prompt, endpoint, checkpoint, or deployment drift visible in outputs.",
+    ),
+    "logprobs": (
+        "Output-level behavioral differences on the declared suite.",
+        "Distributional shifts visible in token probabilities or logprobs.",
+        "Confidence and uncertainty changes supported by probability traces.",
+    ),
+    "weights": (
+        "Output-level behavioral differences on the declared suite.",
+        "Weight-space differences or transformations in available parameters.",
+        "Weight-diff evidence that may motivate targeted internal follow-up.",
+    ),
+    "activations": (
+        "Output-level behavioral differences on the declared suite.",
+        "Activation-space correlates observed in available internal states.",
+        "Layer, direction, probe, or intervention diagnostics when measured.",
+    ),
+    "base_and_modified": (
+        "Behavioral differences between the base and modified model.",
+        "Activation or weight-space diagnostics when those artifacts are present.",
+        "Model-change audit claims bounded by the declared suite and artifacts.",
+    ),
+    "base_and_transformed": (
+        "Behavioral differences between the base and transformed model.",
+        "Activation or weight-space diagnostics when those artifacts are present.",
+        "Model-change audit claims bounded by the declared suite and artifacts.",
+    ),
+}
+_CANNOT_CLAIM_BY_ACCESS: dict[AccessLevel, tuple[str, ...]] = {
+    "single_snapshot": (
+        "That behavior changed relative to another model without a paired trace.",
+        "Internal causes, training-data causes, or deployment safety guarantees.",
+    ),
+    "black_box": (
+        "Internal causal mechanisms, activation features, or weight-level causes.",
+        "Training-data attribution or guarantees outside the declared suite.",
+        "Safety or deployment readiness without additional regression coverage.",
+    ),
+    "paired_outputs": (
+        "Internal causal mechanisms, activation features, or weight-level causes.",
+        "Training-data attribution or guarantees outside the declared suite.",
+        "Safety or deployment readiness without additional regression coverage.",
+    ),
+    "logprobs": (
+        "Activation-space or weight-space causes without internals.",
+        "Training-data attribution or guarantees outside the declared suite.",
+        "Safety or deployment readiness without additional regression coverage.",
+    ),
+    "weights": (
+        "Activation-space behavior unless activations were also collected.",
+        "Training-data attribution or guarantees outside the declared suite.",
+        "A causal behavior mechanism without intervention evidence.",
+    ),
+    "activations": (
+        "Weight-space causes unless weights were also inspected.",
+        "Training-data attribution or guarantees outside the declared suite.",
+        "Deployment safety guarantees from internal correlates alone.",
+    ),
+    "base_and_modified": (
+        "Training-data attribution without training data or optimizer traces.",
+        "Global safety guarantees outside the declared suite and artifacts.",
+        "Causal mechanisms stronger than the interventions actually run.",
+    ),
+    "base_and_transformed": (
+        "Training-data attribution without training data or optimizer traces.",
+        "Global safety guarantees outside the declared suite and artifacts.",
+        "Causal mechanisms stronger than the interventions actually run.",
+    ),
+}
+
+
+@dataclass(frozen=True, slots=True)
+class AccessClaimBoundary:
+    """Computed epistemic boundary for report claims."""
+
+    level: AccessLevel
+    claim_strength: ClaimStrength
+    can_claim: tuple[str, ...]
+    cannot_claim: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        """Validate access boundary statements."""
+        _require_non_empty_items(self.can_claim, "can_claim")
+        _require_non_empty_items(self.cannot_claim, "cannot_claim")
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        """Serialize to a JSON-compatible dictionary."""
+        return {
+            "level": self.level,
+            "claim_strength": self.claim_strength,
+            "can_claim": list(self.can_claim),
+            "cannot_claim": list(self.cannot_claim),
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -400,6 +520,15 @@ class AccessPolicy:
 
     def __post_init__(self) -> None:
         """Validate access-policy evidence labels."""
+        max_strength = max_claim_strength_for_access(self.level)
+        if _CLAIM_STRENGTH_RANK[self.claim_strength] > (
+            _CLAIM_STRENGTH_RANK[max_strength]
+        ):
+            msg = (
+                f"claim_strength {self.claim_strength!r} exceeds maximum"
+                f" {max_strength!r} for access level {self.level!r}"
+            )
+            raise ValueError(msg)
         _require_non_empty_items(
             self.available_evidence,
             "available_evidence",
@@ -414,13 +543,49 @@ class AccessPolicy:
 
     def to_dict(self) -> dict[str, JsonValue]:
         """Serialize to a JSON-compatible dictionary."""
+        boundary = access_claim_boundary(self)
         return {
             "level": self.level,
             "claim_strength": self.claim_strength,
             "available_evidence": list(self.available_evidence),
             "missing_evidence": list(self.missing_evidence),
             "notes": list(self.notes),
+            "can_claim": list(boundary.can_claim),
+            "cannot_claim": list(boundary.cannot_claim),
         }
+
+
+def max_claim_strength_for_access(level: AccessLevel) -> ClaimStrength:
+    """Return the strongest claim supported by one access level."""
+    return _DEFAULT_CLAIM_STRENGTH_BY_ACCESS[level]
+
+
+def access_policy_for_level(
+    level: AccessLevel,
+    *,
+    claim_strength: ClaimStrength | None = None,
+    available_evidence: tuple[str, ...] = (),
+    missing_evidence: tuple[str, ...] = (),
+    notes: tuple[str, ...] = (),
+) -> AccessPolicy:
+    """Build a validated access policy with a defensible default strength."""
+    return AccessPolicy(
+        level=level,
+        claim_strength=claim_strength or max_claim_strength_for_access(level),
+        available_evidence=available_evidence,
+        missing_evidence=missing_evidence,
+        notes=notes,
+    )
+
+
+def access_claim_boundary(access: AccessPolicy) -> AccessClaimBoundary:
+    """Return the human-readable claim boundary implied by an access policy."""
+    return AccessClaimBoundary(
+        level=access.level,
+        claim_strength=access.claim_strength,
+        can_claim=_CAN_CLAIM_BY_ACCESS[access.level],
+        cannot_claim=_CANNOT_CLAIM_BY_ACCESS[access.level],
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1208,6 +1373,12 @@ class BehaviorReport:
             self.evidence,
         )
         _validate_claim_bounds(self.access, self.claims)
+        _validate_access_artifact_bounds(
+            self.access,
+            self.evidence,
+            self.activation_findings,
+            self.intervention_results,
+        )
         _validate_reproduction_results(
             self.reproduction_targets,
             self.reproduction_results,
@@ -1381,6 +1552,68 @@ def _validate_claim_bounds(
                 f" exceeds report access level {access.level!r}"
             )
             raise ValueError(msg)
+
+
+def _validate_access_artifact_bounds(
+    access: AccessPolicy | None,
+    evidence_refs: tuple[EvidenceRef, ...],
+    activation_findings: tuple[ActivationFinding, ...],
+    intervention_results: tuple[InterventionResult, ...],
+) -> None:
+    """Reject internal artifacts when the declared access cannot support them."""
+    if access is None:
+        return
+    access_rank = _ACCESS_LEVEL_RANK[access.level]
+    activation_rank = _ACCESS_LEVEL_RANK["activations"]
+    weights_rank = _ACCESS_LEVEL_RANK["weights"]
+    if activation_findings and access_rank < activation_rank:
+        msg = (
+            "activation_findings require access level 'activations'"
+            f" or stronger, got {access.level!r}"
+        )
+        raise ValueError(msg)
+    for evidence in evidence_refs:
+        if evidence.kind == "activation" and access_rank < activation_rank:
+            msg = (
+                f"activation evidence {evidence.evidence_id!r} requires"
+                f" access level 'activations' or stronger, got {access.level!r}"
+            )
+            raise ValueError(msg)
+        if evidence.kind == "weights" and access_rank < weights_rank:
+            msg = (
+                f"weight evidence {evidence.evidence_id!r} requires"
+                f" access level 'weights' or stronger, got {access.level!r}"
+            )
+            raise ValueError(msg)
+    for result in intervention_results:
+        if _intervention_requires_activations(result) and (
+            access_rank < activation_rank
+        ):
+            msg = (
+                f"intervention result {result.intervention_id!r} requires"
+                f" access level 'activations' or stronger, got {access.level!r}"
+            )
+            raise ValueError(msg)
+        if _intervention_requires_weights(result) and access_rank < weights_rank:
+            msg = (
+                f"intervention result {result.intervention_id!r} requires"
+                f" access level 'weights' or stronger, got {access.level!r}"
+            )
+            raise ValueError(msg)
+
+
+def _intervention_requires_activations(result: InterventionResult) -> bool:
+    """Return whether an intervention result needs activation access."""
+    return (
+        result.kind
+        in ("activation_steering", "activation_ablation", "activation_addition")
+        or result.activation_metric is not None
+    )
+
+
+def _intervention_requires_weights(result: InterventionResult) -> bool:
+    """Return whether an intervention result needs weight access."""
+    return result.kind in ("weight_projection", "weight_arithmetic")
 
 
 def _validate_reproduction_results(
