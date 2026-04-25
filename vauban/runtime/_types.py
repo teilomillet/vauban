@@ -23,6 +23,18 @@ class TensorLike(Protocol):
     def shape(self) -> tuple[int, ...]: ...
 
 
+@runtime_checkable
+class ActivationIntervention(Protocol):
+    """Reversible activation intervention applied at one runtime layer."""
+
+    name: str
+    layer_index: int
+
+    def apply(self, activation: TensorLike) -> TensorLike:
+        """Return the intervened activation."""
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class BackendCapabilities:
     """Declared evidence-producing support for a Vauban runtime backend."""
@@ -193,6 +205,7 @@ class ForwardRequest:
 
     prompt_ids: tuple[int, ...]
     collect_layers: tuple[int, ...] = ()
+    interventions: tuple[ActivationIntervention, ...] = ()
     return_logits: bool = True
     return_logprobs: bool = False
 
@@ -207,9 +220,39 @@ class ForwardRequest:
         if any(layer < 0 for layer in self.collect_layers):
             msg = "collect_layers must be non-negative"
             raise ValueError(msg)
+        if any(intervention.layer_index < 0 for intervention in self.interventions):
+            msg = "intervention layer indexes must be non-negative"
+            raise ValueError(msg)
+        if any(not intervention.name.strip() for intervention in self.interventions):
+            msg = "intervention names must not be empty"
+            raise ValueError(msg)
         if self.return_logprobs and not self.return_logits:
             msg = "return_logprobs requires return_logits"
             raise ValueError(msg)
+
+
+@dataclass(frozen=True, slots=True)
+class InterventionRecord:
+    """Metadata for one activation intervention applied during forward."""
+
+    name: str
+    layer_index: int
+
+    def __post_init__(self) -> None:
+        """Validate intervention metadata."""
+        if not self.name.strip():
+            msg = "intervention record name must not be empty"
+            raise ValueError(msg)
+        if self.layer_index < 0:
+            msg = "intervention record layer_index must be non-negative"
+            raise ValueError(msg)
+
+    def to_dict(self) -> dict[str, RuntimeValue]:
+        """Serialize intervention metadata."""
+        return {
+            "name": self.name,
+            "layer_index": self.layer_index,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -220,12 +263,16 @@ class ForwardTrace:
     logprobs: TensorLike | None
     activations: dict[int, TensorLike]
     device: DeviceRef
+    interventions: tuple[InterventionRecord, ...] = ()
     profile: tuple[StageProfile, ...] = ()
 
     def __post_init__(self) -> None:
         """Validate forward trace consistency."""
         if any(layer < 0 for layer in self.activations):
             msg = "activation layer indexes must be non-negative"
+            raise ValueError(msg)
+        if any(record.layer_index < 0 for record in self.interventions):
+            msg = "intervention layer indexes must be non-negative"
             raise ValueError(msg)
         if self.logprobs is not None and self.logits is None:
             msg = "logprobs require logits in the same trace"

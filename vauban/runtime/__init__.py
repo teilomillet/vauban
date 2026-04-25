@@ -11,6 +11,11 @@ from vauban.runtime._capabilities import (
     mlx_capabilities,
     torch_capabilities,
 )
+from vauban.runtime._evidence import (
+    forward_trace_summary,
+    runtime_capability_snapshot,
+    runtime_evidence_refs,
+)
 from vauban.runtime._profiling import StageTimer, profile_stage
 from vauban.runtime._protocols import ModelRuntime, RuntimeStage
 from vauban.runtime._registry import (
@@ -19,11 +24,13 @@ from vauban.runtime._registry import (
     runtime_capabilities,
 )
 from vauban.runtime._types import (
+    ActivationIntervention,
     BackendCapabilities,
     DeviceKind,
     DeviceRef,
     ForwardRequest,
     ForwardTrace,
+    InterventionRecord,
     LoadedModel,
     ModelRef,
     RuntimeBackendName,
@@ -37,11 +44,13 @@ from vauban.runtime._types import (
 )
 
 __all__ = [
+    "ActivationIntervention",
     "BackendCapabilities",
     "DeviceKind",
     "DeviceRef",
     "ForwardRequest",
     "ForwardTrace",
+    "InterventionRecord",
     "LoadedModel",
     "ModelRef",
     "ModelRuntime",
@@ -60,9 +69,12 @@ __all__ = [
     "available_runtime_backends",
     "create_runtime",
     "declared_capabilities",
+    "forward_trace_summary",
     "max_capabilities",
     "mlx_capabilities",
     "profile_stage",
     "runtime_capabilities",
+    "runtime_capability_snapshot",
+    "runtime_evidence_refs",
     "torch_capabilities",
 ]

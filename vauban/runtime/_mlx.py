@@ -26,6 +26,7 @@ from vauban.runtime._types import (
     DeviceRef,
     ForwardRequest,
     ForwardTrace,
+    InterventionRecord,
     LoadedModel,
     ModelRef,
     TensorLike,
@@ -34,6 +35,7 @@ from vauban.runtime._types import (
 )
 
 if TYPE_CHECKING:
+    from vauban._array import Array
     from vauban.types import CausalLM, Tokenizer
 
 
@@ -128,9 +130,23 @@ class MlxRuntime:
             metadata={"collect_layers": list(request.collect_layers)},
         ) as forward_timer:
             ssm_mask = make_ssm_mask(transformer, h)
+            intervention_records: list[InterventionRecord] = []
             for layer_index, layer in enumerate(transformer.layers):
                 typed_layer = cast("LayerModule", layer)
                 h = typed_layer(h, select_mask(layer, mask, ssm_mask))
+                for intervention in request.interventions:
+                    if intervention.layer_index == layer_index:
+                        h = cast(
+                            "Array",
+                            intervention.apply(cast("TensorLike", h)),
+                        )
+                        force_eval(h)
+                        intervention_records.append(
+                            InterventionRecord(
+                                name=intervention.name,
+                                layer_index=layer_index,
+                            ),
+                        )
                 if layer_index in collect_layers:
                     force_eval(h)
                     activations[layer_index] = cast("TensorLike", h)
@@ -156,6 +172,7 @@ class MlxRuntime:
             logprobs=logprobs,
             activations=activations,
             device=device,
+            interventions=tuple(intervention_records),
             profile=tuple(profiles),
         )
 

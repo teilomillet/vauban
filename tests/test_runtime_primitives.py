@@ -11,8 +11,10 @@ import pytest
 
 from vauban.runtime import (
     BackendCapabilities,
+    DeviceRef,
     ForwardRequest,
     ForwardTrace,
+    InterventionRecord,
     LoadedModel,
     ModelRef,
     StageProfile,
@@ -22,12 +24,14 @@ from vauban.runtime import (
     available_runtime_backends,
     create_runtime,
     declared_capabilities,
+    forward_trace_summary,
     mlx_capabilities,
     profile_stage,
     runtime_capabilities,
+    runtime_capability_snapshot,
+    runtime_evidence_refs,
     torch_capabilities,
 )
-from vauban.runtime._types import DeviceRef
 
 mx = pytest.importorskip("mlx.core")
 
@@ -78,6 +82,17 @@ class FakeNorm:
     def __call__(self, h: object) -> object:
         """Return hidden states unchanged."""
         return h
+
+
+class FakeIntervention:
+    """Deterministic fake activation intervention."""
+
+    name = "shift"
+    layer_index = 0
+
+    def apply(self, activation: object) -> object:
+        """Shift fake activations."""
+        return activation + 10.0
 
 
 class FakeTransformer:
@@ -201,6 +216,10 @@ class TestRuntimeTypes:
                 device=DeviceRef(kind="gpu", label="mlx-gpu"),
             )
 
+    def test_intervention_record_rejects_empty_name(self) -> None:
+        with pytest.raises(ValueError, match="name"):
+            InterventionRecord(name="", layer_index=0)
+
     def test_stage_timer_records_profile(self) -> None:
         with profile_stage("unit") as timer:
             value = 1 + 1
@@ -234,6 +253,7 @@ class TestMlxRuntime:
             ForwardRequest(
                 prompt_ids=(1, 2, 3),
                 collect_layers=(0,),
+                interventions=(FakeIntervention(),),
                 return_logits=True,
                 return_logprobs=True,
             ),
@@ -243,8 +263,79 @@ class TestMlxRuntime:
         assert trace.logprobs is not None
         assert trace.logits.shape == (1, 3, 4)
         assert trace.activations[0].shape == (1, 3, 4)
+        assert trace.interventions == (
+            InterventionRecord(name="shift", layer_index=0),
+        )
         assert tuple(profile.name for profile in trace.profile) == (
             "prepare_batch",
             "forward",
             "lm_head",
         )
+
+    def test_runtime_evidence_summary_has_stable_shape_keys(self) -> None:
+        runtime = create_runtime("mlx")
+        trace = runtime.forward(
+            _loaded_fake_model(),
+            ForwardRequest(
+                prompt_ids=(1, 2),
+                collect_layers=(0,),
+                interventions=(FakeIntervention(),),
+                return_logits=True,
+                return_logprobs=True,
+            ),
+        )
+
+        summary = forward_trace_summary(trace)
+
+        assert set(summary) == {
+            "activation_shapes",
+            "device",
+            "interventions",
+            "logits_shape",
+            "logprobs_shape",
+            "profile",
+        }
+        assert summary["logits_shape"] == [1, 2, 4]
+        assert summary["logprobs_shape"] == [1, 2, 4]
+        assert summary["activation_shapes"] == {"0": [1, 2, 4]}
+        assert summary["interventions"] == [
+            {"name": "shift", "layer_index": 0},
+        ]
+
+    def test_runtime_evidence_refs_are_stable(self) -> None:
+        runtime = create_runtime("mlx")
+        trace = runtime.forward(
+            _loaded_fake_model(),
+            ForwardRequest(
+                prompt_ids=(1, 2),
+                collect_layers=(0,),
+                return_logits=True,
+                return_logprobs=True,
+            ),
+        )
+
+        refs = runtime_evidence_refs(trace, prefix="mlx")
+
+        assert tuple(ref.evidence_id for ref in refs) == (
+            "mlx.trace",
+            "mlx.logprobs",
+            "mlx.activations",
+        )
+        assert tuple(ref.kind for ref in refs) == (
+            "trace",
+            "logprobs",
+            "activation",
+        )
+
+    def test_runtime_capability_snapshot_is_stable(self) -> None:
+        assert runtime_capability_snapshot(mlx_capabilities()) == {
+            "name": "mlx",
+            "device_kinds": ["cpu", "gpu"],
+            "logits": "full",
+            "logprobs": "full",
+            "activations": "full",
+            "interventions": "full",
+            "kv_cache": "full",
+            "weight_access": "full",
+            "mutable_weights": "full",
+        }
