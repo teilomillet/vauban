@@ -34,12 +34,12 @@ def torch_capabilities() -> BackendCapabilities:
     return BackendCapabilities(
         name="torch",
         device_kinds=("cpu", "cuda"),
-        logits="unsupported",
-        logprobs="unsupported",
-        activations="unsupported",
-        interventions="unsupported",
+        logits="partial",
+        logprobs="partial",
+        activations="partial",
+        interventions="partial",
         kv_cache="unsupported",
-        weight_access="unsupported",
+        weight_access="partial",
         mutable_weights="unsupported",
     )
 

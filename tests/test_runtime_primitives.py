@@ -136,6 +136,75 @@ class FakeTokenizer:
         return rendered
 
 
+class FakeTorchEmbedding:
+    """Small Torch embedding surface for optional Torch runtime tests."""
+
+    def __init__(self, torch_module: object) -> None:
+        """Initialize fake Torch embedding."""
+        self._torch = torch_module
+        self.weight = torch_module.ones((1,))
+
+    def __call__(self, token_ids: object) -> object:
+        """Embed token IDs as deterministic Torch activations."""
+        shape = cast("HasShape", token_ids).shape
+        batch = int(shape[0])
+        seq_len = int(shape[1])
+        return self._torch.ones((batch, seq_len, 4))
+
+
+class FakeTorchLayer:
+    """Small Torch layer that shifts hidden states."""
+
+    def __init__(self, increment: float) -> None:
+        """Initialize the fake layer."""
+        self.increment = increment
+
+    def __call__(
+        self,
+        h: object,
+        mask: object | None = None,
+        cache: object | None = None,
+    ) -> object:
+        """Apply a deterministic activation shift."""
+        return h + self.increment
+
+
+class FakeTorchNorm:
+    """Identity Torch norm."""
+
+    def __call__(self, h: object) -> object:
+        """Return hidden states unchanged."""
+        return h
+
+
+class FakeTorchHead:
+    """Identity Torch LM head."""
+
+    def __call__(self, h: object) -> object:
+        """Return fake logits."""
+        return h
+
+
+class FakeTorchTransformer:
+    """Minimal Torch transformer surface consumed by TorchRuntime."""
+
+    def __init__(self, torch_module: object) -> None:
+        """Initialize fake Torch transformer."""
+        self.embed_tokens = FakeTorchEmbedding(torch_module)
+        self.layers = [FakeTorchLayer(1.0), FakeTorchLayer(2.0)]
+        self.norm = FakeTorchNorm()
+
+
+class FakeTorchModel:
+    """Minimal Torch model surface consumed by TorchRuntime."""
+
+    def __init__(self, torch_module: object) -> None:
+        """Initialize fake Torch model."""
+        self.model = FakeTorchTransformer(torch_module)
+        self.lm_head = FakeTorchHead()
+        self.device = "cpu"
+
+
 def _loaded_fake_model() -> LoadedModel:
     """Build a loaded fake MLX model handle."""
     return LoadedModel(
@@ -143,6 +212,17 @@ def _loaded_fake_model() -> LoadedModel:
         backend="mlx",
         capabilities=mlx_capabilities(),
         model=FakeModel(),
+        tokenizer=FakeTokenizer(),
+    )
+
+
+def _loaded_fake_torch_model(torch_module: object) -> LoadedModel:
+    """Build a loaded fake Torch model handle."""
+    return LoadedModel(
+        ref=ModelRef("fake-torch-model"),
+        backend="torch",
+        capabilities=torch_capabilities(),
+        model=FakeTorchModel(torch_module),
         tokenizer=FakeTokenizer(),
     )
 
@@ -160,10 +240,12 @@ class TestRuntimeCapabilities:
         boundary = access_boundary_for_capabilities(caps)
         assert boundary.claim_strength == "activation_diagnostic"
 
-    def test_torch_runtime_contract_is_conservative_until_adapter_exists(self) -> None:
+    def test_torch_runtime_contract_declares_partial_adapter_support(self) -> None:
         caps = torch_capabilities()
-        assert not caps.supports("activations")
-        assert access_level_for_capabilities(caps) == "black_box"
+        assert caps.support_level("activations") == "partial"
+        assert caps.support_level("interventions") == "partial"
+        assert caps.support_level("kv_cache") == "unsupported"
+        assert access_level_for_capabilities(caps) == "activations"
 
     def test_declared_capabilities_reject_unknown_backend(self) -> None:
         with pytest.raises(ValueError, match="Unknown runtime backend"):
@@ -236,9 +318,10 @@ class TestMlxRuntime:
         runtime = create_runtime("mlx")
         assert runtime.capabilities.name == "mlx"
 
-    def test_torch_runtime_creation_is_explicitly_not_implemented(self) -> None:
-        with pytest.raises(NotImplementedError, match="no execution adapter"):
-            create_runtime("torch")
+    def test_create_runtime_returns_torch_runtime(self) -> None:
+        runtime = create_runtime("torch")
+        assert runtime.capabilities.name == "torch"
+        assert runtime.capabilities.support_level("activations") == "partial"
 
     def test_tokenize_uses_loaded_tokenizer(self) -> None:
         runtime = create_runtime("mlx")
@@ -339,3 +422,26 @@ class TestMlxRuntime:
             "weight_access": "full",
             "mutable_weights": "full",
         }
+
+    def test_torch_runtime_forward_when_torch_is_available(self) -> None:
+        torch = pytest.importorskip("torch")
+        runtime = create_runtime("torch")
+
+        trace = runtime.forward(
+            _loaded_fake_torch_model(torch),
+            ForwardRequest(
+                prompt_ids=(1, 2),
+                collect_layers=(0,),
+                interventions=(FakeIntervention(),),
+                return_logits=True,
+                return_logprobs=True,
+            ),
+        )
+
+        assert trace.logits is not None
+        assert trace.logprobs is not None
+        assert trace.logits.shape == (1, 2, 4)
+        assert trace.activations[0].shape == (1, 2, 4)
+        assert trace.interventions == (
+            InterventionRecord(name="shift", layer_index=0),
+        )

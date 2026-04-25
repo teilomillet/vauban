@@ -240,6 +240,7 @@ _LAZY_IMPORTS: dict[str, str | tuple[str, str]] = {
     "TransformationRef": "vauban.behavior",
     "TokenizeRequest": "vauban.runtime",
     "TokenizedPrompt": "vauban.runtime",
+    "TorchRuntime": "vauban.runtime",
     "access_claim_boundary": "vauban.behavior",
     "access_boundary_for_capabilities": "vauban.runtime",
     "access_level_for_capabilities": "vauban.runtime",

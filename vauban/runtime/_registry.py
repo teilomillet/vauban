@@ -35,6 +35,10 @@ def create_runtime(name: str | None = None) -> ModelRuntime:
         from vauban.runtime._mlx import MlxRuntime
 
         return MlxRuntime()
+    if backend == "torch":
+        from vauban.runtime._torch import TorchRuntime
+
+        return TorchRuntime()
     msg = (
         f"Runtime backend {backend!r} has declared capabilities but no "
         "execution adapter yet"

@@ -23,6 +23,7 @@ from vauban.runtime._registry import (
     create_runtime,
     runtime_capabilities,
 )
+from vauban.runtime._torch import TorchRuntime
 from vauban.runtime._types import (
     ActivationIntervention,
     BackendCapabilities,
@@ -64,6 +65,7 @@ __all__ = [
     "TensorLike",
     "TokenizeRequest",
     "TokenizedPrompt",
+    "TorchRuntime",
     "access_boundary_for_capabilities",
     "access_level_for_capabilities",
     "available_runtime_backends",
