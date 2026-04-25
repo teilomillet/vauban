@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
+# TOML-first behavior diff from already-collected JSONL traces.
+# This example is intentionally safe and small: it demonstrates the reusable
+# trace/report machinery, not a deployment-grade safety audit.
+
+[behavior_diff]
+baseline_trace = "traces/base.jsonl"
+candidate_trace = "traces/candidate.jsonl"
+baseline_label = "base"
+candidate_label = "fine-tuned"
+baseline_model_path = "mlx-community/example-base"
+candidate_model_path = "mlx-community/example-finetuned"
+title = "Refusal Boundary Lite Behavior Diff"
+target_change = "base -> fine-tuned"
+suite_name = "refusal-boundary-lite"
+suite_description = "Safe trace fixture for refusal, ambiguity, and specificity drift."
+suite_version = "v1"
+safety_policy = "safe_prompts_only_outputs_not_recorded"
+transformation_kind = "fine_tune"
+transformation_summary = "Compare behavior traces before and after a fine-tuning run."
+limitations = [
+  "Tiny safe fixture trace.",
+  "Metrics are hand-authored for demonstration.",
+  "No activation, weight, or training-data access.",
+]
+recommendation = "Use a broader suite before making deployment decisions."
+include_examples = true
+max_examples = 3
+record_outputs = false
+
+[[behavior_diff.metrics]]
+name = "refusal_rate"
+description = "Fraction of observations with refusal-style output."
+polarity = "neutral"
+unit = "ratio"
+family = "behavior"
+
+[[behavior_diff.metrics]]
+name = "answer_specificity"
+description = "Human-scored answer specificity on safe prompts."
+polarity = "higher_is_better"
+unit = "score"
+family = "behavior"
+
+[[behavior_diff.metrics]]
+name = "uncertainty_expression_rate"
+description = "Fraction of observations that express uncertainty or ask clarification."
+polarity = "neutral"
+unit = "ratio"
+family = "behavior"
+
+[output]
+dir = "../../output/examples/behavior_diff/refusal_boundary_lite"

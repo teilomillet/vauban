@@ -86,6 +86,17 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         ),
     ),
     EarlyModeSpec(
+        "[behavior_diff]",
+        "behavior_diff",
+        "standalone",
+        False,
+        _field_is_set("behavior_diff"),
+        "Generate a behavior diff report from paired JSONL traces.",
+        "behavior trace diff report",
+        "[behavior_diff] section present.",
+        "behavior_diff_report.json + model_behavior_change_report.md.",
+    ),
+    EarlyModeSpec(
         "[behavior_report]",
         "behavior_report",
         "standalone",

@@ -1953,6 +1953,47 @@ class BehaviorReportConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class BehaviorDiffMetricConfig:
+    """Metric declaration for TOML-driven behavior trace diffs."""
+
+    name: str
+    description: str = ""
+    polarity: str = "neutral"
+    unit: str = "ratio"
+    family: str = "behavior"
+
+
+@dataclass(frozen=True, slots=True)
+class BehaviorDiffConfig:
+    """Configuration for standalone behavior trace diff reports."""
+
+    baseline_trace: Path
+    candidate_trace: Path
+    baseline_label: str = "baseline"
+    candidate_label: str = "candidate"
+    baseline_model_path: str | None = None
+    candidate_model_path: str | None = None
+    title: str = "Model Behavior Change Report"
+    target_change: str | None = None
+    suite_name: str = "behavior-change-suite"
+    suite_description: str = "Behavior trace comparison suite."
+    suite_version: str | None = None
+    suite_source: str | None = None
+    safety_policy: str = "aggregate_or_redacted_examples"
+    transformation_kind: str = "evaluation_only"
+    transformation_summary: str | None = None
+    metrics: list[BehaviorDiffMetricConfig] = field(default_factory=list)
+    limitations: list[str] = field(default_factory=list)
+    recommendation: str | None = None
+    include_examples: bool = True
+    max_examples: int = 3
+    record_outputs: bool = False
+    markdown_report: bool = True
+    json_filename: str = "behavior_diff_report.json"
+    markdown_filename: str = "model_behavior_change_report.md"
+
+
+@dataclass(frozen=True, slots=True)
 class SVFConfig:
     """Configuration for Steering Vector Field boundary training.
 
@@ -3121,6 +3162,7 @@ class PipelineConfig:
     cut: CutConfig = field(default_factory=CutConfig)
     measure: MeasureConfig = field(default_factory=MeasureConfig)
     ai_act: AIActConfig | None = None
+    behavior_diff: BehaviorDiffConfig | None = None
     behavior_report: BehaviorReportConfig | None = None
     surface: SurfaceConfig | None = None
     detect: DetectConfig | None = None

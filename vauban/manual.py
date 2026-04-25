@@ -867,6 +867,152 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
         ),
     ),
     SectionSpec(
+        name="behavior_diff",
+        description=(
+            "Standalone behavior trace diff that compares paired JSONL"
+            " observations and emits a Model Behavior Change Report."
+        ),
+        early_return=True,
+        fields=(
+            FieldSpec(
+                key="baseline_trace",
+                description="Path to the baseline behavior observation JSONL.",
+                constraints="string path; resolved relative to the TOML file.",
+                required=True,
+            ),
+            FieldSpec(
+                key="candidate_trace",
+                description="Path to the candidate behavior observation JSONL.",
+                constraints="string path; resolved relative to the TOML file.",
+                required=True,
+            ),
+            FieldSpec(
+                key="baseline_label",
+                description="Label for the baseline model state.",
+                constraints='string; default: "baseline".',
+            ),
+            FieldSpec(
+                key="candidate_label",
+                description="Label for the candidate model state.",
+                constraints='string; default: "candidate".',
+            ),
+            FieldSpec(
+                key="baseline_model_path",
+                description="Optional baseline model id or deployment label.",
+                constraints="string; optional.",
+            ),
+            FieldSpec(
+                key="candidate_model_path",
+                description="Optional candidate model id or deployment label.",
+                constraints="string; optional.",
+            ),
+            FieldSpec(
+                key="title",
+                description="Human-readable report title.",
+                constraints='string; default: "Model Behavior Change Report".',
+            ),
+            FieldSpec(
+                key="target_change",
+                description="Plain-language description of the audited change.",
+                constraints=(
+                    "string such as 'base -> fine-tuned',"
+                    " 'old prompt -> new prompt', or"
+                    " 'full precision -> quantized'."
+                ),
+            ),
+            FieldSpec(
+                key="suite_name",
+                description="Name of the behavior suite represented by traces.",
+                constraints='string; default: "behavior-change-suite".',
+            ),
+            FieldSpec(
+                key="suite_description",
+                description="Description of what the trace suite measures.",
+                constraints="string.",
+            ),
+            FieldSpec(
+                key="transformation_kind",
+                description="Kind of model or system transformation audited.",
+                constraints=(
+                    "one of fine_tune, reinforcement_fine_tune,"
+                    " checkpoint_update, prompt_template, quantization,"
+                    " merge, adapter_merge, steering, endpoint_update,"
+                    " evaluation_only, other."
+                ),
+            ),
+            FieldSpec(
+                key="metrics",
+                description="Metric declarations for trace aggregation.",
+                constraints=(
+                    "array of tables with name; optional description,"
+                    " polarity, unit, family. If omitted, Vauban infers"
+                    " metrics from trace rows."
+                ),
+            ),
+            FieldSpec(
+                key="include_examples",
+                description="Whether to include representative paired examples.",
+                constraints="boolean; true by default.",
+            ),
+            FieldSpec(
+                key="max_examples",
+                description="Maximum paired examples to include.",
+                constraints="integer >= 0; default: 3.",
+            ),
+            FieldSpec(
+                key="record_outputs",
+                description=(
+                    "Whether safe examples may include baseline and candidate"
+                    " outputs in Markdown."
+                ),
+                constraints="boolean; false by default.",
+            ),
+            FieldSpec(
+                key="limitations",
+                description="Known limitations surfaced in the report.",
+                constraints="list of strings.",
+            ),
+            FieldSpec(
+                key="recommendation",
+                description="Deployment or follow-up recommendation.",
+                constraints="string; optional.",
+            ),
+            FieldSpec(
+                key="json_filename",
+                description="JSON diff artifact filename inside [output].dir.",
+                constraints='string; default: "behavior_diff_report.json".',
+            ),
+            FieldSpec(
+                key="markdown_filename",
+                description="Markdown report filename inside [output].dir.",
+                constraints=(
+                    'string; default: "model_behavior_change_report.md".'
+                ),
+            ),
+        ),
+        notes=(
+            (
+                "This mode never loads a model. It is the practical default"
+                " when you have API-only outputs, checkpoint traces, or"
+                " prompt-template A/B logs."
+            ),
+            (
+                "Each JSONL row is one observation with prompt_id, category,"
+                " optional prompt/output_text, optional refused, and optional"
+                " numeric metrics."
+            ),
+            (
+                "Vauban derives refusal_rate from a boolean refused field and"
+                " computes matched baseline/candidate metric deltas by metric"
+                " name, category, and unit."
+            ),
+            (
+                "Examples obey each observation's redaction value: safe,"
+                " redacted, or omitted."
+            ),
+        ),
+    ),
+    SectionSpec(
         name="behavior_report",
         description=(
             "Standalone Model Behavior Change Report assembled from"
@@ -4293,7 +4439,7 @@ _MODE_CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
         "circuit", "features", "linear_probe", "svf",
         "compose_optimize", "awareness",
     )),
-    ("External", ("api_eval", "remote")),
+    ("External", ("behavior_diff", "api_eval", "remote")),
 )
 
 _GENERAL_TOPICS: tuple[tuple[str, str], ...] = (

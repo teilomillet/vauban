@@ -768,6 +768,180 @@ class BehaviorMetricDelta:
 
 
 @dataclass(frozen=True, slots=True)
+class BehaviorObservation:
+    """One behavior observation collected from a model run or endpoint."""
+
+    observation_id: str
+    model_label: str
+    prompt_id: str
+    category: str
+    prompt: str | None = None
+    output_text: str | None = None
+    expected_behavior: ExpectedBehavior = "unknown"
+    refused: bool | None = None
+    metrics: dict[str, float] = field(default_factory=dict)
+    redaction: ExampleRedaction = "redacted"
+    metadata: dict[str, JsonValue] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate observation identity, category, and metric names."""
+        _require_non_empty(self.observation_id, "observation_id")
+        _require_non_empty(self.model_label, "model_label")
+        _require_non_empty(self.prompt_id, "prompt_id")
+        _require_non_empty(self.category, "category")
+        if self.prompt is not None:
+            _require_non_empty(self.prompt, "prompt")
+        if self.output_text is not None:
+            _require_non_empty(self.output_text, "output_text")
+        _require_non_empty_items(tuple(self.metrics), "metrics", allow_empty=True)
+
+    def metric_values(self) -> dict[str, float]:
+        """Return explicit metrics plus deterministic derived metrics."""
+        values = dict(self.metrics)
+        if self.refused is not None and "refusal_rate" not in values:
+            values["refusal_rate"] = 1.0 if self.refused else 0.0
+        if self.output_text is not None and "output_length_chars" not in values:
+            values["output_length_chars"] = float(len(self.output_text))
+        return values
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        """Serialize to a JSON-compatible dictionary."""
+        return _drop_none({
+            "id": self.observation_id,
+            "model_label": self.model_label,
+            "prompt_id": self.prompt_id,
+            "category": self.category,
+            "prompt": self.prompt,
+            "output_text": self.output_text,
+            "expected_behavior": self.expected_behavior,
+            "refused": self.refused,
+            "metrics": dict(self.metrics),
+            "redaction": self.redaction,
+            "metadata": dict(self.metadata),
+        })
+
+
+@dataclass(frozen=True, slots=True)
+class BehaviorTrace:
+    """A sequence of behavior observations from one model state."""
+
+    trace_id: str
+    model_label: str
+    observations: tuple[BehaviorObservation, ...]
+    model_path: str | None = None
+    suite_name: str | None = None
+    source_path: str | None = None
+    metadata: dict[str, JsonValue] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate trace identity and observation consistency."""
+        _require_non_empty(self.trace_id, "trace_id")
+        _require_non_empty(self.model_label, "model_label")
+        if not self.observations:
+            msg = "observations must contain at least one item"
+            raise ValueError(msg)
+        if self.model_path is not None:
+            _require_non_empty(self.model_path, "model_path")
+        if self.suite_name is not None:
+            _require_non_empty(self.suite_name, "suite_name")
+        if self.source_path is not None:
+            _require_non_empty(self.source_path, "source_path")
+        _reject_duplicate_strings(
+            tuple(observation.observation_id for observation in self.observations),
+            "observations.id",
+        )
+
+    @property
+    def categories(self) -> tuple[str, ...]:
+        """Return sorted unique behavior categories in the trace."""
+        return tuple(sorted({item.category for item in self.observations}))
+
+    @property
+    def metric_names(self) -> tuple[str, ...]:
+        """Return sorted unique metric names observed in the trace."""
+        names: set[str] = set()
+        for observation in self.observations:
+            names.update(observation.metric_values())
+        return tuple(sorted(names))
+
+    def summary_dict(self) -> dict[str, JsonValue]:
+        """Serialize trace metadata without embedding every observation."""
+        return _drop_none({
+            "trace_id": self.trace_id,
+            "model_label": self.model_label,
+            "model_path": self.model_path,
+            "suite_name": self.suite_name,
+            "source_path": self.source_path,
+            "n_observations": len(self.observations),
+            "categories": list(self.categories),
+            "metric_names": list(self.metric_names),
+            "metadata": dict(self.metadata),
+        })
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        """Serialize the full trace to a JSON-compatible dictionary."""
+        payload = self.summary_dict()
+        payload["observations"] = [
+            observation.to_dict() for observation in self.observations
+        ]
+        return payload
+
+
+@dataclass(frozen=True, slots=True)
+class BehaviorDiffResult:
+    """Computed behavior diff between two observation traces."""
+
+    title: str
+    baseline_trace: BehaviorTrace
+    candidate_trace: BehaviorTrace
+    suite: BehaviorSuiteRef
+    metrics: tuple[BehaviorMetric, ...]
+    metric_deltas: tuple[BehaviorMetricDelta, ...]
+    findings: tuple[str, ...]
+    examples: tuple[BehaviorExample, ...] = field(default_factory=tuple)
+    target_change: str | None = None
+    limitations: tuple[str, ...] = field(default_factory=tuple)
+    recommendation: str | None = None
+    report: BehaviorReport | None = None
+    report_version: str = "behavior_diff_v1"
+
+    def __post_init__(self) -> None:
+        """Validate behavior-diff metadata and generated findings."""
+        _require_non_empty(self.title, "title")
+        _require_non_empty(self.report_version, "report_version")
+        _require_non_empty_items(self.findings, "findings", allow_empty=True)
+        _require_non_empty_items(
+            self.limitations,
+            "limitations",
+            allow_empty=True,
+        )
+        if self.target_change is not None:
+            _require_non_empty(self.target_change, "target_change")
+        if self.recommendation is not None:
+            _require_non_empty(self.recommendation, "recommendation")
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        """Serialize the behavior diff and embedded report metadata."""
+        return _drop_none({
+            "report_version": self.report_version,
+            "title": self.title,
+            "target_change": self.target_change,
+            "baseline_trace": self.baseline_trace.summary_dict(),
+            "candidate_trace": self.candidate_trace.summary_dict(),
+            "suite": self.suite.to_dict(),
+            "findings": list(self.findings),
+            "metrics": [metric.to_dict() for metric in self.metrics],
+            "metric_deltas": [
+                delta.to_dict() for delta in self.metric_deltas
+            ],
+            "examples": [example.to_dict() for example in self.examples],
+            "limitations": list(self.limitations),
+            "recommendation": self.recommendation,
+            "report": self.report.to_dict() if self.report is not None else None,
+        })
+
+
+@dataclass(frozen=True, slots=True)
 class ActivationFinding:
     """One internal diagnostic finding connected to observed behavior."""
 

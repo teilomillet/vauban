@@ -522,6 +522,46 @@ base_url = "https://openrouter.ai/api/v1"
 model = "meta-llama/llama-3.3-70b-instruct"
 api_key_env = "OPENROUTER_API_KEY"
 """,
+    "behavior_diff": """\
+# Standalone behavior trace diff.
+# No local model needed. Compare already-collected JSONL observations.
+
+[output]
+dir = "output"
+
+[behavior_diff]
+baseline_trace = "traces/base.jsonl"
+candidate_trace = "traces/fine_tuned.jsonl"
+baseline_label = "base"
+candidate_label = "fine-tuned"
+baseline_model_path = "mlx-community/example-base"
+candidate_model_path = "mlx-community/example-finetuned"
+title = "Model Behavior Change Report"
+target_change = "base -> fine-tuned"
+suite_name = "refusal-boundary-lite"
+suite_description = "Safe behavior-change trace comparison."
+transformation_kind = "fine_tune"
+transformation_summary = "Compare base and fine-tuned behavior traces."
+limitations = ["Starter trace suite; broaden before deployment decisions."]
+recommendation = "Review largest regressions before shipping."
+include_examples = true
+max_examples = 3
+record_outputs = false
+
+[[behavior_diff.metrics]]
+name = "refusal_rate"
+description = "Fraction of observations with refusal-style output."
+polarity = "neutral"
+unit = "ratio"
+family = "behavior"
+
+[[behavior_diff.metrics]]
+name = "answer_specificity"
+description = "Safe, hand-scored specificity of the answer."
+polarity = "higher_is_better"
+unit = "score"
+family = "behavior"
+""",
     "behavior_report": """\
 # Standalone Model Behavior Change Report.
 # No local model needed. Assemble a report from already-collected evidence.

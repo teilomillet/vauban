@@ -57,6 +57,7 @@ def target_files(root: Path) -> list[Path]:
         path
         for path in sorted(set(files))
         if "__pycache__" not in path.parts
+        and path.relative_to(root).parts[:2] != ("examples", "output")
     ]
 
 

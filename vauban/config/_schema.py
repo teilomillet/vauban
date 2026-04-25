@@ -25,6 +25,7 @@ from vauban.types import (
     ApiEvalConfig,
     AuditConfig,
     AwarenessConfig,
+    BehaviorDiffConfig,
     CastConfig,
     CircuitConfig,
     ComposeOptimizeConfig,
@@ -124,6 +125,7 @@ _DATACLASS_SECTION_SPECS: tuple[_DataclassSectionSpec, ...] = (
     _DataclassSectionSpec("sic", SICConfig, {}),
     _DataclassSectionSpec("depth", DepthConfig, {}),
     _DataclassSectionSpec("ai_act", AIActConfig, {}),
+    _DataclassSectionSpec("behavior_diff", BehaviorDiffConfig, {}),
     _DataclassSectionSpec("probe", ProbeConfig, {}),
     _DataclassSectionSpec("steer", SteerConfig, {}),
     _DataclassSectionSpec("intervention_eval", InterventionEvalConfig, {}),
@@ -222,9 +224,10 @@ def generate_config_schema() -> JsonSchema:
         "description": (
             "Schema for Vauban TOML pipeline configs. "
             "TOML tables map to object-valued sections in this JSON representation. "
-            "Note: [model] is optional for standalone behavior_report/api_eval/"
-            "ai_act/remote configs, but JSON Schema cannot express conditional "
-            "requirements, so it is listed as required here."
+            "Note: [model] is optional for standalone behavior_diff/"
+            "behavior_report/api_eval/ai_act/remote configs, but JSON Schema "
+            "cannot express conditional requirements, so it is listed as "
+            "required here."
         ),
         "type": "object",
         "properties": properties,

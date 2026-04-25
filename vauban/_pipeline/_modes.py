@@ -12,6 +12,7 @@ from vauban._pipeline._mode_ai_act import _run_ai_act_mode
 from vauban._pipeline._mode_api_eval import _run_api_eval_mode
 from vauban._pipeline._mode_audit import _run_audit_mode
 from vauban._pipeline._mode_awareness import _run_awareness_mode
+from vauban._pipeline._mode_behavior_diff import _run_behavior_diff_mode
 from vauban._pipeline._mode_behavior_report import _run_behavior_report_mode
 from vauban._pipeline._mode_cast import _run_cast_mode
 from vauban._pipeline._mode_circuit import _run_circuit_mode
@@ -47,6 +48,7 @@ EARLY_MODE_RUNNERS: dict[str, EarlyModeRunner] = {
     "remote": _run_remote_mode,
     "api_eval": _run_api_eval_mode,
     "ai_act": _run_ai_act_mode,
+    "behavior_diff": _run_behavior_diff_mode,
     "behavior_report": _run_behavior_report_mode,
     "audit": _run_audit_mode,
     "depth": _run_depth_mode,

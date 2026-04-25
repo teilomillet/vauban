@@ -22,6 +22,7 @@ from vauban.types import (
     ApiEvalEndpoint,
     AuditConfig,
     AwarenessConfig,
+    BehaviorDiffConfig,
     BehaviorReportConfig,
     CastConfig,
     CircuitConfig,
@@ -68,6 +69,7 @@ _EXPECTED_EARLY_MODE_ORDER: list[str] = [
     "[remote]",
     "[api_eval]",
     "[ai_act]",
+    "[behavior_diff]",
     "[behavior_report]",
     "[depth]",
     "[svf]",
@@ -178,10 +180,11 @@ def test_validation_warning_content_and_order_for_conflict_fixture(
     warnings = validate_config(config_path)
 
     assert warnings == [
-        (
-            "[HIGH] Multiple early-return modes active: [depth], [probe]"
-            " — only the first will run (precedence: remote"
-            " > api_eval > ai_act > behavior_report > depth > svf > features"
+            (
+                "[HIGH] Multiple early-return modes active: [depth], [probe]"
+                " — only the first will run (precedence: remote"
+                " > api_eval > ai_act > behavior_diff > behavior_report"
+                " > depth > svf > features"
             " > probe > steer > intervention_eval > sss > awareness"
             " > audit > guard > cast > sic"
             " > optimize > compose_optimize"
@@ -239,6 +242,10 @@ def test_active_early_modes_precedence_matches_legacy_behavior() -> None:
             company_name="Example Energy",
             system_name="Customer Assistant",
             intended_purpose="Answers customer questions.",
+        ),
+        behavior_diff=BehaviorDiffConfig(
+            baseline_trace=Path("base.jsonl"),
+            candidate_trace=Path("candidate.jsonl"),
         ),
         behavior_report=BehaviorReportConfig(
             report=BehaviorReport(

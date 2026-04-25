@@ -43,6 +43,7 @@ _EXPECTED_SECTION_ORDER: list[str] = [
     "lora",
     "depth",
     "ai_act",
+    "behavior_diff",
     "behavior_report",
     "audit",
     "cast",
