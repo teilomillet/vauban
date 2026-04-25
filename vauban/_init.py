@@ -228,6 +228,12 @@ max_tokens = 80
 record_outputs = false
 trace_filename = "checkpoint_1200_trace.jsonl"
 
+# Optional runtime diagnostics for access-aware report claims.
+collect_runtime_evidence = false
+runtime_backend = "mlx"
+collect_layers = []
+return_logprobs = false
+
 [[behavior_trace.prompts]]
 id = "benign-001"
 category = "benign_request"

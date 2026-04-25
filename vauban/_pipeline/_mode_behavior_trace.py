@@ -27,10 +27,19 @@ from vauban.behavior import (
     write_behavior_trace,
 )
 from vauban.evaluate import _generate
+from vauban.runtime import (
+    ForwardRequest,
+    LoadedModel,
+    ModelRef,
+    TokenizeRequest,
+    create_runtime,
+    runtime_report_evidence,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from vauban.runtime import RuntimeReportEvidence
     from vauban.types import (
         BehaviorTraceConfig,
         BehaviorTracePromptConfig,
@@ -60,6 +69,16 @@ def _run_behavior_trace_mode(context: EarlyModeContext) -> None:
     )
 
     observations = _collect_observations(model, tokenizer, trace_config)
+    runtime_evidence = (
+        _collect_runtime_evidence(
+            model,
+            tokenizer,
+            trace_config,
+            model_path=config.model_path,
+        )
+        if trace_config.collect_runtime_evidence
+        else None
+    )
     trace_path = _trace_path(context.config.output_dir, trace_config)
     trace = BehaviorTrace(
         trace_id=trace_path.stem,
@@ -89,6 +108,7 @@ def _run_behavior_trace_mode(context: EarlyModeContext) -> None:
                 written_trace_path,
                 config_path=context.config_path,
                 output_dir=config.output_dir,
+                runtime_evidence=runtime_evidence,
             ),
         ),
     )
@@ -151,6 +171,55 @@ def _collect_observations(
     return observations
 
 
+def _collect_runtime_evidence(
+    model: CausalLM,
+    tokenizer: Tokenizer,
+    config: BehaviorTraceConfig,
+    *,
+    model_path: str,
+) -> list[JsonValue]:
+    """Collect opt-in runtime evidence for behavior trace report payloads."""
+    runtime = create_runtime(config.runtime_backend)
+    loaded = LoadedModel(
+        ref=ModelRef(model_path),
+        backend=config.runtime_backend,
+        capabilities=runtime.capabilities,
+        model=model,
+        tokenizer=tokenizer,
+    )
+    rows: list[JsonValue] = []
+    collect_layers = tuple(config.collect_layers)
+    for prompt in config.prompts:
+        tokenized = runtime.tokenize(loaded, TokenizeRequest(prompt.text))
+        trace = runtime.forward(
+            loaded,
+            ForwardRequest(
+                prompt_ids=tokenized.token_ids,
+                collect_layers=collect_layers,
+                return_logits=True,
+                return_logprobs=config.return_logprobs,
+            ),
+        )
+        package = runtime_report_evidence(
+            runtime.capabilities,
+            trace,
+            prefix=f"behavior_trace.{prompt.prompt_id}",
+        )
+        rows.append(_runtime_evidence_row(prompt.prompt_id, package))
+    return rows
+
+
+def _runtime_evidence_row(
+    prompt_id: str,
+    package: RuntimeReportEvidence,
+) -> dict[str, JsonValue]:
+    """Serialize one prompt runtime evidence package."""
+    return {
+        "prompt_id": prompt_id,
+        "runtime": package.to_dict(),
+    }
+
+
 def _prompt_for_trace(prompt: BehaviorTracePromptConfig) -> str | None:
     """Return prompt text according to its redaction policy."""
     if prompt.redaction == "safe":
@@ -189,6 +258,7 @@ def _report_payload(
     *,
     config_path: str | Path,
     output_dir: Path,
+    runtime_evidence: list[JsonValue] | None,
 ) -> dict[str, JsonValue]:
     """Build a compact JSON report for the trace collection run."""
     reproducibility = reproducibility_payload(
@@ -207,7 +277,7 @@ def _report_payload(
             "n_prompts": len(config.prompts),
         },
     )
-    return {
+    payload: dict[str, JsonValue] = {
         "report_version": "behavior_trace_v1",
         "trace": trace.summary_dict(),
         "trace_path": str(trace_path),
@@ -240,3 +310,12 @@ def _report_payload(
             "scorers": list(config.scorers),
         },
     }
+    if runtime_evidence is not None:
+        payload["runtime_evidence"] = {
+            "enabled": True,
+            "backend": config.runtime_backend,
+            "collect_layers": list(config.collect_layers),
+            "return_logprobs": config.return_logprobs,
+            "prompts": runtime_evidence,
+        }
+    return payload

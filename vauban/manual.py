@@ -1134,6 +1134,38 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 constraints="boolean; false by default.",
             ),
             FieldSpec(
+                key="collect_runtime_evidence",
+                description=(
+                    "Whether to attach per-prompt runtime forward-pass"
+                    " diagnostics to the JSON sidecar report."
+                ),
+                constraints="boolean; false by default.",
+            ),
+            FieldSpec(
+                key="runtime_backend",
+                description=(
+                    "Runtime adapter used for optional runtime evidence"
+                    " collection."
+                ),
+                constraints='one of "mlx", "torch", "max"; default: "mlx".',
+            ),
+            FieldSpec(
+                key="collect_layers",
+                description=(
+                    "Layer indexes to collect as activation evidence when"
+                    " collect_runtime_evidence is true."
+                ),
+                constraints="list of unique non-negative integers; default: [].",
+            ),
+            FieldSpec(
+                key="return_logprobs",
+                description=(
+                    "Whether optional runtime evidence should include token"
+                    " logprobs in addition to logits."
+                ),
+                constraints="boolean; false by default.",
+            ),
+            FieldSpec(
                 key="output_trace",
                 description="Optional explicit trace JSONL output path.",
                 constraints=(
@@ -1166,6 +1198,11 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 "By default Vauban records output length and refusal-style"
                 " detection, but it does not store model outputs unless"
                 " record_outputs is true and the prompt is marked safe."
+            ),
+            (
+                "Runtime evidence is opt-in and only affects the JSON sidecar;"
+                " it does not change generated outputs or the reusable JSONL"
+                " trace schema."
             ),
         ),
     ),

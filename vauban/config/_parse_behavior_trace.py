@@ -25,10 +25,15 @@ from vauban.types import (
     BehaviorDiffMetricConfig,
     BehaviorTraceConfig,
     BehaviorTracePromptConfig,
+    RuntimeBackendConfigName,
 )
 
 if TYPE_CHECKING:
     from vauban.config._types import TomlDict
+
+
+_RUNTIME_BACKENDS: tuple[RuntimeBackendConfigName, ...] = ("mlx", "torch", "max")
+_DEFAULT_RUNTIME_BACKEND: RuntimeBackendConfigName = "mlx"
 
 
 def _parse_behavior_trace(
@@ -85,6 +90,9 @@ def _parse_behavior_trace(
         msg = "[behavior_trace].refusal_phrases must be non-empty"
         raise ValueError(msg)
 
+    collect_layers = reader.int_list("collect_layers", default=[])
+    _validate_collect_layers(collect_layers)
+
     return BehaviorTraceConfig(
         model_label=reader.string("model_label", default="model"),
         suite=suite_path,
@@ -122,6 +130,17 @@ def _parse_behavior_trace(
         max_tokens=max_tokens,
         refusal_phrases=refusal_phrases,
         record_outputs=reader.boolean("record_outputs", default=False),
+        collect_runtime_evidence=reader.boolean(
+            "collect_runtime_evidence",
+            default=False,
+        ),
+        runtime_backend=reader.literal(
+            "runtime_backend",
+            _RUNTIME_BACKENDS,
+            default=_DEFAULT_RUNTIME_BACKEND,
+        ),
+        collect_layers=collect_layers,
+        return_logprobs=reader.boolean("return_logprobs", default=False),
         output_trace=_optional_path(
             base_dir,
             reader.optional_string("output_trace"),
@@ -235,3 +254,16 @@ def _reject_duplicate_prompt_ids(
             msg = f"[behavior_trace] duplicate prompt id: {prompt.prompt_id!r}"
             raise ValueError(msg)
         seen.add(prompt.prompt_id)
+
+
+def _validate_collect_layers(layers: list[int]) -> None:
+    """Reject invalid runtime layer indexes in trace config."""
+    seen: set[int] = set()
+    for layer in layers:
+        if layer < 0:
+            msg = "[behavior_trace].collect_layers must be non-negative"
+            raise ValueError(msg)
+        if layer in seen:
+            msg = f"[behavior_trace].collect_layers duplicate layer: {layer}"
+            raise ValueError(msg)
+        seen.add(layer)

@@ -2021,6 +2021,9 @@ class BehaviorTracePromptConfig:
     tags: list[str] = field(default_factory=list)
 
 
+type RuntimeBackendConfigName = Literal["mlx", "torch", "max"]
+
+
 @dataclass(frozen=True, slots=True)
 class BehaviorTraceConfig:
     """Configuration for collecting reusable behavior observation traces."""
@@ -2038,6 +2041,10 @@ class BehaviorTraceConfig:
     max_tokens: int = 80
     refusal_phrases: list[str] = field(default_factory=list)
     record_outputs: bool = False
+    collect_runtime_evidence: bool = False
+    runtime_backend: RuntimeBackendConfigName = "mlx"
+    collect_layers: list[int] = field(default_factory=list)
+    return_logprobs: bool = False
     output_trace: Path | None = None
     trace_filename: str = "behavior_trace.jsonl"
     json_filename: str = "behavior_trace_report.json"
