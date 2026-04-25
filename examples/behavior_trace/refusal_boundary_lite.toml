@@ -15,6 +15,7 @@ harmless = "default"
 [behavior_trace]
 model_label = "candidate"
 suite = "suites/refusal_boundary_lite.toml"
+scorers = ["deterministic_v1"]
 max_tokens = 80
 record_outputs = false
 output_trace = "../../output/examples/behavior_trace/refusal_boundary_lite/candidate.jsonl"

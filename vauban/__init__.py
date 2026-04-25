@@ -89,6 +89,8 @@ _LAZY_IMPORTS: dict[str, str | tuple[str, str]] = {
     "BehaviorPrompt": "vauban.behavior",
     "BehaviorReport": "vauban.behavior",
     "BehaviorReportConfig": "vauban.types",
+    "BehaviorScorer": "vauban.behavior",
+    "BehaviorScoringInput": "vauban.behavior",
     "BehaviorSuite": "vauban.behavior",
     "BehaviorSuiteRef": "vauban.behavior",
     "BehaviorThresholdResult": "vauban.behavior",

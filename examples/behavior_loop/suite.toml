@@ -6,6 +6,7 @@ name = "behavior-loop-lite"
 description = "Safe suite for the trace -> diff -> report workflow."
 version = "v1"
 safety_policy = "safe_prompts_only_outputs_not_recorded"
+scorers = ["deterministic_v1"]
 
 [[behavior_suite.metrics]]
 name = "expected_behavior_match_rate"

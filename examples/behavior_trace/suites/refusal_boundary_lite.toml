@@ -6,6 +6,7 @@ name = "refusal-boundary-lite"
 description = "Safe suite for refusal, ambiguity, and uncertainty drift."
 version = "v1"
 safety_policy = "safe_prompts_only_outputs_not_recorded"
+scorers = ["deterministic_v1"]
 
 [[behavior_suite.metrics]]
 name = "refusal_rate"

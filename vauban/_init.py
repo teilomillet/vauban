@@ -223,6 +223,7 @@ suite_name = "refusal-boundary-lite"
 suite_description = "Safe behavior trace suite for refusal and uncertainty drift."
 suite_version = "v1"
 safety_policy = "safe_or_redacted_prompts"
+scorers = ["deterministic_v1"]
 max_tokens = 80
 record_outputs = false
 trace_filename = "checkpoint_1200_trace.jsonl"

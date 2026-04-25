@@ -10,11 +10,14 @@ from typing import TYPE_CHECKING
 
 from vauban.behavior import (
     DEFAULT_BEHAVIOR_METRIC_SPECS,
+    DEFAULT_BEHAVIOR_SCORERS,
     BehaviorMetricSpec,
     BehaviorPrompt,
+    behavior_metric_specs_for_scorers,
     load_behavior_suite_toml,
     parse_behavior_metric_specs,
     parse_behavior_prompts,
+    validate_behavior_scorer_names,
 )
 from vauban.config._parse_helpers import SectionReader, require_toml_table
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES
@@ -43,6 +46,9 @@ def _parse_behavior_trace(
 
     suite_path = _optional_path(base_dir, reader.optional_string("suite"))
     suite = load_behavior_suite_toml(suite_path) if suite_path is not None else None
+    raw_scorers = reader.optional_string_list("scorers")
+    suite_scorers = suite.scorers if suite is not None else None
+    scorer_names = _scorer_names(raw_scorers, suite_scorers=suite_scorers)
     inline_prompts = parse_behavior_prompts(
         reader.data.get("prompts"),
         "[behavior_trace].prompts",
@@ -58,7 +64,11 @@ def _parse_behavior_trace(
     _reject_duplicate_prompt_ids(prompts)
 
     metric_specs = _merge_metric_specs(
-        suite.metric_specs if suite is not None else DEFAULT_BEHAVIOR_METRIC_SPECS,
+        _base_metric_specs(
+            suite_metrics=suite.metric_specs if suite is not None else None,
+            scorer_names=scorer_names,
+            trace_overrides_scorers=raw_scorers is not None,
+        ),
         parse_behavior_metric_specs(reader.data.get("metrics")),
     )
 
@@ -108,6 +118,7 @@ def _parse_behavior_trace(
         ),
         prompts=prompts,
         metrics=_metric_configs(metric_specs),
+        scorers=list(scorer_names),
         max_tokens=max_tokens,
         refusal_phrases=refusal_phrases,
         record_outputs=reader.boolean("record_outputs", default=False),
@@ -124,6 +135,39 @@ def _parse_behavior_trace(
             default="behavior_trace_report.json",
         ),
     )
+
+
+def _scorer_names(
+    raw_scorers: list[str] | None,
+    *,
+    suite_scorers: tuple[str, ...] | None,
+) -> tuple[str, ...]:
+    """Resolve behavior scorer names from trace override, suite, or defaults."""
+    if raw_scorers is not None:
+        return validate_behavior_scorer_names(
+            tuple(raw_scorers),
+            field="[behavior_trace].scorers",
+        )
+    if suite_scorers is not None:
+        return validate_behavior_scorer_names(
+            suite_scorers,
+            field="[behavior_suite].scorers",
+        )
+    return DEFAULT_BEHAVIOR_SCORERS
+
+
+def _base_metric_specs(
+    *,
+    suite_metrics: tuple[BehaviorMetricSpec, ...] | None,
+    scorer_names: tuple[str, ...],
+    trace_overrides_scorers: bool,
+) -> tuple[BehaviorMetricSpec, ...]:
+    """Return inherited metric specs for the resolved scorer configuration."""
+    if suite_metrics is not None and not trace_overrides_scorers:
+        return suite_metrics
+    if scorer_names == DEFAULT_BEHAVIOR_SCORERS:
+        return DEFAULT_BEHAVIOR_METRIC_SPECS
+    return behavior_metric_specs_for_scorers(scorer_names)
 
 
 def _prompt_configs(

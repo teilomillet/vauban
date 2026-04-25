@@ -1104,6 +1104,18 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 ),
             ),
             FieldSpec(
+                key="scorers",
+                description=(
+                    "Registered behavior scorers to run for each generated"
+                    " output."
+                ),
+                constraints=(
+                    "list of strings; default: [\"deterministic_v1\"]."
+                    " Built-ins: deterministic_v1, refusal_v1, length_v1,"
+                    " style_v1, expected_behavior_v1."
+                ),
+            ),
+            FieldSpec(
                 key="max_tokens",
                 description="Maximum tokens generated per prompt.",
                 constraints="integer >= 1; default: 80.",

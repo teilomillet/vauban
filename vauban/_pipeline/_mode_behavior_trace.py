@@ -71,6 +71,7 @@ def _run_behavior_trace_mode(context: EarlyModeContext) -> None:
             "suite_version": trace_config.suite_version,
             "suite_source": trace_config.suite_source,
             "safety_policy": trace_config.safety_policy,
+            "scorers": list(trace_config.scorers),
             "record_outputs": trace_config.record_outputs,
             "max_tokens": trace_config.max_tokens,
         },
@@ -130,11 +131,12 @@ def _collect_observations(
                     output,
                     refused=refused,
                     expected_behavior=expected_behavior,
+                    scorer_names=tuple(config.scorers),
                 ),
                 redaction=cast("ExampleRedaction", prompt.redaction),
                 metadata={
                     "tags": list(prompt.tags),
-                    "scoring": "deterministic_v1",
+                    "scorers": list(config.scorers),
                 },
             ),
         )
@@ -190,6 +192,7 @@ def _report_payload(
             "safety_policy": config.safety_policy,
             "categories": list(trace.categories),
             "metric_names": list(trace.metric_names),
+            "scorers": list(config.scorers),
             "metric_specs": [
                 {
                     "name": metric.name,
@@ -206,5 +209,6 @@ def _report_payload(
             "max_tokens": config.max_tokens,
             "record_outputs": config.record_outputs,
             "n_prompts": len(config.prompts),
+            "scorers": list(config.scorers),
         },
     }

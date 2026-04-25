@@ -17,6 +17,11 @@ from vauban.behavior._primitives import (
     ExpectedBehavior,
     MetricPolarity,
 )
+from vauban.behavior._scoring import (
+    DEFAULT_BEHAVIOR_SCORERS,
+    behavior_metric_specs_for_scorers,
+    validate_behavior_scorer_names,
+)
 
 EXPECTED_BEHAVIOR_CHOICES: tuple[ExpectedBehavior, ...] = (
     "refuse",
@@ -36,66 +41,6 @@ METRIC_POLARITY_CHOICES: tuple[MetricPolarity, ...] = (
     "lower_is_better",
     "neutral",
 )
-
-DEFAULT_BEHAVIOR_METRIC_SPECS: tuple[BehaviorMetricSpec, ...] = (
-    BehaviorMetricSpec(
-        name="refusal_rate",
-        description="Fraction of observations with refusal-style output.",
-        polarity="neutral",
-        unit="ratio",
-        family="behavior",
-    ),
-    BehaviorMetricSpec(
-        name="expected_behavior_match_rate",
-        description="Fraction of observations matching expected behavior labels.",
-        polarity="higher_is_better",
-        unit="ratio",
-        family="behavior",
-    ),
-    BehaviorMetricSpec(
-        name="uncertainty_expression_rate",
-        description="Fraction of observations expressing uncertainty.",
-        polarity="neutral",
-        unit="ratio",
-        family="behavior",
-    ),
-    BehaviorMetricSpec(
-        name="clarifying_question_rate",
-        description="Fraction of observations asking a clarifying question.",
-        polarity="neutral",
-        unit="ratio",
-        family="behavior",
-    ),
-    BehaviorMetricSpec(
-        name="direct_answer_rate",
-        description="Fraction of observations giving a direct non-refusal answer.",
-        polarity="neutral",
-        unit="ratio",
-        family="behavior",
-    ),
-    BehaviorMetricSpec(
-        name="assertive_language_rate",
-        description="Fraction of observations using assertive language markers.",
-        polarity="neutral",
-        unit="ratio",
-        family="behavior",
-    ),
-    BehaviorMetricSpec(
-        name="output_length_chars",
-        description="Generated output length in characters.",
-        polarity="neutral",
-        unit="count",
-        family="behavior",
-    ),
-    BehaviorMetricSpec(
-        name="output_word_count",
-        description="Generated output length in whitespace-delimited words.",
-        polarity="neutral",
-        unit="count",
-        family="behavior",
-    ),
-)
-
 
 def load_behavior_suite_toml(path: str | Path) -> BehaviorSuite:
     """Load a reusable behavior suite from TOML."""
@@ -123,6 +68,16 @@ def parse_behavior_suite_table(
         section.get("prompts"),
         "[behavior_suite].prompts",
     )
+    scorers = validate_behavior_scorer_names(
+        tuple(
+            _string_list(
+                section,
+                "scorers",
+                default=list(DEFAULT_BEHAVIOR_SCORERS),
+            ),
+        ),
+        field="[behavior_suite].scorers",
+    )
     metric_specs = parse_behavior_metric_specs(section.get("metrics"))
     return BehaviorSuite(
         name=_string(section, "name", default="behavior-change-suite"),
@@ -139,7 +94,8 @@ def parse_behavior_suite_table(
             default="safe_or_redacted_prompts",
         ),
         prompts=tuple(prompts),
-        metric_specs=metric_specs or DEFAULT_BEHAVIOR_METRIC_SPECS,
+        metric_specs=metric_specs or behavior_metric_specs_for_scorers(scorers),
+        scorers=scorers,
     )
 
 

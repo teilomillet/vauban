@@ -287,6 +287,7 @@ class BehaviorSuite:
     version: str | None = None
     source: str | None = None
     safety_policy: str = "aggregate_or_redacted_examples"
+    scorers: tuple[str, ...] = ("deterministic_v1",)
 
     def __post_init__(self) -> None:
         """Validate suite identity, prompts, and metric specs."""
@@ -299,6 +300,7 @@ class BehaviorSuite:
             msg = "metric_specs must contain at least one item"
             raise ValueError(msg)
         _require_non_empty(self.safety_policy, "safety_policy")
+        _require_non_empty_items(self.scorers, "scorers")
         _reject_duplicate_strings(
             tuple(prompt.prompt_id for prompt in self.prompts),
             "prompt_id",
@@ -338,6 +340,7 @@ class BehaviorSuite:
             "version": self.version,
             "source": self.source,
             "safety_policy": self.safety_policy,
+            "scorers": list(self.scorers),
             "prompts": [prompt.to_dict() for prompt in self.prompts],
             "metric_specs": [
                 metric_spec.to_dict() for metric_spec in self.metric_specs

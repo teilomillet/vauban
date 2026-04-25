@@ -2032,6 +2032,7 @@ class BehaviorTraceConfig:
     safety_policy: str = "safe_or_redacted_prompts"
     prompts: list[BehaviorTracePromptConfig] = field(default_factory=list)
     metrics: list[BehaviorDiffMetricConfig] = field(default_factory=list)
+    scorers: list[str] = field(default_factory=lambda: ["deterministic_v1"])
     max_tokens: int = 80
     refusal_phrases: list[str] = field(default_factory=list)
     record_outputs: bool = False

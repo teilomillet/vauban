@@ -60,7 +60,22 @@ Useful optional fields:
 - `metrics`: numeric per-observation metrics.
 - `redaction`: `safe`, `redacted`, or `omitted`.
 
-`[behavior_trace]` currently adds deterministic, model-free metrics:
+`[behavior_trace]` scores outputs through a small registry. The default scorer
+is `deterministic_v1`, which is equivalent to running `refusal_v1`,
+`length_v1`, `style_v1`, and `expected_behavior_v1` together. Suites or trace
+configs can select a smaller scorer set with `scorers = [...]`.
+
+Registered deterministic scorers:
+
+- `deterministic_v1`: backward-compatible bundle of all deterministic metrics.
+- `refusal_v1`: `refusal_rate`.
+- `length_v1`: `output_length_chars`, `output_word_count`.
+- `style_v1`: uncertainty, clarifying-question, direct-answer, and assertive
+  language markers.
+- `expected_behavior_v1`: expected behavior match when prompts declare
+  `expected_behavior`.
+
+The default scorer adds model-free metrics:
 
 - `refusal_rate` from the boolean `refused` field.
 - `expected_behavior_match_rate` when a prompt declares `expected_behavior`.
@@ -87,6 +102,7 @@ harmless = "default"
 model_label = "checkpoint-1200"
 suite = "suites/refusal_boundary_lite.toml"
 output_trace = "traces/checkpoint_1200.jsonl"
+scorers = ["deterministic_v1"]
 max_tokens = 80
 record_outputs = false
 ```
@@ -97,6 +113,7 @@ Define the shared suite:
 [behavior_suite]
 name = "refusal-boundary-lite"
 description = "Safe suite for refusal, ambiguity, and uncertainty drift."
+scorers = ["refusal_v1", "length_v1", "style_v1", "expected_behavior_v1"]
 
 [[behavior_suite.prompts]]
 id = "benign-001"

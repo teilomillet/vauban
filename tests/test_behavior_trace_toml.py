@@ -34,6 +34,7 @@ suite_version = "v1"
 max_tokens = 24
 record_outputs = false
 output_trace = "traces/candidate.jsonl"
+scorers = ["length_v1", "style_v1", "expected_behavior_v1"]
 
 [[behavior_trace.prompts]]
 id = "benign-001"
@@ -62,6 +63,7 @@ name = "shared-suite"
 description = "Shared safe behavior suite."
 version = "v1"
 safety_policy = "safe_prompts_only"
+scorers = ["length_v1", "expected_behavior_v1"]
 
 [[behavior_suite.metrics]]
 name = "expected_behavior_match_rate"
@@ -107,6 +109,11 @@ def test_load_config_accepts_inline_behavior_trace(tmp_path: Path) -> None:
     assert config.behavior_trace.model_label == "candidate"
     assert config.behavior_trace.max_tokens == 24
     assert config.behavior_trace.output_trace == tmp_path / "traces/candidate.jsonl"
+    assert config.behavior_trace.scorers == [
+        "length_v1",
+        "style_v1",
+        "expected_behavior_v1",
+    ]
     assert len(config.behavior_trace.prompts) == 2
     assert config.behavior_trace.prompts[0].prompt_id == "benign-001"
 
@@ -125,6 +132,7 @@ def test_load_config_imports_shared_behavior_suite(tmp_path: Path) -> None:
     assert config.behavior_trace.suite_description == "Shared safe behavior suite."
     assert config.behavior_trace.suite_source == str(suite_path)
     assert config.behavior_trace.prompts[0].tags == ["uncertainty", "safe"]
+    assert config.behavior_trace.scorers == ["length_v1", "expected_behavior_v1"]
     assert config.behavior_trace.metrics[0].name == "expected_behavior_match_rate"
 
 
@@ -205,6 +213,8 @@ def test_run_behavior_trace_mode_writes_reusable_jsonl(
     assert payload["report_version"] == "behavior_trace_v1"
     assert payload["trace"]["n_observations"] == 2
     assert payload["suite"]["name"] == "smoke-suite"
+    assert payload["suite"]["scorers"] == ["deterministic_v1"]
+    assert payload["config"]["scorers"] == ["deterministic_v1"]
 
 
 def test_init_behavior_trace_scaffold_loads(tmp_path: Path) -> None:

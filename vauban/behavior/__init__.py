@@ -49,9 +49,21 @@ from vauban.behavior._primitives import (
     TransformationRef,
     compare_behavior_metrics,
 )
-from vauban.behavior._scoring import is_refusal_text, score_behavior_output
-from vauban.behavior._suite import (
+from vauban.behavior._scoring import (
     DEFAULT_BEHAVIOR_METRIC_SPECS,
+    DEFAULT_BEHAVIOR_SCORERS,
+    BehaviorScorer,
+    BehaviorScoringInput,
+    behavior_metric_specs_for_scorers,
+    behavior_scorer_names,
+    get_behavior_scorer,
+    is_refusal_text,
+    registered_behavior_scorers,
+    score_behavior_input,
+    score_behavior_output,
+    validate_behavior_scorer_names,
+)
+from vauban.behavior._suite import (
     EXPECTED_BEHAVIOR_CHOICES,
     METRIC_POLARITY_CHOICES,
     REDACTION_CHOICES,
@@ -74,6 +86,7 @@ from vauban.behavior._trace import (
 
 __all__ = [
     "DEFAULT_BEHAVIOR_METRIC_SPECS",
+    "DEFAULT_BEHAVIOR_SCORERS",
     "EXPECTED_BEHAVIOR_CHOICES",
     "METRIC_POLARITY_CHOICES",
     "REDACTION_CHOICES",
@@ -90,6 +103,8 @@ __all__ = [
     "BehaviorObservation",
     "BehaviorPrompt",
     "BehaviorReport",
+    "BehaviorScorer",
+    "BehaviorScoringInput",
     "BehaviorSuite",
     "BehaviorSuiteRef",
     "BehaviorThresholdResult",
@@ -120,10 +135,13 @@ __all__ = [
     "TransformationKind",
     "TransformationRef",
     "aggregate_trace_metrics",
+    "behavior_metric_specs_for_scorers",
+    "behavior_scorer_names",
     "behavior_threshold_summary",
     "build_behavior_diff_result",
     "compare_behavior_metrics",
     "evaluate_behavior_thresholds",
+    "get_behavior_scorer",
     "infer_behavior_metric_specs",
     "is_refusal_text",
     "load_behavior_suite_toml",
@@ -131,7 +149,10 @@ __all__ = [
     "parse_behavior_metric_specs",
     "parse_behavior_prompts",
     "parse_behavior_suite_table",
+    "registered_behavior_scorers",
     "render_behavior_report_markdown",
+    "score_behavior_input",
     "score_behavior_output",
+    "validate_behavior_scorer_names",
     "write_behavior_trace",
 ]
