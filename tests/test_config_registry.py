@@ -44,6 +44,7 @@ _EXPECTED_SECTION_ORDER: list[str] = [
     "depth",
     "ai_act",
     "behavior_diff",
+    "behavior_trace",
     "behavior_report",
     "audit",
     "cast",

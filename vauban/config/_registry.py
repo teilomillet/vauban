@@ -14,6 +14,7 @@ from vauban.config._parse_audit import _parse_audit
 from vauban.config._parse_awareness import _parse_awareness
 from vauban.config._parse_behavior_diff import _parse_behavior_diff
 from vauban.config._parse_behavior_report import _parse_behavior_report
+from vauban.config._parse_behavior_trace import _parse_behavior_trace
 from vauban.config._parse_cast import _parse_cast
 from vauban.config._parse_circuit import _parse_circuit
 from vauban.config._parse_compose_optimize import _parse_compose_optimize
@@ -56,6 +57,7 @@ from vauban.types import (
     AwarenessConfig,
     BehaviorDiffConfig,
     BehaviorReportConfig,
+    BehaviorTraceConfig,
     CastConfig,
     CircuitConfig,
     ComposeOptimizeConfig,
@@ -108,6 +110,7 @@ type _SectionParserResult = (  # pragma: no cover
     | AIActConfig
     | BehaviorDiffConfig
     | BehaviorReportConfig
+    | BehaviorTraceConfig
     | AuditConfig
     | CastConfig
     | CircuitConfig
@@ -174,6 +177,7 @@ class ParsedSectionValues:
     depth: DepthConfig | None
     ai_act: AIActConfig | None
     behavior_diff: BehaviorDiffConfig | None
+    behavior_trace: BehaviorTraceConfig | None
     behavior_report: BehaviorReportConfig | None
     audit: AuditConfig | None
     cast: CastConfig | None
@@ -265,8 +269,15 @@ SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
         16,
         call="base_dir_raw",
     ),
-    SectionParseSpec("behavior_report", "behavior_report", _parse_behavior_report, 17),
-    SectionParseSpec("audit", "audit", _parse_audit, 18),
+    SectionParseSpec(
+        "behavior_trace",
+        "behavior_trace",
+        _parse_behavior_trace,
+        17,
+        call="base_dir_raw",
+    ),
+    SectionParseSpec("behavior_report", "behavior_report", _parse_behavior_report, 18),
+    SectionParseSpec("audit", "audit", _parse_audit, 19),
     SectionParseSpec("cast", "cast", _parse_cast, 20),
     SectionParseSpec("guard", "guard", _parse_guard, 22),
     SectionParseSpec("cut", "cut", _parse_cut, 30, call="section_table"),

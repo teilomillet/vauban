@@ -1994,6 +1994,38 @@ class BehaviorDiffConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class BehaviorTracePromptConfig:
+    """One prompt entry for TOML-driven behavior trace collection."""
+
+    prompt_id: str
+    text: str
+    category: str = "default"
+    expected_behavior: str = "unknown"
+    redaction: str = "safe"
+    tags: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class BehaviorTraceConfig:
+    """Configuration for collecting reusable behavior observation traces."""
+
+    model_label: str = "model"
+    suite: Path | None = None
+    suite_name: str = "behavior-change-suite"
+    suite_description: str = "Behavior trace collection suite."
+    suite_version: str | None = None
+    suite_source: str | None = None
+    safety_policy: str = "safe_or_redacted_prompts"
+    prompts: list[BehaviorTracePromptConfig] = field(default_factory=list)
+    max_tokens: int = 80
+    refusal_phrases: list[str] = field(default_factory=list)
+    record_outputs: bool = False
+    output_trace: Path | None = None
+    trace_filename: str = "behavior_trace.jsonl"
+    json_filename: str = "behavior_trace_report.json"
+
+
+@dataclass(frozen=True, slots=True)
 class SVFConfig:
     """Configuration for Steering Vector Field boundary training.
 
@@ -3163,6 +3195,7 @@ class PipelineConfig:
     measure: MeasureConfig = field(default_factory=MeasureConfig)
     ai_act: AIActConfig | None = None
     behavior_diff: BehaviorDiffConfig | None = None
+    behavior_trace: BehaviorTraceConfig | None = None
     behavior_report: BehaviorReportConfig | None = None
     surface: SurfaceConfig | None = None
     detect: DetectConfig | None = None

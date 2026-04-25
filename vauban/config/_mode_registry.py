@@ -97,6 +97,17 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         "behavior_diff_report.json + model_behavior_change_report.md.",
     ),
     EarlyModeSpec(
+        "[behavior_trace]",
+        "behavior_trace",
+        "before_prompts",
+        False,
+        _field_is_set("behavior_trace"),
+        "Collect reusable behavior observations into a JSONL trace.",
+        "behavior trace collection",
+        "[behavior_trace] section present.",
+        "behavior_trace.jsonl + behavior_trace_report.json.",
+    ),
+    EarlyModeSpec(
         "[behavior_report]",
         "behavior_report",
         "standalone",

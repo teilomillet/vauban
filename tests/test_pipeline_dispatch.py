@@ -15,6 +15,8 @@ from vauban.config._mode_registry import (
     EarlyModePhase,
 )
 from vauban.types import (
+    BehaviorTraceConfig,
+    BehaviorTracePromptConfig,
     DepthConfig,
     InterventionEvalConfig,
     InterventionEvalPrompt,
@@ -95,6 +97,24 @@ class TestDispatchCallsRunner:
             result = dispatch_early_mode("after_measure", ctx)
             assert result is True
             EARLY_MODE_RUNNERS["intervention_eval"].assert_called_once_with(ctx)
+
+    def test_behavior_trace_mode_dispatched(self, tmp_path: Path) -> None:
+        trace_cfg = BehaviorTraceConfig(
+            prompts=[
+                BehaviorTracePromptConfig(
+                    prompt_id="p1",
+                    text="Explain rainbows.",
+                ),
+            ],
+        )
+        ctx = make_early_mode_context(tmp_path, behavior_trace=trace_cfg)
+        with patch.dict(
+            EARLY_MODE_RUNNERS,
+            {"behavior_trace": MagicMock()},
+        ):
+            result = dispatch_early_mode("before_prompts", ctx)
+            assert result is True
+            EARLY_MODE_RUNNERS["behavior_trace"].assert_called_once_with(ctx)
 
 
 class TestDispatchRequiresDirection:

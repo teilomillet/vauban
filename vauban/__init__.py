@@ -90,6 +90,8 @@ _LAZY_IMPORTS: dict[str, str | tuple[str, str]] = {
     "BehaviorReportConfig": "vauban.types",
     "BehaviorSuite": "vauban.behavior",
     "BehaviorSuiteRef": "vauban.behavior",
+    "BehaviorTraceConfig": "vauban.types",
+    "BehaviorTracePromptConfig": "vauban.types",
     "BehaviorTrace": "vauban.behavior",
     "CastConfig": "vauban.types",
     "CastResult": "vauban.types",

@@ -15,6 +15,8 @@ from vauban.config._mode_registry import (
 from vauban.types import (
     AIActConfig,
     BehaviorReportConfig,
+    BehaviorTraceConfig,
+    BehaviorTracePromptConfig,
     CastConfig,
     ComposeOptimizeConfig,
     CutConfig,
@@ -93,6 +95,19 @@ class TestEarlyModePredicates:
             behavior_report=_minimal_behavior_report_config(),
         )
         assert active_early_modes(config) == ["[behavior_report]"]
+
+    def test_has_behavior_trace(self) -> None:
+        config = _minimal_config(
+            behavior_trace=BehaviorTraceConfig(
+                prompts=[
+                    BehaviorTracePromptConfig(
+                        prompt_id="p1",
+                        text="Explain rainbows.",
+                    ),
+                ],
+            ),
+        )
+        assert active_early_modes(config) == ["[behavior_trace]"]
 
     def test_has_probe(self) -> None:
         config = _minimal_config(probe=ProbeConfig(prompts=["test"]))
@@ -187,6 +202,21 @@ class TestActiveEarlyModeForPhase:
         assert spec is not None
         assert spec.mode == "depth"
 
+    def test_before_prompts_returns_behavior_trace(self) -> None:
+        config = _minimal_config(
+            behavior_trace=BehaviorTraceConfig(
+                prompts=[
+                    BehaviorTracePromptConfig(
+                        prompt_id="p1",
+                        text="Explain rainbows.",
+                    ),
+                ],
+            ),
+        )
+        spec = active_early_mode_for_phase(config, "before_prompts")
+        assert spec is not None
+        assert spec.mode == "behavior_trace"
+
     def test_standalone_returns_ai_act(self) -> None:
         config = _minimal_config(
             ai_act=AIActConfig(
@@ -270,6 +300,7 @@ class TestEarlyModeSpecs:
         spec_map = {s.section: s for s in EARLY_MODE_SPECS}
         assert spec_map["[depth]"].requires_direction is False
         assert spec_map["[ai_act]"].requires_direction is False
+        assert spec_map["[behavior_trace]"].requires_direction is False
         assert spec_map["[behavior_report]"].requires_direction is False
         assert spec_map["[svf]"].requires_direction is False
         assert spec_map["[features]"].requires_direction is False
@@ -287,6 +318,7 @@ class TestEarlyModeSpecs:
     def test_phase_assignments(self) -> None:
         spec_map = {s.section: s for s in EARLY_MODE_SPECS}
         assert spec_map["[ai_act]"].phase == "standalone"
+        assert spec_map["[behavior_trace]"].phase == "before_prompts"
         assert spec_map["[behavior_report]"].phase == "standalone"
         assert spec_map["[depth]"].phase == "before_prompts"
         assert spec_map["[svf]"].phase == "before_prompts"

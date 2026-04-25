@@ -24,6 +24,8 @@ from vauban.types import (
     AwarenessConfig,
     BehaviorDiffConfig,
     BehaviorReportConfig,
+    BehaviorTraceConfig,
+    BehaviorTracePromptConfig,
     CastConfig,
     CircuitConfig,
     ComposeOptimizeConfig,
@@ -70,6 +72,7 @@ _EXPECTED_EARLY_MODE_ORDER: list[str] = [
     "[api_eval]",
     "[ai_act]",
     "[behavior_diff]",
+    "[behavior_trace]",
     "[behavior_report]",
     "[depth]",
     "[svf]",
@@ -183,7 +186,8 @@ def test_validation_warning_content_and_order_for_conflict_fixture(
             (
                 "[HIGH] Multiple early-return modes active: [depth], [probe]"
                 " — only the first will run (precedence: remote"
-                " > api_eval > ai_act > behavior_diff > behavior_report"
+                " > api_eval > ai_act > behavior_diff > behavior_trace"
+                " > behavior_report"
                 " > depth > svf > features"
             " > probe > steer > intervention_eval > sss > awareness"
             " > audit > guard > cast > sic"
@@ -246,6 +250,14 @@ def test_active_early_modes_precedence_matches_legacy_behavior() -> None:
         behavior_diff=BehaviorDiffConfig(
             baseline_trace=Path("base.jsonl"),
             candidate_trace=Path("candidate.jsonl"),
+        ),
+        behavior_trace=BehaviorTraceConfig(
+            prompts=[
+                BehaviorTracePromptConfig(
+                    prompt_id="p1",
+                    text="Explain rainbows.",
+                ),
+            ],
         ),
         behavior_report=BehaviorReportConfig(
             report=BehaviorReport(
@@ -327,6 +339,6 @@ def test_active_early_modes_precedence_matches_legacy_behavior() -> None:
     assert standalone is not None
     assert standalone.mode == "remote"
     assert before_prompts is not None
-    assert before_prompts.mode == "depth"
+    assert before_prompts.mode == "behavior_trace"
     assert after_measure is not None
     assert after_measure.mode == "probe"

@@ -1013,6 +1013,124 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
         ),
     ),
     SectionSpec(
+        name="behavior_trace",
+        description=(
+            "Model-loaded behavior trace collection that runs a shared"
+            " prompt suite and writes reusable JSONL observations."
+        ),
+        early_return=True,
+        config_class="BehaviorTraceConfig",
+        fields=(
+            FieldSpec(
+                key="model_label",
+                description="Label stored on every trace observation.",
+                constraints='string; default: "model".',
+            ),
+            FieldSpec(
+                key="suite",
+                description=(
+                    "Optional external behavior-suite TOML file containing"
+                    " [behavior_suite] metadata and [[behavior_suite.prompts]]."
+                ),
+                constraints="string path; resolved relative to the TOML file.",
+            ),
+            FieldSpec(
+                key="suite_name",
+                description="Name of the behavior suite represented by the trace.",
+                constraints='string; default: "behavior-change-suite".',
+            ),
+            FieldSpec(
+                key="suite_description",
+                description="Description of what the suite measures.",
+                constraints="string.",
+            ),
+            FieldSpec(
+                key="suite_version",
+                description="Optional version label for the behavior suite.",
+                constraints="string; optional.",
+            ),
+            FieldSpec(
+                key="suite_source",
+                description=(
+                    "Optional source URL or path for the suite definition."
+                ),
+                constraints=(
+                    "string; optional. External suite files default this to"
+                    " the suite TOML path."
+                ),
+            ),
+            FieldSpec(
+                key="safety_policy",
+                description="How prompt/output examples are handled for sharing.",
+                constraints=(
+                    'string; default: "safe_or_redacted_prompts" or the'
+                    " external suite value."
+                ),
+            ),
+            FieldSpec(
+                key="prompts",
+                description="Inline prompt suite entries.",
+                constraints=(
+                    "array of strings or tables. Table keys: id/prompt_id,"
+                    " text/prompt, category, expected_behavior, redaction,"
+                    " tags."
+                ),
+            ),
+            FieldSpec(
+                key="max_tokens",
+                description="Maximum tokens generated per prompt.",
+                constraints="integer >= 1; default: 80.",
+            ),
+            FieldSpec(
+                key="refusal_phrases",
+                description="Phrases used for simple refusal-style detection.",
+                constraints="list of strings; defaults to Vauban refusal phrases.",
+            ),
+            FieldSpec(
+                key="record_outputs",
+                description=(
+                    "Whether safe prompt rows may store generated output text"
+                    " in the JSONL trace."
+                ),
+                constraints="boolean; false by default.",
+            ),
+            FieldSpec(
+                key="output_trace",
+                description="Optional explicit trace JSONL output path.",
+                constraints=(
+                    "string path; resolved relative to the TOML file."
+                    " If omitted, trace_filename is written under [output].dir."
+                ),
+            ),
+            FieldSpec(
+                key="trace_filename",
+                description="Trace JSONL filename inside [output].dir.",
+                constraints='string; default: "behavior_trace.jsonl".',
+            ),
+            FieldSpec(
+                key="json_filename",
+                description="Trace collection summary JSON filename.",
+                constraints='string; default: "behavior_trace_report.json".',
+            ),
+        ),
+        notes=(
+            (
+                "Use this when you have local model access and want to create"
+                " trace files for later [behavior_diff] comparisons."
+            ),
+            (
+                "The emitted JSONL schema is the same observation schema read"
+                " by [behavior_diff]: prompt_id, category, optional prompt,"
+                " optional output_text, refused, metrics, and redaction."
+            ),
+            (
+                "By default Vauban records output length and refusal-style"
+                " detection, but it does not store model outputs unless"
+                " record_outputs is true and the prompt is marked safe."
+            ),
+        ),
+    ),
+    SectionSpec(
         name="behavior_report",
         description=(
             "Standalone Model Behavior Change Report assembled from"
@@ -4432,7 +4550,10 @@ def _known_quick_functions() -> tuple[str, ...]:
 
 _MODE_CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Core Pipeline", ("default", "optimize", "lora_export", "lora_analysis")),
-    ("Runtime Inspection", ("probe", "steer", "intervention_eval", "depth")),
+    (
+        "Runtime Inspection",
+        ("behavior_trace", "probe", "steer", "intervention_eval", "depth"),
+    ),
     ("Defense", ("guard", "cast", "sic", "defend", "repbend")),
     ("Adversarial", ("softprompt", "fusion", "sss", "flywheel")),
     ("Analysis", (

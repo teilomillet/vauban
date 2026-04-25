@@ -136,6 +136,7 @@ _NUMERIC_RANGES: dict[tuple[str, str], tuple[float | None, float | None]] = {
     ("softprompt", "n_tokens"): (1, None),
     ("softprompt", "n_steps"): (1, None),
     ("softprompt", "perplexity_weight"): (0.0, None),
+    ("behavior_trace", "max_tokens"): (1, None),
     ("eval", "max_tokens"): (1, None),
     ("eval", "num_prompts"): (1, None),
     ("features", "d_sae"): (1, None),
