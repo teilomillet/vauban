@@ -49,10 +49,12 @@ jobs:
         run: pixi run -e mlx-dev license-check
 
       - name: Benchmark examples
+        env:
+          PYTHONPATH: .
         run: |
-          pixi run -e mlx-dev pytest tests/test_benchmark_examples.py tests/test_benchmark_cli.py -q
+          pixi run -e mlx-dev python -m pytest tests/test_benchmark_examples.py tests/test_benchmark_cli.py -q
           for config in examples/benchmarks/*.toml; do
-            pixi run -e mlx-dev vauban --validate "$config"
+            pixi run -e mlx-dev python -m vauban --validate "$config"
           done
 
       - name: Pytest

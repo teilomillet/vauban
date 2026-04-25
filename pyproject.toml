@@ -39,6 +39,7 @@ torch = [
 dev = [
     "hypothesis>=6.100",
     "matplotlib>=3.10.8",
+    "numpy>=1.26.4,<2.4",
     "pytest",
     "pytest-asyncio",
     "pytest-cov>=7.1.0",

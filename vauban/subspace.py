@@ -114,7 +114,9 @@ def orthonormalize(vectors: Array) -> Array:
     q, _ = qr_stable(vectors.T)
     force_eval(q)
     k = vectors.shape[0]
-    return q[:, :k].T
+    basis = q[:, :k].T
+    force_eval(basis)
+    return basis
 
 
 def explained_variance_ratio(singular_values: list[float]) -> list[float]:

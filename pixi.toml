@@ -74,6 +74,7 @@ platforms = ["osx-arm64"]
 activation = { env = { VAUBAN_BACKEND = "mlx" } }
 
 [feature.mlx.pypi-dependencies]
+numpy = ">=1.26.4,<2.4"
 mlx = ">=0.22"
 mlx-lm = ">=0.21"
 
