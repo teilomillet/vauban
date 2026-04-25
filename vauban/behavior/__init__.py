@@ -49,6 +49,13 @@ from vauban.behavior._primitives import (
     TransformationRef,
     compare_behavior_metrics,
 )
+from vauban.behavior._reproducibility import (
+    artifact_hashes,
+    maybe_sha256_file,
+    reproducibility_payload,
+    sha256_file,
+    vauban_version,
+)
 from vauban.behavior._scoring import (
     DEFAULT_BEHAVIOR_METRIC_SPECS,
     DEFAULT_BEHAVIOR_SCORERS,
@@ -135,6 +142,7 @@ __all__ = [
     "TransformationKind",
     "TransformationRef",
     "aggregate_trace_metrics",
+    "artifact_hashes",
     "behavior_metric_specs_for_scorers",
     "behavior_scorer_names",
     "behavior_threshold_summary",
@@ -146,13 +154,17 @@ __all__ = [
     "is_refusal_text",
     "load_behavior_suite_toml",
     "load_behavior_trace",
+    "maybe_sha256_file",
     "parse_behavior_metric_specs",
     "parse_behavior_prompts",
     "parse_behavior_suite_table",
     "registered_behavior_scorers",
     "render_behavior_report_markdown",
+    "reproducibility_payload",
     "score_behavior_input",
     "score_behavior_output",
+    "sha256_file",
     "validate_behavior_scorer_names",
+    "vauban_version",
     "write_behavior_trace",
 ]

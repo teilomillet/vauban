@@ -201,6 +201,16 @@ def test_run_behavior_diff_writes_json_and_markdown(tmp_path: Path) -> None:
     )
     assert payload["threshold_summary"]["passed"] is True
     assert payload["thresholds"][0]["passed"] is True
+    assert payload["reproducibility"]["tool_version"]
+    assert payload["reproducibility"]["config_path"] == str(config_path)
+    assert payload["reproducibility"]["output_dir"] == str(output_dir)
+    artifact_hashes = payload["reproducibility"]["artifact_hashes"]
+    assert len(artifact_hashes["config"]) == 64
+    assert len(artifact_hashes["baseline_trace"]) == 64
+    assert len(artifact_hashes["candidate_trace"]) == 64
+    assert payload["report"]["reproducibility"]["artifact_hashes"] == (
+        artifact_hashes
+    )
 
     deltas = payload["metric_deltas"]
     refusal_deltas = [
@@ -209,8 +219,10 @@ def test_run_behavior_diff_writes_json_and_markdown(tmp_path: Path) -> None:
         and item["category"] == "benign_request"
     ]
     assert refusal_deltas[0]["delta"] == 1.0
-    assert "Trace Diff Report" in markdown_path.read_text()
-    assert "Regression Gates" in markdown_path.read_text()
+    markdown = markdown_path.read_text()
+    assert "Trace Diff Report" in markdown
+    assert "Regression Gates" in markdown
+    assert "artifact_hashes" in markdown
 
 
 def test_run_behavior_diff_fails_on_threshold_violation(tmp_path: Path) -> None:

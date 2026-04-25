@@ -142,4 +142,14 @@ def test_behavior_trace_diff_report_loop(
     assert payload["threshold_summary"]["passed"] is True
     assert payload["baseline_trace"]["n_observations"] == 2
     assert payload["candidate_trace"]["n_observations"] == 2
+    assert payload["reproducibility"]["scorers"] == ["deterministic_v1"]
+    assert len(payload["reproducibility"]["artifact_hashes"]["config"]) == 64
+    assert (
+        len(payload["reproducibility"]["artifact_hashes"]["baseline_trace"])
+        == 64
+    )
+    assert (
+        len(payload["reproducibility"]["artifact_hashes"]["candidate_trace"])
+        == 64
+    )
     assert "Regression Gates" in report_md.read_text()

@@ -215,6 +215,12 @@ def test_run_behavior_trace_mode_writes_reusable_jsonl(
     assert payload["suite"]["name"] == "smoke-suite"
     assert payload["suite"]["scorers"] == ["deterministic_v1"]
     assert payload["config"]["scorers"] == ["deterministic_v1"]
+    assert payload["reproducibility"]["tool_version"]
+    assert payload["reproducibility"]["scorers"] == ["deterministic_v1"]
+    assert payload["reproducibility"]["generation"]["max_tokens"] == 80
+    trace_hash = payload["reproducibility"]["artifact_hashes"]["trace"]
+    assert isinstance(trace_hash, str)
+    assert len(trace_hash) == 64
 
 
 def test_init_behavior_trace_scaffold_loads(tmp_path: Path) -> None:

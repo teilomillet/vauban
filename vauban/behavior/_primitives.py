@@ -1020,13 +1020,21 @@ class ReproducibilityInfo:
     data_refs: tuple[str, ...] = field(default_factory=tuple)
     output_dir: str | None = None
     seed: int | None = None
+    tool_version: str | None = None
+    artifact_hashes: dict[str, str] = field(default_factory=dict)
+    scorers: tuple[str, ...] = field(default_factory=tuple)
+    generation: dict[str, JsonValue] = field(default_factory=dict)
     notes: tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         """Validate reproducibility command and references."""
         _require_non_empty(self.command, "command")
         _require_non_empty_items(self.data_refs, "data_refs", allow_empty=True)
+        _require_non_empty_items(self.scorers, "scorers", allow_empty=True)
         _require_non_empty_items(self.notes, "notes", allow_empty=True)
+        for key, value in self.artifact_hashes.items():
+            _require_non_empty(key, "artifact_hashes.key")
+            _require_non_empty(value, "artifact_hashes.value")
 
     def to_dict(self) -> dict[str, JsonValue]:
         """Serialize to a JSON-compatible dictionary."""
@@ -1037,6 +1045,10 @@ class ReproducibilityInfo:
             "data_refs": list(self.data_refs),
             "output_dir": self.output_dir,
             "seed": self.seed,
+            "tool_version": self.tool_version,
+            "artifact_hashes": dict(self.artifact_hashes),
+            "scorers": list(self.scorers),
+            "generation": dict(self.generation),
             "notes": list(self.notes),
         })
 

@@ -18,14 +18,18 @@ from vauban.behavior import (
     BehaviorMetricSpec,
     BehaviorThresholdResult,
     BehaviorThresholdSpec,
+    BehaviorTrace,
+    JsonValue,
     MetricPolarity,
     ThresholdSeverity,
     TransformationKind,
+    artifact_hashes,
     behavior_threshold_summary,
     build_behavior_diff_result,
     evaluate_behavior_thresholds,
     load_behavior_trace,
     render_behavior_report_markdown,
+    vauban_version,
 )
 
 
@@ -60,6 +64,12 @@ def _run_behavior_diff_mode(context: EarlyModeContext) -> None:
         )
         for metric in diff_cfg.metrics
     )
+    scorer_refs = _trace_scorers(baseline_trace, candidate_trace)
+    artifact_hashes_value = artifact_hashes({
+        "config": context.config_path,
+        "baseline_trace": diff_cfg.baseline_trace,
+        "candidate_trace": diff_cfg.candidate_trace,
+    })
     result = build_behavior_diff_result(
         baseline_trace,
         candidate_trace,
@@ -83,6 +93,16 @@ def _run_behavior_diff_mode(context: EarlyModeContext) -> None:
         record_outputs=diff_cfg.record_outputs,
         command=f"vauban {context.config_path}",
         config_path=str(context.config_path),
+        output_dir=str(config.output_dir),
+        tool_version=vauban_version(),
+        artifact_hashes_value=artifact_hashes_value,
+        scorer_refs=scorer_refs,
+        generation={
+            "include_examples": diff_cfg.include_examples,
+            "max_examples": diff_cfg.max_examples,
+            "record_outputs": diff_cfg.record_outputs,
+            "markdown_report": diff_cfg.markdown_report,
+        },
     )
     threshold_results = evaluate_behavior_thresholds(
         result.metric_deltas,
@@ -117,17 +137,21 @@ def _run_behavior_diff_mode(context: EarlyModeContext) -> None:
         elapsed=time.monotonic() - context.t0,
     )
 
+    payload = result.to_dict()
+    payload.update({
+        "thresholds": [
+            threshold.to_dict() for threshold in threshold_results
+        ],
+        "threshold_summary": threshold_summary,
+    })
+    if result.report is not None and result.report.reproducibility is not None:
+        payload["reproducibility"] = result.report.reproducibility.to_dict()
+
     json_path = write_mode_report(
         config.output_dir,
         ModeReport(
             filename=diff_cfg.json_filename,
-            payload={
-                **result.to_dict(),
-                "thresholds": [
-                    threshold.to_dict() for threshold in threshold_results
-                ],
-                "threshold_summary": threshold_summary,
-            },
+            payload=payload,
         ),
     )
     report_files = [str(json_path)]
@@ -179,3 +203,27 @@ def _render_threshold_markdown(
         )
     lines.append("")
     return "\n".join(lines)
+
+
+def _trace_scorers(*traces: BehaviorTrace) -> tuple[str, ...]:
+    """Return scorer names recorded in trace observation metadata."""
+    scorers: dict[str, None] = {}
+    for trace in traces:
+        for observation in trace.observations:
+            raw = observation.metadata.get("scorers")
+            for scorer in _scorer_names_from_metadata(raw):
+                scorers[scorer] = None
+    return tuple(scorers)
+
+
+def _scorer_names_from_metadata(raw: JsonValue | None) -> tuple[str, ...]:
+    """Parse scorer metadata from one observation."""
+    if isinstance(raw, str):
+        return (raw,)
+    if not isinstance(raw, list):
+        return ()
+    names: list[str] = []
+    for item in raw:
+        if isinstance(item, str):
+            names.append(item)
+    return tuple(names)

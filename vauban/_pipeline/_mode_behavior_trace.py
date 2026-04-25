@@ -20,7 +20,9 @@ from vauban.behavior import (
     ExampleRedaction,
     ExpectedBehavior,
     JsonValue,
+    artifact_hashes,
     is_refusal_text,
+    reproducibility_payload,
     score_behavior_output,
     write_behavior_trace,
 )
@@ -81,7 +83,13 @@ def _run_behavior_trace_mode(context: EarlyModeContext) -> None:
         config.output_dir,
         ModeReport(
             trace_config.json_filename,
-            _report_payload(trace, trace_config, written_trace_path),
+            _report_payload(
+                trace,
+                trace_config,
+                written_trace_path,
+                config_path=context.config_path,
+                output_dir=config.output_dir,
+            ),
         ),
     )
 
@@ -178,12 +186,32 @@ def _report_payload(
     trace: BehaviorTrace,
     config: BehaviorTraceConfig,
     trace_path: Path,
+    *,
+    config_path: str | Path,
+    output_dir: Path,
 ) -> dict[str, JsonValue]:
     """Build a compact JSON report for the trace collection run."""
+    reproducibility = reproducibility_payload(
+        command=f"vauban {config_path}",
+        config_path=config_path,
+        output_dir=output_dir,
+        data_refs=(str(trace_path),),
+        artifact_hashes_value=artifact_hashes({
+            "config": config_path,
+            "trace": trace_path,
+        }),
+        scorers=tuple(config.scorers),
+        generation={
+            "max_tokens": config.max_tokens,
+            "record_outputs": config.record_outputs,
+            "n_prompts": len(config.prompts),
+        },
+    )
     return {
         "report_version": "behavior_trace_v1",
         "trace": trace.summary_dict(),
         "trace_path": str(trace_path),
+        "reproducibility": reproducibility,
         "suite": {
             "name": config.suite_name,
             "description": config.suite_description,

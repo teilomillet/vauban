@@ -136,6 +136,11 @@ def build_behavior_diff_result(
     record_outputs: bool = False,
     command: str | None = None,
     config_path: str | None = None,
+    output_dir: str | None = None,
+    tool_version: str | None = None,
+    artifact_hashes_value: dict[str, str] | None = None,
+    scorer_refs: tuple[str, ...] = (),
+    generation: dict[str, JsonValue] | None = None,
 ) -> BehaviorDiffResult:
     """Build a behavior diff result and embedded behavior report."""
     effective_metric_specs = metric_specs or infer_behavior_metric_specs(
@@ -191,6 +196,11 @@ def build_behavior_diff_result(
         recommendation=recommendation,
         command=command,
         config_path=config_path,
+        output_dir=output_dir,
+        tool_version=tool_version,
+        artifact_hashes_value=artifact_hashes_value or {},
+        scorer_refs=scorer_refs,
+        generation=generation or {},
     )
     return BehaviorDiffResult(
         title=title,
@@ -255,6 +265,11 @@ def _build_report(
     recommendation: str | None,
     command: str | None,
     config_path: str | None,
+    output_dir: str | None,
+    tool_version: str | None,
+    artifact_hashes_value: dict[str, str],
+    scorer_refs: tuple[str, ...],
+    generation: dict[str, JsonValue],
 ) -> BehaviorReport:
     """Build the standard Model Behavior Change Report for a trace diff."""
     summary = transformation_summary or (
@@ -317,10 +332,15 @@ def _build_report(
             ReproducibilityInfo(
                 command=command,
                 config_path=config_path,
+                tool_version=tool_version,
                 data_refs=(
                     baseline_trace.source_path or baseline_trace.trace_id,
                     candidate_trace.source_path or candidate_trace.trace_id,
                 ),
+                output_dir=output_dir,
+                artifact_hashes=artifact_hashes_value,
+                scorers=scorer_refs,
+                generation=generation,
             )
             if command is not None
             else None

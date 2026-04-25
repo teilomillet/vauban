@@ -397,6 +397,7 @@ def _append_reproducibility(
         "command",
         "config_path",
         "code_revision",
+        "tool_version",
         "output_dir",
         "seed",
     ):
@@ -406,6 +407,19 @@ def _append_reproducibility(
     data_refs = _json_string_list(data.get("data_refs"))
     if data_refs:
         lines.append(f"- data_refs: {', '.join(_md_text(ref) for ref in data_refs)}")
+    scorers = _json_string_list(data.get("scorers"))
+    if scorers:
+        lines.append(f"- scorers: {', '.join(_md_text(ref) for ref in scorers)}")
+    artifact_hashes = _json_string_map(data.get("artifact_hashes"))
+    if artifact_hashes:
+        lines.append("- artifact_hashes:")
+        for key, value in artifact_hashes.items():
+            lines.append(f"  - {key}: `{value}`")
+    generation = _json_scalar_map(data.get("generation"))
+    if generation:
+        lines.append("- generation:")
+        for key, value in generation.items():
+            lines.append(f"  - {key}: `{_md_text(str(value))}`")
     notes = _json_string_list(data.get("notes"))
     for note in notes:
         lines.append(f"- note: {_md_text(note)}")
@@ -436,6 +450,28 @@ def _json_string_list(value: JsonValue | None) -> list[str]:
     for item in value:
         if isinstance(item, str):
             result.append(item)
+    return result
+
+
+def _json_string_map(value: JsonValue | None) -> dict[str, str]:
+    """Coerce one JSON object to a string-to-string map if possible."""
+    if not isinstance(value, dict):
+        return {}
+    result: dict[str, str] = {}
+    for key, item in value.items():
+        if isinstance(item, str):
+            result[key] = item
+    return result
+
+
+def _json_scalar_map(value: JsonValue | None) -> dict[str, str | int | float | bool]:
+    """Coerce one JSON object to a string-to-scalar map if possible."""
+    if not isinstance(value, dict):
+        return {}
+    result: dict[str, str | int | float | bool] = {}
+    for key, item in value.items():
+        if isinstance(item, str | int | float | bool):
+            result[key] = item
     return result
 
 

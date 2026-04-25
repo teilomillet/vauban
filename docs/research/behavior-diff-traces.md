@@ -163,12 +163,17 @@ description = "Fail CI if benign refusal increases too much."
   observations.
 - `behavior_trace_report.json`: trace collection metadata and summary.
 - `experiment_log.jsonl`: reproducibility log entry.
+- `reproducibility`: Vauban version, command, config path, trace SHA-256,
+  scorer list, and generation settings.
 
 `[behavior_diff]` output contains:
 
 - `behavior_diff_report.json`: machine-readable diff result and embedded report.
 - `model_behavior_change_report.md`: readable behavior-change report.
 - `experiment_log.jsonl`: reproducibility log entry.
+- `reproducibility`: Vauban version, config SHA-256, baseline/candidate trace
+  SHA-256 hashes, scorer list when trace metadata records it, and report
+  generation settings.
 
 If any `[[behavior_diff.thresholds]]` with `severity = "fail"` is violated,
 Vauban writes the JSON/Markdown artifacts first and then exits non-zero. This
