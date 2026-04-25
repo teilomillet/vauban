@@ -12,6 +12,7 @@ from vauban._array import Array
 if TYPE_CHECKING:
     import mlx.nn as nn
 
+    from vauban.behavior import BehaviorReport
     from vauban.taxonomy import TaxonomyCoverage
 
 # ---------------------------------------------------------------------------
@@ -1856,6 +1857,16 @@ class AIActConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class BehaviorReportConfig:
+    """Configuration for standalone Vauban Behavior Report generation."""
+
+    report: "BehaviorReport"
+    markdown_report: bool = True
+    json_filename: str = "behavior_report.json"
+    markdown_filename: str = "behavior_report.md"
+
+
+@dataclass(frozen=True, slots=True)
 class SVFConfig:
     """Configuration for Steering Vector Field boundary training.
 
@@ -3024,6 +3035,7 @@ class PipelineConfig:
     cut: CutConfig = field(default_factory=CutConfig)
     measure: MeasureConfig = field(default_factory=MeasureConfig)
     ai_act: AIActConfig | None = None
+    behavior_report: BehaviorReportConfig | None = None
     surface: SurfaceConfig | None = None
     detect: DetectConfig | None = None
     optimize: OptimizeConfig | None = None

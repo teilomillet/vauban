@@ -867,6 +867,112 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
         ),
     ),
     SectionSpec(
+        name="behavior_report",
+        description=(
+            "Standalone Vauban Behavior Report assembled from TOML-declared"
+            " evidence."
+        ),
+        early_return=True,
+        fields=(
+            FieldSpec(
+                key="title",
+                description="Human-readable report title.",
+                constraints='string; default: "Vauban Behavior Report".',
+            ),
+            FieldSpec(
+                key="markdown_report",
+                description="Whether to emit a Markdown companion report.",
+                constraints="boolean; true by default.",
+            ),
+            FieldSpec(
+                key="json_filename",
+                description="JSON artifact filename inside [output].dir.",
+                constraints='string; default: "behavior_report.json".',
+            ),
+            FieldSpec(
+                key="markdown_filename",
+                description="Markdown artifact filename inside [output].dir.",
+                constraints='string; default: "behavior_report.md".',
+            ),
+            FieldSpec(
+                key="limitations",
+                description="Known limitations surfaced in the report.",
+                constraints="list of strings.",
+            ),
+            FieldSpec(
+                key="baseline",
+                description="Baseline model/run metadata table.",
+                constraints=(
+                    "required table with label and model_path; optional role,"
+                    " checkpoint, adapter_path, prompt_template, quantization."
+                ),
+                required=True,
+            ),
+            FieldSpec(
+                key="candidate",
+                description="Candidate model/run metadata table.",
+                constraints=(
+                    "required table with label and model_path; optional role,"
+                    " checkpoint, adapter_path, prompt_template, quantization."
+                ),
+                required=True,
+            ),
+            FieldSpec(
+                key="suite",
+                description="Behavior suite metadata table.",
+                constraints=(
+                    "required table with name, description, categories, metrics;"
+                    " optional version, source, safety_policy."
+                ),
+                required=True,
+            ),
+            FieldSpec(
+                key="metrics",
+                description="Metric observations used to compute deltas.",
+                constraints=(
+                    "array of tables; each row needs name, model_label, value;"
+                    " optional category, polarity, unit, family, sample_size."
+                ),
+            ),
+            FieldSpec(
+                key="activation_findings",
+                description="Internal diagnostics linked to behavior changes.",
+                constraints=(
+                    "array of tables with name and summary; optional layers,"
+                    " score, metric_name, direction_label, severity, evidence."
+                ),
+            ),
+            FieldSpec(
+                key="examples",
+                description="Safe or redacted representative examples.",
+                constraints=(
+                    "array of tables with id/example_id, category, prompt;"
+                    " optional redacted responses, redaction, note."
+                ),
+            ),
+            FieldSpec(
+                key="reproducibility",
+                description="Command, config, code, data, seed, and notes.",
+                constraints="table; command is required when present.",
+            ),
+        ),
+        notes=(
+            (
+                "This mode never loads a model. It is for shareable,"
+                " reproducible behavior reports assembled from already-known"
+                " metrics and evidence."
+            ),
+            (
+                "Metric deltas are computed automatically by matching baseline"
+                " and candidate rows with the same name, category, and unit."
+            ),
+            (
+                "Use safe or redacted examples. The report should not become"
+                " a prompt pack or bypass recipe."
+            ),
+        ),
+    ),
+    SectionSpec(
         name="measure",
         description="Behavioral direction extraction settings.",
         config_class="MeasureConfig",

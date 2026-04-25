@@ -86,6 +86,17 @@ EARLY_MODE_SPECS: tuple[EarlyModeSpec, ...] = (
         ),
     ),
     EarlyModeSpec(
+        "[behavior_report]",
+        "behavior_report",
+        "standalone",
+        False,
+        _field_is_set("behavior_report"),
+        "Generate a typed Vauban Behavior Report from TOML-declared evidence.",
+        "behavior report",
+        "[behavior_report] section present.",
+        "behavior_report.json + behavior_report.md.",
+    ),
+    EarlyModeSpec(
         "[depth]",
         "depth",
         "before_prompts",

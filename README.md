@@ -1,21 +1,29 @@
 <!-- SPDX-FileCopyrightText: 2026 Teilo Millet -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-# vauban
+# Vauban
 
-An MLX-native toolkit for understanding and reshaping how language models behave on Apple Silicon.
+Open-source behavioral diffing for language models.
 
-Named after [Sébastien Le Prestre de Vauban](https://en.wikipedia.org/wiki/Vauban), the military engineer who worked both siege and fortification. Vauban does the same for model behavior: measure it, cut it, probe it, steer it, or harden it.
+Vauban helps researchers and engineers compare how model behavior changes across
+checkpoints, fine-tunes, prompts, steering interventions, quantization variants,
+and post-training runs. It combines behavioral evaluation, activation-space
+diagnostics, and reproducible reports.
+
+Named after [Sébastien Le Prestre de Vauban](https://en.wikipedia.org/wiki/Vauban),
+the military engineer who worked both siege and fortification. Vauban does the
+same for model behavior: map the boundary, test the change, inspect the
+evidence, and produce a report.
 
 ## What it does
 
-Vauban is a TOML-first CLI for workflows built around activation-space geometry:
+Vauban is a TOML-first CLI for model behavior change reports:
 
-- measure behavioral directions from model activations
-- cut or sparsify those directions in weights
-- probe and steer models at runtime
-- map refusal surfaces before and after intervention
-- run defense, sanitization, optimization, and attack loops
+- compare behavior across model states, prompts, and interventions
+- measure refusal, over-refusal, uncertainty, compliance, and side effects
+- inspect activation-space evidence when it helps explain a behavioral change
+- produce JSON and Markdown behavior reports that can be shared and rerun
+- keep controlled interventions, defenses, and stress tests as supporting tools
 
 The primary interface is not a pile of subcommands. It is:
 
@@ -24,6 +32,17 @@ vauban <config.toml>
 ```
 
 All pipeline behavior lives in the TOML file.
+
+Vauban is related to model diffing, but the product surface is narrower and more
+practical: behavioral diffs and model behavior change reports. Model-diffing
+methods are useful when they help answer what changed, why it matters, and what
+evidence supports the claim.
+
+## What Vauban is not
+
+Vauban is not a jailbreak toolkit, not a safety-bypass toolkit, and not a claim
+that a model is safe. It is intended for responsible model behavior auditing,
+defensive analysis, and reproducible research on model changes.
 
 ## Requirements
 
@@ -155,6 +174,65 @@ vauban run.toml
 
 By default, output goes to `output/` relative to the TOML file.
 
+## Vauban Behavior Reports
+
+The flagship artifact is a Vauban Behavior Report: a reproducible behavioral
+change report for a model update, fine-tune, prompt/template change, controlled
+intervention, quantization variant, or post-training run.
+
+Reports are TOML-driven. A minimal standalone report does not need to load a
+model; it assembles declared evidence into JSON and Markdown:
+
+```toml
+[behavior_report]
+title = "Refusal Boundary Behavior Report"
+limitations = [
+  "Small suite; not a safety certification.",
+  "Representative examples are safe or redacted.",
+]
+
+[behavior_report.baseline]
+label = "base"
+model_path = "mlx-community/example-base"
+role = "baseline"
+
+[behavior_report.candidate]
+label = "instruct"
+model_path = "mlx-community/example-instruct"
+role = "candidate"
+
+[behavior_report.suite]
+name = "refusal-boundary"
+description = "Measures refusal, over-refusal, and ambiguous compliance."
+categories = ["safety_refusal", "benign_request", "ambiguous_request"]
+metrics = ["safety_refusal_rate", "over_refusal_rate"]
+
+[[behavior_report.metrics]]
+name = "safety_refusal_rate"
+model_label = "base"
+category = "safety_refusal"
+value = 0.52
+polarity = "higher_is_better"
+
+[[behavior_report.metrics]]
+name = "safety_refusal_rate"
+model_label = "instruct"
+category = "safety_refusal"
+value = 0.84
+polarity = "higher_is_better"
+```
+
+Run it like any other Vauban config:
+
+```bash
+vauban --validate examples/behavior_report.toml
+vauban examples/behavior_report.toml
+```
+
+The output is `behavior_report.json` plus `behavior_report.md` in `[output].dir`.
+See [examples/behavior_report.toml](examples/behavior_report.toml) for a fuller
+safe/redacted example.
+
 ## Minimal TOML
 
 This is the minimal config the code accepts for the default pipeline:
@@ -168,7 +246,8 @@ harmful = "default"
 harmless = "default"
 ```
 
-`[model].path` is required.
+`[model].path` is required for model-loading runs. Standalone report modes such
+as `[behavior_report]` do not need `[model]`.
 
 `[data].harmful` and `[data].harmless` are required for most runs. `"default"` uses Vauban's bundled prompt sets.
 
@@ -227,6 +306,7 @@ The default path is:
 
 You extend that run by adding more sections. Common examples:
 
+- `[behavior_report]` creates a standalone model behavior change report from declared evidence.
 - `[eval]` adds post-cut evaluation reports.
 - `[surface]` adds before/after refusal-surface mapping.
 - `[detect]` adds hardening detection during measurement.
@@ -284,7 +364,7 @@ vauban schema
 vauban schema --output vauban.schema.json
 ```
 
-Compare two run directories:
+Compare two run directories as a utility check:
 
 ```bash
 vauban diff run_a run_b
@@ -293,6 +373,9 @@ vauban diff --threshold 0.05 run_a run_b
 ```
 
 `vauban diff --threshold ...` is a CI gate: it exits non-zero if any absolute metric delta crosses the threshold.
+For durable behavior-change artifacts, prefer a TOML `[behavior_report]` config
+so the comparison, evidence, examples, limitations, and provenance travel
+together.
 
 Render the experiment lineage tree:
 
@@ -325,6 +408,7 @@ This README is aligned to the code in this repo:
 - package name: `vauban`
 - console script: `vauban = vauban.__main__:main`
 - verified commands: `vauban <config.toml>`, `--validate`, `schema`, `init`, `diff`, `tree`, `man`
+- verified standalone report mode: `[behavior_report]`
 - verified manual topics and scaffolded modes were checked against the live CLI help and generated manual
 
 The current README previously had some stale mode/output claims; this version removes those and points readers to `vauban man ...` for the parts generated directly from code.

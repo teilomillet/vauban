@@ -10,7 +10,11 @@ from pathlib import Path
 import pytest
 
 from vauban.config import load_config
-from vauban.config._loader import _is_standalone_api_eval, _resolve_single_data
+from vauban.config._loader import (
+    _is_standalone_api_eval,
+    _is_standalone_behavior_report,
+    _resolve_single_data,
+)
 
 
 class TestLoadConfigMinimal:
@@ -147,6 +151,42 @@ class TestStandaloneApiEval:
         )
         with pytest.raises(ValueError, match="model"):
             load_config(toml_file)
+
+
+class TestStandaloneBehaviorReport:
+    """Standalone behavior_report mode: [behavior_report] skips model/data."""
+
+    def test_standalone_loads_without_model(self, tmp_path: Path) -> None:
+        toml_file = tmp_path / "behavior_report.toml"
+        toml_file.write_text(
+            "[behavior_report]\n"
+            'title = "Report"\n'
+            "[behavior_report.baseline]\n"
+            'label = "base"\n'
+            'model_path = "base-model"\n'
+            "[behavior_report.candidate]\n"
+            'label = "candidate"\n'
+            'model_path = "candidate-model"\n'
+            "[behavior_report.suite]\n"
+            'name = "suite"\n'
+            'description = "Suite description."\n'
+            'categories = ["benign_request"]\n'
+            'metrics = ["compliance_rate"]\n'
+        )
+        config = load_config(toml_file)
+        assert config.model_path == ""
+        assert config.behavior_report is not None
+        assert config.behavior_report.report.title == "Report"
+
+
+class TestStandaloneBehaviorReportHelper:
+    """Unit tests for _is_standalone_behavior_report helper."""
+
+    def test_present_returns_true(self) -> None:
+        assert _is_standalone_behavior_report({"behavior_report": {}}) is True
+
+    def test_absent_returns_false(self) -> None:
+        assert _is_standalone_behavior_report({"audit": {}}) is False
 
 
 class TestDepthOnlyConfig:

@@ -12,6 +12,7 @@ from vauban.config._parse_ai_act import _parse_ai_act
 from vauban.config._parse_api_eval import _parse_api_eval
 from vauban.config._parse_audit import _parse_audit
 from vauban.config._parse_awareness import _parse_awareness
+from vauban.config._parse_behavior_report import _parse_behavior_report
 from vauban.config._parse_cast import _parse_cast
 from vauban.config._parse_circuit import _parse_circuit
 from vauban.config._parse_compose_optimize import _parse_compose_optimize
@@ -51,6 +52,7 @@ from vauban.types import (
     ApiEvalConfig,
     AuditConfig,
     AwarenessConfig,
+    BehaviorReportConfig,
     CastConfig,
     CircuitConfig,
     ComposeOptimizeConfig,
@@ -100,6 +102,7 @@ type _SectionParserResult = (  # pragma: no cover
     | None
     | ApiEvalConfig
     | AIActConfig
+    | BehaviorReportConfig
     | AuditConfig
     | CastConfig
     | CircuitConfig
@@ -164,6 +167,7 @@ class ParsedSectionValues:
 
     depth: DepthConfig | None
     ai_act: AIActConfig | None
+    behavior_report: BehaviorReportConfig | None
     audit: AuditConfig | None
     cast: CastConfig | None
     guard: GuardConfig | None
@@ -246,6 +250,7 @@ SECTION_PARSE_SPECS: tuple[SectionParseSpec[_SectionParserResult], ...] = (
     SectionParseSpec("lora", "lora_load", _parse_lora_load, 5),
     SectionParseSpec("depth", "depth", _parse_depth, 10),
     SectionParseSpec("ai_act", "ai_act", _parse_ai_act, 15, call="base_dir_raw"),
+    SectionParseSpec("behavior_report", "behavior_report", _parse_behavior_report, 16),
     SectionParseSpec("audit", "audit", _parse_audit, 17),
     SectionParseSpec("cast", "cast", _parse_cast, 20),
     SectionParseSpec("guard", "guard", _parse_guard, 22),

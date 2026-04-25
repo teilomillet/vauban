@@ -9,6 +9,7 @@ import pytest
 
 import vauban
 from vauban import validate
+from vauban.behavior import BehaviorReport, BehaviorSuiteRef, ReportModelRef
 from vauban.config._mode_registry import (
     EARLY_MODE_SPECS,
     active_early_mode_for_phase,
@@ -21,6 +22,7 @@ from vauban.types import (
     ApiEvalEndpoint,
     AuditConfig,
     AwarenessConfig,
+    BehaviorReportConfig,
     CastConfig,
     CircuitConfig,
     ComposeOptimizeConfig,
@@ -64,6 +66,7 @@ _EXPECTED_EARLY_MODE_ORDER: list[str] = [
     "[remote]",
     "[api_eval]",
     "[ai_act]",
+    "[behavior_report]",
     "[depth]",
     "[svf]",
     "[features]",
@@ -175,7 +178,7 @@ def test_validation_warning_content_and_order_for_conflict_fixture(
         (
             "[HIGH] Multiple early-return modes active: [depth], [probe]"
             " — only the first will run (precedence: remote"
-            " > api_eval > ai_act > depth > svf > features"
+            " > api_eval > ai_act > behavior_report > depth > svf > features"
             " > probe > steer > sss > awareness > audit > guard > cast > sic"
             " > optimize > compose_optimize"
             " > softprompt > jailbreak > defend > circuit > linear_probe > fusion"
@@ -232,6 +235,26 @@ def test_active_early_modes_precedence_matches_legacy_behavior() -> None:
             company_name="Example Energy",
             system_name="Customer Assistant",
             intended_purpose="Answers customer questions.",
+        ),
+        behavior_report=BehaviorReportConfig(
+            report=BehaviorReport(
+                title="Behavior Report",
+                baseline=ReportModelRef(
+                    label="base",
+                    model_path="base-model",
+                    role="baseline",
+                ),
+                candidate=ReportModelRef(
+                    label="candidate",
+                    model_path="candidate-model",
+                ),
+                suite=BehaviorSuiteRef(
+                    name="smoke",
+                    description="Smoke behavior suite.",
+                    categories=("benign_request",),
+                    metrics=("compliance_rate",),
+                ),
+            ),
         ),
         audit=AuditConfig(company_name="Test", system_name="Test"),
         depth=DepthConfig(prompts=["a", "b"]),

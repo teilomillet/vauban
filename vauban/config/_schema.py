@@ -79,6 +79,20 @@ class _DataclassSectionSpec:
 _MODEL_SECTION_KEYS: frozenset[str] = frozenset({"path"})
 _DATA_SECTION_KEYS: frozenset[str] = frozenset({"harmful", "harmless", "borderline"})
 _OUTPUT_SECTION_KEYS: frozenset[str] = frozenset({"dir"})
+_BEHAVIOR_REPORT_SECTION_KEYS: frozenset[str] = frozenset({
+    "title",
+    "limitations",
+    "markdown_report",
+    "json_filename",
+    "markdown_filename",
+    "baseline",
+    "candidate",
+    "suite",
+    "metrics",
+    "activation_findings",
+    "examples",
+    "reproducibility",
+})
 
 _DATACLASS_SECTION_SPECS: tuple[_DataclassSectionSpec, ...] = (
     _DataclassSectionSpec("measure", MeasureConfig, {}),
@@ -132,6 +146,7 @@ _MANUAL_SECTION_KEYS: dict[str, frozenset[str]] = {
     "model": _MODEL_SECTION_KEYS,
     "data": _DATA_SECTION_KEYS,
     "output": _OUTPUT_SECTION_KEYS,
+    "behavior_report": _BEHAVIOR_REPORT_SECTION_KEYS,
 }
 
 KNOWN_SECTION_KEYS: dict[str, frozenset[str]] = {
@@ -179,6 +194,7 @@ def generate_config_schema() -> JsonSchema:
             "description": "Emit progress logs to stderr.",
         },
         "output": _output_section_schema(),
+        "behavior_report": _behavior_report_section_schema(),
     }
     for spec in _DATACLASS_SECTION_SPECS:
         properties[spec.name] = _schema_for_dataclass(
@@ -194,8 +210,8 @@ def generate_config_schema() -> JsonSchema:
         "description": (
             "Schema for Vauban TOML pipeline configs. "
             "TOML tables map to object-valued sections in this JSON representation. "
-            "Note: [model] is optional for standalone api_eval "
-            "(token_text set) but JSON Schema cannot express conditional "
+            "Note: [model] is optional for standalone behavior_report/api_eval/"
+            "ai_act/remote configs, but JSON Schema cannot express conditional "
             "requirements, so it is listed as required here."
         ),
         "type": "object",
@@ -277,6 +293,51 @@ def _output_section_schema() -> JsonSchema:
         "properties": {
             "dir": {"type": "string"},
         },
+        "additionalProperties": False,
+    }
+
+
+def _behavior_report_section_schema() -> JsonSchema:
+    """Schema for the standalone [behavior_report] section."""
+    return {
+        "type": "object",
+        "description": "Standalone typed Vauban Behavior Report.",
+        "properties": {
+            "title": {"type": "string"},
+            "limitations": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+            "markdown_report": {"type": "boolean", "default": True},
+            "json_filename": {
+                "type": "string",
+                "default": "behavior_report.json",
+            },
+            "markdown_filename": {
+                "type": "string",
+                "default": "behavior_report.md",
+            },
+            "baseline": {"type": "object", "additionalProperties": True},
+            "candidate": {"type": "object", "additionalProperties": True},
+            "suite": {"type": "object", "additionalProperties": True},
+            "metrics": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": True},
+            },
+            "activation_findings": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": True},
+            },
+            "examples": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": True},
+            },
+            "reproducibility": {
+                "type": "object",
+                "additionalProperties": True,
+            },
+        },
+        "required": ["baseline", "candidate", "suite"],
         "additionalProperties": False,
     }
 

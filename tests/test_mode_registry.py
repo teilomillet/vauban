@@ -5,6 +5,7 @@
 
 from pathlib import Path
 
+from vauban.behavior import BehaviorReport, BehaviorSuiteRef, ReportModelRef
 from vauban.config._mode_registry import (
     EARLY_MODE_SPECS,
     EARLY_RETURN_PRECEDENCE,
@@ -13,6 +14,7 @@ from vauban.config._mode_registry import (
 )
 from vauban.types import (
     AIActConfig,
+    BehaviorReportConfig,
     CastConfig,
     ComposeOptimizeConfig,
     CutConfig,
@@ -27,6 +29,30 @@ from vauban.types import (
     SteerConfig,
     SVFConfig,
 )
+
+
+def _minimal_behavior_report_config() -> BehaviorReportConfig:
+    """Build a minimal behavior report config for registry tests."""
+    return BehaviorReportConfig(
+        report=BehaviorReport(
+            title="Behavior Report",
+            baseline=ReportModelRef(
+                label="base",
+                model_path="base-model",
+                role="baseline",
+            ),
+            candidate=ReportModelRef(
+                label="candidate",
+                model_path="candidate-model",
+            ),
+            suite=BehaviorSuiteRef(
+                name="smoke",
+                description="Smoke behavior suite.",
+                categories=("benign_request",),
+                metrics=("compliance_rate",),
+            ),
+        ),
+    )
 
 
 def _minimal_config(**kwargs: object) -> PipelineConfig:
@@ -59,6 +85,12 @@ class TestEarlyModePredicates:
             ),
         )
         assert active_early_modes(config) == ["[ai_act]"]
+
+    def test_has_behavior_report(self) -> None:
+        config = _minimal_config(
+            behavior_report=_minimal_behavior_report_config(),
+        )
+        assert active_early_modes(config) == ["[behavior_report]"]
 
     def test_has_probe(self) -> None:
         config = _minimal_config(probe=ProbeConfig(prompts=["test"]))
@@ -152,6 +184,14 @@ class TestActiveEarlyModeForPhase:
         assert spec is not None
         assert spec.mode == "ai_act"
 
+    def test_standalone_returns_behavior_report(self) -> None:
+        config = _minimal_config(
+            behavior_report=_minimal_behavior_report_config(),
+        )
+        spec = active_early_mode_for_phase(config, "standalone")
+        assert spec is not None
+        assert spec.mode == "behavior_report"
+
     def test_before_prompts_returns_svf(self) -> None:
         config = _minimal_config(
             svf=SVFConfig(
@@ -215,6 +255,7 @@ class TestEarlyModeSpecs:
         spec_map = {s.section: s for s in EARLY_MODE_SPECS}
         assert spec_map["[depth]"].requires_direction is False
         assert spec_map["[ai_act]"].requires_direction is False
+        assert spec_map["[behavior_report]"].requires_direction is False
         assert spec_map["[svf]"].requires_direction is False
         assert spec_map["[features]"].requires_direction is False
         assert spec_map["[probe]"].requires_direction is True
@@ -230,6 +271,7 @@ class TestEarlyModeSpecs:
     def test_phase_assignments(self) -> None:
         spec_map = {s.section: s for s in EARLY_MODE_SPECS}
         assert spec_map["[ai_act]"].phase == "standalone"
+        assert spec_map["[behavior_report]"].phase == "standalone"
         assert spec_map["[depth]"].phase == "before_prompts"
         assert spec_map["[svf]"].phase == "before_prompts"
         assert spec_map["[features]"].phase == "before_prompts"
