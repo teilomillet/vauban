@@ -189,6 +189,10 @@ def test_behavior_report_serializes_nested_primitives() -> None:
         candidate=candidate,
         suite=suite,
         target_change="base -> instruction-tuned",
+        findings=(
+            "Target-task behavior improved.",
+            "Over-refusal increased in ambiguous benign cases.",
+        ),
         metrics=(metric_baseline, metric_candidate),
         metric_deltas=(
             BehaviorMetricDelta.from_metrics(metric_baseline, metric_candidate),
@@ -251,6 +255,10 @@ def test_behavior_report_serializes_nested_primitives() -> None:
         "safety_policy": "aggregate_or_redacted_examples",
     }
     assert data["target_change"] == "base -> instruction-tuned"
+    assert data["findings"] == [
+        "Target-task behavior improved.",
+        "Over-refusal increased in ambiguous benign cases.",
+    ]
     assert (
         data["recommendation"]
         == "Do not deploy without additional benign-request regression testing."
@@ -436,6 +444,10 @@ def test_render_behavior_report_markdown() -> None:
         candidate=candidate,
         suite=suite,
         target_change="base -> candidate",
+        findings=(
+            "Refusal behavior changed.",
+            "The model became more assertive under underspecification.",
+        ),
         metric_deltas=(BehaviorMetricDelta.from_metrics(metric_a, metric_b),),
         activation_findings=(
             ActivationFinding(
@@ -468,6 +480,9 @@ def test_render_behavior_report_markdown() -> None:
     assert "Model Behavior Change Report" in markdown
     assert "## Target Change" in markdown
     assert "- base -> candidate" in markdown
+    assert "## Findings" in markdown
+    assert "- Refusal behavior changed." in markdown
+    assert "- The model became more assertive under underspecification." in markdown
     assert (
         "| refusal_rate | safety_refusal | 0.400 | 0.700 | +0.300 | improved |"
         in markdown

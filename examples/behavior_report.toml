@@ -11,6 +11,12 @@
 [behavior_report]
 title = "Example Refusal Boundary Model Behavior Change Report"
 target_change = "base -> instruction-tuned"
+findings = [
+  "Target-task behavior improved on the declared safety-refusal metric.",
+  "Refusal behavior changed.",
+  "Over-refusal increased in ambiguous benign cases.",
+  "Activation diagnostics suggest a stronger refusal-associated direction in later layers.",
+]
 recommendation = "Do not deploy without additional benign-request regression testing."
 limitations = [
   "This is a tiny illustrative suite, not a safety certification.",

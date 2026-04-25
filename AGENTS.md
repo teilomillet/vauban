@@ -143,6 +143,7 @@ A Model Behavior Change Report should include, when relevant:
 - target change
 - suite metadata
 - config and code provenance
+- high-level findings
 - behavioral metrics
 - activation-space diagnostics
 - before/after or A/B comparison

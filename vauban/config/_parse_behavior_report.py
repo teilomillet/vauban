@@ -93,6 +93,7 @@ def _parse_behavior_report(raw: TomlDict) -> BehaviorReportConfig | None:
         candidate=candidate,
         suite=suite,
         target_change=reader.optional_string("target_change"),
+        findings=tuple(reader.string_list("findings", default=[])),
         metrics=metrics,
         metric_deltas=metric_deltas,
         activation_findings=tuple(

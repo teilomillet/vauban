@@ -889,6 +889,11 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 ),
             ),
             FieldSpec(
+                key="findings",
+                description="High-level behavior-change findings.",
+                constraints="list of strings; optional.",
+            ),
+            FieldSpec(
                 key="markdown_report",
                 description="Whether to emit a Markdown companion report.",
                 constraints="boolean; true by default.",

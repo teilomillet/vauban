@@ -206,6 +206,12 @@ model; it assembles declared evidence into JSON and Markdown:
 [behavior_report]
 title = "Refusal Boundary Model Behavior Change Report"
 target_change = "base -> instruction-tuned"
+findings = [
+  "Target-task performance improved.",
+  "Refusal behavior changed.",
+  "Over-refusal increased in ambiguous benign cases.",
+  "Uncertainty expression decreased.",
+]
 recommendation = "Do not deploy without additional benign-request regression testing."
 limitations = [
   "Small suite; not a safety certification.",

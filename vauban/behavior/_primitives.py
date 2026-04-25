@@ -495,6 +495,7 @@ class BehaviorReport:
     candidate: ReportModelRef
     suite: BehaviorSuiteRef
     target_change: str | None = None
+    findings: tuple[str, ...] = field(default_factory=tuple)
     metrics: tuple[BehaviorMetric, ...] = field(default_factory=tuple)
     metric_deltas: tuple[BehaviorMetricDelta, ...] = field(default_factory=tuple)
     activation_findings: tuple[ActivationFinding, ...] = field(default_factory=tuple)
@@ -513,6 +514,11 @@ class BehaviorReport:
         if self.recommendation is not None:
             _require_non_empty(self.recommendation, "recommendation")
         _require_non_empty_items(
+            self.findings,
+            "findings",
+            allow_empty=True,
+        )
+        _require_non_empty_items(
             self.limitations,
             "limitations",
             allow_empty=True,
@@ -527,6 +533,7 @@ class BehaviorReport:
             "candidate": self.candidate.to_dict(),
             "suite": self.suite.to_dict(),
             "target_change": self.target_change,
+            "findings": list(self.findings),
             "metrics": [metric.to_dict() for metric in self.metrics],
             "metric_deltas": [
                 delta.to_dict() for delta in self.metric_deltas

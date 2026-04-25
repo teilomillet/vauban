@@ -35,6 +35,7 @@ def render_behavior_report_markdown(report: BehaviorReport) -> str:
     ]
 
     _append_target_change(lines, report)
+    _append_findings(lines, report)
     _append_metric_delta_table(lines, report)
     _append_activation_findings(lines, report)
     _append_examples(lines, report)
@@ -54,6 +55,16 @@ def _append_target_change(lines: list[str], report: BehaviorReport) -> None:
         f"- {_md_text(report.target_change)}",
         "",
     ])
+
+
+def _append_findings(lines: list[str], report: BehaviorReport) -> None:
+    """Append high-level behavior-change findings."""
+    if not report.findings:
+        return
+    lines.extend(["## Findings", ""])
+    for finding in report.findings:
+        lines.append(f"- {_md_text(finding)}")
+    lines.append("")
 
 
 def _append_metric_delta_table(

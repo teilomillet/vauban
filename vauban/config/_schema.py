@@ -82,6 +82,7 @@ _OUTPUT_SECTION_KEYS: frozenset[str] = frozenset({"dir"})
 _BEHAVIOR_REPORT_SECTION_KEYS: frozenset[str] = frozenset({
     "title",
     "target_change",
+    "findings",
     "limitations",
     "recommendation",
     "markdown_report",
@@ -307,6 +308,10 @@ def _behavior_report_section_schema() -> JsonSchema:
         "properties": {
             "title": {"type": "string"},
             "target_change": {"type": "string"},
+            "findings": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
             "limitations": {
                 "type": "array",
                 "items": {"type": "string"},
