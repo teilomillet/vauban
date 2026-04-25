@@ -20,6 +20,8 @@ from vauban.behavior._primitives import (
     BehaviorReport,
     BehaviorSuite,
     BehaviorSuiteRef,
+    BehaviorThresholdResult,
+    BehaviorThresholdSpec,
     BehaviorTrace,
     ChatRole,
     ClaimStatus,
@@ -42,9 +44,25 @@ from vauban.behavior._primitives import (
     ReproducibilityInfo,
     ReproductionResult,
     ReproductionTarget,
+    ThresholdSeverity,
     TransformationKind,
     TransformationRef,
     compare_behavior_metrics,
+)
+from vauban.behavior._scoring import is_refusal_text, score_behavior_output
+from vauban.behavior._suite import (
+    DEFAULT_BEHAVIOR_METRIC_SPECS,
+    EXPECTED_BEHAVIOR_CHOICES,
+    METRIC_POLARITY_CHOICES,
+    REDACTION_CHOICES,
+    load_behavior_suite_toml,
+    parse_behavior_metric_specs,
+    parse_behavior_prompts,
+    parse_behavior_suite_table,
+)
+from vauban.behavior._thresholds import (
+    behavior_threshold_summary,
+    evaluate_behavior_thresholds,
 )
 from vauban.behavior._trace import (
     aggregate_trace_metrics,
@@ -55,6 +73,10 @@ from vauban.behavior._trace import (
 )
 
 __all__ = [
+    "DEFAULT_BEHAVIOR_METRIC_SPECS",
+    "EXPECTED_BEHAVIOR_CHOICES",
+    "METRIC_POLARITY_CHOICES",
+    "REDACTION_CHOICES",
     "AccessLevel",
     "AccessPolicy",
     "ActivationFinding",
@@ -70,6 +92,8 @@ __all__ = [
     "BehaviorReport",
     "BehaviorSuite",
     "BehaviorSuiteRef",
+    "BehaviorThresholdResult",
+    "BehaviorThresholdSpec",
     "BehaviorTrace",
     "ChatRole",
     "ClaimStatus",
@@ -92,13 +116,22 @@ __all__ = [
     "ReproducibilityInfo",
     "ReproductionResult",
     "ReproductionTarget",
+    "ThresholdSeverity",
     "TransformationKind",
     "TransformationRef",
     "aggregate_trace_metrics",
+    "behavior_threshold_summary",
     "build_behavior_diff_result",
     "compare_behavior_metrics",
+    "evaluate_behavior_thresholds",
     "infer_behavior_metric_specs",
+    "is_refusal_text",
+    "load_behavior_suite_toml",
     "load_behavior_trace",
+    "parse_behavior_metric_specs",
+    "parse_behavior_prompts",
+    "parse_behavior_suite_table",
     "render_behavior_report_markdown",
+    "score_behavior_output",
     "write_behavior_trace",
 ]

@@ -5,27 +5,27 @@
 
 from __future__ import annotations
 
-import tomllib
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from vauban.behavior import (
+    DEFAULT_BEHAVIOR_METRIC_SPECS,
+    BehaviorMetricSpec,
+    BehaviorPrompt,
+    load_behavior_suite_toml,
+    parse_behavior_metric_specs,
+    parse_behavior_prompts,
+)
 from vauban.config._parse_helpers import SectionReader, require_toml_table
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES
-from vauban.types import BehaviorTraceConfig, BehaviorTracePromptConfig
+from vauban.types import (
+    BehaviorDiffMetricConfig,
+    BehaviorTraceConfig,
+    BehaviorTracePromptConfig,
+)
 
 if TYPE_CHECKING:
     from vauban.config._types import TomlDict
-
-_EXPECTED_BEHAVIOR_CHOICES: tuple[str, ...] = (
-    "refuse",
-    "comply",
-    "express_uncertainty",
-    "ask_clarifying_question",
-    "defer",
-    "unknown",
-)
-_REDACTION_CHOICES: tuple[str, ...] = ("safe", "redacted", "omitted")
 
 
 def _parse_behavior_trace(
@@ -42,16 +42,13 @@ def _parse_behavior_trace(
     )
 
     suite_path = _optional_path(base_dir, reader.optional_string("suite"))
-    suite_config = (
-        _parse_suite_file(suite_path)
-        if suite_path is not None
-        else _empty_suite_config()
-    )
-    inline_prompts = _parse_prompt_configs(
+    suite = load_behavior_suite_toml(suite_path) if suite_path is not None else None
+    inline_prompts = parse_behavior_prompts(
         reader.data.get("prompts"),
-        section="[behavior_trace].prompts",
+        "[behavior_trace].prompts",
     )
-    prompts = [*suite_config.prompts, *inline_prompts]
+    suite_prompts = suite.prompts if suite is not None else ()
+    prompts = [*_prompt_configs(suite_prompts), *_prompt_configs(inline_prompts)]
     if not prompts:
         msg = (
             "[behavior_trace] requires prompts either via suite = \"...\""
@@ -59,6 +56,11 @@ def _parse_behavior_trace(
         )
         raise ValueError(msg)
     _reject_duplicate_prompt_ids(prompts)
+
+    metric_specs = _merge_metric_specs(
+        suite.metric_specs if suite is not None else DEFAULT_BEHAVIOR_METRIC_SPECS,
+        parse_behavior_metric_specs(reader.data.get("metrics")),
+    )
 
     max_tokens = reader.integer("max_tokens", default=80)
     if max_tokens < 1:
@@ -74,27 +76,38 @@ def _parse_behavior_trace(
         raise ValueError(msg)
 
     return BehaviorTraceConfig(
-        model_label=reader.string(
-            "model_label",
-            default=suite_config.model_label,
-        ),
+        model_label=reader.string("model_label", default="model"),
         suite=suite_path,
-        suite_name=reader.string("suite_name", default=suite_config.name),
+        suite_name=reader.string(
+            "suite_name",
+            default=suite.name if suite is not None else "behavior-change-suite",
+        ),
         suite_description=reader.string(
             "suite_description",
-            default=suite_config.description,
+            default=(
+                suite.description
+                if suite is not None
+                else "Behavior trace collection suite."
+            ),
         ),
         suite_version=(
-            reader.optional_string("suite_version") or suite_config.version
+            reader.optional_string("suite_version")
+            or (suite.version if suite is not None else None)
         ),
         suite_source=(
-            reader.optional_string("suite_source") or suite_config.source
+            reader.optional_string("suite_source")
+            or (suite.source if suite is not None else None)
         ),
         safety_policy=reader.string(
             "safety_policy",
-            default=suite_config.safety_policy,
+            default=(
+                suite.safety_policy
+                if suite is not None
+                else "safe_or_redacted_prompts"
+            ),
         ),
         prompts=prompts,
+        metrics=_metric_configs(metric_specs),
         max_tokens=max_tokens,
         refusal_phrases=refusal_phrases,
         record_outputs=reader.boolean("record_outputs", default=False),
@@ -113,118 +126,51 @@ def _parse_behavior_trace(
     )
 
 
-@dataclass(frozen=True, slots=True)
-class _SuiteConfig:
-    """Parsed behavior suite metadata and prompts."""
-
-    name: str
-    description: str
-    model_label: str
-    safety_policy: str
-    prompts: list[BehaviorTracePromptConfig]
-    version: str | None = None
-    source: str | None = None
-
-
-def _empty_suite_config() -> _SuiteConfig:
-    """Return default suite metadata when no external suite is used."""
-    return _SuiteConfig(
-        name="behavior-change-suite",
-        description="Behavior trace collection suite.",
-        model_label="model",
-        safety_policy="safe_or_redacted_prompts",
-        prompts=[],
-    )
-
-
-def _parse_suite_file(path: Path) -> _SuiteConfig:
-    """Parse an external [behavior_suite] TOML file."""
-    if not path.exists():
-        msg = f"[behavior_trace].suite does not exist: {path}"
-        raise FileNotFoundError(msg)
-    with path.open("rb") as handle:
-        raw: TomlDict = tomllib.load(handle)
-    sec = raw.get("behavior_suite")
-    reader = SectionReader(
-        "[behavior_suite]",
-        require_toml_table("[behavior_suite]", sec),
-    )
-    source = reader.optional_string("source") or str(path)
-    return _SuiteConfig(
-        name=reader.string("name", default="behavior-change-suite"),
-        description=reader.string(
-            "description",
-            default="Behavior trace collection suite.",
-        ),
-        model_label=reader.string("model_label", default="model"),
-        version=reader.optional_string("version"),
-        source=source,
-        safety_policy=reader.string(
-            "safety_policy",
-            default="safe_or_redacted_prompts",
-        ),
-        prompts=_parse_prompt_configs(
-            reader.data.get("prompts"),
-            section="[behavior_suite].prompts",
-        ),
-    )
-
-
-def _parse_prompt_configs(
-    raw: object,
-    *,
-    section: str,
+def _prompt_configs(
+    prompts: tuple[BehaviorPrompt, ...],
 ) -> list[BehaviorTracePromptConfig]:
-    """Parse prompt entries from an array of strings or tables."""
-    if raw is None:
-        return []
-    if not isinstance(raw, list):
-        msg = f"{section} must be an array"
-        raise TypeError(msg)
-
-    prompts: list[BehaviorTracePromptConfig] = []
-    for index, item in enumerate(raw):
-        if isinstance(item, str):
-            prompts.append(
-                BehaviorTracePromptConfig(
-                    prompt_id=f"prompt-{index + 1:03d}",
-                    text=item,
-                ),
-            )
-            continue
-        table = require_toml_table(f"{section}[{index}]", item)
-        reader = SectionReader(f"{section}[{index}]", table)
-        prompt_id = reader.optional_string("id")
-        if prompt_id is None:
-            prompt_id = reader.optional_string("prompt_id")
-        if prompt_id is None:
-            msg = f"{section}[{index}].id is required"
-            raise ValueError(msg)
-        text = reader.optional_string("text")
-        if text is None:
-            text = reader.optional_string("prompt")
-        if text is None:
-            msg = f"{section}[{index}].text is required"
-            raise ValueError(msg)
-        prompts.append(
-            BehaviorTracePromptConfig(
-                prompt_id=prompt_id,
-                text=text,
-                category=reader.string("category", default="default"),
-                expected_behavior=reader.literal(
-                    "expected_behavior",
-                    _EXPECTED_BEHAVIOR_CHOICES,
-                    default="unknown",
-                ),
-                redaction=reader.literal(
-                    "redaction",
-                    _REDACTION_CHOICES,
-                    default="safe",
-                ),
-                tags=reader.string_list("tags", default=[]),
-            ),
+    """Convert behavior-suite prompts into trace config prompt records."""
+    return [
+        BehaviorTracePromptConfig(
+            prompt_id=prompt.prompt_id,
+            text=prompt.prompt,
+            category=prompt.category,
+            expected_behavior=prompt.expected_behavior,
+            redaction=prompt.redaction,
+            tags=list(prompt.tags),
         )
-    return prompts
+        for prompt in prompts
+    ]
+
+
+def _metric_configs(
+    metrics: tuple[BehaviorMetricSpec, ...],
+) -> list[BehaviorDiffMetricConfig]:
+    """Convert behavior metric specs into TOML config metric records."""
+    return [
+        BehaviorDiffMetricConfig(
+            name=metric.name,
+            description=metric.description,
+            polarity=metric.polarity,
+            unit=metric.unit,
+            family=metric.family,
+        )
+        for metric in metrics
+    ]
+
+
+def _merge_metric_specs(
+    base_metrics: tuple[BehaviorMetricSpec, ...],
+    override_metrics: tuple[BehaviorMetricSpec, ...],
+) -> tuple[BehaviorMetricSpec, ...]:
+    """Merge metric declarations by name, with later declarations winning."""
+    merged: dict[str, BehaviorMetricSpec] = {}
+    order: list[str] = []
+    for metric in (*base_metrics, *override_metrics):
+        if metric.name not in merged:
+            order.append(metric.name)
+        merged[metric.name] = metric
+    return tuple(merged[name] for name in order)
 
 
 def _optional_path(base_dir: Path, raw: str | None) -> Path | None:

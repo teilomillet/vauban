@@ -8,7 +8,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from vauban.config._parse_helpers import SectionReader, require_toml_table
-from vauban.types import BehaviorDiffConfig, BehaviorDiffMetricConfig
+from vauban.types import (
+    BehaviorDiffConfig,
+    BehaviorDiffMetricConfig,
+    BehaviorDiffThresholdConfig,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -33,6 +37,7 @@ _TRANSFORMATION_KIND_CHOICES: tuple[str, ...] = (
     "evaluation_only",
     "other",
 )
+_THRESHOLD_SEVERITY_CHOICES: tuple[str, ...] = ("warn", "fail")
 
 
 def _parse_behavior_diff(
@@ -80,6 +85,7 @@ def _parse_behavior_diff(
         ),
         transformation_summary=reader.optional_string("transformation_summary"),
         metrics=_parse_metric_configs(reader.data.get("metrics")),
+        thresholds=_parse_threshold_configs(reader.data.get("thresholds")),
         limitations=reader.string_list("limitations", default=[]),
         recommendation=reader.optional_string("recommendation"),
         include_examples=reader.boolean("include_examples", default=True),
@@ -122,3 +128,45 @@ def _parse_metric_configs(raw: object) -> list[BehaviorDiffMetricConfig]:
             ),
         )
     return metrics
+
+
+def _parse_threshold_configs(raw: object) -> list[BehaviorDiffThresholdConfig]:
+    """Parse optional [[behavior_diff.thresholds]] declarations."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        msg = "[[behavior_diff.thresholds]] must be an array of tables"
+        raise TypeError(msg)
+    thresholds: list[BehaviorDiffThresholdConfig] = []
+    for index, item in enumerate(raw):
+        section = f"[[behavior_diff.thresholds]][{index}]"
+        reader = SectionReader(section, require_toml_table(section, item))
+        max_delta = reader.optional_number("max_delta")
+        min_delta = reader.optional_number("min_delta")
+        max_absolute_delta = reader.optional_number("max_absolute_delta")
+        if (
+            max_delta is None
+            and min_delta is None
+            and max_absolute_delta is None
+        ):
+            msg = f"{section} must set at least one delta bound"
+            raise ValueError(msg)
+        if max_absolute_delta is not None and max_absolute_delta < 0.0:
+            msg = f"{section}.max_absolute_delta must be >= 0"
+            raise ValueError(msg)
+        thresholds.append(
+            BehaviorDiffThresholdConfig(
+                metric=reader.string("metric"),
+                category=reader.optional_string("category"),
+                max_delta=max_delta,
+                min_delta=min_delta,
+                max_absolute_delta=max_absolute_delta,
+                severity=reader.literal(
+                    "severity",
+                    _THRESHOLD_SEVERITY_CHOICES,
+                    default="fail",
+                ),
+                description=reader.string("description", default=""),
+            ),
+        )
+    return thresholds

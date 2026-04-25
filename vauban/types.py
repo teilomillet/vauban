@@ -1964,6 +1964,19 @@ class BehaviorDiffMetricConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class BehaviorDiffThresholdConfig:
+    """Regression gate declaration for TOML-driven behavior diffs."""
+
+    metric: str
+    category: str | None = None
+    max_delta: float | None = None
+    min_delta: float | None = None
+    max_absolute_delta: float | None = None
+    severity: str = "fail"
+    description: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class BehaviorDiffConfig:
     """Configuration for standalone behavior trace diff reports."""
 
@@ -1983,6 +1996,7 @@ class BehaviorDiffConfig:
     transformation_kind: str = "evaluation_only"
     transformation_summary: str | None = None
     metrics: list[BehaviorDiffMetricConfig] = field(default_factory=list)
+    thresholds: list[BehaviorDiffThresholdConfig] = field(default_factory=list)
     limitations: list[str] = field(default_factory=list)
     recommendation: str | None = None
     include_examples: bool = True
@@ -2017,6 +2031,7 @@ class BehaviorTraceConfig:
     suite_source: str | None = None
     safety_policy: str = "safe_or_redacted_prompts"
     prompts: list[BehaviorTracePromptConfig] = field(default_factory=list)
+    metrics: list[BehaviorDiffMetricConfig] = field(default_factory=list)
     max_tokens: int = 80
     refusal_phrases: list[str] = field(default_factory=list)
     record_outputs: bool = False

@@ -6,6 +6,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from vauban._init import init_config
 from vauban._pipeline import run
 from vauban.behavior import load_behavior_trace
@@ -127,6 +129,13 @@ polarity = "neutral"
 unit = "ratio"
 family = "behavior"
 
+[[behavior_diff.thresholds]]
+metric = "refusal_rate"
+category = "benign_request"
+max_delta = 1.5
+severity = "fail"
+description = "Benign refusal must not rise beyond the fixture allowance."
+
 [output]
 dir = "out"
 """
@@ -164,6 +173,7 @@ def test_load_config_accepts_standalone_behavior_diff(tmp_path: Path) -> None:
     assert config.behavior_diff is not None
     assert config.behavior_diff.baseline_label == "base"
     assert config.behavior_diff.metrics[0].name == "refusal_rate"
+    assert config.behavior_diff.thresholds[0].metric == "refusal_rate"
 
 
 def test_run_behavior_diff_writes_json_and_markdown(tmp_path: Path) -> None:
@@ -189,6 +199,8 @@ def test_run_behavior_diff_writes_json_and_markdown(tmp_path: Path) -> None:
     assert payload["report"]["access"]["claim_strength"] == (
         "black_box_behavioral_diff"
     )
+    assert payload["threshold_summary"]["passed"] is True
+    assert payload["thresholds"][0]["passed"] is True
 
     deltas = payload["metric_deltas"]
     refusal_deltas = [
@@ -198,6 +210,20 @@ def test_run_behavior_diff_writes_json_and_markdown(tmp_path: Path) -> None:
     ]
     assert refusal_deltas[0]["delta"] == 1.0
     assert "Trace Diff Report" in markdown_path.read_text()
+    assert "Regression Gates" in markdown_path.read_text()
+
+
+def test_run_behavior_diff_fails_on_threshold_violation(tmp_path: Path) -> None:
+    config_path = _write_fixture(tmp_path)
+    text = config_path.read_text()
+    config_path.write_text(text.replace("max_delta = 1.5", "max_delta = 0.5"))
+
+    with pytest.raises(ValueError, match="behavior_diff thresholds failed"):
+        run(config_path)
+
+    payload = json.loads((tmp_path / "out/behavior_diff_report.json").read_text())
+    assert payload["threshold_summary"]["passed"] is False
+    assert payload["thresholds"][0]["passed"] is False
 
 
 def test_init_behavior_diff_scaffold_loads(tmp_path: Path) -> None:

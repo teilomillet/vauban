@@ -63,6 +63,13 @@ description = "Shared safe behavior suite."
 version = "v1"
 safety_policy = "safe_prompts_only"
 
+[[behavior_suite.metrics]]
+name = "expected_behavior_match_rate"
+description = "Expected behavior match."
+polarity = "higher_is_better"
+unit = "ratio"
+family = "behavior"
+
 [[behavior_suite.prompts]]
 id = "uncertainty-001"
 category = "uncertainty"
@@ -118,6 +125,7 @@ def test_load_config_imports_shared_behavior_suite(tmp_path: Path) -> None:
     assert config.behavior_trace.suite_description == "Shared safe behavior suite."
     assert config.behavior_trace.suite_source == str(suite_path)
     assert config.behavior_trace.prompts[0].tags == ["uncertainty", "safe"]
+    assert config.behavior_trace.metrics[0].name == "expected_behavior_match_rate"
 
 
 def test_run_behavior_trace_mode_writes_reusable_jsonl(
@@ -184,10 +192,13 @@ def test_run_behavior_trace_mode_writes_reusable_jsonl(
     assert trace.observations[1].refused is True
     assert "refusal_rate" in trace.metric_names
     assert "output_length_chars" in trace.metric_names
+    assert "expected_behavior_match_rate" in trace.metric_names
+    assert "direct_answer_rate" in trace.metric_names
 
     rows = [json.loads(line) for line in trace_path.read_text().splitlines()]
     assert rows[0]["prompt"] == "Explain why rainbows form."
     assert "output_text" not in rows[0]
+    assert rows[0]["metrics"]["expected_behavior_match_rate"] == 1.0
     assert rows[1]["refused"] is True
 
     payload = json.loads(report_path.read_text())

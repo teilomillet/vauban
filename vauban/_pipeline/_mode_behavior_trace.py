@@ -20,6 +20,8 @@ from vauban.behavior import (
     ExampleRedaction,
     ExpectedBehavior,
     JsonValue,
+    is_refusal_text,
+    score_behavior_output,
     write_behavior_trace,
 )
 from vauban.evaluate import _generate
@@ -108,7 +110,8 @@ def _collect_observations(
     observations: list[BehaviorObservation] = []
     for prompt in config.prompts:
         output = _generate(model, tokenizer, prompt.text, config.max_tokens)
-        refused = _matches_refusal(output, config.refusal_phrases)
+        refused = is_refusal_text(output, config.refusal_phrases)
+        expected_behavior = cast("ExpectedBehavior", prompt.expected_behavior)
         observations.append(
             BehaviorObservation(
                 observation_id=f"{config.model_label}:{prompt.prompt_id}",
@@ -121,27 +124,21 @@ def _collect_observations(
                     prompt.redaction,
                     record_outputs=config.record_outputs,
                 ),
-                expected_behavior=cast(
-                    "ExpectedBehavior",
-                    prompt.expected_behavior,
-                ),
+                expected_behavior=expected_behavior,
                 refused=refused,
-                metrics={
-                    "output_length_chars": float(len(output)),
-                },
+                metrics=score_behavior_output(
+                    output,
+                    refused=refused,
+                    expected_behavior=expected_behavior,
+                ),
                 redaction=cast("ExampleRedaction", prompt.redaction),
                 metadata={
                     "tags": list(prompt.tags),
+                    "scoring": "deterministic_v1",
                 },
             ),
         )
     return observations
-
-
-def _matches_refusal(output: str, refusal_phrases: list[str]) -> bool:
-    """Return whether output contains any configured refusal phrase."""
-    lower = output.lower()
-    return any(phrase.lower() in lower for phrase in refusal_phrases)
 
 
 def _prompt_for_trace(prompt: BehaviorTracePromptConfig) -> str | None:
@@ -193,6 +190,16 @@ def _report_payload(
             "safety_policy": config.safety_policy,
             "categories": list(trace.categories),
             "metric_names": list(trace.metric_names),
+            "metric_specs": [
+                {
+                    "name": metric.name,
+                    "description": metric.description,
+                    "polarity": metric.polarity,
+                    "unit": metric.unit,
+                    "family": metric.family,
+                }
+                for metric in config.metrics
+            ],
         },
         "config": {
             "model_label": config.model_label,

@@ -950,6 +950,15 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 ),
             ),
             FieldSpec(
+                key="thresholds",
+                description="Optional behavior regression gates for metric deltas.",
+                constraints=(
+                    "array of tables with metric and at least one bound:"
+                    " max_delta, min_delta, or max_absolute_delta. Optional"
+                    " category, severity=warn|fail, and description."
+                ),
+            ),
+            FieldSpec(
                 key="include_examples",
                 description="Whether to include representative paired examples.",
                 constraints="boolean; true by default.",
@@ -1009,6 +1018,11 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
             (
                 "Examples obey each observation's redaction value: safe,"
                 " redacted, or omitted."
+            ),
+            (
+                "Thresholds are evaluated after reports are written. A failing"
+                " threshold with severity='fail' exits the run non-zero, which"
+                " makes [behavior_diff] usable as behavior CI."
             ),
         ),
     ),
@@ -1074,6 +1088,19 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                     "array of strings or tables. Table keys: id/prompt_id,"
                     " text/prompt, category, expected_behavior, redaction,"
                     " tags."
+                ),
+            ),
+            FieldSpec(
+                key="metrics",
+                description=(
+                    "Metric declarations inherited by the trace summary."
+                    " External suites can declare [[behavior_suite.metrics]],"
+                    " and inline configs can declare [[behavior_trace.metrics]]."
+                ),
+                constraints=(
+                    "array of tables with name; optional description,"
+                    " polarity, unit, family. Defaults to Vauban's"
+                    " deterministic behavior metrics."
                 ),
             ),
             FieldSpec(

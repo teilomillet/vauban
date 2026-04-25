@@ -17,6 +17,7 @@ type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
 type ModelRole = Literal["baseline", "candidate", "reference", "intervention"]
 type MetricPolarity = Literal["higher_is_better", "lower_is_better", "neutral"]
 type MetricQuality = Literal["improved", "regressed", "unchanged", "neutral"]
+type ThresholdSeverity = Literal["warn", "fail"]
 type ExampleRedaction = Literal["safe", "redacted", "omitted"]
 type FindingSeverity = Literal["info", "low", "medium", "high", "critical"]
 type ChatRole = Literal["system", "user", "assistant"]
@@ -1034,6 +1035,93 @@ class ReproducibilityInfo:
             "output_dir": self.output_dir,
             "seed": self.seed,
             "notes": list(self.notes),
+        })
+
+
+@dataclass(frozen=True, slots=True)
+class BehaviorThresholdSpec:
+    """One regression gate for a behavior metric delta."""
+
+    metric: str
+    severity: ThresholdSeverity = "fail"
+    category: str | None = None
+    max_delta: float | None = None
+    min_delta: float | None = None
+    max_absolute_delta: float | None = None
+    description: str | None = None
+
+    def __post_init__(self) -> None:
+        """Validate threshold identity and bounds."""
+        _require_non_empty(self.metric, "metric")
+        if self.category is not None:
+            _require_non_empty(self.category, "category")
+        if self.description is not None:
+            _require_non_empty(self.description, "description")
+        if (
+            self.max_delta is None
+            and self.min_delta is None
+            and self.max_absolute_delta is None
+        ):
+            msg = "threshold must set at least one delta bound"
+            raise ValueError(msg)
+        if (
+            self.max_absolute_delta is not None
+            and self.max_absolute_delta < 0.0
+        ):
+            msg = "max_absolute_delta must be >= 0"
+            raise ValueError(msg)
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        """Serialize to a JSON-compatible dictionary."""
+        return _drop_none({
+            "metric": self.metric,
+            "category": self.category,
+            "severity": self.severity,
+            "max_delta": self.max_delta,
+            "min_delta": self.min_delta,
+            "max_absolute_delta": self.max_absolute_delta,
+            "description": self.description,
+        })
+
+
+@dataclass(frozen=True, slots=True)
+class BehaviorThresholdResult:
+    """Observed pass/fail result for one behavior regression gate."""
+
+    metric: str
+    category: str | None
+    severity: ThresholdSeverity
+    passed: bool
+    delta: float | None = None
+    max_delta: float | None = None
+    min_delta: float | None = None
+    max_absolute_delta: float | None = None
+    description: str | None = None
+    reason: str | None = None
+
+    def __post_init__(self) -> None:
+        """Validate threshold result fields."""
+        _require_non_empty(self.metric, "metric")
+        if self.category is not None:
+            _require_non_empty(self.category, "category")
+        if self.description is not None:
+            _require_non_empty(self.description, "description")
+        if self.reason is not None:
+            _require_non_empty(self.reason, "reason")
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        """Serialize to a JSON-compatible dictionary."""
+        return _drop_none({
+            "metric": self.metric,
+            "category": self.category,
+            "severity": self.severity,
+            "passed": self.passed,
+            "delta": self.delta,
+            "max_delta": self.max_delta,
+            "min_delta": self.min_delta,
+            "max_absolute_delta": self.max_absolute_delta,
+            "description": self.description,
+            "reason": self.reason,
         })
 
 
