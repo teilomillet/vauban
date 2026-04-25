@@ -4,13 +4,15 @@
 # Agents Guidelines
 
 Vauban is a local-first behavioral auditing toolkit for open language models.
+Its motto is: "What changes when models change?"
+
 Treat it as infrastructure for model behavior change reports: it should help a
 researcher or engineer answer what changed in model behavior, under which
 conditions, where that change appears internally, and whether the finding is
 reproducible.
 
-The flagship artifact is the Vauban Behavior Report: a reproducible report that
-compares behavior across prompts, checkpoints, fine-tunes, steering
+The flagship artifact is the Model Behavior Change Report: a reproducible report
+that compares behavior across prompts, checkpoints, fine-tunes, steering
 interventions, quantization variants, or post-training runs. Every major feature
 should make that report more accurate, more reproducible, or easier to interpret.
 
@@ -51,8 +53,25 @@ behavior change report.
 
 Use "model diffing" as the technical neighborhood, not the primary brand.
 Vauban should lead with behavioral diffs, model behavior regression testing, and
-Vauban Reports. Internal model-diffing methods matter when they improve the
-human-facing report.
+Model Behavior Change Reports. Internal model-diffing methods matter when they
+improve the human-facing report.
+
+The explicit questions Vauban should help answer are:
+- We fine-tuned a model. Did it become weird?
+- We changed a prompt template. Did safety regress?
+- We quantized this model. Did behavior drift?
+- This new checkpoint benchmarks better. What did it sacrifice?
+- Can we ship this model update without surprises?
+
+The conceptual center is:
+
+```bash
+vauban diff model_before model_after --suite behavior_suite.toml --report report.md
+```
+
+The CLI remains TOML-first, but every TOML report workflow should be shaped
+around that same comparison: before, after, suite, evidence, findings,
+recommendation, and reproducibility.
 
 Every feature should answer at least one of these questions:
 - What behavior changed?
@@ -119,14 +138,16 @@ come from TOML.
 When adding or changing a mode, ask what report artifact it emits and how that
 artifact can be compared later.
 
-A Vauban Behavior Report should include, when relevant:
+A Model Behavior Change Report should include, when relevant:
 - model metadata
+- target change
 - suite metadata
 - config and code provenance
 - behavioral metrics
 - activation-space diagnostics
 - before/after or A/B comparison
 - representative safe or redacted examples
+- recommendation
 - limitations and uncertainty
 - reproducibility details
 

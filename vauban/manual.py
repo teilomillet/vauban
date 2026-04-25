@@ -869,15 +869,24 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
     SectionSpec(
         name="behavior_report",
         description=(
-            "Standalone Vauban Behavior Report assembled from TOML-declared"
-            " evidence."
+            "Standalone Model Behavior Change Report assembled from"
+            " TOML-declared evidence."
         ),
         early_return=True,
         fields=(
             FieldSpec(
                 key="title",
                 description="Human-readable report title.",
-                constraints='string; default: "Vauban Behavior Report".',
+                constraints='string; default: "Model Behavior Change Report".',
+            ),
+            FieldSpec(
+                key="target_change",
+                description="Plain-language description of the model change.",
+                constraints=(
+                    "string such as 'base -> fine-tuned',"
+                    " 'checkpoint 1200 -> checkpoint 2000', or"
+                    " 'full precision -> quantized'."
+                ),
             ),
             FieldSpec(
                 key="markdown_report",
@@ -898,6 +907,11 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 key="limitations",
                 description="Known limitations surfaced in the report.",
                 constraints="list of strings.",
+            ),
+            FieldSpec(
+                key="recommendation",
+                description="Deployment or follow-up recommendation.",
+                constraints="string; optional.",
             ),
             FieldSpec(
                 key="baseline",
@@ -959,8 +973,8 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
         notes=(
             (
                 "This mode never loads a model. It is for shareable,"
-                " reproducible behavior reports assembled from already-known"
-                " metrics and evidence."
+                " reproducible model behavior change reports assembled from"
+                " already-known metrics and evidence."
             ),
             (
                 "Metric deltas are computed automatically by matching baseline"

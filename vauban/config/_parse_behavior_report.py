@@ -62,7 +62,7 @@ def _parse_behavior_report(raw: TomlDict) -> BehaviorReportConfig | None:
         require_toml_table("[behavior_report]", sec),
     )
 
-    title = reader.string("title", default="Vauban Behavior Report")
+    title = reader.string("title", default="Model Behavior Change Report")
     markdown_report = reader.boolean("markdown_report", default=True)
     json_filename = reader.string("json_filename", default="behavior_report.json")
     markdown_filename = reader.string(
@@ -92,6 +92,7 @@ def _parse_behavior_report(raw: TomlDict) -> BehaviorReportConfig | None:
         baseline=baseline,
         candidate=candidate,
         suite=suite,
+        target_change=reader.optional_string("target_change"),
         metrics=metrics,
         metric_deltas=metric_deltas,
         activation_findings=tuple(
@@ -99,6 +100,7 @@ def _parse_behavior_report(raw: TomlDict) -> BehaviorReportConfig | None:
         ),
         examples=tuple(_parse_examples(reader.data.get("examples"))),
         limitations=tuple(reader.string_list("limitations", default=[])),
+        recommendation=reader.optional_string("recommendation"),
         reproducibility=_parse_reproducibility(
             reader.data.get("reproducibility"),
         ),

@@ -1858,7 +1858,7 @@ class AIActConfig:
 
 @dataclass(frozen=True, slots=True)
 class BehaviorReportConfig:
-    """Configuration for standalone Vauban Behavior Report generation."""
+    """Configuration for standalone model behavior change report generation."""
 
     report: "BehaviorReport"
     markdown_report: bool = True

@@ -184,10 +184,11 @@ def test_behavior_report_serializes_nested_primitives() -> None:
         polarity="higher_is_better",
     )
     report = BehaviorReport(
-        title="Vauban Behavior Report",
+        title="Model Behavior Change Report",
         baseline=baseline,
         candidate=candidate,
         suite=suite,
+        target_change="base -> instruction-tuned",
         metrics=(metric_baseline, metric_candidate),
         metric_deltas=(
             BehaviorMetricDelta.from_metrics(metric_baseline, metric_candidate),
@@ -213,6 +214,9 @@ def test_behavior_report_serializes_nested_primitives() -> None:
             ),
         ),
         limitations=("Prompt suite is small.",),
+        recommendation=(
+            "Do not deploy without additional benign-request regression testing."
+        ),
         reproducibility=ReproducibilityInfo(
             command="vauban diff base.toml instruct.toml",
             config_path="reports/refusal-boundary.toml",
@@ -246,6 +250,11 @@ def test_behavior_report_serializes_nested_primitives() -> None:
         "version": "v1",
         "safety_policy": "aggregate_or_redacted_examples",
     }
+    assert data["target_change"] == "base -> instruction-tuned"
+    assert (
+        data["recommendation"]
+        == "Do not deploy without additional benign-request regression testing."
+    )
     assert data["metric_deltas"] == [
         {
             "name": "refusal_rate",
@@ -426,6 +435,7 @@ def test_render_behavior_report_markdown() -> None:
         baseline=baseline,
         candidate=candidate,
         suite=suite,
+        target_change="base -> candidate",
         metric_deltas=(BehaviorMetricDelta.from_metrics(metric_a, metric_b),),
         activation_findings=(
             ActivationFinding(
@@ -444,6 +454,7 @@ def test_render_behavior_report_markdown() -> None:
             ),
         ),
         limitations=("Small suite.",),
+        recommendation="Run more benign-request regression tests before shipping.",
         reproducibility=ReproducibilityInfo(
             command="vauban diff a b",
             code_revision="abc123",
@@ -454,12 +465,16 @@ def test_render_behavior_report_markdown() -> None:
     markdown = render_behavior_report_markdown(report)
 
     assert markdown.startswith("# Boundary Report\n")
-    assert "Vauban Behavior Report" in markdown
+    assert "Model Behavior Change Report" in markdown
+    assert "## Target Change" in markdown
+    assert "- base -> candidate" in markdown
     assert (
         "| refusal_rate | safety_refusal | 0.400 | 0.700 | +0.300 | improved |"
         in markdown
     )
     assert "**upper_layer_shift**" in markdown
     assert "| safe-1 | benign_request | safe | Explain rainbows. |  |" in markdown
+    assert "## Recommendation" in markdown
+    assert "- Run more benign-request regression tests before shipping." in markdown
     assert "- command: `vauban diff a b`" in markdown
     assert markdown.endswith("\n")

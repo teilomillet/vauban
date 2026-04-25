@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Teilo Millet
 # SPDX-License-Identifier: Apache-2.0
 
-# Standalone Vauban Behavior Report.
+# Standalone Model Behavior Change Report.
 # Run with:
 #   vauban examples/behavior_report.toml
 #
@@ -9,7 +9,9 @@
 # TOML-declared evidence so the config itself is easy to review and share.
 
 [behavior_report]
-title = "Example Refusal Boundary Behavior Report"
+title = "Example Refusal Boundary Model Behavior Change Report"
+target_change = "base -> instruction-tuned"
+recommendation = "Do not deploy without additional benign-request regression testing."
 limitations = [
   "This is a tiny illustrative suite, not a safety certification.",
   "Representative examples are safe or redacted.",

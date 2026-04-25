@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Teilo Millet
 # SPDX-License-Identifier: Apache-2.0
 
-"""Markdown rendering for typed Vauban Behavior Reports."""
+"""Markdown rendering for typed model behavior change reports."""
 
 from __future__ import annotations
 
@@ -12,11 +12,11 @@ if TYPE_CHECKING:
 
 
 def render_behavior_report_markdown(report: BehaviorReport) -> str:
-    """Render a Vauban Behavior Report as deterministic Markdown."""
+    """Render a model behavior change report as deterministic Markdown."""
     lines: list[str] = [
         f"# {_md_text(report.title)}",
         "",
-        "Vauban Behavior Report",
+        "Model Behavior Change Report",
         "",
         "## Summary",
         "",
@@ -34,12 +34,26 @@ def render_behavior_report_markdown(report: BehaviorReport) -> str:
         "",
     ]
 
+    _append_target_change(lines, report)
     _append_metric_delta_table(lines, report)
     _append_activation_findings(lines, report)
     _append_examples(lines, report)
+    _append_recommendation(lines, report)
     _append_limitations(lines, report)
     _append_reproducibility(lines, report)
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _append_target_change(lines: list[str], report: BehaviorReport) -> None:
+    """Append the target change section when provided."""
+    if report.target_change is None:
+        return
+    lines.extend([
+        "## Target Change",
+        "",
+        f"- {_md_text(report.target_change)}",
+        "",
+    ])
 
 
 def _append_metric_delta_table(
@@ -119,6 +133,18 @@ def _append_examples(lines: list[str], report: BehaviorReport) -> None:
             f"{_md_text(example.note or '')} |",
         )
     lines.append("")
+
+
+def _append_recommendation(lines: list[str], report: BehaviorReport) -> None:
+    """Append report recommendation when provided."""
+    if report.recommendation is None:
+        return
+    lines.extend([
+        "## Recommendation",
+        "",
+        f"- {_md_text(report.recommendation)}",
+        "",
+    ])
 
 
 def _append_limitations(lines: list[str], report: BehaviorReport) -> None:

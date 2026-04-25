@@ -3,6 +3,8 @@
 
 # Vauban
 
+What changes when models change?
+
 Open-source behavioral diffing for language models.
 
 Vauban helps researchers and engineers compare how model behavior changes across
@@ -22,7 +24,7 @@ Vauban is a TOML-first CLI for model behavior change reports:
 - compare behavior across model states, prompts, and interventions
 - measure refusal, over-refusal, uncertainty, compliance, and side effects
 - inspect activation-space evidence when it helps explain a behavioral change
-- produce JSON and Markdown behavior reports that can be shared and rerun
+- produce JSON and Markdown Model Behavior Change Reports that can be shared and rerun
 - keep controlled interventions, defenses, and stress tests as supporting tools
 
 The primary interface is not a pile of subcommands. It is:
@@ -37,6 +39,23 @@ Vauban is related to model diffing, but the product surface is narrower and more
 practical: behavioral diffs and model behavior change reports. Model-diffing
 methods are useful when they help answer what changed, why it matters, and what
 evidence supports the claim.
+
+The core question is practical model-change management:
+
+- We fine-tuned a model. Did it become weird?
+- We changed a prompt template. Did safety regress?
+- We quantized this model. Did behavior drift?
+- This new checkpoint benchmarks better. What did it sacrifice?
+- Can we ship this model update without surprises?
+
+Conceptually, the center is:
+
+```bash
+vauban diff model_before model_after --suite behavior_suite.toml --report report.md
+```
+
+The durable interface remains TOML-first: configs should encode the same
+comparison, suite, evidence, limitations, and output report in a shareable file.
 
 ## What Vauban is not
 
@@ -174,9 +193,9 @@ vauban run.toml
 
 By default, output goes to `output/` relative to the TOML file.
 
-## Vauban Behavior Reports
+## Model Behavior Change Reports
 
-The flagship artifact is a Vauban Behavior Report: a reproducible behavioral
+The flagship artifact is a Model Behavior Change Report: a reproducible behavioral
 change report for a model update, fine-tune, prompt/template change, controlled
 intervention, quantization variant, or post-training run.
 
@@ -185,7 +204,9 @@ model; it assembles declared evidence into JSON and Markdown:
 
 ```toml
 [behavior_report]
-title = "Refusal Boundary Behavior Report"
+title = "Refusal Boundary Model Behavior Change Report"
+target_change = "base -> instruction-tuned"
+recommendation = "Do not deploy without additional benign-request regression testing."
 limitations = [
   "Small suite; not a safety certification.",
   "Representative examples are safe or redacted.",

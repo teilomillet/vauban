@@ -17,6 +17,8 @@ def _behavior_report_toml() -> str:
     return """
 [behavior_report]
 title = "Boundary Shift Report"
+target_change = "base -> instruct"
+recommendation = "Run additional benign-request regression testing before shipping."
 limitations = ["Prompt suite is intentionally small."]
 markdown_report = true
 
@@ -86,6 +88,11 @@ def test_load_config_accepts_standalone_behavior_report(
     assert config.behavior_report is not None
     report = config.behavior_report.report
     assert report.title == "Boundary Shift Report"
+    assert report.target_change == "base -> instruct"
+    assert (
+        report.recommendation
+        == "Run additional benign-request regression testing before shipping."
+    )
     assert report.baseline.label == "base"
     assert report.candidate.label == "instruct"
     assert len(report.metric_deltas) == 1
@@ -111,13 +118,21 @@ def test_run_behavior_report_writes_json_and_markdown(
 
     payload = json.loads(json_path.read_text())
     assert payload["report_version"] == "behavior_report_v1"
+    assert payload["target_change"] == "base -> instruct"
+    assert (
+        payload["recommendation"]
+        == "Run additional benign-request regression testing before shipping."
+    )
     assert payload["metric_deltas"][0]["quality"] == "improved"
     assert payload["metric_deltas"][0]["delta"] == pytest.approx(0.30)
 
     markdown = markdown_path.read_text()
     assert "# Boundary Shift Report" in markdown
-    assert "Vauban Behavior Report" in markdown
+    assert "Model Behavior Change Report" in markdown
+    assert "## Target Change" in markdown
+    assert "base -> instruct" in markdown
     assert "upper_layer_shift" in markdown
+    assert "## Recommendation" in markdown
 
     log_entry = json.loads(log_path.read_text().splitlines()[0])
     assert log_entry["pipeline_mode"] == "behavior_report"

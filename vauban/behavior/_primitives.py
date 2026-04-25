@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Teilo Millet
 # SPDX-License-Identifier: Apache-2.0
 
-"""Typed primitives for Vauban Behavior Reports.
+"""Typed primitives for Vauban model behavior change reports.
 
 This module intentionally contains no model runtime or TOML parsing logic. It is
 the shared vocabulary used by future suite, diff, and report code.
@@ -488,17 +488,19 @@ class ReproducibilityInfo:
 
 @dataclass(frozen=True, slots=True)
 class BehaviorReport:
-    """Top-level typed artifact for a Vauban Behavior Report."""
+    """Top-level typed artifact for a model behavior change report."""
 
     title: str
     baseline: ReportModelRef
     candidate: ReportModelRef
     suite: BehaviorSuiteRef
+    target_change: str | None = None
     metrics: tuple[BehaviorMetric, ...] = field(default_factory=tuple)
     metric_deltas: tuple[BehaviorMetricDelta, ...] = field(default_factory=tuple)
     activation_findings: tuple[ActivationFinding, ...] = field(default_factory=tuple)
     examples: tuple[BehaviorExample, ...] = field(default_factory=tuple)
     limitations: tuple[str, ...] = field(default_factory=tuple)
+    recommendation: str | None = None
     reproducibility: ReproducibilityInfo | None = None
     report_version: str = "behavior_report_v1"
 
@@ -506,6 +508,10 @@ class BehaviorReport:
         """Validate report title, version, and limitations."""
         _require_non_empty(self.title, "title")
         _require_non_empty(self.report_version, "report_version")
+        if self.target_change is not None:
+            _require_non_empty(self.target_change, "target_change")
+        if self.recommendation is not None:
+            _require_non_empty(self.recommendation, "recommendation")
         _require_non_empty_items(
             self.limitations,
             "limitations",
@@ -520,6 +526,7 @@ class BehaviorReport:
             "baseline": self.baseline.to_dict(),
             "candidate": self.candidate.to_dict(),
             "suite": self.suite.to_dict(),
+            "target_change": self.target_change,
             "metrics": [metric.to_dict() for metric in self.metrics],
             "metric_deltas": [
                 delta.to_dict() for delta in self.metric_deltas
@@ -529,6 +536,7 @@ class BehaviorReport:
             ],
             "examples": [example.to_dict() for example in self.examples],
             "limitations": list(self.limitations),
+            "recommendation": self.recommendation,
             "reproducibility": (
                 self.reproducibility.to_dict()
                 if self.reproducibility is not None

@@ -81,7 +81,9 @@ _DATA_SECTION_KEYS: frozenset[str] = frozenset({"harmful", "harmless", "borderli
 _OUTPUT_SECTION_KEYS: frozenset[str] = frozenset({"dir"})
 _BEHAVIOR_REPORT_SECTION_KEYS: frozenset[str] = frozenset({
     "title",
+    "target_change",
     "limitations",
+    "recommendation",
     "markdown_report",
     "json_filename",
     "markdown_filename",
@@ -301,13 +303,15 @@ def _behavior_report_section_schema() -> JsonSchema:
     """Schema for the standalone [behavior_report] section."""
     return {
         "type": "object",
-        "description": "Standalone typed Vauban Behavior Report.",
+        "description": "Standalone typed Model Behavior Change Report.",
         "properties": {
             "title": {"type": "string"},
+            "target_change": {"type": "string"},
             "limitations": {
                 "type": "array",
                 "items": {"type": "string"},
             },
+            "recommendation": {"type": "string"},
             "markdown_report": {"type": "boolean", "default": True},
             "json_filename": {
                 "type": "string",
