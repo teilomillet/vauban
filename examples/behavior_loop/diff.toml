@@ -4,6 +4,8 @@
 [behavior_diff]
 baseline_trace = "../../output/examples/behavior_loop/baseline.jsonl"
 candidate_trace = "../../output/examples/behavior_loop/candidate.jsonl"
+baseline_report = "../../output/examples/behavior_loop/baseline_behavior_trace_report.json"
+candidate_report = "../../output/examples/behavior_loop/candidate_behavior_trace_report.json"
 baseline_label = "baseline"
 candidate_label = "candidate"
 title = "Behavior Loop Lite Report"

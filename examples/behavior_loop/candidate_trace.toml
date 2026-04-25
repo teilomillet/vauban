@@ -12,8 +12,13 @@ harmless = "default"
 model_label = "candidate"
 suite = "suite.toml"
 output_trace = "../../output/examples/behavior_loop/candidate.jsonl"
+json_filename = "candidate_behavior_trace_report.json"
 max_tokens = 80
 record_outputs = false
+collect_runtime_evidence = true
+runtime_backend = "mlx"
+collect_layers = [0]
+return_logprobs = true
 
 [output]
 dir = "../../output/examples/behavior_loop"

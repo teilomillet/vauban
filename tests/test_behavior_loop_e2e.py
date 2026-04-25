@@ -3,21 +3,38 @@
 
 """End-to-end behavior trace -> diff -> report workflow tests."""
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING, cast
 
 from tests.conftest import make_early_mode_context
+from vauban._backend import get_backend
 from vauban._pipeline import run
 from vauban._pipeline._mode_behavior_trace import _run_behavior_trace_mode
-from vauban.types import BehaviorTraceConfig, BehaviorTracePromptConfig
+from vauban.config import load_config
+from vauban.types import (
+    BehaviorTraceConfig,
+    BehaviorTracePromptConfig,
+    RuntimeBackendConfigName,
+)
+
+if TYPE_CHECKING:
+    import pytest
+
+    from vauban.types import CausalLM, Tokenizer
+
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_BEHAVIOR_LOOP_EXAMPLES = _REPO_ROOT / "examples" / "behavior_loop"
 
 
 def _trace_config(
     tmp_path: Path,
     *,
     label: str,
+    runtime_backend: RuntimeBackendConfigName,
 ) -> BehaviorTraceConfig:
     """Build a trace config for one model state."""
     return BehaviorTraceConfig(
@@ -39,8 +56,13 @@ def _trace_config(
             ),
         ],
         output_trace=tmp_path / f"{label}.jsonl",
+        json_filename=f"{label}_behavior_trace_report.json",
         refusal_phrases=["I cannot"],
         record_outputs=False,
+        collect_runtime_evidence=True,
+        runtime_backend=runtime_backend,
+        collect_layers=[0],
+        return_logprobs=True,
     )
 
 
@@ -50,6 +72,8 @@ def _diff_config(tmp_path: Path) -> str:
 [behavior_diff]
 baseline_trace = "{tmp_path / 'baseline.jsonl'}"
 candidate_trace = "{tmp_path / 'candidate.jsonl'}"
+baseline_report = "{tmp_path / 'baseline_behavior_trace_report.json'}"
+candidate_report = "{tmp_path / 'candidate_behavior_trace_report.json'}"
 baseline_label = "baseline"
 candidate_label = "candidate"
 title = "Behavior Loop E2E"
@@ -90,6 +114,8 @@ dir = "{tmp_path / 'report'}"
 def test_behavior_trace_diff_report_loop(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    mock_model: CausalLM,
+    mock_tokenizer: Tokenizer,
 ) -> None:
     """Collect two traces and diff them into a report with passing gates."""
     outputs: dict[str, dict[str, str]] = {
@@ -119,15 +145,21 @@ def test_behavior_trace_diff_report_loop(
         "vauban._pipeline._mode_behavior_trace._generate",
         fake_generate,
     )
+    runtime_backend = cast("RuntimeBackendConfigName", get_backend())
 
     for label in ("baseline", "candidate"):
         current_label = label
-        _run_behavior_trace_mode(
-            make_early_mode_context(
+        context = make_early_mode_context(
+            tmp_path,
+            behavior_trace=_trace_config(
                 tmp_path,
-                behavior_trace=_trace_config(tmp_path, label=label),
+                label=label,
+                runtime_backend=runtime_backend,
             ),
         )
+        context.model = mock_model
+        context.tokenizer = mock_tokenizer
+        _run_behavior_trace_mode(context)
 
     config_path = tmp_path / "diff.toml"
     config_path.write_text(_diff_config(tmp_path))
@@ -142,6 +174,11 @@ def test_behavior_trace_diff_report_loop(
     assert payload["threshold_summary"]["passed"] is True
     assert payload["baseline_trace"]["n_observations"] == 2
     assert payload["candidate_trace"]["n_observations"] == 2
+    assert payload["runtime_evidence_diff"]["shared_prompt_ids"] == [
+        "benign-001",
+        "uncertainty-001",
+    ]
+    assert payload["runtime_evidence_diff"]["shared_activation_layers"] == ["0"]
     assert payload["reproducibility"]["scorers"] == ["deterministic_v1"]
     assert len(payload["reproducibility"]["artifact_hashes"]["config"]) == 64
     assert (
@@ -152,4 +189,27 @@ def test_behavior_trace_diff_report_loop(
         len(payload["reproducibility"]["artifact_hashes"]["candidate_trace"])
         == 64
     )
-    assert "Regression Gates" in report_md.read_text()
+    report_text = report_md.read_text()
+    assert "Runtime Evidence Sidecars" in report_text
+    assert "Regression Gates" in report_text
+
+
+def test_behavior_loop_examples_load_with_runtime_sidecars() -> None:
+    """Checked-in behavior-loop configs should expose the full sidecar loop."""
+    baseline = load_config(_BEHAVIOR_LOOP_EXAMPLES / "baseline_trace.toml")
+    candidate = load_config(_BEHAVIOR_LOOP_EXAMPLES / "candidate_trace.toml")
+    diff = load_config(_BEHAVIOR_LOOP_EXAMPLES / "diff.toml")
+
+    assert baseline.behavior_trace is not None
+    assert baseline.behavior_trace.collect_runtime_evidence is True
+    assert baseline.behavior_trace.json_filename == (
+        "baseline_behavior_trace_report.json"
+    )
+    assert candidate.behavior_trace is not None
+    assert candidate.behavior_trace.collect_runtime_evidence is True
+    assert candidate.behavior_trace.json_filename == (
+        "candidate_behavior_trace_report.json"
+    )
+    assert diff.behavior_diff is not None
+    assert diff.behavior_diff.baseline_report is not None
+    assert diff.behavior_diff.candidate_report is not None
