@@ -6,6 +6,9 @@
 Vauban is a local-first behavioral auditing toolkit for open language models.
 Its motto is: "What changes when models change?"
 
+Model transformations are the object. Access-aware auditing is the method.
+Vauban Reports are the artifact.
+
 Treat it as infrastructure for model behavior change reports: it should help a
 researcher or engineer answer what changed in model behavior, under which
 conditions, where that change appears internally, and whether the finding is
@@ -51,6 +54,14 @@ guard, SIC, soft prompts, model-diffing methods, and surface mapping are
 supporting instruments. The product surface is the behavioral diff and the model
 behavior change report.
 
+Center model transformations:
+- fine-tuning and post-training
+- checkpoint updates
+- prompt-template or system-wrapper changes
+- quantization and deployment packaging
+- model merges, soups, and adapter composition
+- controlled steering or runtime interventions
+
 Use "model diffing" as the technical neighborhood, not the primary brand.
 Vauban should lead with behavioral diffs, model behavior regression testing, and
 Model Behavior Change Reports. Internal model-diffing methods matter when they
@@ -82,6 +93,22 @@ Every feature should answer at least one of these questions:
 - Can the finding be reproduced from config, data, code version, and outputs?
 
 If a feature does not support those questions, defer it.
+
+## Access-Aware Claims
+
+Claim strength depends on access. Do not imply causal or internal conclusions
+from black-box outputs alone.
+
+Use this ladder when designing features and writing reports:
+- One model or endpoint snapshot supports a behavioral profile.
+- Two output traces or run reports support a black-box behavioral diff.
+- Logprobs support a distributional diff when they are available.
+- Local weights and activations support activation diagnostics.
+- Base plus transformed weights support the strongest model-change audit.
+
+When base weights, training data, checkpoints, logits, or activations are
+missing, say that explicitly in the report and narrow the conclusion. The
+no-base-model problem is a reporting constraint, not the whole project.
 
 ## Responsible Framing
 

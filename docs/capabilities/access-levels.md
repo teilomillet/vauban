@@ -1,7 +1,7 @@
 ---
-title: "Access Levels — What You Can Do With Weights vs Endpoint vs Black Box"
-description: "Vauban capabilities by access tier: full weight access enables everything, endpoint access enables API eval and jailbreak templates, black box is limited to text analysis."
-keywords: "LLM access levels, weight access, API testing, black box testing, model security testing tiers"
+title: "Access Levels — What Claims Vauban Can Support"
+description: "Vauban access levels for model behavior change reports: output traces, logprobs, local weights, activations, and base-plus-transformed model comparisons."
+keywords: "LLM access levels, model behavior audit, behavioral diff, weight access, activation diagnostics, black box model evaluation"
 ---
 
 <!-- SPDX-FileCopyrightText: 2026 Teilo Millet -->
@@ -9,7 +9,29 @@ keywords: "LLM access levels, weight access, API testing, black box testing, mod
 
 # Access Levels
 
-What you can do with Vauban depends on what access you have to the model. Three tiers, from most capable to least.
+What Vauban can claim depends on what access you have to the model. Access is
+not just a tooling constraint. It is an epistemic constraint: a report should not
+pretend to know internals when it only observed outputs.
+
+Vauban's target artifact is a Model Behavior Change Report, so the access
+question is:
+
+> What evidence do we have for this behavior-change claim?
+
+## Claim ladder
+
+| Access | Report mode | Supported claim |
+|---|---|---|
+| One model or endpoint snapshot | Behavioral profile | The model behaved this way under this suite. |
+| Two output traces or run reports | Behavioral diff | Observed behavior changed between snapshots. |
+| Endpoint with logprobs | Distributional diff | Token probabilities shifted in these cases. |
+| Local weights and activations | Activation diagnostics | Internal signals correlate with behavior. |
+| Base plus transformed model | Model-change audit | The transformation changed behavior and internals this way. |
+
+The no-base-model problem is the common case: you often do not have the base
+model, training data, internal checkpoints, logits, activations, or prompt
+history. That does not make auditing impossible. It means the report must narrow
+its conclusion and state the missing evidence.
 
 ## Full weight access
 
@@ -62,6 +84,11 @@ You have the model weights locally — either downloaded from HuggingFace or sto
 
 This is the access level assumed throughout most of this documentation.
 
+When you also have both a base model and the transformed model, Vauban can make
+the strongest report: behavior changed under a suite, activation diagnostics
+shifted in specified layers, and weight-diff or activation-diff evidence can be
+attached to the same artifact.
+
 ## Endpoint access
 
 You have an OpenAI-compatible API endpoint. You can send prompts and receive completions, but you cannot inspect or modify the model's internals.
@@ -86,6 +113,8 @@ You have an OpenAI-compatible API endpoint. You can send prompts and receive com
 
 - **Classify** — harm taxonomy scoring (text-only, no model needed)
 - **Score** — response quality assessment (text-only)
+- **Behavior reports** — attach endpoint outputs, aggregate metrics, and
+  limitations as report evidence
 
 ### What you cannot do
 
@@ -93,7 +122,11 @@ No measurement (requires forward pass for activation collection). No probing (re
 
 > **Backpropagation** — the algorithm that computes gradients by working backward through the model's layers. It tells you "how much would the output change if I tweaked this weight or this input token?" Gradient-based attacks need backpropagation to figure out which token changes would be most effective, so they require full access to the model's internals.
 
-The key workflow at this tier: optimize adversarial tokens on a local model with full weight access, then test them against the remote endpoint via API eval to measure transfer.
+The key workflow at this tier: collect paired outputs or run reports for the
+same suite before and after a model, prompt, or deployment change. That supports
+a black-box behavioral diff. If the endpoint exposes logprobs, the report can
+also describe distributional drift; without logprobs, it should stay at the
+observed-output level.
 
 > **Transfer** — when adversarial tokens optimized on one model also work on a different model. This is why endpoint-only access is not fully safe: an attacker can optimize against a local copy (or similar model) and then send the resulting tokens to your API.
 
@@ -115,6 +148,10 @@ You can only observe the model's outputs. No API — perhaps you are testing thr
 ### What you cannot do
 
 Almost everything. Vauban is designed for weight access. Without at least API access, the tooling degrades to text analysis utilities.
+
+Black-box evidence can still be useful in a Model Behavior Change Report, but
+only as observed examples or manually collected traces. It cannot justify claims
+about internal mechanisms.
 
 ## Access matrix
 
@@ -139,3 +176,10 @@ Almost everything. Vauban is designed for weight access. Without at least API ac
 | Jailbreak templates | Yes | Yes | Yes |
 | Classify | Yes | Yes | Yes |
 | Score | Yes | Yes | Yes |
+| Behavior report from declared evidence | Yes | Yes | Yes |
+
+## Reporting rule
+
+Every report should say which access tier produced each finding. If a finding
+depends on internals, require local weights or activations. If a finding depends
+only on outputs, phrase it as observed behavior, not as a mechanistic cause.

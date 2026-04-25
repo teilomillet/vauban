@@ -7,10 +7,14 @@ What changes when models change?
 
 Open-source behavioral diffing for language models.
 
-Vauban helps researchers and engineers compare how model behavior changes across
-checkpoints, fine-tunes, prompts, steering interventions, quantization variants,
-and post-training runs. It combines behavioral evaluation, activation-space
-diagnostics, and reproducible reports.
+Vauban helps researchers and engineers audit model transformations:
+fine-tunes, checkpoint updates, merges, prompt wrappers, steering interventions,
+quantization variants, and post-training runs. It asks what changed
+behaviorally, what evidence supports that claim, and how strong the claim can be
+given the access available.
+
+Model transformations are the object. Access-aware auditing is the method.
+Vauban Reports are the artifact.
 
 Named after [Sébastien Le Prestre de Vauban](https://en.wikipedia.org/wiki/Vauban),
 the military engineer who worked both siege and fortification. Vauban does the
@@ -24,6 +28,7 @@ Vauban is a TOML-first CLI for model behavior change reports:
 - compare behavior across model states, prompts, and interventions
 - measure refusal, over-refusal, uncertainty, compliance, and side effects
 - inspect activation-space evidence when it helps explain a behavioral change
+- state the access level behind each claim instead of over-reading the evidence
 - produce JSON and Markdown Model Behavior Change Reports that can be shared and rerun
 - keep controlled interventions, defenses, and stress tests as supporting tools
 
@@ -56,6 +61,26 @@ vauban diff model_before model_after --suite behavior_suite.toml --report report
 
 The durable interface remains TOML-first: configs should encode the same
 comparison, suite, evidence, limitations, and output report in a shareable file.
+
+## Access-aware auditing
+
+Vauban should not make the same claim from every evidence source. The report
+language depends on what you can observe:
+
+| Access | What Vauban can support | Claim strength |
+|---|---|---|
+| One model or endpoint snapshot | Behavioral profile | "This is what the model did under this suite." |
+| Two output traces or run reports | Behavioral diff | "Behavior changed across these observed snapshots." |
+| Endpoint with logprobs | Distributional diff | "Token probabilities shifted in these cases." |
+| Local weights and activations | Activation diagnostics | "This internal signal correlates with the behavior." |
+| Base plus transformed model | Model-change audit | "This transformation changed behavior and internals this way." |
+
+The no-base-model problem is not the product. It is the discipline: if the base
+model, training data, checkpoints, logits, or activations are unavailable, the
+report must say so and narrow its conclusions.
+
+The longer thesis is in
+[What Changes When Models Are Changed?](docs/research/what-changes-when-models-are-changed.md).
 
 ## What Vauban is not
 

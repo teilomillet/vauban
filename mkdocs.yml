@@ -3,9 +3,9 @@
 
 site_name: Vauban
 site_description: >-
-  Research instrument for understanding and reshaping LLM behavior
-  through activation-space geometry. Measure, steer, defend, and
-  stress-test language model safety alignment.
+  TOML-first toolkit for access-aware model behavior change reports.
+  Audit behavioral diffs across fine-tunes, checkpoint updates,
+  prompt wrappers, steering interventions, quantization, and post-training runs.
 site_url: https://docs.vauban.dev/
 repo_url: https://github.com/teilomillet/vauban
 repo_name: teilomillet/vauban
@@ -128,6 +128,7 @@ nav:
     - Release Notes:
       - v0.4.1: releases/v0.4.1.md
   - Research:
+    - What Changes When Models Are Changed?: research/what-changes-when-models-are-changed.md
     - Mechanistic Interpretability of Reasoning: research/reasoning_mech_interp.md
     - Tokenizer Embedding Analysis: research/tokenizer_analysis.md
   - Course:
