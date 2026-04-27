@@ -130,7 +130,7 @@ nav:
   - Research:
     - What Changes When Models Are Changed?: research/what-changes-when-models-are-changed.md
     - Behavior Diff Traces: research/behavior-diff-traces.md
-    - Runtime Primitive Pipeline: research/runtime-primitive-pipeline.md
+    - Trace-First Inference Stack: research/trace-first-inference-stack.md
     - Reports:
       - Arditi Refusal Direction Lite: research/reports/arditi-refusal-direction-lite.md
     - Mechanistic Interpretability of Reasoning: research/reasoning_mech_interp.md
