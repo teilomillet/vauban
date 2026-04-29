@@ -7,12 +7,35 @@
 from tests.conftest import MockCausalLM, MockTokenizer
 from vauban.evaluate import (
     DEFAULT_REFUSAL_PHRASES,
+    _decode_generated,
     _judge_refusal_rate,
     _kl_divergence,
     _perplexity,
     _refusal_rate,
     evaluate,
 )
+
+
+class TestDecodeGenerated:
+    def test_skips_special_tokens_when_supported(self) -> None:
+        class SpecialAwareTokenizer(MockTokenizer):
+            def decode(
+                self,
+                token_ids: list[int],
+                skip_special_tokens: bool = False,
+            ) -> str:
+                del token_ids
+                return "clean" if skip_special_tokens else "clean<|im_end|>"
+
+        assert _decode_generated(SpecialAwareTokenizer(32), [1, 2]) == "clean"
+
+    def test_falls_back_for_legacy_decode(self) -> None:
+        class LegacyDecodeTokenizer(MockTokenizer):
+            def decode(self, token_ids: list[int]) -> str:
+                del token_ids
+                return "legacy"
+
+        assert _decode_generated(LegacyDecodeTokenizer(32), [1, 2]) == "legacy"
 
 
 class TestRefusalRate:

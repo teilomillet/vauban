@@ -57,11 +57,17 @@ class Tokenizer(Protocol):
     """Tokenizer with chat template support."""
 
     def encode(self, text: str) -> list[int]: ...
-    def decode(self, token_ids: list[int]) -> str: ...
+    def decode(
+        self,
+        token_ids: list[int],
+        skip_special_tokens: bool = False,
+    ) -> str: ...
     def apply_chat_template(
         self,
         messages: list[dict[str, str]],
         tokenize: bool = True,
+        add_generation_prompt: bool = False,
+        enable_thinking: bool = True,
     ) -> str | list[int]: ...
 
 

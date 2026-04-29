@@ -77,14 +77,21 @@ class MockTokenizer:
         """Map each character to a token id (mod vocab_size)."""
         return [ord(c) % self._vocab_size for c in text]
 
-    def decode(self, token_ids: list[int]) -> str:
+    def decode(
+        self,
+        token_ids: list[int],
+        skip_special_tokens: bool = False,
+    ) -> str:
         """Map token ids back to characters."""
+        del skip_special_tokens
         return "".join(chr(t + 65) for t in token_ids)
 
     def apply_chat_template(
         self,
         messages: list[dict[str, str]],
         tokenize: bool = True,
+        add_generation_prompt: bool = False,
+        enable_thinking: bool = True,
     ) -> str | list[int]:
         """Template with detectable boundary: [USER]{content}[/USER][ASST]."""
         parts: list[str] = []
@@ -93,6 +100,7 @@ class MockTokenizer:
                 parts.append(f"[USER]{m['content']}[/USER]")
             else:
                 parts.append(m["content"])
+        del add_generation_prompt, enable_thinking
         parts.append("[ASST]")
         text = "".join(parts)
         if tokenize:

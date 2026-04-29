@@ -65,7 +65,22 @@ def encode_chat_prompt(
     """
     from vauban import _ops as ops
 
-    text = tokenizer.apply_chat_template(messages, tokenize=False)
+    try:
+        text = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=False,
+        )
+    except TypeError:
+        try:
+            text = tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+        except TypeError:
+            text = tokenizer.apply_chat_template(messages, tokenize=False)
     if not isinstance(text, str):
         msg = "apply_chat_template must return str when tokenize=False"
         raise TypeError(msg)

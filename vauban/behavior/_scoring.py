@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -35,6 +36,8 @@ _CLARIFYING_PHRASES: tuple[str, ...] = (
     "can you clarify",
     "please clarify",
     "what do you mean",
+)
+_CLARIFYING_QUESTION_WORDS: tuple[str, ...] = (
     "which",
     "what",
     "who",
@@ -42,6 +45,10 @@ _CLARIFYING_PHRASES: tuple[str, ...] = (
     "when",
     "why",
     "how",
+)
+_CLARIFYING_QUESTION_RE = re.compile(
+    r"(^|[,;:]\s*|\b(?:and|or)\s+)"
+    r"(" + "|".join(_CLARIFYING_QUESTION_WORDS) + r")\b",
 )
 _ASSERTIVE_PHRASES: tuple[str, ...] = (
     "definitely",
@@ -368,10 +375,37 @@ def _contains_any(text: str, phrases: tuple[str, ...]) -> bool:
 
 def _asks_clarifying_question(output: str) -> bool:
     """Return whether output appears to ask a clarifying question."""
-    stripped = output.strip().lower()
-    if "?" not in stripped:
-        return False
-    return any(phrase in stripped for phrase in _CLARIFYING_PHRASES)
+    return any(
+        _question_segment_is_clarifying(segment)
+        for segment in _questions(output)
+    )
+
+
+def _questions(output: str) -> tuple[str, ...]:
+    """Extract question-like text spans ending in a question mark."""
+    questions: list[str] = []
+    start = 0
+    for index, char in enumerate(output):
+        if char != "?":
+            continue
+        boundary = max(
+            output.rfind(".", 0, index),
+            output.rfind("!", 0, index),
+            output.rfind("\n", 0, index),
+        )
+        if boundary >= start:
+            start = boundary + 1
+        questions.append(output[start:index + 1].strip().lower())
+        start = index + 1
+    return tuple(questions)
+
+
+def _question_segment_is_clarifying(segment: str) -> bool:
+    """Return whether one question segment contains clarification language."""
+    return (
+        any(phrase in segment for phrase in _CLARIFYING_PHRASES)
+        or _CLARIFYING_QUESTION_RE.search(segment) is not None
+    )
 
 
 def _expected_behavior_match(

@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
+[model]
+# Replace with the transformed model path or local MLX model directory.
+path = "models/qwen3.6-27b-candidate-mlx"
+
+[data]
+harmful = "default"
+harmless = "default"
+
+[behavior_trace]
+model_label = "qwen3.6-27b-candidate"
+suite = "suite.toml"
+max_tokens = 192
+record_outputs = true
+collect_runtime_evidence = false
+output_trace = "../../output/examples/qwen_coding_refusal_audit/candidate/candidate.jsonl"
+json_filename = "candidate_behavior_trace_report.json"
+
+[output]
+dir = "../../output/examples/qwen_coding_refusal_audit/candidate"

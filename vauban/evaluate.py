@@ -127,7 +127,15 @@ def _generate(
             break
         token_ids = ops.array([[next_token]])  # decode: single token
 
-    return tokenizer.decode(generated)
+    return _decode_generated(tokenizer, generated)
+
+
+def _decode_generated(tokenizer: Tokenizer, token_ids: list[int]) -> str:
+    """Decode generated tokens while omitting special markers when supported."""
+    try:
+        return tokenizer.decode(token_ids, skip_special_tokens=True)
+    except TypeError:
+        return tokenizer.decode(token_ids)
 
 
 def _perplexity(

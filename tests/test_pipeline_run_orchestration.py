@@ -20,6 +20,8 @@ from vauban._pipeline._mode_flywheel import _run_flywheel_mode
 from vauban._pipeline._run_eval import run_eval_phase
 from vauban._pipeline._run_state import RunState
 from vauban.types import (
+    BehaviorTraceConfig,
+    BehaviorTracePromptConfig,
     EvalConfig,
     EvalResult,
     FlywheelConfig,
@@ -429,6 +431,68 @@ class TestRunOrchestration:
         pipeline_run_module.run(tmp_path / "before_prompts.toml")
 
         assert phases == ["standalone", "before_prompts"]
+
+    def test_behavior_trace_skips_initial_dequantization(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Behavior traces should leave large quantized audit targets compressed."""
+        config = make_pipeline_config(
+            tmp_path,
+            behavior_trace=BehaviorTraceConfig(
+                prompts=[
+                    BehaviorTracePromptConfig(
+                        prompt_id="p1",
+                        text="Explain rainbows.",
+                    ),
+                ],
+            ),
+        )
+        events: list[str] = []
+        model = object()
+        tokenizer = object()
+
+        def _fake_dispatch(phase: str, context: object) -> bool:
+            del context
+            events.append(f"dispatch:{phase}")
+            return phase == "before_prompts"
+
+        def _fake_load_model(model_path: str) -> tuple[object, object]:
+            events.append(f"load:{model_path}")
+            return model, tokenizer
+
+        def _unexpected_is_quantized(candidate: object) -> bool:
+            del candidate
+            raise AssertionError("behavior_trace should run before dequantizing")
+
+        def _unexpected_dequantize(candidate: object) -> None:
+            del candidate
+            raise AssertionError("behavior_trace should not dequantize")
+
+        monkeypatch.setattr("vauban.config.load_config", lambda _path: config)
+        monkeypatch.setattr(
+            pipeline_run_module,
+            "dispatch_early_mode",
+            _fake_dispatch,
+        )
+        monkeypatch.setattr("vauban._model_io.load_model", _fake_load_model)
+        monkeypatch.setattr(
+            "vauban.dequantize.is_quantized",
+            _unexpected_is_quantized,
+        )
+        monkeypatch.setattr(
+            "vauban.dequantize.dequantize_model",
+            _unexpected_dequantize,
+        )
+
+        pipeline_run_module.run(tmp_path / "behavior_trace.toml")
+
+        assert events == [
+            "dispatch:standalone",
+            f"load:{config.model_path}",
+            "dispatch:before_prompts",
+        ]
 
     def test_after_measure_mode_returns_before_late_phases(
         self,

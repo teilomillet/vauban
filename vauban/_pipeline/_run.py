@@ -28,6 +28,7 @@ def run(config_path: str | Path) -> None:
     from vauban._model_io import load_model
     from vauban._pipeline._context import EarlyModeContext as _EarlyModeContext
     from vauban.config import load_config
+    from vauban.config._mode_registry import active_early_mode_for_phase
     from vauban.dequantize import dequantize_model, is_quantized
 
     config = load_config(config_path)
@@ -50,6 +51,25 @@ def run(config_path: str | Path) -> None:
         elapsed=time.monotonic() - t0,
     )
     model, tokenizer = load_model(config.model_path)
+
+    early_spec = active_early_mode_for_phase(config, "before_prompts")
+    if (
+        early_spec is not None
+        and early_spec.mode == "behavior_trace"
+        and config.lora_load is None
+    ):
+        # Behavior traces only need generation/runtime summaries. Keep quantized
+        # MLX models quantized so large 4-bit audit targets remain runnable.
+        trace_ctx = _EarlyModeContext(
+            config_path=config_path,
+            config=config,
+            model=model,
+            tokenizer=tokenizer,
+            t0=t0,
+        )
+        if dispatch_early_mode("before_prompts", trace_ctx):
+            return
+
     if is_quantized(model):
         log(
             "Dequantizing model weights",

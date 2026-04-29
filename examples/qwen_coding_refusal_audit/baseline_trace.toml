@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
+[model]
+path = "mlx-community/Qwen3.6-27B-OptiQ-4bit"
+
+[data]
+harmful = "default"
+harmless = "default"
+
+[behavior_trace]
+model_label = "qwen3.6-27b-optiq-4bit-baseline"
+suite = "suite.toml"
+max_tokens = 192
+record_outputs = true
+collect_runtime_evidence = false
+output_trace = "../../output/examples/qwen_coding_refusal_audit/baseline/baseline.jsonl"
+json_filename = "baseline_behavior_trace_report.json"
+
+[output]
+dir = "../../output/examples/qwen_coding_refusal_audit/baseline"
