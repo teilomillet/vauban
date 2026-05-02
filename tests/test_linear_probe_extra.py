@@ -117,3 +117,26 @@ class TestLinearProbeHelpers:
         prob_list = [round(float(probs[i].item()), 3) for i in range(3)]
         assert prob_list == [0.119, 0.5, 0.881]
         assert float(loss.item()) > 0.0
+
+    def test_train_single_probe_accepts_cuda_activations(self) -> None:
+        torch = pytest.importorskip("torch")
+        if not torch.cuda.is_available():
+            pytest.skip("CUDA is not available")
+
+        activations = torch.randn((8, 4), device="cuda")
+        labels = torch.tensor(
+            [1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0],
+            device="cuda",
+        )
+
+        accuracy, _final_loss, history = _train_single_probe(
+            activations,
+            labels,
+            n_epochs=1,
+            learning_rate=0.01,
+            batch_size=4,
+            regularization=0.0,
+        )
+
+        assert 0.0 <= accuracy <= 1.0
+        assert len(history) == 1

@@ -114,6 +114,7 @@ def _orthogonalize_matrix(
     For 3D weights (num_experts, d_model, in_features) — MoE experts:
         Applies the same projection removal to each expert independently.
     """
+    direction = ops.to_device_like(direction, w)
     if w.ndim == 3:
         # Batched experts: (N, d_model, F)
         # proj[n] = direction @ w[n] -> (N, F)
@@ -148,6 +149,7 @@ def _biprojected_direction(
     harmless_dir: Array,
 ) -> Array:
     """Gram-Schmidt: orthogonalize refusal direction against harmless direction."""
+    harmless_dir = ops.to_device_like(harmless_dir, refusal_dir)
     proj = ops.sum(refusal_dir * harmless_dir) * harmless_dir
     orthogonal = refusal_dir - proj
     return orthogonal / (ops.linalg.norm(orthogonal) + 1e-8)

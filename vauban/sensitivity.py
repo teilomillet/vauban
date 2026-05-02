@@ -81,6 +81,7 @@ def jvp_finite_diff(
     Returns:
         JVP result, same shape as ``h``.
     """
+    v = ops.to_device_like(v, h)
     v_expanded = v[None, None, :]  # (1, 1, D)
     h_plus = layer_fn(h + epsilon * v_expanded)
     h_base = layer_fn(h)
@@ -104,6 +105,7 @@ def directional_gain(
     Returns:
         Directional gain (scalar).
     """
+    direction = ops.to_device_like(direction, h)
     jv = jvp_finite_diff(layer_fn, h, direction, epsilon)
     # Use last token of first batch element (consistent with dominant_singular_vector)
     jv_last = jv[0, -1, :]
@@ -138,7 +140,7 @@ def dominant_singular_vector(
     """
     d = h.shape[-1]
     # Generate random probe vectors
-    probes = ops.random.normal((n_iter, d))
+    probes = ops.to_device_like(ops.random.normal((n_iter, d)), h)
     # Compute JVP for each probe, extract last-token response
     responses: list[Array] = []
     for i in range(n_iter):
@@ -225,6 +227,7 @@ def compute_sensitivity_profile(
     """
     transformer = get_transformer(model)
     ssm_mask = make_ssm_mask(transformer, h)
+    direction = ops.to_device_like(direction, h)
     layer_sensitivities: list[LayerSensitivity] = []
     ranks: list[float] = []
 

@@ -85,6 +85,8 @@ OPS_CONTRACT: list[str] = [
     "stop_gradient",
     # Evaluation
     "eval",
+    # Device placement
+    "to_device_like",
     # Types / dtypes
     "float32",
     "float16",

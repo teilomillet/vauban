@@ -158,7 +158,7 @@ class TestSetBackendFromConfig:
         _set_backend_from_config(str(config))
         assert os.environ.get("VAUBAN_BACKEND") == "torch"
 
-    def test_defaults_to_mlx(
+    def test_defaults_to_torch(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from vauban.__main__ import _set_backend_from_config
@@ -168,7 +168,7 @@ class TestSetBackendFromConfig:
 
         monkeypatch.delenv("VAUBAN_BACKEND", raising=False)
         _set_backend_from_config(str(config))
-        assert os.environ.get("VAUBAN_BACKEND") == "mlx"
+        assert os.environ.get("VAUBAN_BACKEND") == "torch"
 
     def test_preserves_existing_env_when_config_omits_backend(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,

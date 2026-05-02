@@ -90,8 +90,8 @@ defensive analysis, and reproducible research on model changes.
 
 ## Requirements
 
-- Apple Silicon Mac for the MLX backend, or Linux with an NVIDIA GPU for the
-  PyTorch backend
+- PyTorch-capable Linux or macOS environment; CUDA is recommended for larger
+  local audits, and MPS is the Apple Silicon target
 - Python 3.12+
 - [Pixi](https://pixi.sh/) for reproducible local and CI environments
 
@@ -109,7 +109,7 @@ On a Linux NVIDIA machine, verify the Torch/CUDA backend:
 pixi run -e torch-dev backend-cuda
 ```
 
-On Apple Silicon, use the MLX environment:
+For MLX-specific legacy/reference checks on Apple Silicon, use:
 
 ```bash
 pixi run -e mlx-dev backend
@@ -122,9 +122,8 @@ pixi run -e torch-dev check-torch
 pixi run -e mlx-dev check
 ```
 
-`check-torch` is the current Torch backend-contract gate. The full legacy test
-suite still runs in the MLX environment while backend-neutral coverage is being
-expanded.
+`check-torch` is the current portable backend-contract gate. The MLX
+environment remains available for legacy/reference checks.
 
 Run the CLI through Pixi:
 
@@ -133,9 +132,10 @@ pixi run -e torch vauban --help
 pixi run -e mlx vauban man workflows
 ```
 
-Use `backend = "torch"` in a TOML config for CUDA/PyTorch runs. Omit it, or set
-`backend = "mlx"`, for the MLX path. If `backend` is omitted, the active
-`VAUBAN_BACKEND` environment variable selects the runtime.
+PyTorch is the default runtime. Omit `backend`, or set `backend = "torch"`, for
+portable CPU/CUDA/MPS-oriented runs. Use the MLX backend only for explicit
+legacy/reference checks. If `backend` is omitted, the active `VAUBAN_BACKEND`
+environment variable selects the runtime.
 
 Contributor workflow and repo policy live in [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -261,12 +261,12 @@ limitations = [
 
 [behavior_report.baseline]
 label = "base"
-model_path = "mlx-community/example-base"
+model_path = "Qwen/Qwen2.5-1.5B-Instruct"
 role = "baseline"
 
 [behavior_report.candidate]
 label = "instruct"
-model_path = "mlx-community/example-instruct"
+model_path = "models/qwen2.5-1.5b-instruct-candidate"
 role = "candidate"
 
 [behavior_report.suite]
@@ -307,7 +307,7 @@ This is the minimal config the code accepts for the default pipeline:
 
 ```toml
 [model]
-path = "mlx-community/Llama-3.2-3B-Instruct-4bit"
+path = "Qwen/Qwen2.5-1.5B-Instruct"
 
 [data]
 harmful = "default"
@@ -488,7 +488,7 @@ For programmatic use, the `Session` class wraps a loaded model with tool discove
 ```python
 from vauban.session import Session
 
-s = Session("mlx-community/Qwen2.5-1.5B-Instruct-bf16")
+s = Session("Qwen/Qwen2.5-1.5B-Instruct")
 s.tools()           # discover all capabilities
 s.guide("audit")    # step-by-step workflow
 s.describe("cast")  # detailed tool info with current status

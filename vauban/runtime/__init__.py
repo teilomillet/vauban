@@ -3,6 +3,15 @@
 
 """Runtime primitive contracts for Vauban backend execution."""
 
+from vauban.runtime._activation_primitive import (
+    ActivationPrimitiveMode,
+    DirectionInterventionMode,
+    TorchActivationPrimitiveRequest,
+    TorchActivationPrimitiveResult,
+    TorchActivationTensor,
+    TorchDirectionIntervention,
+    run_torch_activation_primitive,
+)
 from vauban.runtime._capabilities import (
     access_boundary_for_capabilities,
     access_level_for_capabilities,
@@ -19,7 +28,12 @@ from vauban.runtime._evidence import (
     runtime_capability_snapshot,
     runtime_evidence_refs,
     runtime_report_evidence,
+    summarize_trace_profile,
+    summarize_trace_profile_sweep,
+    trace_from_forward_trace,
+    trace_from_runtime_execution,
 )
+from vauban.runtime._execution import run_runtime_trace
 from vauban.runtime._profiling import StageTimer, profile_stage
 from vauban.runtime._protocols import ModelRuntime, RuntimeStage
 from vauban.runtime._registry import (
@@ -29,6 +43,7 @@ from vauban.runtime._registry import (
 )
 from vauban.runtime._torch import TorchRuntime
 from vauban.runtime._types import (
+    TRACE_ARTIFACT_KINDS,
     ActivationIntervention,
     BackendCapabilities,
     DeviceKind,
@@ -38,31 +53,46 @@ from vauban.runtime._types import (
     InterventionRecord,
     LoadedModel,
     ModelRef,
+    ProfileSweepAxis,
     RuntimeBackendName,
     RuntimeScalar,
+    RuntimeTraceResult,
     RuntimeValue,
     StageProfile,
     SupportLevel,
     TensorLike,
     TokenizedPrompt,
     TokenizeRequest,
+    Trace,
+    TraceArtifact,
+    TraceArtifactKind,
+    TraceProfileSummary,
+    TraceProfileSweep,
+    TraceProfileSweepPoint,
+    TraceRequest,
+    TraceSpan,
 )
 
 __all__ = [
+    "TRACE_ARTIFACT_KINDS",
     "ActivationIntervention",
+    "ActivationPrimitiveMode",
     "BackendCapabilities",
     "DeviceKind",
     "DeviceRef",
+    "DirectionInterventionMode",
     "ForwardRequest",
     "ForwardTrace",
     "InterventionRecord",
     "LoadedModel",
     "ModelRef",
     "ModelRuntime",
+    "ProfileSweepAxis",
     "RuntimeBackendName",
     "RuntimeReportEvidence",
     "RuntimeScalar",
     "RuntimeStage",
+    "RuntimeTraceResult",
     "RuntimeValue",
     "StageProfile",
     "StageTimer",
@@ -70,7 +100,19 @@ __all__ = [
     "TensorLike",
     "TokenizeRequest",
     "TokenizedPrompt",
+    "TorchActivationPrimitiveRequest",
+    "TorchActivationPrimitiveResult",
+    "TorchActivationTensor",
+    "TorchDirectionIntervention",
     "TorchRuntime",
+    "Trace",
+    "TraceArtifact",
+    "TraceArtifactKind",
+    "TraceProfileSummary",
+    "TraceProfileSweep",
+    "TraceProfileSweepPoint",
+    "TraceRequest",
+    "TraceSpan",
     "access_boundary_for_capabilities",
     "access_level_for_capabilities",
     "access_policy_for_capabilities",
@@ -82,9 +124,15 @@ __all__ = [
     "max_capabilities",
     "mlx_capabilities",
     "profile_stage",
+    "run_runtime_trace",
+    "run_torch_activation_primitive",
     "runtime_capabilities",
     "runtime_capability_snapshot",
     "runtime_evidence_refs",
     "runtime_report_evidence",
+    "summarize_trace_profile",
+    "summarize_trace_profile_sweep",
     "torch_capabilities",
+    "trace_from_forward_trace",
+    "trace_from_runtime_execution",
 ]

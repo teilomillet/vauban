@@ -95,20 +95,28 @@ class SVFBoundary:
         Returns:
             Scalar boundary score (positive = target class, negative = opposite).
         """
+        projection = ops.to_device_like(self.projection, h)
+        film_scale = ops.to_device_like(self.film_scale, h)
+        film_shift = ops.to_device_like(self.film_shift, h)
+        hidden_weight = ops.to_device_like(self.hidden_weight, h)
+        hidden_bias = ops.to_device_like(self.hidden_bias, h)
+        output_weight = ops.to_device_like(self.output_weight, h)
+        output_bias = ops.to_device_like(self.output_bias, h)
+
         # Project into shared space
-        projected = ops.matmul(h, self.projection)  # (projection_dim,)
+        projected = ops.matmul(h, projection)  # (projection_dim,)
 
         # FiLM conditioning
         conditioned = (
-            self.film_scale[layer_idx] * projected + self.film_shift[layer_idx]
+            film_scale[layer_idx] * projected + film_shift[layer_idx]
         )
 
         # Hidden layer with ReLU
-        hidden = ops.matmul(conditioned, self.hidden_weight) + self.hidden_bias
+        hidden = ops.matmul(conditioned, hidden_weight) + hidden_bias
         hidden = ops.maximum(hidden, ops.array(0.0))
 
         # Output
-        score = ops.matmul(hidden, self.output_weight) + self.output_bias
+        score = ops.matmul(hidden, output_weight) + output_bias
         return score[0]  # scalar
 
     def forward_batch(self, h: Array, layer_idx: int) -> Array:
@@ -121,13 +129,21 @@ class SVFBoundary:
         Returns:
             Scores, shape (n,). Positive = target class, negative = opposite.
         """
-        projected = ops.matmul(h, self.projection)  # (n, projection_dim)
+        projection = ops.to_device_like(self.projection, h)
+        film_scale = ops.to_device_like(self.film_scale, h)
+        film_shift = ops.to_device_like(self.film_shift, h)
+        hidden_weight = ops.to_device_like(self.hidden_weight, h)
+        hidden_bias = ops.to_device_like(self.hidden_bias, h)
+        output_weight = ops.to_device_like(self.output_weight, h)
+        output_bias = ops.to_device_like(self.output_bias, h)
+
+        projected = ops.matmul(h, projection)  # (n, projection_dim)
         conditioned = (
-            self.film_scale[layer_idx] * projected + self.film_shift[layer_idx]
+            film_scale[layer_idx] * projected + film_shift[layer_idx]
         )
-        hidden = ops.matmul(conditioned, self.hidden_weight) + self.hidden_bias
+        hidden = ops.matmul(conditioned, hidden_weight) + hidden_bias
         hidden = ops.maximum(hidden, ops.array(0.0))
-        scores = ops.matmul(hidden, self.output_weight) + self.output_bias
+        scores = ops.matmul(hidden, output_weight) + output_bias
         return scores[:, 0]  # (n,)
 
     def parameters(self) -> list[Array]:
@@ -183,7 +199,7 @@ def _svf_loss(
     """
     boundary.set_parameters(params)
     eps = 1e-7
-    total_loss = ops.array(0.0)
+    total_loss: Array | None = None
     count = 0
 
     for layer_idx in layers:
@@ -192,7 +208,12 @@ def _svf_loss(
         if n_target > 0:
             scores = boundary.forward_batch(target_acts[layer_idx], layer_idx)
             sigmoid_scores = 1.0 / (1.0 + ops.exp(-scores))
-            total_loss = total_loss - ops.sum(ops.log(sigmoid_scores + eps))
+            layer_loss = -ops.sum(ops.log(sigmoid_scores + eps))
+            total_loss = (
+                layer_loss
+                if total_loss is None
+                else total_loss + layer_loss
+            )
             count += n_target
 
         # Opposite class (label=0): want f(h) < 0 → sigmoid(f(h)) → 0
@@ -200,12 +221,17 @@ def _svf_loss(
         if n_opposite > 0:
             scores = boundary.forward_batch(opposite_acts[layer_idx], layer_idx)
             sigmoid_scores = 1.0 / (1.0 + ops.exp(-scores))
-            total_loss = total_loss - ops.sum(ops.log(1.0 - sigmoid_scores + eps))
+            layer_loss = -ops.sum(ops.log(1.0 - sigmoid_scores + eps))
+            total_loss = (
+                layer_loss
+                if total_loss is None
+                else total_loss + layer_loss
+            )
             count += n_opposite
 
-    if count > 0:
-        total_loss = total_loss / count
-    return total_loss
+    if total_loss is None:
+        return ops.array(0.0)
+    return total_loss / count
 
 
 def train_svf_boundary(
@@ -254,6 +280,13 @@ def train_svf_boundary(
 
     # Initialize boundary
     boundary = SVFBoundary(d_model, projection_dim, hidden_dim, n_layers)
+    reference = _first_non_empty_activation(target_acts, opposite_acts)
+    if reference is not None:
+        params_on_device = [
+            ops.to_device_like(p, reference)
+            for p in boundary.parameters()
+        ]
+        boundary.set_parameters(params_on_device)
 
     # Adam state
     params = boundary.parameters()
@@ -331,6 +364,17 @@ def train_svf_boundary(
     )
 
     return boundary, result
+
+
+def _first_non_empty_activation(
+    target_acts: list[Array],
+    opposite_acts: list[Array],
+) -> Array | None:
+    """Return a reference activation for device placement."""
+    for activations in target_acts + opposite_acts:
+        if activations.shape[0] > 0:
+            return activations
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -433,7 +477,7 @@ def svf_gradient(
     if norm_float > 1e-10:
         normalized = grad_val / grad_norm
     else:
-        normalized = ops.zeros((boundary.d_model,))
+        normalized = ops.to_device_like(ops.zeros((boundary.d_model,)), h)
     force_eval(normalized)
 
     return score, normalized

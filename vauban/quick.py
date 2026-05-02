@@ -24,7 +24,7 @@ from vauban.types import (
     Tokenizer,
 )
 
-_DEFAULT_MODEL = "mlx-community/Llama-3.2-3B-Instruct-4bit"
+_DEFAULT_MODEL = "Qwen/Qwen2.5-1.5B-Instruct"
 
 
 def load(

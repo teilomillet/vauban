@@ -254,7 +254,9 @@ def _cast_forward(
     h, mask = embed_and_mask(transformer, token_ids)
 
     # Use condition_direction for gating if provided, else primary direction
+    direction = ops.to_device_like(direction, h)
     detect_dir = condition_direction if condition_direction is not None else direction
+    detect_dir = ops.to_device_like(detect_dir, h)
 
     projections_before: list[float] = []
     projections_after: list[float] = []
@@ -292,7 +294,8 @@ def _cast_forward(
             and displacement_threshold > 0.0
             and i in baseline_activations
         ):
-            diff = last_token - baseline_activations[i]
+            baseline = ops.to_device_like(baseline_activations[i], last_token)
+            diff = last_token - baseline
             disp = float(
                 ops.sqrt(ops.sum(diff * diff)).item(),
             )

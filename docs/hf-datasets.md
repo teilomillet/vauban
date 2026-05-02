@@ -15,7 +15,7 @@ The bundled 128-prompt datasets may not surface the refusal direction for all mo
 
 ```toml
 [model]
-path = "mlx-community/Llama-3.2-3B-Instruct-4bit"
+path = "Qwen/Qwen2.5-1.5B-Instruct"
 
 [data]
 harmful = "hf:mlabonne/harmful_behaviors"
@@ -26,7 +26,7 @@ harmless = "hf:mlabonne/harmless_alpaca"
 
 ```toml
 [model]
-path = "mlx-community/Llama-3.2-3B-Instruct-4bit"
+path = "Qwen/Qwen2.5-1.5B-Instruct"
 
 [data]
 harmless = "default"

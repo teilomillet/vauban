@@ -292,15 +292,20 @@ When building on a paper, cite it clearly and separate the original method from
 Vauban's extension. Keep long bibliographies in docs or report references, not
 in this agent guide.
 
-## MLX Runtime Rules
+## PyTorch Runtime Rules
 
-MLX is the primary runtime. Vauban should preserve the advantages that make MLX
-useful for local behavioral auditing on Apple Silicon:
-- eager execution with explicit arrays
+PyTorch is the primary portable runtime. Vauban should preserve the properties
+that make behavioral auditing reproducible across CPU, CUDA, and MPS targets:
+- explicit tensor operations
 - direct access to layer activations
 - explicit projection and intervention points
-- unified-memory friendliness
-- direct safetensors I/O where possible
+- direct safetensors and HuggingFace model I/O where possible
+- primitive-level device handling instead of framework-specific product logic
+
+MLX may remain as an optional legacy or reference backend, but it must not define
+Vauban's public surface. If a PyTorch/MPS path needs lower-level performance
+work, prefer a small custom kernel behind a Vauban primitive instead of moving
+product logic back into an MLX-centered design.
 
 Avoid hidden framework magic. If activations are captured, steered, projected,
 or compared, make the data flow explicit and testable.

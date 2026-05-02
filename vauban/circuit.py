@@ -40,7 +40,8 @@ def _create_causal_mask(h: Array) -> Array:
     from vauban import _nn
 
     mask = _nn.create_additive_causal_mask(h.shape[1])
-    return mask.astype(h.dtype)
+    mask = mask.astype(h.dtype)
+    return ops.to_device_like(mask, h)
 
 
 def _match_seq_len(tensor: Array, target_len: int) -> Array:
@@ -65,6 +66,7 @@ def _match_seq_len(tensor: Array, target_len: int) -> Array:
     # Pad: zero-pad on the left (causal: early positions are least important)
     pad_size = target_len - src_len
     padding = ops.zeros((tensor.shape[0], pad_size, tensor.shape[2]))
+    padding = ops.to_device_like(padding, tensor)
     return ops.concatenate([padding, tensor], axis=1)
 
 
@@ -436,7 +438,8 @@ def _trace_layers(
         if attribute_direction and direction is not None:
             residual = clean_residuals[layer_idx]
             last_token = residual[0, token_position, :]
-            proj = ops.sum(last_token * direction)
+            direction_on_device = ops.to_device_like(direction, last_token)
+            proj = ops.sum(last_token * direction_on_device)
             force_eval(proj)
             attributions[(layer_idx, "full")] = float(proj.item())
 
@@ -475,7 +478,11 @@ def _trace_components(
             effects[(layer_idx, comp_name)] = effect
 
             if attribute_direction and direction is not None:
-                proj = ops.sum(clean_out[0, token_position, :] * direction)
+                token_activation = clean_out[0, token_position, :]
+                direction_on_device = ops.to_device_like(
+                    direction, token_activation,
+                )
+                proj = ops.sum(token_activation * direction_on_device)
                 force_eval(proj)
                 attributions[(layer_idx, comp_name)] = float(proj.item())
 

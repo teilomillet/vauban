@@ -8,7 +8,12 @@ payloads into tool results, and computes reward.
 """
 
 from vauban import _ops as ops
-from vauban._forward import encode_chat_prompt, extract_logits, make_cache
+from vauban._forward import (
+    encode_chat_prompt,
+    extract_logits,
+    make_cache,
+    to_model_device,
+)
 from vauban.environment._format import format_tools_for_prompt
 from vauban.environment._parse_tool_call import parse_tool_calls
 from vauban.environment._policy import check_policy
@@ -177,7 +182,7 @@ def _generate_response(
     Returns:
         Generated text string.
     """
-    token_ids = encode_chat_prompt(tokenizer, messages)
+    token_ids = to_model_device(model, encode_chat_prompt(tokenizer, messages))
     generated: list[int] = []
     eos_token_id: int | None = getattr(tokenizer, "eos_token_id", None)
 
@@ -199,7 +204,7 @@ def _generate_response(
         generated.append(next_token)
         if eos_token_id is not None and next_token == eos_token_id:
             break
-        token_ids = ops.array([[next_token]])
+        token_ids = to_model_device(model, ops.array([[next_token]]))
 
     return tokenizer.decode(generated)
 

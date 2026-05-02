@@ -10,7 +10,10 @@ Mock classes dispatch to backend-specific implementations:
 
 from __future__ import annotations
 
+import importlib.util
 import os
+import sys
+import types
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
@@ -39,6 +42,67 @@ D_MODEL = 16
 NUM_LAYERS = 2
 VOCAB_SIZE = 32
 NUM_HEADS = 2
+
+
+def _install_missing_mlx_lm_test_shim() -> None:
+    """Install minimal MLX-LM modules for torch-env monkeypatch tests."""
+    if "mlx_lm" in sys.modules:
+        return
+    try:
+        spec = importlib.util.find_spec("mlx_lm")
+    except ValueError:
+        return
+    if spec is not None:
+        return
+
+    mlx_lm = types.ModuleType("mlx_lm")
+    generate_module = types.ModuleType("mlx_lm.generate")
+    sample_utils = types.ModuleType("mlx_lm.sample_utils")
+    utils = types.ModuleType("mlx_lm.utils")
+    models = types.ModuleType("mlx_lm.models")
+    cache = types.ModuleType("mlx_lm.models.cache")
+    tokenizer_utils = types.ModuleType("mlx_lm.tokenizer_utils")
+
+    class TokenizerWrapper:
+        """Placeholder used only for runtime imports in torch-dev tests."""
+
+    def _missing_download(model_path: str) -> Path:
+        msg = f"mlx_lm is not installed; cannot download {model_path!r}"
+        raise ImportError(msg)
+
+    def _missing_generate(*_args: object, **_kwargs: object) -> str:
+        msg = "mlx_lm is not installed; cannot generate text"
+        raise ImportError(msg)
+
+    def _make_sampler(*_args: object, **_kwargs: object) -> object:
+        return object()
+
+    def _missing_make_prompt_cache(_model: object) -> list[object]:
+        msg = "mlx_lm is not installed; cannot make a prompt cache"
+        raise ImportError(msg)
+
+    generate_module.__dict__["generate"] = _missing_generate
+    sample_utils.__dict__["make_sampler"] = _make_sampler
+    utils.__dict__["_download"] = _missing_download
+    cache.__dict__["make_prompt_cache"] = _missing_make_prompt_cache
+    tokenizer_utils.__dict__["TokenizerWrapper"] = TokenizerWrapper
+    models.__dict__["cache"] = cache
+    mlx_lm.__dict__["generate"] = generate_module
+    mlx_lm.__dict__["sample_utils"] = sample_utils
+    mlx_lm.__dict__["utils"] = utils
+    mlx_lm.__dict__["models"] = models
+    mlx_lm.__dict__["tokenizer_utils"] = tokenizer_utils
+
+    sys.modules.setdefault("mlx_lm", mlx_lm)
+    sys.modules.setdefault("mlx_lm.generate", generate_module)
+    sys.modules.setdefault("mlx_lm.sample_utils", sample_utils)
+    sys.modules.setdefault("mlx_lm.utils", utils)
+    sys.modules.setdefault("mlx_lm.models", models)
+    sys.modules.setdefault("mlx_lm.models.cache", cache)
+    sys.modules.setdefault("mlx_lm.tokenizer_utils", tokenizer_utils)
+
+
+_install_missing_mlx_lm_test_shim()
 
 # ---------------------------------------------------------------------------
 # Backend-dispatched mock class re-exports

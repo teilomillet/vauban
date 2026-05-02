@@ -93,9 +93,9 @@ and reports are the artifact.
 - **TOML-driven.** Every pipeline run is defined declaratively in a single `.toml` file. No hand-coded pipeline logic.
 - **Fully typed.** Zero uses of `Any`. Frozen dataclasses everywhere. The type system is the documentation.
 - **Composable.** Small tools that do one thing. Output of one becomes input to the next. Any piece can be swapped.
-- **Backend-agnostic.** MLX today, PyTorch planned. The abstraction layer (`_ops`, `_array`) means code never imports a backend directly.
+- **Backend-agnostic.** PyTorch is the portable runtime surface; MLX remains an optional reference path. The abstraction layer (`_ops`, `_array`) means product code should not import a backend directly.
 
-> **MLX** — Apple's machine learning framework, optimized for Apple Silicon chips (M1/M2/M3/M4). It uses unified memory (CPU and GPU share the same RAM), which means large models can run without the expensive GPU memory found in data center hardware. Vauban uses MLX because it gives direct, line-by-line access to the model's computations.
+> **PyTorch runtime** — Vauban's primary portable execution target across CPU, CUDA, and MPS. Backend-specific performance work should sit behind Vauban primitives so reports stay centered on behavioral evidence rather than framework identity.
 
 ## Where to go next
 

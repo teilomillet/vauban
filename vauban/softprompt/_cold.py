@@ -116,12 +116,14 @@ def _cold_attack(
         config.init_tokens, config.n_tokens, vocab_mask, vocab_size,
     )
     z = _build_one_hot(init_ids, vocab_size) * 5.0
+    z = ops.to_device_like(z, embed_matrix)
 
     # Apply vocab mask in logit space: set masked positions to large negative
     mask_penalty: Array | None = None
     if vocab_mask is not None:
+        vocab_mask = ops.to_device_like(vocab_mask, embed_matrix)
         force_eval(vocab_mask)
-        neg_inf = ops.array(-1e9)
+        neg_inf = ops.to_device_like(ops.array(-1e9), embed_matrix)
         # Invert mask: 0 -> -inf, 1 -> 0
         mask_penalty = (1.0 - vocab_mask) * neg_inf
         z = z + mask_penalty
@@ -235,7 +237,9 @@ def _cold_attack(
         )
 
         # Langevin dynamics update: gradient descent + calibrated noise
-        noise = ops.random.normal(z.shape) * ops.sqrt(ops.array(2.0 * lr))
+        noise = ops.random.normal(z.shape)
+        noise = ops.to_device_like(noise, z)
+        noise = noise * ops.sqrt(ops.to_device_like(ops.array(2.0 * lr), z))
         z = z - lr * grad + noise * noise_scale
 
         # Re-apply vocab mask penalty after update
@@ -260,6 +264,7 @@ def _cold_attack(
 
     # Build final embeddings from best tokens
     final_token_array = ops.array(token_ids)[None, :]
+    final_token_array = ops.to_device_like(final_token_array, embed_matrix)
     final_embeds = transformer.embed_tokens(final_token_array)
     force_eval(final_embeds)
 

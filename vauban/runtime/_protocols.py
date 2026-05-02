@@ -14,8 +14,10 @@ if TYPE_CHECKING:
         ForwardTrace,
         LoadedModel,
         ModelRef,
+        RuntimeTraceResult,
         TokenizedPrompt,
         TokenizeRequest,
+        TraceRequest,
     )
 
 InputT = TypeVar("InputT")
@@ -58,4 +60,12 @@ class ModelRuntime(Protocol):
         request: ForwardRequest,
     ) -> ForwardTrace:
         """Run a forward pass and return observed evidence."""
+        ...
+
+    def trace(
+        self,
+        loaded: LoadedModel,
+        request: TraceRequest,
+    ) -> RuntimeTraceResult:
+        """Run a trace-first execution and return reportable artifacts."""
         ...

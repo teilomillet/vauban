@@ -107,7 +107,7 @@ def _detect_glitch_token_ids(
     """
     force_eval(embed_matrix)
     # Convert to float32 numpy for stable computation
-    emb_f32 = embed_matrix.astype(ops.float32)
+    emb_f32 = ops.stop_gradient(embed_matrix).astype(ops.float32)
     force_eval(emb_f32)
     emb_np = np.array(emb_f32)
 
@@ -156,16 +156,20 @@ def _build_vocab_mask(
     positive = [c for c in constraints if c not in _NEGATIVE_CONSTRAINTS]
     negative = [c for c in constraints if c in _NEGATIVE_CONSTRAINTS]
 
+    mask_size = vocab_size
+    if glitch_token_ids is not None and glitch_token_ids:
+        mask_size = max(mask_size, max(glitch_token_ids) + 1)
+
     # --- Positive constraints (include matching tokens) ---
     if positive:
-        allowed = ops.zeros((vocab_size,), dtype=ops.bool_)
+        allowed = ops.zeros((mask_size,), dtype=ops.bool_)
         for tid in range(vocab_size):
             text = tokenizer.decode([tid])
             if all(_matches_constraint(text, item) for item in positive):
                 allowed[tid] = True
     else:
         # No positive constraints → start with all allowed
-        allowed = ops.ones((vocab_size,), dtype=ops.bool_)
+        allowed = ops.ones((mask_size,), dtype=ops.bool_)
 
     # --- Negative constraints (exclude matching tokens) ---
     if "exclude_glitch" in negative:
@@ -180,7 +184,7 @@ def _build_vocab_mask(
             )
             raise ValueError(msg)
         for tid in excluded:
-            if tid < vocab_size:
+            if tid < mask_size:
                 allowed[tid] = False
 
     force_eval(allowed)

@@ -179,6 +179,12 @@ def test_behavior_trace_diff_report_loop(
         "uncertainty-001",
     ]
     assert payload["runtime_evidence_diff"]["shared_activation_layers"] == ["0"]
+    assert "activation" in payload["runtime_evidence_diff"]["shared_artifact_kinds"]
+    assert "logprobs" in payload["runtime_evidence_diff"]["shared_artifact_kinds"]
+    assert payload["runtime_evidence_diff"]["shared_profiled_prompt_ids"] == [
+        "benign-001",
+        "uncertainty-001",
+    ]
     assert payload["reproducibility"]["scorers"] == ["deterministic_v1"]
     assert len(payload["reproducibility"]["artifact_hashes"]["config"]) == 64
     assert (

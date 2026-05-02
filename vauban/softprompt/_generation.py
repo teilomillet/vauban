@@ -69,7 +69,10 @@ def _decode_step(
         Logits for the next token, shape (1, 1, vocab_size).
     """
     transformer = get_transformer(model)
-    h = transformer.embed_tokens(ops.array([[token_id]]))
+    token_array = ops.array([[token_id]])
+    reference = getattr(transformer.embed_tokens, "weight", token_array)
+    token_array = ops.to_device_like(token_array, reference)
+    h = transformer.embed_tokens(token_array)
 
     if ssm_mask is None:
         ssm_mask = make_ssm_mask(transformer, h)
@@ -112,8 +115,14 @@ def _evaluate_attack_with_history(
 
     # Pre-compute SSM mask once for all decode loops (static per model)
     transformer = get_transformer(model)
+    embed_tokens = getattr(transformer, "embed_tokens", None)
+    reference = getattr(embed_tokens, "weight", soft_embeds)
+    decode_probe = ops.to_device_like(
+        ops.zeros((1, 1, 1)),
+        reference,
+    )
     decode_ssm_mask = make_ssm_mask(
-        transformer, ops.zeros((1, 1, 1)),
+        transformer, decode_probe,
     )
 
     for prompt in prompts:
@@ -186,8 +195,14 @@ def _evaluate_attack(
 
     # Pre-compute SSM mask once for all decode loops (static per model)
     transformer = get_transformer(model)
+    embed_tokens = getattr(transformer, "embed_tokens", None)
+    reference = getattr(embed_tokens, "weight", soft_embeds)
+    decode_probe = ops.to_device_like(
+        ops.zeros((1, 1, 1)),
+        reference,
+    )
     decode_ssm_mask = make_ssm_mask(
-        transformer, ops.zeros((1, 1, 1)),
+        transformer, decode_probe,
     )
 
     for prompt in prompts:

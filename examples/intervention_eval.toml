@@ -11,7 +11,7 @@
 # - intervention_results.toml, a fragment for Model Behavior Change Reports
 
 [model]
-path = "mlx-community/Qwen2.5-0.5B-Instruct-bf16"
+path = "Qwen/Qwen2.5-1.5B-Instruct"
 
 [data]
 harmful = "default"

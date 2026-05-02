@@ -96,6 +96,17 @@ def encode_user_prompt(tokenizer: Tokenizer, prompt: str) -> Array:
     return encode_chat_prompt(tokenizer, [{"role": "user", "content": prompt}])
 
 
+def to_model_device(model: CausalLM, array: Array) -> Array:
+    """Move an array to the model embedding device when the backend requires it."""
+    from vauban import _ops as ops
+
+    try:
+        reference = get_transformer(model).embed_tokens.weight
+    except AttributeError:
+        return array
+    return ops.to_device_like(array, reference)
+
+
 def make_ssm_mask(transformer: TransformerModel, h: Array) -> Array | None:
     """Create a boolean SSM mask for hybrid architectures.
 
@@ -107,7 +118,8 @@ def make_ssm_mask(transformer: TransformerModel, h: Array) -> Array | None:
     from vauban import _ops as ops
 
     if any(getattr(layer, "is_linear", False) for layer in transformer.layers):
-        return ops.ones((h.shape[0], h.shape[1]), dtype=ops.bool_)
+        mask = ops.ones((h.shape[0], h.shape[1]), dtype=ops.bool_)
+        return ops.to_device_like(mask, h)
     return None
 
 
@@ -291,17 +303,25 @@ elif _BACKEND == "torch":
         """No-op — PyTorch is eager, no lazy evaluation needed."""
 
     def make_cache(model: CausalLM) -> list[LayerCache]:
-        """Create a KV cache via the wrapper's make_cache()."""
-        return model.make_cache()
+        """Create a KV cache via model API or the mlx-lm-compatible fallback."""
+        if hasattr(model, "make_cache"):
+            return model.make_cache()
+        from mlx_lm.models.cache import make_prompt_cache
+
+        return make_prompt_cache(model)
 
     def lm_head_forward(model: CausalLM, h: Array) -> Array:
         """Apply the language model head (lm_head or tied embeddings)."""
         if hasattr(model, "lm_head"):
             return model.lm_head(h)
+        embed_tokens = get_transformer(model).embed_tokens
+        as_linear = getattr(embed_tokens, "as_linear", None)
+        if callable(as_linear):
+            return cast("Array", as_linear(h))
         # Tied embeddings: project through embedding weight matrix
         import torch.nn.functional as _f
 
-        return _f.linear(h, get_transformer(model).embed_tokens.weight)
+        return _f.linear(h, cast("_torch.Tensor", embed_tokens.weight))
 
     def extract_logits(result: Array | tuple[Array, ...]) -> Array:
         """Extract logits tensor from model output."""
@@ -356,10 +376,17 @@ elif _BACKEND == "torch":
 
     def svd_stable(matrix: Array) -> tuple[Array, Array, Array]:
         """SVD with numerical stability (CPU, float32)."""
+        original_dtype = getattr(matrix, "dtype", None)
         cpu_m = matrix.to("cpu").float()
         u, s, vt = _torch.linalg.svd(cpu_m)
         dev = matrix.device
-        return u.to(dev), s.to(dev), vt.to(dev)
+        if original_dtype is None:
+            return u.to(dev), s.to(dev), vt.to(dev)
+        return (
+            u.to(dev, dtype=original_dtype),
+            s.to(dev),
+            vt.to(dev, dtype=original_dtype),
+        )
 
     def qr_stable(matrix: Array) -> tuple[Array, Array]:
         """QR with numerical stability (CPU, float32)."""

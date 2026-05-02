@@ -8,7 +8,9 @@ from __future__ import annotations
 import importlib
 from typing import Protocol, cast
 
+from vauban.runtime._activation_primitive import primitive_metadata_for_intervention
 from vauban.runtime._capabilities import torch_capabilities
+from vauban.runtime._execution import run_runtime_trace
 from vauban.runtime._profiling import profile_stage
 from vauban.runtime._types import (
     BackendCapabilities,
@@ -18,15 +20,20 @@ from vauban.runtime._types import (
     InterventionRecord,
     LoadedModel,
     ModelRef,
+    RuntimeTraceResult,
+    StageProfile,
     TensorLike,
     TokenizedPrompt,
     TokenizeRequest,
+    TraceRequest,
 )
 
 
 class _TorchModule(Protocol):
     """Subset of torch needed by the runtime adapter."""
 
+    cuda: _CudaModule
+    mps: _MpsModule
     long: object
 
     def tensor(
@@ -40,6 +47,32 @@ class _TorchModule(Protocol):
 
     def log_softmax(self, tensor: TensorLike, dim: int) -> TensorLike:
         """Compute log probabilities."""
+
+
+class _CudaModule(Protocol):
+    """Subset of torch.cuda used for honest profiling sync points."""
+
+    def is_available(self) -> bool:
+        """Return whether CUDA is available."""
+
+    def memory_allocated(self, index: int | None = None) -> int:
+        """Return currently allocated CUDA bytes."""
+
+    def synchronize(self) -> None:
+        """Synchronize pending CUDA work."""
+
+
+class _MpsModule(Protocol):
+    """Subset of torch.mps used for MPS profiling sync points."""
+
+    def is_available(self) -> bool:
+        """Return whether MPS is available."""
+
+    def current_allocated_memory(self) -> int:
+        """Return currently allocated MPS bytes."""
+
+    def synchronize(self) -> None:
+        """Synchronize pending MPS work."""
 
 
 class _Tokenizer(Protocol):
@@ -176,7 +209,7 @@ class TorchRuntime:
     ) -> TokenizedPrompt:
         """Tokenize text with a loaded HuggingFace tokenizer."""
         tokenizer = _require_tokenizer(loaded)
-        with profile_stage("tokenize", device=_torch_device(loaded.model)) as timer:
+        with profile_stage("tokenize", device=_tokenizer_device()) as timer:
             if request.apply_chat_template:
                 rendered = tokenizer.apply_chat_template(
                     [{"role": "user", "content": request.text}],
@@ -204,10 +237,15 @@ class TorchRuntime:
         torch = cast("_TorchModule", importlib.import_module("torch"))
         model = _require_model(loaded)
         device = _torch_device(model)
+        sync_points = _torch_sync_points(device)
         profiles = []
         with profile_stage(
             "prepare_batch",
             device=device,
+            batch_size=1,
+            token_count=len(request.prompt_ids),
+            host_device_copies=1,
+            sync_points=sync_points,
             metadata={"tokens": len(request.prompt_ids)},
         ) as prepare_timer:
             token_ids = torch.tensor(
@@ -217,7 +255,15 @@ class TorchRuntime:
             )
             transformer = model.model
             h = transformer.embed_tokens(token_ids)
-        profiles.append(prepare_timer.profile)
+            _sync_if_accelerator(torch, device)
+        profiles.append(
+            _observed_profile(
+                prepare_timer.profile,
+                memory_bytes=_torch_memory_bytes(torch, device),
+                input_bytes=_tensor_nbytes(token_ids),
+                output_bytes=_tensor_nbytes(h),
+            ),
+        )
 
         collect_layers = frozenset(request.collect_layers)
         activations: dict[int, TensorLike] = {}
@@ -225,6 +271,9 @@ class TorchRuntime:
         with profile_stage(
             "forward",
             device=device,
+            batch_size=1,
+            token_count=len(request.prompt_ids),
+            sync_points=sync_points,
             metadata={"collect_layers": list(request.collect_layers)},
         ) as forward_timer:
             for layer_index, layer in enumerate(transformer.layers):
@@ -236,22 +285,51 @@ class TorchRuntime:
                             InterventionRecord(
                                 name=intervention.name,
                                 layer_index=layer_index,
+                                metadata=(
+                                    primitive_metadata_for_intervention(
+                                        intervention,
+                                    )
+                                    or {}
+                                ),
                             ),
                         )
                 if layer_index in collect_layers:
                     activations[layer_index] = h
             h = transformer.norm(h)
-        profiles.append(forward_timer.profile)
+            _sync_if_accelerator(torch, device)
+        profiles.append(
+            _observed_profile(
+                forward_timer.profile,
+                memory_bytes=_torch_memory_bytes(torch, device),
+                output_bytes=_tensor_nbytes(h),
+            ),
+        )
 
         logits: TensorLike | None = None
         logprobs: TensorLike | None = None
         if request.return_logits:
-            with profile_stage("lm_head", device=device) as head_timer:
+            with profile_stage(
+                "lm_head",
+                device=device,
+                batch_size=1,
+                token_count=len(request.prompt_ids),
+                sync_points=sync_points,
+            ) as head_timer:
                 head = _require_lm_head(model)
                 logits = head(h)
                 if request.return_logprobs:
                     logprobs = torch.log_softmax(logits, dim=-1)
-            profiles.append(head_timer.profile)
+                _sync_if_accelerator(torch, device)
+            profiles.append(
+                _observed_profile(
+                    head_timer.profile,
+                    memory_bytes=_torch_memory_bytes(torch, device),
+                    input_bytes=_tensor_nbytes(h),
+                    output_bytes=_tensor_nbytes(
+                        logprobs if logprobs is not None else logits,
+                    ),
+                ),
+            )
 
         return ForwardTrace(
             logits=logits,
@@ -261,6 +339,14 @@ class TorchRuntime:
             interventions=tuple(intervention_records),
             profile=tuple(profiles),
         )
+
+    def trace(
+        self,
+        loaded: LoadedModel,
+        request: TraceRequest,
+    ) -> RuntimeTraceResult:
+        """Run tokenization and forward as one trace-first Torch execution."""
+        return run_runtime_trace(self, loaded, request)
 
 
 def _require_model(loaded: LoadedModel) -> _TorchRuntimeModel:
@@ -297,5 +383,79 @@ def _torch_device(model: object) -> DeviceRef:
     """Return device metadata for a Torch model."""
     raw_device = _torch_model_device(model)
     label = str(raw_device) if raw_device is not None else "torch"
-    kind = "cuda" if label.startswith("cuda") else "cpu"
+    if label.startswith("cuda"):
+        kind = "cuda"
+    elif label.startswith("mps"):
+        kind = "mps"
+    else:
+        kind = "cpu"
     return DeviceRef(kind=kind, label=label)
+
+
+def _tokenizer_device() -> DeviceRef:
+    """Return device metadata for CPU tokenizer work."""
+    return DeviceRef(kind="cpu", label="tokenizer")
+
+
+def _torch_sync_points(device: DeviceRef) -> int:
+    """Return sync point count for profiled accelerator stages."""
+    return 1 if device.kind in ("cuda", "mps") else 0
+
+
+def _sync_if_accelerator(torch: _TorchModule, device: DeviceRef) -> None:
+    """Synchronize accelerator-backed Torch work for profile honesty."""
+    if device.kind == "cuda" and torch.cuda.is_available():
+        torch.cuda.synchronize()
+    if device.kind == "mps" and torch.mps.is_available():
+        torch.mps.synchronize()
+
+
+def _torch_memory_bytes(torch: _TorchModule, device: DeviceRef) -> int | None:
+    """Return observed accelerator memory for a device-backed profile span."""
+    if device.kind == "cuda" and torch.cuda.is_available():
+        return int(torch.cuda.memory_allocated())
+    if device.kind == "mps" and torch.mps.is_available():
+        return int(torch.mps.current_allocated_memory())
+    return None
+
+
+def _tensor_nbytes(tensor: object | None) -> int | None:
+    """Return tensor byte size when the backend object exposes it."""
+    if tensor is None:
+        return None
+    nbytes = getattr(tensor, "nbytes", None)
+    if isinstance(nbytes, int):
+        return nbytes
+    numel = getattr(tensor, "numel", None)
+    element_size = getattr(tensor, "element_size", None)
+    if not callable(numel) or not callable(element_size):
+        return None
+    return int(numel()) * int(element_size())
+
+
+def _observed_profile(
+    profile: StageProfile,
+    *,
+    memory_bytes: int | None = None,
+    input_bytes: int | None = None,
+    output_bytes: int | None = None,
+) -> StageProfile:
+    """Return a profile updated with post-stage tensor/device observations."""
+    return StageProfile(
+        name=profile.name,
+        duration_s=profile.duration_s,
+        device=profile.device,
+        memory_bytes=(
+            profile.memory_bytes if memory_bytes is None else memory_bytes
+        ),
+        metadata=dict(profile.metadata),
+        batch_size=profile.batch_size,
+        token_count=profile.token_count,
+        input_bytes=profile.input_bytes if input_bytes is None else input_bytes,
+        output_bytes=(
+            profile.output_bytes if output_bytes is None else output_bytes
+        ),
+        host_device_copies=profile.host_device_copies,
+        sync_points=profile.sync_points,
+        queue_depth=profile.queue_depth,
+    )

@@ -32,7 +32,7 @@ class TestLoraExportConfig:
         from vauban.types import LoraExportConfig
 
         config = LoraExportConfig()
-        assert config.format == "mlx"
+        assert config.format == "peft"
         assert config.polarity == "remove"
 
     def test_frozen(self) -> None:
@@ -59,7 +59,7 @@ class TestLoraExportParse:
         raw = {"lora_export": {}}
         config = _parse_lora_export(raw)
         assert config is not None
-        assert config.format == "mlx"
+        assert config.format == "peft"
         assert config.polarity == "remove"
 
     def test_parse_peft_add(self) -> None:
@@ -521,7 +521,7 @@ class TestNormPreserveWarning:
         config = make_pipeline_config(
             tmp_path,
             cut=CutConfig(norm_preserve=True),
-            lora_export=LoraExportConfig(),
+            lora_export=LoraExportConfig(format="mlx"),
             verbose=False,
         )
         ctx = EarlyModeContext(
@@ -802,7 +802,7 @@ class TestLoraExportModeBranches:
                 layer_top_k=1,
                 layer_type_filter="global",
             ),
-            lora_export=LoraExportConfig(),
+            lora_export=LoraExportConfig(format="mlx"),
             verbose=False,
         )
         ctx = EarlyModeContext(

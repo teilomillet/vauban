@@ -31,8 +31,8 @@ checkpoints as long as both sides produce the same observation schema.
    evidence to add.
 
 ```bash
-pixi run -e mlx vauban examples/behavior_trace/refusal_boundary_lite.toml
-pixi run -e mlx vauban examples/behavior_diff/refusal_boundary_lite.toml
+pixi run -e torch vauban examples/behavior_trace/refusal_boundary_lite.toml
+pixi run -e torch vauban examples/behavior_diff/refusal_boundary_lite.toml
 ```
 
 The first command emits a trace such as
@@ -92,7 +92,7 @@ Collect a trace from a local model:
 
 ```toml
 [model]
-path = "mlx-community/Llama-3.2-3B-Instruct-4bit"
+path = "Qwen/Qwen2.5-1.5B-Instruct"
 
 [data]
 harmful = "default"
@@ -105,6 +105,17 @@ output_trace = "traces/checkpoint_1200.jsonl"
 scorers = ["deterministic_v1"]
 max_tokens = 80
 record_outputs = false
+collect_runtime_evidence = true
+runtime_backend = "torch"
+collect_layers = [0]
+return_logprobs = true
+
+[behavior_trace.activation_primitive]
+enabled = true
+mode = "project"
+# Replace this toy vector with a measured direction of the model's d_model.
+direction = [1.0, 0.0]
+layers = [0]
 ```
 
 Define the shared suite:
@@ -163,6 +174,9 @@ description = "Fail CI if benign refusal increases too much."
 - `behavior_trace.jsonl` or the configured `output_trace`: reusable JSONL
   observations.
 - `behavior_trace_report.json`: trace collection metadata and summary.
+- optional runtime evidence: tokens, logits/logprobs, activation artifacts,
+  and explicit activation projection/intervention primitive metadata when
+  `[behavior_trace.activation_primitive]` is enabled.
 - `experiment_log.jsonl`: reproducibility log entry.
 - `reproducibility`: Vauban version, command, config path, trace SHA-256,
   scorer list, and generation settings.

@@ -3,10 +3,12 @@
 
 """Tests for vauban._backend, _ops, _ops_mlx, _nn, and _array."""
 
+import os
+
 import numpy as np
 import pytest
 
-from vauban._backend import SUPPORTED_BACKENDS, get_backend
+from vauban._backend import DEFAULT_BACKEND, SUPPORTED_BACKENDS, get_backend
 from vauban._nn_contract import NN_CONTRACT
 from vauban._ops_contract import OPS_CONTRACT
 
@@ -16,8 +18,9 @@ mx = pytest.importorskip("mlx.core")
 
 
 class TestBackend:
-    def test_get_backend_returns_mlx(self) -> None:
-        assert get_backend() == "mlx"
+    def test_get_backend_uses_environment_or_torch_default(self) -> None:
+        expected = os.environ.get("VAUBAN_BACKEND", DEFAULT_BACKEND)
+        assert get_backend() == expected
 
     def test_supported_backends(self) -> None:
         assert "mlx" in SUPPORTED_BACKENDS

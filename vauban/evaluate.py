@@ -7,7 +7,14 @@ import math
 
 from vauban import _nn
 from vauban import _ops as ops
-from vauban._forward import encode_user_prompt, extract_logits, force_eval, make_cache
+from vauban._array import Array
+from vauban._forward import (
+    encode_user_prompt,
+    extract_logits,
+    force_eval,
+    make_cache,
+    to_model_device,
+)
 from vauban.types import CausalLM, EvalResult, Tokenizer
 
 DEFAULT_REFUSAL_PHRASES: list[str] = [
@@ -110,7 +117,7 @@ def _generate(
             ``tokenizer.eos_token_id``; if unavailable, generates
             all ``max_tokens``.
     """
-    token_ids = encode_user_prompt(tokenizer, prompt)
+    token_ids = to_model_device(model, encode_user_prompt(tokenizer, prompt))
     generated: list[int] = []
 
     if eos_token_id is None:
@@ -125,7 +132,10 @@ def _generate(
         generated.append(next_token)
         if eos_token_id is not None and next_token == eos_token_id:
             break
-        token_ids = ops.array([[next_token]])  # decode: single token
+        token_ids = to_model_device(
+            model,
+            ops.array([[next_token]]),  # decode: single token
+        )
 
     return _decode_generated(tokenizer, generated)
 
@@ -151,7 +161,10 @@ def _perplexity(
     total_tokens = 0
 
     for prompt in prompts:
-        token_ids = ops.array(tokenizer.encode(prompt))[None, :]
+        token_ids = to_model_device(
+            model,
+            ops.array(tokenizer.encode(prompt))[None, :],
+        )
         result = model(token_ids)  # type: ignore[call-non-callable]
         logits = extract_logits(result)
 
@@ -166,7 +179,7 @@ def _perplexity(
         )
         force_eval(log_probs)
         total_loss += float(log_probs.item())
-        total_tokens += int(shift_labels.size)
+        total_tokens += _num_elements(shift_labels)
 
     if total_tokens == 0:
         return 0.0
@@ -188,10 +201,14 @@ def _kl_divergence(
     total_tokens = 0
 
     for prompt in prompts:
-        token_ids = ops.array(tokenizer.encode(prompt))[None, :]
+        token_ids = to_model_device(
+            original,
+            ops.array(tokenizer.encode(prompt))[None, :],
+        )
 
         logits_orig = extract_logits(original(token_ids))  # type: ignore[call-non-callable, arg-type]
-        logits_mod = extract_logits(modified(token_ids))  # type: ignore[call-non-callable, arg-type]
+        mod_token_ids = to_model_device(modified, token_ids)
+        logits_mod = extract_logits(modified(mod_token_ids))  # type: ignore[call-non-callable, arg-type]
 
         p = ops.softmax(logits_orig, axis=-1)
         q = ops.softmax(logits_mod, axis=-1)
@@ -205,6 +222,25 @@ def _kl_divergence(
         total_tokens += 1
 
     return total_kl / total_tokens if total_tokens > 0 else 0.0
+
+
+def _num_elements(array: Array) -> int:
+    """Return element count across MLX and Torch array APIs."""
+    numel = getattr(array, "numel", None)
+    if callable(numel):
+        return int(numel())
+    size = getattr(array, "size", None)
+    if isinstance(size, int):
+        return size
+    if callable(size):
+        raw_size = size()
+        if isinstance(raw_size, int):
+            return raw_size
+    shape = getattr(array, "shape", ())
+    total = 1
+    for dim in shape:
+        total *= int(dim)
+    return total
 
 
 _JUDGE_PROMPT_TEMPLATE: str = (

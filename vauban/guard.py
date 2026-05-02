@@ -152,7 +152,9 @@ def _guard_forward(
     transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
 
+    direction = ops.to_device_like(direction, h)
     detect_dir = condition_direction if condition_direction is not None else direction
+    detect_dir = ops.to_device_like(detect_dir, h)
     guard_layer_set = set(guard_layers)
     projections: list[float] = []
     ssm_mask = make_ssm_mask(transformer, h)
@@ -472,6 +474,7 @@ def calibrate_guard_thresholds(
         token_ids = encode_chat_prompt(tokenizer, messages)
         transformer = get_transformer(model)
         h, mask = embed_and_mask(transformer, token_ids)
+        prompt_direction = ops.to_device_like(direction, h)
         ssm_mask = make_ssm_mask(transformer, h)
         cache = make_cache(model)
 
@@ -481,7 +484,7 @@ def calibrate_guard_thresholds(
                 # Collect projections for all token positions
                 for pos in range(h.shape[1]):
                     tok = h[0, pos, :]
-                    proj = ops.sum(tok * direction)
+                    proj = ops.sum(tok * prompt_direction)
                     force_eval(proj)
                     all_projections.append(float(proj.item()))
 
@@ -656,8 +659,10 @@ class GuardSession:
             if self._condition_direction is not None
             else self._direction
         )
+        detect_dir = ops.to_device_like(detect_dir, activation)
         projection = float(ops.sum(activation * detect_dir).item())
         for extra_dir in self._extra_directions:
+            extra_dir = ops.to_device_like(extra_dir, activation)
             extra_proj = float(ops.sum(activation * extra_dir).item())
             if extra_proj > projection:
                 projection = extra_proj

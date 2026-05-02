@@ -43,6 +43,14 @@ class _TorchCuda(Protocol):
         """Synchronize the current CUDA device."""
 
 
+class _TorchMps(Protocol):
+    def is_available(self) -> bool:
+        """Return whether MPS is visible to PyTorch."""
+
+    def synchronize(self) -> None:
+        """Synchronize the current MPS device."""
+
+
 class _TorchVersion(Protocol):
     cuda: str | None
 
@@ -51,6 +59,7 @@ class _TorchModule(Protocol):
     __version__: str
     version: _TorchVersion
     cuda: _TorchCuda
+    mps: _TorchMps
 
     def ones(self, shape: tuple[int, int], *, device: str) -> _ScalarTensor:
         """Create a tensor of ones."""
@@ -129,7 +138,7 @@ def _print_nvidia() -> None:
 
 
 def _check_torch(require_cuda: bool) -> int:
-    """Check PyTorch import and CUDA device visibility."""
+    """Check PyTorch import and accelerator visibility."""
     if not _find_package("torch"):
         print("torch: not installed")
         return 2
@@ -144,8 +153,10 @@ def _check_torch(require_cuda: bool) -> int:
     print(f"torch.version.cuda: {torch.version.cuda}")
 
     cuda_available = bool(torch.cuda.is_available())
+    mps_available = bool(torch.mps.is_available())
     print(f"torch.cuda.is_available: {cuda_available}")
     print(f"torch.cuda.device_count: {torch.cuda.device_count()}")
+    print(f"torch.mps.is_available: {mps_available}")
     if cuda_available:
         for index in range(torch.cuda.device_count()):
             props = torch.cuda.get_device_properties(index)
@@ -160,6 +171,12 @@ def _check_torch(require_cuda: bool) -> int:
         value = torch.matmul(lhs, rhs).sum().item()
         torch.cuda.synchronize()
         print(f"torch.cuda.smoke_sum: {value:.1f}")
+    if mps_available:
+        lhs = torch.ones((2, 2), device="mps")
+        rhs = torch.eye(2, device="mps")
+        value = torch.matmul(lhs, rhs).sum().item()
+        torch.mps.synchronize()
+        print(f"torch.mps.smoke_sum: {value:.1f}")
 
     if require_cuda and not cuda_available:
         print("error: CUDA was required but PyTorch cannot see a CUDA device")
@@ -194,7 +211,7 @@ def main() -> int:
         "--backend",
         choices=("auto", "mlx", "torch"),
         default="auto",
-        help="Backend to check. 'auto' uses VAUBAN_BACKEND or mlx.",
+        help="Backend to check. 'auto' uses VAUBAN_BACKEND or torch.",
     )
     parser.add_argument(
         "--require-cuda",
@@ -205,7 +222,7 @@ def main() -> int:
 
     backend = args.backend
     if backend == "auto":
-        backend = os.environ.get("VAUBAN_BACKEND", "mlx")
+        backend = os.environ.get("VAUBAN_BACKEND", "torch")
 
     _print_host()
     _print_nvidia()

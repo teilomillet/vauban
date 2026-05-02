@@ -156,6 +156,27 @@ def _runtime_report_json(
             "backend": backend,
             "collect_layers": [int(layer)],
             "return_logprobs": True,
+            "profile_sweep": {
+                "id": f"behavior_trace.{backend}.profile_sweep",
+                "axis": "token_count",
+                "artifact_kinds": ["logprobs", "activation"],
+                "metadata": {
+                    "fit": "not_computed",
+                    "requires_stable_artifacts": True,
+                },
+                "points": [
+                    {
+                        "axis_value": 8,
+                        "trace_ids": [f"behavior_trace.{prompt_id}"],
+                        "samples": 1,
+                        "mean_total_duration_s": 0.25,
+                        "mean_tokens_per_second": 32.0,
+                        "peak_memory_bytes": 4096,
+                        "total_host_device_copies": 1,
+                        "total_sync_points": 2,
+                    },
+                ],
+            },
             "prompts": [
                 {
                     "prompt_id": prompt_id,
@@ -182,6 +203,32 @@ def _runtime_report_json(
                         "trace": {
                             "activation_shapes": {layer: [1, 8, 16]},
                             "logprobs_shape": [1, 8, 32],
+                            "profile_summary": {
+                                "total_duration_s": 0.25,
+                                "profiled_spans": 3,
+                                "token_count": 8,
+                                "batch_size": 1,
+                                "tokens_per_second": 32.0,
+                                "peak_memory_bytes": 4096,
+                                "total_input_bytes": 64,
+                                "total_output_bytes": 128,
+                                "host_device_copies": 1,
+                                "sync_points": 2,
+                                "max_queue_depth": 1,
+                            },
+                            "artifacts": [
+                                {
+                                    "id": "logprobs",
+                                    "kind": "logprobs",
+                                    "shape": [1, 8, 32],
+                                },
+                                {
+                                    "id": f"activation.layer_{layer}",
+                                    "kind": "activation",
+                                    "shape": [1, 8, 16],
+                                    "metadata": {"layer_index": int(layer)},
+                                },
+                            ],
                         },
                     },
                 },
@@ -342,7 +389,22 @@ def test_run_behavior_diff_consumes_runtime_sidecars(tmp_path: Path) -> None:
     assert runtime_diff["candidate"]["backend"] == "mlx"
     assert runtime_diff["shared_prompt_ids"] == ["benign-001"]
     assert runtime_diff["shared_activation_layers"] == ["0"]
+    assert runtime_diff["shared_artifact_kinds"] == ["activation", "logprobs"]
+    assert runtime_diff["shared_profiled_prompt_ids"] == ["benign-001"]
     assert runtime_diff["baseline"]["n_logprobs_prompts"] == 1
+    assert runtime_diff["baseline"]["artifact_kinds"] == [
+        "activation",
+        "logprobs",
+    ]
+    assert runtime_diff["baseline"]["profile"]["n_profiled_prompts"] == 1
+    assert runtime_diff["baseline"]["profile"]["max_token_count"] == 8
+    assert runtime_diff["baseline"]["profile"]["host_device_copies"] == 1
+    sweep_diff = runtime_diff["profile_sweep_diff"]
+    assert sweep_diff["same_axis"] is True
+    assert sweep_diff["shared_axis_values"] == [8]
+    assert sweep_diff["shared_artifact_kinds"] == ["activation", "logprobs"]
+    assert sweep_diff["point_deltas"][0]["axis_value"] == 8
+    assert sweep_diff["point_deltas"][0]["delta_mean_total_duration_s"] == 0.0
     evidence = payload["report"]["evidence"]
     assert evidence[2]["id"] == "baseline_runtime_report"
     assert evidence[3]["id"] == "candidate_runtime_report"
@@ -353,6 +415,9 @@ def test_run_behavior_diff_consumes_runtime_sidecars(tmp_path: Path) -> None:
     markdown = (output_dir / "model_behavior_change_report.md").read_text()
     assert "Runtime Evidence Sidecars" in markdown
     assert "Shared activation layers: 0" in markdown
+    assert "Shared trace artifact kinds: activation, logprobs" in markdown
+    assert "Shared profiled prompts: 1" in markdown
+    assert "Shared runtime sweep points: 1" in markdown
 
 
 def test_run_behavior_diff_fails_on_threshold_violation(tmp_path: Path) -> None:

@@ -22,11 +22,27 @@ class StageTimer:
         name: str,
         *,
         device: DeviceRef | None = None,
+        memory_bytes: int | None = None,
+        batch_size: int | None = None,
+        token_count: int | None = None,
+        input_bytes: int | None = None,
+        output_bytes: int | None = None,
+        host_device_copies: int = 0,
+        sync_points: int = 0,
+        queue_depth: int | None = None,
         metadata: dict[str, RuntimeValue] | None = None,
     ) -> None:
         """Initialize a stage timer."""
         self._name = name
         self._device = device
+        self._memory_bytes = memory_bytes
+        self._batch_size = batch_size
+        self._token_count = token_count
+        self._input_bytes = input_bytes
+        self._output_bytes = output_bytes
+        self._host_device_copies = host_device_copies
+        self._sync_points = sync_points
+        self._queue_depth = queue_depth
         self._metadata = metadata or {}
         self._started_s = 0.0
         self._profile: StageProfile | None = None
@@ -48,6 +64,14 @@ class StageTimer:
             name=self._name,
             duration_s=duration_s,
             device=self._device,
+            memory_bytes=self._memory_bytes,
+            batch_size=self._batch_size,
+            token_count=self._token_count,
+            input_bytes=self._input_bytes,
+            output_bytes=self._output_bytes,
+            host_device_copies=self._host_device_copies,
+            sync_points=self._sync_points,
+            queue_depth=self._queue_depth,
             metadata=dict(self._metadata),
         )
 
@@ -64,7 +88,27 @@ def profile_stage(
     name: str,
     *,
     device: DeviceRef | None = None,
+    memory_bytes: int | None = None,
+    batch_size: int | None = None,
+    token_count: int | None = None,
+    input_bytes: int | None = None,
+    output_bytes: int | None = None,
+    host_device_copies: int = 0,
+    sync_points: int = 0,
+    queue_depth: int | None = None,
     metadata: dict[str, RuntimeValue] | None = None,
 ) -> StageTimer:
     """Create a stage timer for one runtime primitive."""
-    return StageTimer(name, device=device, metadata=metadata)
+    return StageTimer(
+        name,
+        device=device,
+        memory_bytes=memory_bytes,
+        batch_size=batch_size,
+        token_count=token_count,
+        input_bytes=input_bytes,
+        output_bytes=output_bytes,
+        host_device_copies=host_device_copies,
+        sync_points=sync_points,
+        queue_depth=queue_depth,
+        metadata=metadata,
+    )

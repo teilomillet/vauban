@@ -106,6 +106,7 @@ def _sss_seed_forward(
     """
     transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
+    direction = ops.to_device_like(direction, h)
     ssm_mask = make_ssm_mask(transformer, h)
 
     seed_set = set(profile.valley_layers)
@@ -166,6 +167,7 @@ def _sss_reinforcement_forward(
     """
     transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
+    direction = ops.to_device_like(direction, h)
     ssm_mask = make_ssm_mask(transformer, h)
 
     gain_map = {ls.layer_index: ls for ls in profile.layers}

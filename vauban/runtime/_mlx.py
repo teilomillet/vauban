@@ -20,6 +20,7 @@ from vauban._forward import (
     select_mask,
 )
 from vauban.runtime._capabilities import mlx_capabilities
+from vauban.runtime._execution import run_runtime_trace
 from vauban.runtime._profiling import profile_stage
 from vauban.runtime._types import (
     BackendCapabilities,
@@ -29,9 +30,11 @@ from vauban.runtime._types import (
     InterventionRecord,
     LoadedModel,
     ModelRef,
+    RuntimeTraceResult,
     TensorLike,
     TokenizedPrompt,
     TokenizeRequest,
+    TraceRequest,
 )
 
 if TYPE_CHECKING:
@@ -83,7 +86,7 @@ class MlxRuntime:
     ) -> TokenizedPrompt:
         """Tokenize text with an MLX tokenizer."""
         tokenizer = _require_tokenizer(loaded)
-        with profile_stage("tokenize", device=_mlx_device()) as timer:
+        with profile_stage("tokenize", device=_tokenizer_device()) as timer:
             if request.apply_chat_template:
                 rendered = tokenizer.apply_chat_template(
                     [{"role": "user", "content": request.text}],
@@ -114,6 +117,10 @@ class MlxRuntime:
         with profile_stage(
             "prepare_batch",
             device=device,
+            batch_size=1,
+            token_count=len(request.prompt_ids),
+            host_device_copies=1,
+            sync_points=1,
             metadata={"tokens": len(request.prompt_ids)},
         ) as prepare_timer:
             token_ids = mx.array(list(request.prompt_ids))[None, :]
@@ -127,6 +134,9 @@ class MlxRuntime:
         with profile_stage(
             "forward",
             device=device,
+            batch_size=1,
+            token_count=len(request.prompt_ids),
+            sync_points=1,
             metadata={"collect_layers": list(request.collect_layers)},
         ) as forward_timer:
             ssm_mask = make_ssm_mask(transformer, h)
@@ -157,7 +167,13 @@ class MlxRuntime:
         logits: TensorLike | None = None
         logprobs: TensorLike | None = None
         if request.return_logits:
-            with profile_stage("lm_head", device=device) as head_timer:
+            with profile_stage(
+                "lm_head",
+                device=device,
+                batch_size=1,
+                token_count=len(request.prompt_ids),
+                sync_points=1,
+            ) as head_timer:
                 raw_logits = lm_head_forward(model, h)
                 force_eval(raw_logits)
                 logits = cast("TensorLike", raw_logits)
@@ -176,6 +192,14 @@ class MlxRuntime:
             profile=tuple(profiles),
         )
 
+    def trace(
+        self,
+        loaded: LoadedModel,
+        request: TraceRequest,
+    ) -> RuntimeTraceResult:
+        """Run tokenization and forward as one trace-first MLX execution."""
+        return run_runtime_trace(self, loaded, request)
+
 
 def _mlx_device() -> DeviceRef:
     """Return current MLX device metadata for trace records."""
@@ -183,6 +207,11 @@ def _mlx_device() -> DeviceRef:
     label = str(device)
     kind = "cpu" if "cpu" in label.lower() else "gpu"
     return DeviceRef(kind=kind, label=label)
+
+
+def _tokenizer_device() -> DeviceRef:
+    """Return device metadata for CPU tokenizer work."""
+    return DeviceRef(kind="cpu", label="tokenizer")
 
 
 def _require_model(loaded: LoadedModel) -> CausalLM:

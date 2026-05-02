@@ -102,6 +102,8 @@ def load_config(path: str | Path) -> PipelineConfig:
     from vauban._backend import resolve_backend
 
     backend_raw = raw.get("backend")
+    if backend_raw is None and isinstance(model_section, dict):
+        backend_raw = model_section.get("backend")
     if backend_raw is not None and not isinstance(backend_raw, str):
         msg = (
             f"backend must be a string,"

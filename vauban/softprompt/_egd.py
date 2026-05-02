@@ -98,8 +98,10 @@ def _egd_attack(
         config.init_tokens, config.n_tokens, vocab_mask, vocab_size,
     )
     p = _build_peaked_probs(init_ids, vocab_size)
+    p = ops.to_device_like(p, embed_matrix)
     # Apply vocab mask to initial distribution
     if vocab_mask is not None:
+        vocab_mask = ops.to_device_like(vocab_mask, embed_matrix)
         force_eval(vocab_mask)
         p = p * vocab_mask
         row_sums = ops.sum(p, axis=-1, keepdims=True)
@@ -242,6 +244,7 @@ def _egd_attack(
 
     # Build final embeddings from best tokens
     final_token_array = ops.array(token_ids)[None, :]
+    final_token_array = ops.to_device_like(final_token_array, embed_matrix)
     final_embeds = transformer.embed_tokens(final_token_array)
     force_eval(final_embeds)
 

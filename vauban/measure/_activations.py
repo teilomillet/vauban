@@ -144,7 +144,7 @@ def _forward_collect(
     for layer in transformer.layers:
         h = layer(h, select_mask(layer, attn_mask, ssm_mask))
         # Upcast to float32 for numerical stability (like Heretic)
-        activation = h[0, token_position, :].astype(ops.float32)
+        activation = ops.stop_gradient(h[0, token_position, :]).astype(ops.float32)
         residuals.append(activation)
 
     return residuals

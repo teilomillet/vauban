@@ -1,6 +1,6 @@
 # Qwen Coding Refusal Audit
 
-This example runs a safe, small behavior-diff loop for a local Qwen3.6-27B
+This example runs a safe, small behavior-diff loop for a local Qwen2.5-Coder-7B
 model:
 
 1. collect a baseline trace,
@@ -18,6 +18,6 @@ vauban examples/qwen_coding_refusal_audit/candidate_trace.toml
 vauban examples/qwen_coding_refusal_audit/diff.toml
 ```
 
-The baseline uses `mlx-community/Qwen3.6-27B-OptiQ-4bit`, a local MLX 4-bit
-language-stack quantization of `Qwen/Qwen3.6-27B`. Edit `candidate_trace.toml`
-to point at the transformed or alternative model under audit.
+The baseline uses `Qwen/Qwen2.5-Coder-7B-Instruct` through the Torch runtime.
+Edit `candidate_trace.toml` to point at the transformed or alternative model
+under audit.

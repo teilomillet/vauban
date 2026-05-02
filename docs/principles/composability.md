@@ -41,7 +41,7 @@ A config that measures a direction and maps the refusal surface:
 
 ```toml
 [model]
-name = "mlx-community/Qwen2.5-1.5B-Instruct-bf16"
+path = "Qwen/Qwen2.5-1.5B-Instruct"
 
 [measure]
 mode = "direction"
@@ -54,7 +54,7 @@ A config that adds softprompt attack against CAST defense:
 
 ```toml
 [model]
-name = "mlx-community/Qwen2.5-1.5B-Instruct-bf16"
+path = "Qwen/Qwen2.5-1.5B-Instruct"
 
 [measure]
 mode = "direction"
@@ -107,7 +107,7 @@ For programmatic use (particularly by AI assistants), the `Session` class compos
 ```python
 from vauban import Session
 
-s = Session("mlx-community/Qwen2.5-1.5B-Instruct-bf16")
+s = Session("Qwen/Qwen2.5-1.5B-Instruct")
 s.measure()       # extract direction
 s.cast()          # enable runtime defense
 s.audit(prompts)  # check behavior

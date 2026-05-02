@@ -115,6 +115,7 @@ def _gcg_attack(
             total_steps += 1
 
             token_array = ops.array(current_ids)[None, :]
+            token_array = ops.to_device_like(token_array, embed_matrix)
             soft_embeds = transformer.embed_tokens(token_array)
             force_eval(soft_embeds)
 
@@ -248,6 +249,7 @@ def _gcg_attack(
             overall_best_ids = restart_best_ids
 
     final_token_array = ops.array(overall_best_ids, dtype=ops.int32)[None, :]
+    final_token_array = ops.to_device_like(final_token_array, embed_matrix)
     final_embeds = transformer.embed_tokens(final_token_array)
     force_eval(final_embeds)
 

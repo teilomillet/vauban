@@ -63,12 +63,16 @@ def _continuous_attack(
 
     if init_embeddings is not None:
         # Warm-start: perturb previous embeddings slightly
-        noise = ops.random.normal(init_embeddings.shape) * config.init_scale
+        noise = ops.to_device_like(
+            ops.random.normal(init_embeddings.shape),
+            init_embeddings,
+        ) * config.init_scale
         soft_embeds = init_embeddings + noise
     else:
         soft_embeds = (
             ops.random.normal((1, config.n_tokens, d_model)) * config.init_scale
         )
+    soft_embeds = ops.to_device_like(soft_embeds, embed_matrix)
     force_eval(soft_embeds)
 
     # Adam state: manual tracking since we're optimizing a bare array

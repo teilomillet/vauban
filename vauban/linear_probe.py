@@ -10,7 +10,7 @@ Tests whether refused knowledge remains linearly decodable
 from __future__ import annotations
 
 import random
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from vauban import _ops as ops
 from vauban._forward import force_eval
@@ -66,6 +66,7 @@ def train_probe(
     labels = ops.array(
         [1.0] * n_harmful + [0.0] * (n_total - n_harmful),
     )
+    labels = ops.to_device_like(labels, per_layer[0])
     force_eval(labels)
 
     d_model = int(per_layer[0].shape[1])
@@ -125,15 +126,15 @@ def _train_single_probe(
     d_model = int(activations.shape[1])
 
     # Initialize weights and bias
-    w = ops.zeros((d_model,))
-    b = ops.array(0.0)
+    w = ops.to_device_like(ops.zeros((d_model,)), activations)
+    b = ops.to_device_like(ops.array(0.0), activations)
     force_eval(w, b)
 
     # Adam state
     m_w = ops.zeros_like(w)
     v_w = ops.zeros_like(w)
-    m_b = ops.array(0.0)
-    v_b = ops.array(0.0)
+    m_b = ops.to_device_like(ops.array(0.0), activations)
+    v_b = ops.to_device_like(ops.array(0.0), activations)
     force_eval(m_w, v_w, m_b, v_b)
 
     beta1 = 0.9
@@ -198,7 +199,7 @@ def _train_single_probe(
     # Compute final accuracy
     all_logits = ops.matmul(activations, w) + b
     preds = (all_logits > 0.0).astype(ops.float32)
-    match = ops.array(preds == labels)
+    match = cast("Array", preds == labels)
     correct = ops.sum(match.astype(ops.float32))
     force_eval(correct)
     accuracy = float(correct.item()) / n_samples

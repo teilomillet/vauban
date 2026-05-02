@@ -197,9 +197,12 @@ def _generate_from_hidden(
         tokens.append(token_id)
 
         # Embed the new token for next step
-        new_embed = transformer.embed_tokens(
+        reference = getattr(transformer.embed_tokens, "weight", last_h)
+        token_ids = ops.to_device_like(
             ops.array([[token_id]]),
+            reference,
         )
+        new_embed = transformer.embed_tokens(token_ids)
         last_h = new_embed
 
     return tokens

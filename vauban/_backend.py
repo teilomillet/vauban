@@ -13,7 +13,7 @@ from typing import Literal, cast
 BackendName = Literal["mlx", "torch"]
 
 SUPPORTED_BACKENDS: frozenset[str] = frozenset({"mlx", "torch"})
-DEFAULT_BACKEND: BackendName = "mlx"
+DEFAULT_BACKEND: BackendName = "torch"
 
 
 def resolve_backend(name: str | None = None) -> BackendName:

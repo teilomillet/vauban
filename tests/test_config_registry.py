@@ -9,6 +9,7 @@ from typing import cast
 
 import pytest
 
+from vauban._backend import resolve_backend
 from vauban.config import load_config
 from vauban.config._loader import _resolve_borderline_path, _resolve_data_paths
 from vauban.config._parse_cast import _parse_cast
@@ -167,10 +168,22 @@ def _manual_load_config_pre_registry(path: Path) -> PipelineConfig:
             raise TypeError(msg)
         verbose = verbose_raw
 
+    backend_raw = raw.get("backend")
+    if backend_raw is None:
+        backend_raw = model_section.get("backend")
+    if backend_raw is not None and not isinstance(backend_raw, str):
+        msg = (
+            f"backend must be a string,"
+            f" got {type(backend_raw).__name__}"
+        )
+        raise TypeError(msg)
+    backend = resolve_backend(backend_raw)
+
     return PipelineConfig(
         model_path=model_path_raw,
         harmful_path=harmful_path,
         harmless_path=harmless_path,
+        backend=backend,
         cut=cut_config,
         measure=measure_config,
         surface=surface_config,

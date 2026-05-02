@@ -12,7 +12,7 @@ Usage::
 
     from vauban.session import Session
 
-    s = Session("mlx-community/Qwen2.5-0.5B-Instruct-bf16")
+    s = Session("Qwen/Qwen2.5-1.5B-Instruct")
     s.tools()           # list available tools
     s.measure()         # extract refusal direction
     s.detect()          # check hardening

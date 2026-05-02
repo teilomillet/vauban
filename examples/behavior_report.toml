@@ -26,12 +26,12 @@ markdown_report = true
 
 [behavior_report.baseline]
 label = "base"
-model_path = "mlx-community/example-base"
+model_path = "Qwen/Qwen2.5-1.5B-Instruct"
 role = "baseline"
 
 [behavior_report.candidate]
 label = "instruct"
-model_path = "mlx-community/example-instruct"
+model_path = "models/qwen2.5-1.5b-instruct-candidate"
 role = "candidate"
 quantization = "bf16"
 

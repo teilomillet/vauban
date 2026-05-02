@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from vauban import _ops as ops
 from vauban._forward import force_eval, get_transformer
 from vauban.softprompt._loss import (
     _compute_defensive_loss,
@@ -78,6 +79,7 @@ def _build_gcg_shared_state(
     refusal_ids: Array | None = None
     if config.loss_mode in {"untargeted", "defensive"}:
         refusal_ids = _encode_refusal_tokens(tokenizer)
+        refusal_ids = ops.to_device_like(refusal_ids, target_ids)
         force_eval(refusal_ids)
     sic_threshold = (
         config.defense_eval_sic_threshold
@@ -259,9 +261,8 @@ def _evaluate_candidate_loss(
     selected_prompt_ids: list[Array],
 ) -> float:
     """Evaluate a discrete candidate suffix against the selected prompts."""
-    from vauban import _ops as ops
-
     candidate_array = ops.array(candidate_ids)[None, :]
+    candidate_array = ops.to_device_like(candidate_array, state.target_ids)
     candidate_embeds = get_transformer(state.model).embed_tokens(candidate_array)
     candidate_loss = _compute_average_objective_loss(
         state,

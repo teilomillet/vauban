@@ -3,7 +3,7 @@
 
 # Trace-First Inference Stack
 
-This is a handoff note for Vauban's next backend layer.
+This is a handoff note for Vauban's backend layer.
 
 The one-word primitive is **Trace**.
 
@@ -32,12 +32,24 @@ Verified in the current tree:
   `vauban/behavior/_primitives.py`.
 - Those primitives describe report claims, evidence, access levels, and
   limitations.
-- Runtime execution is still spread across `_ops`, `_forward`, `_model_io`, MLX
-  helpers, and Torch helpers.
-- The current runtime layer does not yet emit a single evidence-bearing trace.
+- `vauban/runtime/_types.py` now defines the first trace vocabulary:
+  `TraceRequest`, `Trace`, `TraceSpan`, `TraceArtifact`, artifact-oriented
+  backend capability support, and USL-ready `StageProfile` counters.
+- `vauban/runtime/_evidence.py` lifts the existing `ForwardTrace` path into
+  trace artifacts, spans, and aggregate profile summaries without copying raw
+  tensors into reports.
+- MLX and PyTorch runtimes expose `trace()` as the first trace-first execution
+  path: tokenization, forward, logits, optional logprobs, optional activations,
+  optional intervention records, and profile spans.
+- `[behavior_trace]` runtime evidence sidecars now expose trace artifact
+  coverage, profile summaries, and controlled profile sweeps when artifact
+  coverage is stable. `[behavior_diff]` compares that coverage across baseline
+  and candidate reports.
 
-This means report claim strength is becoming epistemic, but inference execution
-is not yet shaped in the same epistemic way.
+This means the first slice is implemented for the existing forward path. The
+remaining work is not to invent more primitives upfront; it is to make more
+runtime paths emit the same trace shape and to validate CUDA/MLX parity with
+tests and measurements.
 
 ## Design Claim
 
@@ -105,13 +117,15 @@ That means a trace span should make these costs inspectable when practical:
 
 ```text
 span name
-start and end time
+duration
 device
 batch size
 token count
 memory estimate
+input and output bytes
 host/device copies
 synchronization points
+queue depth
 backend-specific notes
 ```
 
@@ -134,7 +148,7 @@ If not, keep it concrete and local until repetition proves otherwise.
 
 ## Practical First Contract
 
-The first implementation target should be smaller than a generic runtime API:
+The first implemented contract is smaller than a generic runtime API:
 
 ```text
 TraceRequest
@@ -156,6 +170,22 @@ Their job:
 This is intentionally lower commitment than a `ModelRuntime.forward()` contract.
 The executor can be MLX, Torch, MAX, or something else. The stable surface is
 the trace.
+
+Implemented status:
+
+- `TraceArtifactKind` is the shared artifact vocabulary.
+- `BackendCapabilities.support_level_for_artifact()` maps backend declarations
+  into that vocabulary.
+- Existing `ForwardTrace` objects are promoted into `Trace` with span/artifact
+  summaries for report consumption.
+- `StageProfile` records scaling counters needed for later USL sweeps, but
+  Vauban does not fit or claim a USL model from a single run.
+- `summarize_trace_profile_sweep()` groups comparable traces by a controlled
+  axis such as token count, while rejecting unstable artifact coverage by
+  default.
+- `pixi run -e torch-dev real-cuda-sweep` runs the trace primitive on a cached
+  real HuggingFace model across controlled prompt lengths with warmup and
+  repeated samples, producing a sweep artifact without fitting USL.
 
 ## Inference Stack Shape
 
@@ -230,12 +260,12 @@ intervention artifacts
 The trace therefore becomes the bridge between inference and epistemic claim
 strength.
 
-## MLX First
+## Torch Full Surface
 
-Implement MLX first because it is the current reference path.
+Implement PyTorch as the full portable runtime surface.
 
-The first MLX slice should not migrate everything. It should produce a trace for
-one narrow path:
+The first Torch slice should cover the complete Vauban primitive surface for one
+clear path:
 
 ```text
 prompt ids
@@ -245,9 +275,9 @@ prompt ids
   -> profile spans
 ```
 
-Reason: this gives us a regression target before GPU work. PyTorch/CUDA should
-then implement the same trace contract, with its own honest capability
-declaration and profile spans.
+Reason: this gives Vauban one runtime contract that works across CPU, CUDA, and
+MPS. If MPS needs lower-level performance work, add a small custom kernel behind
+the primitive rather than making MLX the product center again.
 
 ## Testing Strategy
 
@@ -258,12 +288,14 @@ Use contract tests around the trace, not around framework internals:
 - Each artifact has a stable kind, producer span, and backend-independent
   metadata.
 - Unsupported requested artifacts fail explicitly or are recorded as missing.
-- MLX establishes the first reference behavior.
-- Torch/CUDA is compared against MLX for artifact presence, shape metadata,
+- Profile summaries expose counters needed for controlled sweeps, but tests do
+  not treat a single run as performance evidence.
+- Torch establishes the portable reference behavior.
+- MLX is compared against Torch for artifact presence, shape metadata,
   report structure, and metric direction, not bit-identical tensors.
 
-Reason: fixing PyTorch failures one by one before defining this trace contract
-risks encoding accidental MLX behavior instead of Vauban behavior.
+Reason: fixing backend failures one by one before defining this trace contract
+risks encoding accidental framework behavior instead of Vauban behavior.
 
 ## Non-Goals
 
@@ -277,23 +309,23 @@ risks encoding accidental MLX behavior instead of Vauban behavior.
 
 ## Open Questions
 
-- What is the smallest MLX path that can emit logits and one activation artifact
-  deterministically?
 - Should trace artifacts hold raw backend tensors, tensor summaries, or both?
 - Which existing mode should consume traces first: behavior trace, measure,
   probe, or scan?
 - How much profile metadata should always be collected versus opt-in?
 - How should trace artifacts be serialized without copying large tensors by
   default?
+- What controlled sweep shape is sufficient before fitting USL parameters for
+  batching, synchronization, and device-transfer costs?
 
 ## Handoff Summary
 
 Build the next Vauban runtime layer around **Trace**.
 
 The trace records inference execution, artifacts, capabilities, and scaling
-costs. Artifact kinds can grow over time. MLX provides the first reference
-implementation. PyTorch/CUDA and MAX should be evaluated by whether they can
-emit equivalent trace artifacts, not by whether they mimic MLX APIs.
+costs. Artifact kinds can grow over time. PyTorch provides the portable
+reference implementation. MLX and MAX should be evaluated by whether they can
+emit equivalent trace artifacts, not by whether they define Vauban's APIs.
 
 The design goal is ease of mind: one core primitive, layered evidence, explicit
 capabilities, profileable spans, and reports whose epistemic strength follows

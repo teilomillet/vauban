@@ -15,7 +15,12 @@ import math
 
 from vauban import _ops as ops
 from vauban._array import Array
-from vauban._forward import extract_logits, force_eval, get_transformer
+from vauban._forward import (
+    extract_logits,
+    force_eval,
+    get_transformer,
+    to_model_device,
+)
 from vauban.cut import cut, sparsify_direction
 from vauban.evaluate import (
     DEFAULT_REFUSAL_PHRASES,
@@ -395,7 +400,10 @@ def _precompute_logits(
     """
     results: list[Array] = []
     for prompt in prompts:
-        token_ids = ops.array(tokenizer.encode(prompt))[None, :]
+        token_ids = to_model_device(
+            model,
+            ops.array(tokenizer.encode(prompt))[None, :],
+        )
         logits = extract_logits(model(token_ids))  # type: ignore[call-non-callable, arg-type]
         force_eval(logits)
         results.append(logits)
@@ -420,7 +428,10 @@ def _kl_from_precomputed(
     total_tokens = 0
 
     for prompt, orig_logits in zip(prompts, original_logits, strict=True):
-        token_ids = ops.array(tokenizer.encode(prompt))[None, :]
+        token_ids = to_model_device(
+            model,
+            ops.array(tokenizer.encode(prompt))[None, :],
+        )
         mod_logits = extract_logits(model(token_ids))  # type: ignore[call-non-callable, arg-type]
 
         p = ops.softmax(orig_logits, axis=-1)

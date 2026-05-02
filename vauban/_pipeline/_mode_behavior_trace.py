@@ -28,19 +28,29 @@ from vauban.behavior import (
 )
 from vauban.evaluate import _generate
 from vauban.runtime import (
-    ForwardRequest,
+    DirectionInterventionMode,
     LoadedModel,
     ModelRef,
-    TokenizeRequest,
+    TorchActivationPrimitiveRequest,
+    TorchActivationTensor,
+    TorchDirectionIntervention,
+    Trace,
+    TraceArtifact,
+    TraceArtifactKind,
+    TraceRequest,
+    TraceSpan,
     create_runtime,
+    run_torch_activation_primitive,
     runtime_report_evidence,
+    summarize_trace_profile_sweep,
 )
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from vauban.runtime import RuntimeReportEvidence
+    from vauban.runtime import RuntimeReportEvidence, RuntimeTraceResult, TensorLike
     from vauban.types import (
+        BehaviorTraceActivationPrimitiveConfig,
         BehaviorTraceConfig,
         BehaviorTracePromptConfig,
         CausalLM,
@@ -69,16 +79,15 @@ def _run_behavior_trace_mode(context: EarlyModeContext) -> None:
     )
 
     observations = _collect_observations(model, tokenizer, trace_config)
-    runtime_evidence = (
-        _collect_runtime_evidence(
+    runtime_evidence: list[JsonValue] | None = None
+    runtime_profile_sweep: JsonValue | None = None
+    if trace_config.collect_runtime_evidence:
+        runtime_evidence, runtime_profile_sweep = _collect_runtime_evidence(
             model,
             tokenizer,
             trace_config,
             model_path=config.model_path,
         )
-        if trace_config.collect_runtime_evidence
-        else None
-    )
     trace_path = _trace_path(context.config.output_dir, trace_config)
     trace = BehaviorTrace(
         trace_id=trace_path.stem,
@@ -109,6 +118,7 @@ def _run_behavior_trace_mode(context: EarlyModeContext) -> None:
                 config_path=context.config_path,
                 output_dir=config.output_dir,
                 runtime_evidence=runtime_evidence,
+                runtime_profile_sweep=runtime_profile_sweep,
             ),
         ),
     )
@@ -177,7 +187,7 @@ def _collect_runtime_evidence(
     config: BehaviorTraceConfig,
     *,
     model_path: str,
-) -> list[JsonValue]:
+) -> tuple[list[JsonValue], JsonValue]:
     """Collect opt-in runtime evidence for behavior trace report payloads."""
     runtime = create_runtime(config.runtime_backend)
     loaded = LoadedModel(
@@ -188,25 +198,304 @@ def _collect_runtime_evidence(
         tokenizer=tokenizer,
     )
     rows: list[JsonValue] = []
-    collect_layers = tuple(config.collect_layers)
+    traces: list[Trace] = []
+    collect_layers = _runtime_collect_layers(config)
+    interventions = _runtime_interventions(config, collect_layers)
     for prompt in config.prompts:
-        tokenized = runtime.tokenize(loaded, TokenizeRequest(prompt.text))
-        trace = runtime.forward(
-            loaded,
-            ForwardRequest(
-                prompt_ids=tokenized.token_ids,
-                collect_layers=collect_layers,
-                return_logits=True,
-                return_logprobs=config.return_logprobs,
-            ),
+        for warmup_index in range(config.runtime_profile_sweep.warmup):
+            runtime.trace(
+                loaded,
+                _runtime_trace_request(
+                    prompt,
+                    config,
+                    collect_layers=collect_layers,
+                    interventions=interventions,
+                    trace_id=(
+                        f"behavior_trace.{prompt.prompt_id}"
+                        f".warmup_{warmup_index}"
+                    ),
+                    sample_index=None,
+                ),
+            )
+        samples: list[RuntimeTraceResult] = []
+        for sample_index in range(config.runtime_profile_sweep.samples):
+            result = runtime.trace(
+                loaded,
+                _runtime_trace_request(
+                    prompt,
+                    config,
+                    collect_layers=collect_layers,
+                    interventions=interventions,
+                    trace_id=_sample_trace_id(
+                        prompt.prompt_id,
+                        sample_index,
+                        config.runtime_profile_sweep.samples,
+                    ),
+                    sample_index=sample_index,
+                ),
+            )
+            samples.append(result)
+            traces.append(
+                _with_activation_primitive_artifacts(
+                    result.trace,
+                    result.forward.activations,
+                    config.activation_primitive,
+                ),
+            )
+        result = samples[0]
+        runtime_trace = _with_activation_primitive_artifacts(
+            result.trace,
+            result.forward.activations,
+            config.activation_primitive,
         )
         package = runtime_report_evidence(
             runtime.capabilities,
-            trace,
+            result.forward,
             prefix=f"behavior_trace.{prompt.prompt_id}",
+            runtime_trace=runtime_trace,
         )
         rows.append(_runtime_evidence_row(prompt.prompt_id, package))
-    return rows
+    return rows, _runtime_profile_sweep(config, traces)
+
+
+def _runtime_trace_request(
+    prompt: BehaviorTracePromptConfig,
+    config: BehaviorTraceConfig,
+    *,
+    collect_layers: tuple[int, ...],
+    interventions: tuple[TorchDirectionIntervention, ...],
+    trace_id: str,
+    sample_index: int | None,
+) -> TraceRequest:
+    """Build one runtime trace request for a behavior prompt."""
+    metadata: dict[str, JsonValue] = {
+        "prompt_id": prompt.prompt_id,
+    }
+    if sample_index is not None:
+        metadata["sample_index"] = sample_index
+    return TraceRequest(
+        trace_id=trace_id,
+        input_text=prompt.text,
+        requested_artifacts=_runtime_requested_artifacts(config),
+        metadata=metadata,
+        collect_layers=collect_layers,
+        interventions=interventions,
+        return_logits=True,
+        return_logprobs=config.return_logprobs,
+    )
+
+
+def _sample_trace_id(prompt_id: str, sample_index: int, samples: int) -> str:
+    """Return a stable trace ID for one measured runtime sample."""
+    if samples == 1:
+        return f"behavior_trace.{prompt_id}"
+    return f"behavior_trace.{prompt_id}.sample_{sample_index}"
+
+
+def _runtime_profile_sweep(
+    config: BehaviorTraceConfig,
+    traces: list[Trace],
+) -> JsonValue:
+    """Return a controlled profile sweep for stable runtime trace coverage."""
+    sweep_config = config.runtime_profile_sweep
+    if not sweep_config.enabled:
+        return {
+            "status": "disabled",
+            "reason": "runtime profile sweep disabled by config",
+        }
+    if not traces:
+        return {
+            "status": "not_computed",
+            "reason": "no runtime traces were collected",
+        }
+    try:
+        return cast(
+            "JsonValue",
+            summarize_trace_profile_sweep(
+                tuple(traces),
+                sweep_id=f"behavior_trace.{config.model_label}.profile_sweep",
+                axis=sweep_config.axis,
+                require_stable_artifacts=sweep_config.require_stable_artifacts,
+            ).to_dict(),
+        )
+    except ValueError as exc:
+        return {
+            "status": "not_computed",
+            "reason": str(exc),
+        }
+
+
+def _runtime_requested_artifacts(
+    config: BehaviorTraceConfig,
+) -> tuple[TraceArtifactKind, ...]:
+    """Return trace artifacts requested by the behavior trace config."""
+    artifacts: list[TraceArtifactKind] = ["tokens", "logits"]
+    if config.return_logprobs:
+        artifacts.append("logprobs")
+    if config.collect_layers or config.activation_primitive.enabled:
+        artifacts.append("activation")
+    return tuple(artifacts)
+
+
+def _runtime_collect_layers(config: BehaviorTraceConfig) -> tuple[int, ...]:
+    """Return activation layers needed by runtime evidence and primitives."""
+    layers = list(config.collect_layers)
+    primitive = config.activation_primitive
+    if primitive.enabled:
+        if config.runtime_backend != "torch":
+            msg = (
+                "[behavior_trace.activation_primitive] currently requires"
+                ' runtime_backend = "torch"'
+            )
+            raise ValueError(msg)
+        primitive_layers = primitive.layers or config.collect_layers
+        if not primitive_layers:
+            msg = (
+                "[behavior_trace.activation_primitive] requires layers or"
+                " collect_layers"
+            )
+            raise ValueError(msg)
+        layers.extend(primitive_layers)
+    deduped: list[int] = []
+    seen: set[int] = set()
+    for layer in layers:
+        if layer not in seen:
+            deduped.append(layer)
+            seen.add(layer)
+    return tuple(deduped)
+
+
+def _runtime_interventions(
+    config: BehaviorTraceConfig,
+    collect_layers: tuple[int, ...],
+) -> tuple[TorchDirectionIntervention, ...]:
+    """Return primitive-backed interventions requested by behavior trace config."""
+    primitive = config.activation_primitive
+    if not primitive.enabled or primitive.mode in ("project", "subspace_project"):
+        return ()
+    import torch
+
+    tensor = cast("TorchActivationTensor", torch.tensor(_primitive_values(primitive)))
+    mode = _intervention_mode(primitive.mode)
+    layers = tuple(primitive.layers) if primitive.layers else collect_layers
+    return tuple(
+        TorchDirectionIntervention(
+            name=f"{primitive.name}.layer_{layer}",
+            layer_index=layer,
+            direction=tensor,
+            alpha=primitive.alpha,
+            mode=mode,
+        )
+        for layer in layers
+    )
+
+
+def _with_activation_primitive_artifacts(
+    trace: Trace,
+    activations: dict[int, TensorLike],
+    primitive: BehaviorTraceActivationPrimitiveConfig,
+) -> Trace:
+    """Attach activation projection artifacts to a runtime trace when requested."""
+    if not primitive.enabled or primitive.mode not in ("project", "subspace_project"):
+        return trace
+    import torch
+
+    tensor = cast("TorchActivationTensor", torch.tensor(_primitive_values(primitive)))
+    layers = tuple(primitive.layers) if primitive.layers else tuple(activations)
+    forward_span_id = _forward_span_id(trace)
+    artifacts = list(trace.artifacts)
+    new_artifact_ids: list[str] = []
+    for layer in layers:
+        activation = activations.get(layer)
+        if activation is None:
+            continue
+        result = run_torch_activation_primitive(
+            TorchActivationPrimitiveRequest(
+                activation=cast("TorchActivationTensor", activation),
+                direction=tensor,
+                layer_index=layer,
+                mode=primitive.mode,
+                alpha=primitive.alpha,
+                name=primitive.name,
+            ),
+        )
+        artifact = TraceArtifact(
+            artifact_id=f"activation_projection.layer_{layer}",
+            kind="metric",
+            producer_span_id=forward_span_id,
+            shape=tuple(int(dim) for dim in result.projection.shape),
+            metadata=result.artifact_metadata(),
+        )
+        artifacts.append(artifact)
+        new_artifact_ids.append(artifact.artifact_id)
+    if not new_artifact_ids:
+        return trace
+    return Trace(
+        trace_id=trace.trace_id,
+        device=trace.device,
+        spans=_append_span_outputs(trace, forward_span_id, tuple(new_artifact_ids)),
+        artifacts=tuple(artifacts),
+        metadata=dict(trace.metadata),
+    )
+
+
+def _primitive_values(
+    primitive: BehaviorTraceActivationPrimitiveConfig,
+) -> list[float] | list[list[float]]:
+    """Return direction or basis values for a Torch primitive tensor."""
+    if primitive.mode in ("project", "subtract", "add"):
+        return primitive.direction
+    return primitive.basis
+
+
+def _intervention_mode(
+    mode: str,
+) -> DirectionInterventionMode:
+    """Map behavior trace primitive modes to intervention modes."""
+    if mode == "subtract":
+        return "subtract"
+    if mode == "add":
+        return "add"
+    if mode == "subspace_remove":
+        return "subspace_remove"
+    if mode == "subspace_add":
+        return "subspace_add"
+    msg = f"mode {mode!r} is not an intervention mode"
+    raise ValueError(msg)
+
+
+def _forward_span_id(trace: Trace) -> str | None:
+    """Return the forward span id for primitive artifacts."""
+    for span in trace.spans:
+        if span.name == "forward":
+            return span.span_id
+    return None
+
+
+def _append_span_outputs(
+    trace: Trace,
+    span_id: str | None,
+    artifact_ids: tuple[str, ...],
+) -> tuple[TraceSpan, ...]:
+    """Return spans with primitive artifacts added to the forward output list."""
+    if span_id is None:
+        return trace.spans
+    spans: list[TraceSpan] = []
+    for span in trace.spans:
+        if span.span_id != span_id:
+            spans.append(span)
+            continue
+        spans.append(
+            TraceSpan(
+                span_id=span.span_id,
+                name=span.name,
+                profile=span.profile,
+                input_artifact_ids=span.input_artifact_ids,
+                output_artifact_ids=span.output_artifact_ids + artifact_ids,
+                metadata=dict(span.metadata),
+            ),
+        )
+    return tuple(spans)
 
 
 def _runtime_evidence_row(
@@ -259,6 +548,7 @@ def _report_payload(
     config_path: str | Path,
     output_dir: Path,
     runtime_evidence: list[JsonValue] | None,
+    runtime_profile_sweep: JsonValue | None,
 ) -> dict[str, JsonValue]:
     """Build a compact JSON report for the trace collection run."""
     reproducibility = reproducibility_payload(
@@ -316,6 +606,16 @@ def _report_payload(
             "backend": config.runtime_backend,
             "collect_layers": list(config.collect_layers),
             "return_logprobs": config.return_logprobs,
+            "profile_sweep_config": {
+                "enabled": config.runtime_profile_sweep.enabled,
+                "axis": config.runtime_profile_sweep.axis,
+                "samples": config.runtime_profile_sweep.samples,
+                "warmup": config.runtime_profile_sweep.warmup,
+                "require_stable_artifacts": (
+                    config.runtime_profile_sweep.require_stable_artifacts
+                ),
+            },
             "prompts": runtime_evidence,
+            "profile_sweep": runtime_profile_sweep,
         }
     return payload

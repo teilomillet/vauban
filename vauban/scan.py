@@ -68,6 +68,7 @@ def scan(
     # Forward pass to target layer, collecting all token activations
     transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
+    direction = ops.to_device_like(direction, h)
 
     ssm_mask = make_ssm_mask(transformer, h)
     for i, layer_module in enumerate(transformer.layers):

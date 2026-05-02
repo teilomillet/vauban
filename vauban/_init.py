@@ -11,7 +11,7 @@ from pathlib import Path
 
 from vauban.config._mode_registry import EARLY_MODE_DESCRIPTION_BY_MODE
 
-_DEFAULT_MODEL = "mlx-community/Llama-3.2-3B-Instruct-4bit"
+_DEFAULT_MODEL = "Qwen/Qwen2.5-1.5B-Instruct"
 _AI_ACT_EVIDENCE_DIR = "evidence"
 
 _AI_ACT_EVIDENCE_TEMPLATES: dict[str, str] = {
@@ -161,7 +161,7 @@ evaluation, or red-team artifacts instead.
 }
 
 _BASE = """\
-# backend = "mlx"  # compute backend: "mlx" (default) or "torch"
+# backend = "torch"  # compute backend: "torch" (default) or "mlx"
 
 # [meta]
 # title = ""
@@ -230,9 +230,16 @@ trace_filename = "checkpoint_1200_trace.jsonl"
 
 # Optional runtime diagnostics for access-aware report claims.
 collect_runtime_evidence = false
-runtime_backend = "mlx"
+runtime_backend = "torch"
 collect_layers = []
 return_logprobs = false
+
+# Optional Torch activation projection evidence for collected layers.
+# [behavior_trace.activation_primitive]
+# enabled = false
+# mode = "project"
+# direction = [1.0, 0.0]
+# layers = [0]
 
 [[behavior_trace.prompts]]
 id = "benign-001"
@@ -406,7 +413,7 @@ separation_coeff = 1.0
     "lora_export": """\
 
 [lora_export]
-format = "mlx"       # "mlx" or "peft"
+format = "peft"      # "peft" or "mlx"
 polarity = "remove"  # "remove" or "add"
 
 # Uncomment to configure [cut] options that affect the exported adapter:
@@ -584,8 +591,8 @@ candidate_trace = "traces/fine_tuned.jsonl"
 # candidate_report = "reports/fine_tuned_behavior_trace_report.json"
 baseline_label = "base"
 candidate_label = "fine-tuned"
-baseline_model_path = "mlx-community/example-base"
-candidate_model_path = "mlx-community/example-finetuned"
+baseline_model_path = "Qwen/Qwen2.5-1.5B-Instruct"
+candidate_model_path = "models/qwen2.5-1.5b-finetuned"
 title = "Model Behavior Change Report"
 target_change = "base -> fine-tuned"
 suite_name = "refusal-boundary-lite"
@@ -639,12 +646,12 @@ limitations = ["Small suite; rerun with broader coverage before shipping."]
 
 [behavior_report.baseline]
 label = "base"
-model_path = "mlx-community/example-base"
+model_path = "Qwen/Qwen2.5-1.5B-Instruct"
 role = "baseline"
 
 [behavior_report.candidate]
 label = "fine-tuned"
-model_path = "mlx-community/example-finetuned"
+model_path = "models/qwen2.5-1.5b-finetuned"
 role = "candidate"
 
 [behavior_report.suite]

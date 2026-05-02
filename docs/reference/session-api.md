@@ -18,7 +18,7 @@ A Session wraps a loaded model and tracks the results of every operation. Tools 
 ```python
 from vauban.session import Session
 
-s = Session("mlx-community/Qwen2.5-1.5B-Instruct-bf16")
+s = Session("Qwen/Qwen2.5-1.5B-Instruct")
 ```
 
 The constructor loads the model and tokenizer, dequantizes if needed, and loads default harmful/harmless prompt sets. Custom prompts can be passed via `harmful_prompts` and `harmless_prompts` keyword arguments.

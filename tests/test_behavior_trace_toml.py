@@ -17,6 +17,7 @@ from vauban._pipeline._mode_behavior_trace import _run_behavior_trace_mode
 from vauban.behavior import load_behavior_trace
 from vauban.config import load_config
 from vauban.types import (
+    BehaviorTraceActivationPrimitiveConfig,
     BehaviorTraceConfig,
     BehaviorTracePromptConfig,
     RuntimeBackendConfigName,
@@ -46,11 +47,18 @@ suite_version = "v1"
 max_tokens = 24
 record_outputs = false
 collect_runtime_evidence = true
-runtime_backend = "mlx"
+runtime_backend = "torch"
 collect_layers = [0, 1]
 return_logprobs = true
 output_trace = "traces/candidate.jsonl"
 scorers = ["length_v1", "style_v1", "expected_behavior_v1"]
+
+[behavior_trace.runtime_profile_sweep]
+enabled = true
+axis = "token_count"
+samples = 2
+warmup = 1
+require_stable_artifacts = true
 
 [[behavior_trace.prompts]]
 id = "benign-001"
@@ -125,9 +133,13 @@ def test_load_config_accepts_inline_behavior_trace(tmp_path: Path) -> None:
     assert config.behavior_trace.model_label == "candidate"
     assert config.behavior_trace.max_tokens == 24
     assert config.behavior_trace.collect_runtime_evidence is True
-    assert config.behavior_trace.runtime_backend == "mlx"
+    assert config.behavior_trace.runtime_backend == "torch"
     assert config.behavior_trace.collect_layers == [0, 1]
     assert config.behavior_trace.return_logprobs is True
+    assert config.behavior_trace.runtime_profile_sweep.enabled is True
+    assert config.behavior_trace.runtime_profile_sweep.axis == "token_count"
+    assert config.behavior_trace.runtime_profile_sweep.samples == 2
+    assert config.behavior_trace.runtime_profile_sweep.warmup == 1
     assert config.behavior_trace.output_trace == tmp_path / "traces/candidate.jsonl"
     assert config.behavior_trace.scorers == [
         "length_v1",
@@ -149,6 +161,34 @@ def test_behavior_trace_rejects_duplicate_runtime_layers(tmp_path: Path) -> None
 
     with pytest.raises(ValueError, match="duplicate layer"):
         load_config(config_path)
+
+
+def test_load_config_accepts_activation_primitive(tmp_path: Path) -> None:
+    """Nested activation primitive config should parse explicitly."""
+    config_path = tmp_path / "behavior_trace.toml"
+    config_path.write_text(
+        _behavior_trace_toml()
+        + """
+[behavior_trace.activation_primitive]
+enabled = true
+mode = "subspace_project"
+basis = [[1.0, 0.0], [0.0, 1.0]]
+layers = [0]
+alpha = 0.5
+name = "boundary_subspace"
+""",
+    )
+
+    config = load_config(config_path)
+
+    assert config.behavior_trace is not None
+    primitive = config.behavior_trace.activation_primitive
+    assert primitive.enabled is True
+    assert primitive.mode == "subspace_project"
+    assert primitive.basis == [[1.0, 0.0], [0.0, 1.0]]
+    assert primitive.layers == [0]
+    assert primitive.alpha == 0.5
+    assert primitive.name == "boundary_subspace"
 
 
 def test_load_config_imports_shared_behavior_suite(tmp_path: Path) -> None:
@@ -315,12 +355,110 @@ def test_run_behavior_trace_mode_writes_runtime_evidence(
     assert runtime_payload["backend"] == backend
     assert runtime_payload["collect_layers"] == [0]
     assert runtime_payload["return_logprobs"] is True
+    assert runtime_payload["profile_sweep"]["axis"] == "token_count"
+    assert runtime_payload["profile_sweep"]["metadata"]["fit"] == "not_computed"
+    assert runtime_payload["profile_sweep_config"]["samples"] == 1
+    assert runtime_payload["profile_sweep_config"]["warmup"] == 0
     assert prompt_payload["prompt_id"] == "benign-001"
     assert prompt_payload["runtime"]["access"]["level"] == "activations"
     assert prompt_payload["runtime"]["trace"]["activation_shapes"]["0"][0] == 1
     assert prompt_payload["runtime"]["trace"]["logprobs_shape"] is not None
+    profile_summary = prompt_payload["runtime"]["trace"]["profile_summary"]
+    assert profile_summary["profiled_spans"] == 4
+    assert profile_summary["token_count"] > 0
+    assert profile_summary["host_device_copies"] >= 1
+    artifact_kinds = [
+        artifact["kind"]
+        for artifact in prompt_payload["runtime"]["trace"]["artifacts"]
+    ]
+    assert "tokens" in artifact_kinds
+    assert "activation" in artifact_kinds
+    assert "logprobs" in artifact_kinds
     assert evidence[0]["id"] == "behavior_trace.benign-001.capabilities"
+    assert evidence[2]["id"] == "behavior_trace.benign-001.tokens"
     assert evidence[-1]["kind"] == "activation"
+
+
+def test_run_behavior_trace_mode_writes_activation_primitive_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mock_model: CausalLM,
+    mock_tokenizer: Tokenizer,
+) -> None:
+    """Opt-in activation primitives should become report trace artifacts."""
+    if get_backend() != "torch":
+        pytest.skip("activation primitive report artifacts use the Torch runtime")
+    trace_config = BehaviorTraceConfig(
+        model_label="candidate",
+        suite_name="runtime-evidence-suite",
+        suite_description="Safe smoke suite with runtime evidence.",
+        prompts=[
+            BehaviorTracePromptConfig(
+                prompt_id="benign-001",
+                text="Explain why rainbows form.",
+                category="benign_request",
+                expected_behavior="comply",
+            ),
+        ],
+        refusal_phrases=["I cannot"],
+        output_trace=tmp_path / "traces/candidate.jsonl",
+        collect_runtime_evidence=True,
+        runtime_backend="torch",
+        collect_layers=[0],
+        return_logprobs=True,
+        activation_primitive=BehaviorTraceActivationPrimitiveConfig(
+            enabled=True,
+            mode="project",
+            direction=[1.0, *([0.0] * 15)],
+            layers=[0],
+            name="refusal_axis_projection",
+        ),
+    )
+
+    def fake_generate(
+        model: object,
+        tokenizer: object,
+        prompt: str,
+        max_tokens: int,
+        eos_token_id: int | None = None,
+    ) -> str:
+        del model, tokenizer, prompt, max_tokens, eos_token_id
+        return "Rainbows form when sunlight refracts in droplets."
+
+    monkeypatch.setattr(
+        "vauban._pipeline._mode_behavior_trace._generate",
+        fake_generate,
+    )
+    context = make_early_mode_context(
+        tmp_path,
+        behavior_trace=trace_config,
+    )
+    context.model = mock_model
+    context.tokenizer = mock_tokenizer
+
+    _run_behavior_trace_mode(context)
+
+    payload = json.loads((tmp_path / "behavior_trace_report.json").read_text())
+    artifacts = payload["runtime_evidence"]["prompts"][0]["runtime"]["trace"][
+        "artifacts"
+    ]
+    primitive_artifacts = [
+        artifact
+        for artifact in artifacts
+        if artifact["id"] == "activation_projection.layer_0"
+    ]
+
+    assert len(primitive_artifacts) == 1
+    metadata = primitive_artifacts[0]["metadata"]
+    assert primitive_artifacts[0]["kind"] == "metric"
+    assert metadata["primitive"] == "activation_projection"
+    assert metadata["name"] == "refusal_axis_projection"
+    assert metadata["layer_index"] == 0
+    assert metadata["mode"] == "project"
+    projection_shape = metadata["projection_shape"]
+    assert projection_shape[0] == 1
+    assert projection_shape[-1] == 1
+    assert "projection_summary" in metadata
 
 
 def test_init_behavior_trace_scaffold_loads(tmp_path: Path) -> None:

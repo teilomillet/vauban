@@ -197,10 +197,10 @@ def generate_config_schema() -> JsonSchema:
         "backend": {
             "type": "string",
             "enum": sorted(SUPPORTED_BACKENDS),
-            "default": "mlx",
+            "default": "torch",
             "description": (
                 "Runtime tensor backend. If omitted, VAUBAN_BACKEND selects "
-                "the runtime when set; otherwise MLX is used."
+                "the runtime when set; otherwise PyTorch is used."
             ),
         },
         "verbose": {

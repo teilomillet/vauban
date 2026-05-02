@@ -2,15 +2,15 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [model]
-# Replace with the transformed model path or local MLX model directory.
-path = "models/qwen3.6-27b-candidate-mlx"
+# Replace with the transformed model path or local PyTorch/Hugging Face model directory.
+path = "models/qwen2.5-coder-7b-candidate"
 
 [data]
 harmful = "default"
 harmless = "default"
 
 [behavior_trace]
-model_label = "qwen3.6-27b-candidate"
+model_label = "qwen2.5-coder-7b-candidate"
 suite = "suite.toml"
 max_tokens = 192
 record_outputs = true

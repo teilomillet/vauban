@@ -18,11 +18,13 @@ reportlab = ">=4.4.10"
 [tasks]
 backend = { cmd = "python scripts/check_backend.py", env = { PYTHONPATH = "." } }
 backend-cuda = { cmd = "python scripts/check_backend.py --backend torch --require-cuda", env = { PYTHONPATH = "." } }
+real-cuda-smoke = { cmd = "python scripts/torch_cuda_real_model_smoke.py", env = { PYTHONPATH = "." } }
+real-cuda-sweep = { cmd = "python scripts/torch_cuda_trace_sweep.py", env = { PYTHONPATH = "." } }
 lint = "ruff check ."
 typecheck = "ty check --python $CONDA_PREFIX"
 typecheck-torch = "ty check --python $CONDA_PREFIX --ignore unresolved-import --ignore unused-type-ignore-comment --ignore unused-ignore-comment"
 test = { cmd = "pytest -q", env = { PYTHONPATH = "." } }
-test-torch = { cmd = "pytest -q tests/test_model_backend.py tests/test_torch_backend_fake.py tests/test_config_loader.py tests/test_direction_cli.py tests/test_core_small_modules.py tests/test_ops_contract.py", env = { PYTHONPATH = "." } }
+test-torch = { cmd = "pytest -q tests/test_model_backend.py tests/test_torch_backend_fake.py tests/test_config_loader.py tests/test_direction_cli.py tests/test_core_small_modules.py tests/test_ops_contract.py tests/test_runtime_trace_types.py", env = { PYTHONPATH = "." } }
 license-check = "python scripts/license_headers.py --check"
 docs = "mkdocs build"
 build = "python -m build"

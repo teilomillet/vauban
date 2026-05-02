@@ -8,6 +8,8 @@ Parallel to _mock_mlx.py — same API surface, torch.nn.Module based.
 
 from __future__ import annotations
 
+from typing import cast
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as f
@@ -127,6 +129,18 @@ class TorchMockTransformerBlock(nn.Module):
 class TorchMockTransformerModel(nn.Module):
     """Inner transformer conforming to TransformerModel protocol."""
 
+    def __setattr__(self, name: str, value: object) -> None:
+        """Allow MLX-style list assignment for layer test fixtures."""
+        if (
+            name == "layers"
+            and isinstance(value, list)
+            and all(isinstance(item, nn.Module) for item in value)
+        ):
+            modules = cast("list[nn.Module]", value)
+            super().__setattr__(name, nn.ModuleList(modules))
+            return
+        super().__setattr__(name, cast("torch.Tensor | nn.Module", value))
+
     def __init__(
         self, d_model: int, num_layers: int, vocab_size: int, num_heads: int,
     ) -> None:
@@ -144,7 +158,7 @@ class TorchMockTransformerModel(nn.Module):
     ) -> torch.Tensor:
         h = self.embed_tokens(inputs)
         mask = create_additive_causal_mask(h.shape[1])
-        mask = mask.to(h.dtype)
+        mask = mask.to(device=h.device, dtype=h.dtype)
 
         for i, layer in enumerate(self.layers):
             layer_cache = cache[i] if cache is not None else None
@@ -178,4 +192,21 @@ class TorchMockCausalLM(nn.Module):
 
     def parameters(self) -> dict[str, torch.Tensor]:  # type: ignore[override]
         """Return nested parameter dict — matches MLX model.parameters() convention."""
-        return dict(self.named_parameters())
+        return {
+            name: parameter.detach()
+            for name, parameter in self.named_parameters()
+        }
+
+    def load_weights(self, weights: list[tuple[str, torch.Tensor]]) -> None:
+        """Load a flat weight list using the MLX mock model convention."""
+        state = self.state_dict()
+        for name, tensor in weights:
+            if name not in state:
+                msg = f"unknown weight name: {name}"
+                raise KeyError(msg)
+            target = state[name]
+            state[name] = tensor.detach().to(
+                device=target.device,
+                dtype=target.dtype,
+            )
+        self.load_state_dict(state, strict=True)

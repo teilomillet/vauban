@@ -2030,6 +2030,39 @@ class BehaviorTracePromptConfig:
 
 
 type RuntimeBackendConfigName = Literal["mlx", "torch", "max"]
+type RuntimeProfileSweepAxis = Literal["token_count", "batch_size", "queue_depth"]
+type BehaviorTraceActivationPrimitiveMode = Literal[
+    "project",
+    "subtract",
+    "add",
+    "subspace_project",
+    "subspace_remove",
+    "subspace_add",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class BehaviorTraceRuntimeProfileSweepConfig:
+    """Configuration for runtime profile sweep evidence in behavior traces."""
+
+    enabled: bool = True
+    axis: RuntimeProfileSweepAxis = "token_count"
+    samples: int = 1
+    warmup: int = 0
+    require_stable_artifacts: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class BehaviorTraceActivationPrimitiveConfig:
+    """Optional activation projection/intervention primitive for traces."""
+
+    enabled: bool = False
+    mode: BehaviorTraceActivationPrimitiveMode = "project"
+    direction: list[float] = field(default_factory=list)
+    basis: list[list[float]] = field(default_factory=list)
+    layers: list[int] = field(default_factory=list)
+    alpha: float = 1.0
+    name: str = "activation_projection"
 
 
 @dataclass(frozen=True, slots=True)
@@ -2050,9 +2083,15 @@ class BehaviorTraceConfig:
     refusal_phrases: list[str] = field(default_factory=list)
     record_outputs: bool = False
     collect_runtime_evidence: bool = False
-    runtime_backend: RuntimeBackendConfigName = "mlx"
+    runtime_backend: RuntimeBackendConfigName = "torch"
     collect_layers: list[int] = field(default_factory=list)
     return_logprobs: bool = False
+    activation_primitive: BehaviorTraceActivationPrimitiveConfig = field(
+        default_factory=BehaviorTraceActivationPrimitiveConfig,
+    )
+    runtime_profile_sweep: BehaviorTraceRuntimeProfileSweepConfig = field(
+        default_factory=BehaviorTraceRuntimeProfileSweepConfig,
+    )
     output_trace: Path | None = None
     trace_filename: str = "behavior_trace.jsonl"
     json_filename: str = "behavior_trace_report.json"
@@ -2703,7 +2742,7 @@ class RepBendResult:
 class LoraExportConfig:
     """Configuration for [lora_export] mode."""
 
-    format: str = "mlx"
+    format: str = "peft"
     polarity: str = "remove"
 
 
@@ -3223,7 +3262,7 @@ class PipelineConfig:
     model_path: str
     harmful_path: Path | DatasetRef
     harmless_path: Path | DatasetRef
-    backend: str = "mlx"
+    backend: str = "torch"
     cut: CutConfig = field(default_factory=CutConfig)
     measure: MeasureConfig = field(default_factory=MeasureConfig)
     ai_act: AIActConfig | None = None

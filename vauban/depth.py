@@ -80,7 +80,10 @@ def depth_profile(
                 final_logits_t, kth=final_logits_t.shape[0] - config.top_k_logits,
             )[final_logits_t.shape[0] - config.top_k_logits :]
         else:
-            top_k_indices = ops.arange(final_logits_t.shape[0])
+            top_k_indices = ops.to_device_like(
+                ops.arange(final_logits_t.shape[0]),
+                final_logits_t,
+            )
         force_eval(top_k_indices)
 
         final_probs = ops.softmax(final_logits_t[top_k_indices])
@@ -168,7 +171,10 @@ def depth_generate(
                 kth=final_logits_t.shape[0] - config.top_k_logits,
             )[final_logits_t.shape[0] - config.top_k_logits :]
         else:
-            top_k_indices = ops.arange(final_logits_t.shape[0])
+            top_k_indices = ops.to_device_like(
+                ops.arange(final_logits_t.shape[0]),
+                final_logits_t,
+            )
         force_eval(top_k_indices)
 
         final_probs = ops.softmax(final_logits_t[top_k_indices])
@@ -242,9 +248,13 @@ def depth_direction(
     # Compute cosine with refusal direction if available
     refusal_cosine: float | None = None
     if refusal_direction is not None:
-        cos = ops.sum(direction_result.direction * refusal_direction.direction)
+        refusal_dir = ops.to_device_like(
+            refusal_direction.direction,
+            direction_result.direction,
+        )
+        cos = ops.sum(direction_result.direction * refusal_dir)
         norm_d = ops.linalg.norm(direction_result.direction)
-        norm_r = ops.linalg.norm(refusal_direction.direction)
+        norm_r = ops.linalg.norm(refusal_dir)
         denom = norm_d * norm_r
         if float(denom.item()) > 0:
             cos_val = cos / denom

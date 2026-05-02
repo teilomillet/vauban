@@ -131,6 +131,8 @@ nav:
     - What Changes When Models Are Changed?: research/what-changes-when-models-are-changed.md
     - Behavior Diff Traces: research/behavior-diff-traces.md
     - Trace-First Inference Stack: research/trace-first-inference-stack.md
+    - Torch Surface Matrix: research/torch_surface_matrix.md
+    - MPS Primitive Boundary: research/mps-primitive-boundary.md
     - Reports:
       - Arditi Refusal Direction Lite: research/reports/arditi-refusal-direction-lite.md
     - Mechanistic Interpretability of Reasoning: research/reasoning_mech_interp.md

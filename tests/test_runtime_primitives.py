@@ -19,6 +19,8 @@ from vauban.runtime import (
     ModelRef,
     StageProfile,
     TokenizeRequest,
+    Trace,
+    TraceRequest,
     access_boundary_for_capabilities,
     access_level_for_capabilities,
     access_policy_for_capabilities,
@@ -231,11 +233,19 @@ def _loaded_fake_torch_model(torch_module: object) -> LoadedModel:
     )
 
 
+def _artifact_shape_map(trace: Trace) -> dict[str, tuple[int, ...] | None]:
+    """Return artifact shapes keyed by backend-independent artifact ID."""
+    return {
+        artifact.artifact_id: artifact.shape
+        for artifact in trace.artifacts
+    }
+
+
 class TestRuntimeCapabilities:
     """Capability declarations must be explicit and epistemic."""
 
     def test_known_backends_are_declared(self) -> None:
-        assert available_runtime_backends() == ("mlx", "torch", "max")
+        assert available_runtime_backends() == ("torch", "mlx", "max")
 
     def test_mlx_capabilities_support_activation_diagnostics(self) -> None:
         caps = mlx_capabilities()
@@ -253,28 +263,31 @@ class TestRuntimeCapabilities:
         assert policy.missing_evidence == ()
         assert policy.notes == ()
 
-    def test_torch_runtime_contract_declares_partial_adapter_support(self) -> None:
+    def test_torch_runtime_contract_declares_full_primitive_support(self) -> None:
         caps = torch_capabilities()
-        assert caps.support_level("activations") == "partial"
-        assert caps.support_level("interventions") == "partial"
-        assert caps.support_level("kv_cache") == "unsupported"
+        assert caps.device_kinds == ("cpu", "cuda", "mps")
+        assert caps.support_level("logits") == "full"
+        assert caps.support_level("logprobs") == "full"
+        assert caps.support_level("activations") == "full"
+        assert caps.support_level("interventions") == "full"
+        assert caps.support_level("kv_cache") == "full"
+        assert caps.support_level("weight_access") == "full"
+        assert caps.support_level("mutable_weights") == "full"
         assert access_level_for_capabilities(caps) == "activations"
 
-    def test_partial_capabilities_preserve_epistemic_notes(self) -> None:
+    def test_torch_full_capabilities_do_not_emit_partial_notes(self) -> None:
         policy = access_policy_for_capabilities(torch_capabilities())
         assert policy.level == "activations"
-        assert "Runtime KV-cache access" in policy.missing_evidence
-        assert (
-            "Runtime activation traces support is partial for backend torch."
-            in policy.notes
-        )
+        assert "Runtime activation traces (full)" in policy.available_evidence
+        assert policy.missing_evidence == ()
+        assert policy.notes == ()
 
     def test_declared_capabilities_reject_unknown_backend(self) -> None:
         with pytest.raises(ValueError, match="Unknown runtime backend"):
             declared_capabilities("not-real")
 
     def test_runtime_capabilities_uses_explicit_name(self) -> None:
-        assert runtime_capabilities("mlx").name == "mlx"
+        assert runtime_capabilities("torch").name == "torch"
 
     def test_capability_validation_requires_device(self) -> None:
         with pytest.raises(ValueError, match="device_kinds"):
@@ -332,6 +345,28 @@ class TestRuntimeTypes:
         assert timer.profile.name == "unit"
         assert timer.profile.duration_s >= 0.0
 
+    def test_stage_timer_records_usl_ready_profile_fields(self) -> None:
+        with profile_stage(
+            "unit",
+            batch_size=2,
+            token_count=8,
+            input_bytes=16,
+            output_bytes=32,
+            host_device_copies=1,
+            sync_points=2,
+            queue_depth=3,
+        ) as timer:
+            value = 1 + 1
+
+        assert value == 2
+        assert timer.profile.batch_size == 2
+        assert timer.profile.token_count == 8
+        assert timer.profile.input_bytes == 16
+        assert timer.profile.output_bytes == 32
+        assert timer.profile.host_device_copies == 1
+        assert timer.profile.sync_points == 2
+        assert timer.profile.queue_depth == 3
+
 
 class TestMlxRuntime:
     """The MLX adapter should satisfy the primitive contract on fake models."""
@@ -343,7 +378,7 @@ class TestMlxRuntime:
     def test_create_runtime_returns_torch_runtime(self) -> None:
         runtime = create_runtime("torch")
         assert runtime.capabilities.name == "torch"
-        assert runtime.capabilities.support_level("activations") == "partial"
+        assert runtime.capabilities.support_level("activations") == "full"
 
     def test_tokenize_uses_loaded_tokenizer(self) -> None:
         runtime = create_runtime("mlx")
@@ -394,11 +429,14 @@ class TestMlxRuntime:
 
         assert set(summary) == {
             "activation_shapes",
+            "artifacts",
             "device",
             "interventions",
             "logits_shape",
             "logprobs_shape",
             "profile",
+            "profile_summary",
+            "spans",
         }
         assert summary["logits_shape"] == [1, 2, 4]
         assert summary["logprobs_shape"] == [1, 2, 4]
@@ -406,6 +444,16 @@ class TestMlxRuntime:
         assert summary["interventions"] == [
             {"name": "shift", "layer_index": 0},
         ]
+        profile = summary["profile"]
+        assert isinstance(profile, list)
+        first_profile = profile[0]
+        assert isinstance(first_profile, dict)
+        assert first_profile["token_count"] == 2
+        assert first_profile["host_device_copies"] == 1
+        profile_summary = summary["profile_summary"]
+        assert isinstance(profile_summary, dict)
+        assert profile_summary["profiled_spans"] == 3
+        assert profile_summary["token_count"] == 2
 
     def test_runtime_evidence_refs_are_stable(self) -> None:
         runtime = create_runtime("mlx")
@@ -490,6 +538,101 @@ class TestMlxRuntime:
         assert payload["trace"]["activation_shapes"] == {"0": [1, 2, 4]}
         assert payload["capabilities"]["name"] == "mlx"
 
+    def test_mlx_trace_method_emits_token_and_forward_artifacts(self) -> None:
+        runtime = create_runtime("mlx")
+        result = runtime.trace(
+            _loaded_fake_model(),
+            TraceRequest(
+                trace_id="mlx.unit",
+                input_text="abc",
+                requested_artifacts=(
+                    "tokens",
+                    "logits",
+                    "logprobs",
+                    "activation",
+                    "intervention_result",
+                ),
+                collect_layers=(0,),
+                interventions=(FakeIntervention(),),
+            ),
+        )
+
+        assert result.tokenized is not None
+        assert result.tokenized.token_ids == (1, 2, 3)
+        assert result.forward.logits is not None
+        assert result.forward.logprobs is not None
+        assert tuple(span.name for span in result.trace.spans) == (
+            "tokenize",
+            "prepare_batch",
+            "forward",
+            "lm_head",
+        )
+        assert result.trace.spans[1].input_artifact_ids == ("tokens",)
+        assert tuple(artifact.kind for artifact in result.trace.artifacts) == (
+            "tokens",
+            "logits",
+            "logprobs",
+            "activation",
+            "intervention_result",
+        )
+        package = runtime_report_evidence(
+            runtime.capabilities,
+            result.forward,
+            prefix="mlx.unit",
+            runtime_trace=result.trace,
+        )
+
+        assert tuple(ref.evidence_id for ref in package.evidence) == (
+            "mlx.unit.capabilities",
+            "mlx.unit.trace",
+            "mlx.unit.tokens",
+            "mlx.unit.logprobs",
+            "mlx.unit.activations",
+        )
+        assert package.trace["profile_summary"]["profiled_spans"] == 4
+
+    def test_trace_records_missing_requested_artifacts(self) -> None:
+        runtime = create_runtime("mlx")
+        result = runtime.trace(
+            _loaded_fake_model(),
+            TraceRequest(
+                trace_id="mlx.missing",
+                input_text="abc",
+                requested_artifacts=("text", "tokens"),
+            ),
+        )
+
+        assert result.trace.artifacts_by_kind("tokens")
+        assert result.trace.metadata["requested_artifacts"] == ["text", "tokens"]
+        assert result.trace.metadata["missing_requested_artifacts"] == ["text"]
+        assert result.trace.metadata["unsupported_requested_artifacts"] == ["text"]
+
+    def test_mlx_and_torch_trace_artifact_shapes_match_on_fake_models(
+        self,
+    ) -> None:
+        torch = pytest.importorskip("torch")
+        request = TraceRequest(
+            trace_id="parity",
+            input_text="ab",
+            requested_artifacts=("tokens", "logits", "logprobs", "activation"),
+            collect_layers=(0,),
+        )
+        mlx_result = create_runtime("mlx").trace(_loaded_fake_model(), request)
+        torch_result = create_runtime("torch").trace(
+            _loaded_fake_torch_model(torch),
+            request,
+        )
+
+        assert _artifact_shape_map(mlx_result.trace) == _artifact_shape_map(
+            torch_result.trace,
+        )
+        assert tuple(span.name for span in mlx_result.trace.spans) == tuple(
+            span.name for span in torch_result.trace.spans
+        )
+        assert mlx_result.tokenized is not None
+        assert torch_result.tokenized is not None
+        assert mlx_result.tokenized.token_ids == torch_result.tokenized.token_ids
+
     def test_runtime_capability_snapshot_is_stable(self) -> None:
         assert runtime_capability_snapshot(mlx_capabilities()) == {
             "name": "mlx",
@@ -501,6 +644,19 @@ class TestMlxRuntime:
             "kv_cache": "full",
             "weight_access": "full",
             "mutable_weights": "full",
+            "artifact_support": {
+                "text": "unsupported",
+                "tokens": "full",
+                "logits": "full",
+                "logprobs": "full",
+                "activation": "full",
+                "intervention_result": "full",
+                "weight_snapshot": "full",
+                "metric": "unsupported",
+                "report_evidence": "unsupported",
+                "profile": "full",
+                "other": "unsupported",
+            },
         }
 
     def test_torch_runtime_forward_when_torch_is_available(self) -> None:
@@ -525,3 +681,8 @@ class TestMlxRuntime:
         assert trace.interventions == (
             InterventionRecord(name="shift", layer_index=0),
         )
+        assert trace.profile[0].input_bytes is not None
+        assert trace.profile[0].output_bytes is not None
+        assert trace.profile[2].input_bytes is not None
+        assert trace.profile[2].output_bytes is not None
+        assert trace.profile[2].sync_points == 0

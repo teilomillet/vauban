@@ -33,7 +33,7 @@ class TestInitConfig:
         parsed = tomllib.loads(content)
         assert "model" in parsed
         assert "data" in parsed
-        assert parsed["model"]["path"] == "mlx-community/Llama-3.2-3B-Instruct-4bit"
+        assert parsed["model"]["path"] == "Qwen/Qwen2.5-1.5B-Instruct"
         assert parsed["data"]["harmful"] == "default"
 
     @pytest.mark.parametrize("mode", sorted(KNOWN_MODES))
@@ -194,7 +194,7 @@ class TestInitRoundtrip:
             # Standalone modes may have empty model_path
             assert isinstance(config.model_path, str)
         else:
-            assert config.model_path == "mlx-community/Llama-3.2-3B-Instruct-4bit"
+            assert config.model_path == "Qwen/Qwen2.5-1.5B-Instruct"
 
     def test_ai_act_scaffold_roundtrips_but_stays_blocked_until_filled(
         self,

@@ -27,7 +27,7 @@ def _parse_lora_export(raw: TomlDict) -> LoraExportConfig | None:
     fmt = reader.literal(
         "format",
         ("mlx", "peft"),
-        default="mlx",
+        default="peft",
     )
 
     polarity = reader.literal(

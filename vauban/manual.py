@@ -137,7 +137,7 @@ _QUICKSTART_NOTES: tuple[str, ...] = (
 
 _MINIMAL_CONFIG_EXAMPLE: tuple[str, ...] = (
     "[model]",
-    'path = "mlx-community/Llama-3.2-3B-Instruct-4bit"',
+    'path = "Qwen/Qwen2.5-1.5B-Instruct"',
     "",
     "[data]",
     'harmful = "default"',
@@ -212,7 +212,7 @@ _PRINT_NOTES: tuple[str, ...] = (
 _QUICK_EXAMPLE: tuple[str, ...] = (
     "from vauban import quick",
     "",
-    'model, tokenizer = quick.load("mlx-community/Llama-3.2-3B-Instruct-4bit")',
+    'model, tokenizer = quick.load("Qwen/Qwen2.5-1.5B-Instruct")',
     "direction = quick.measure_direction(model, tokenizer)",
     "probe = quick.probe_prompt(model, tokenizer, \"Explain lockpicking\", direction)",
     (
@@ -232,7 +232,10 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
             FieldSpec(
                 key="path",
                 description="Model identifier or local model directory.",
-                constraints="required string; must be loadable by mlx_lm.load().",
+                constraints=(
+                    "required string; must be loadable by the selected"
+                    " backend."
+                ),
                 required=True,
             ),
         ),
@@ -1176,7 +1179,7 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                     "Runtime adapter used for optional runtime evidence"
                     " collection."
                 ),
-                constraints='one of "mlx", "torch", "max"; default: "mlx".',
+                constraints='one of "torch", "mlx", "max"; default: "torch".',
             ),
             FieldSpec(
                 key="collect_layers",
@@ -1193,6 +1196,32 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                     " logprobs in addition to logits."
                 ),
                 constraints="boolean; false by default.",
+            ),
+            FieldSpec(
+                key="activation_primitive",
+                description=(
+                    "Nested [behavior_trace.activation_primitive] settings"
+                    " for explicit Torch activation projection or intervention"
+                    " evidence attached to runtime trace artifacts."
+                ),
+                constraints=(
+                    "table with enabled, mode, direction or basis, layers,"
+                    " alpha, and name. Rank-1 modes use direction; subspace"
+                    " modes use basis. Requires runtime_backend = \"torch\"."
+                ),
+            ),
+            FieldSpec(
+                key="runtime_profile_sweep",
+                description=(
+                    "Nested [behavior_trace.runtime_profile_sweep] settings"
+                    " for warmups, measured samples, and the sweep axis used"
+                    " to summarize runtime trace counters."
+                ),
+                constraints=(
+                    "table with enabled, axis, samples, warmup, and"
+                    " require_stable_artifacts. Axis is one of token_count,"
+                    " batch_size, or queue_depth; samples >= 1; warmup >= 0."
+                ),
             ),
             FieldSpec(
                 key="output_trace",
@@ -3618,7 +3647,7 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 key="format",
                 description="Adapter format.",
                 constraints='"mlx" or "peft".',
-                default_override='"mlx"',
+                default_override='"peft"',
             ),
             FieldSpec(
                 key="polarity",
@@ -4302,15 +4331,15 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
             FieldSpec(
                 key="backend",
                 description="Runtime backend for tensor operations.",
-                constraints='one of: "mlx", "pytorch".',
-                default_override='"mlx"',
+                constraints='one of: "torch", "mlx".',
+                default_override='"torch"',
             ),
         ),
         notes=(
             (
-                "Top-level key (not a section). Set backend = \"pytorch\""
-                " to use PyTorch instead of MLX. MLX is the default"
-                " and only fully supported backend on Apple Silicon."
+                "Top-level key (not a section). PyTorch is the default"
+                " portable backend. Set backend = \"mlx\" only when an"
+                " MLX-specific experiment intentionally requires it."
             ),
         ),
     ),
@@ -4392,8 +4421,7 @@ _WORKFLOW_SPECS: tuple[
         (
             "The default pipeline does this end-to-end:",
             "   [model]",
-            '   path = "mlx-community/Llama-3.2-3B-'
-            'Instruct-4bit"',
+            '   path = "Qwen/Qwen2.5-1.5B-Instruct"',
             "",
             "   [data]",
             '   harmful = "default"',

@@ -56,6 +56,7 @@ def direction_to_lora(
         ``(lora_a, lora_b)`` where ``lora_a`` has shape ``(1, in_features)``
         and ``lora_b`` has shape ``(d_model, 1)``.
     """
+    direction = ops.to_device_like(direction, weight)
     # A = d^T @ W -> (in_features,) -> (1, in_features)
     a_vec = direction @ weight  # (in_features,)
     lora_a = ops.expand_dims(a_vec, axis=0)  # (1, in_features)
@@ -96,6 +97,7 @@ def subspace_to_lora(
         ``(lora_a, lora_b)`` where ``lora_a`` has shape ``(k, in_features)``
         and ``lora_b`` has shape ``(d_model, k)``.
     """
+    basis = ops.to_device_like(basis, weight)
     k = basis.shape[0]
 
     # A = basis @ W -> (k, in_features)
@@ -608,7 +610,8 @@ def analyze_adapter(
         if direction is not None and u.shape[0] == direction.shape[0]:
             # cos(U[:,0], direction)
             u0 = u[:, 0]
-            dot = float(ops.sum(u0 * direction))
+            direction_on_device = ops.to_device_like(direction, u0)
+            dot = float(ops.sum(u0 * direction_on_device).item())
             alignment = abs(dot)
 
         layers.append(_LayerResult(

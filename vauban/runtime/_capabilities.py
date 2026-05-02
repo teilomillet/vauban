@@ -47,17 +47,17 @@ def mlx_capabilities() -> BackendCapabilities:
 
 
 def torch_capabilities() -> BackendCapabilities:
-    """Return the current PyTorch runtime primitive capability declaration."""
+    """Return the PyTorch runtime primitive capability declaration."""
     return BackendCapabilities(
         name="torch",
-        device_kinds=("cpu", "cuda"),
-        logits="partial",
-        logprobs="partial",
-        activations="partial",
-        interventions="partial",
-        kv_cache="unsupported",
-        weight_access="partial",
-        mutable_weights="unsupported",
+        device_kinds=("cpu", "cuda", "mps"),
+        logits="full",
+        logprobs="full",
+        activations="full",
+        interventions="full",
+        kv_cache="full",
+        weight_access="full",
+        mutable_weights="full",
     )
 
 

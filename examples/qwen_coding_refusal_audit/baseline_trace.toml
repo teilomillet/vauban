@@ -2,14 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [model]
-path = "mlx-community/Qwen3.6-27B-OptiQ-4bit"
+path = "Qwen/Qwen2.5-Coder-7B-Instruct"
 
 [data]
 harmful = "default"
 harmless = "default"
 
 [behavior_trace]
-model_label = "qwen3.6-27b-optiq-4bit-baseline"
+model_label = "qwen2.5-coder-7b-baseline"
 suite = "suite.toml"
 max_tokens = 192
 record_outputs = true

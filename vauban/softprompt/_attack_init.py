@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from vauban import _ops as ops
 from vauban._forward import force_eval, get_transformer
 from vauban.softprompt._encoding import _pre_encode_prompts
 from vauban.softprompt._gcg_objective import GCGSharedState, _build_gcg_shared_state
@@ -89,6 +90,7 @@ def prepare_attack(
     target_ids = _encode_targets(
         tokenizer, config.target_prefixes, config.target_repeat_count,
     )
+    target_ids = ops.to_device_like(target_ids, embed_matrix)
     force_eval(target_ids)
 
     if all_prompt_ids_override is not None:
@@ -98,6 +100,10 @@ def prepare_attack(
         all_prompt_ids = _pre_encode_prompts(
             tokenizer, effective_prompts, config.system_prompt,
         )
+    all_prompt_ids = [
+        ops.to_device_like(prompt_ids, embed_matrix)
+        for prompt_ids in all_prompt_ids
+    ]
 
     objective_state = _build_gcg_shared_state(
         model,

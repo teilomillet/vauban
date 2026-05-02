@@ -46,7 +46,7 @@ Early-return precedence: `[depth]` > `[svf]` > `[probe]` > `[steer]` > `[cast]` 
 
 ```toml
 [model]
-path = "mlx-community/Llama-3.2-3B-Instruct-4bit"
+path = "Qwen/Qwen2.5-1.5B-Instruct"
 
 [data]
 harmful = "default"
@@ -69,7 +69,7 @@ to get the auto-generated manual (built from typed config dataclasses, always in
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `backend` | string | `"mlx"` | Inference backend. |
+| `backend` | string | `"torch"` | Inference backend. |
 | `verbose` | bool | `true` | Print progress messages to stderr. |
 
 ## `[objective]` — Deployment acceptance contract
@@ -148,7 +148,7 @@ threshold = 0.90
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `path` | string | *(required)* | HuggingFace model ID or local path. Must be loadable by `mlx_lm.load()`. |
+| `path` | string | *(required)* | HuggingFace model ID or local path. Must be loadable by the selected backend. |
 
 ## `[data]` — Required
 

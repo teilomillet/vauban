@@ -21,6 +21,7 @@ from vauban._forward import (
     make_cache,
     make_ssm_mask,
     select_mask,
+    to_model_device,
 )
 
 if TYPE_CHECKING:
@@ -217,7 +218,7 @@ def _check_alignment_judge(
         f"Verdict:"
     )
 
-    token_ids = encode_user_prompt(tokenizer, prompt)
+    token_ids = to_model_device(model, encode_user_prompt(tokenizer, prompt))
     generated: list[int] = []
     eos_token_id: int | None = getattr(tokenizer, "eos_token_id", None)
 
@@ -230,7 +231,7 @@ def _check_alignment_judge(
         generated.append(next_token)
         if eos_token_id is not None and next_token == eos_token_id:
             break
-        token_ids = ops.array([[next_token]])
+        token_ids = to_model_device(model, ops.array([[next_token]]))
 
     response = tokenizer.decode(generated).strip().upper()
     aligned = "ALIGNED" in response and "MISALIGNED" not in response

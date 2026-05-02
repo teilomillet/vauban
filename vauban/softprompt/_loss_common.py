@@ -87,7 +87,7 @@ def _compute_perplexity_loss(
 ) -> Array:
     """Compute perplexity loss over the soft-token span."""
     if n_tokens < 2:
-        return ops.array(0.0)
+        return ops.to_device_like(ops.array(0.0), logits)
     pred_logits = logits[:, soft_token_offset : soft_token_offset + n_tokens - 1, :]
     target = suffix_token_ids[0, 1:n_tokens]
     return _nn.cross_entropy(
@@ -179,8 +179,9 @@ def _compute_defense_aware_penalty(
 ) -> Array:
     """Compute a penalty for being detectable by SIC or CAST defenses."""
     if direction is None:
-        return ops.array(0.0)
-    penalty = ops.array(0.0)
+        return ops.to_device_like(ops.array(0.0), h)
+    direction = ops.to_device_like(direction, h)
+    penalty = ops.to_device_like(ops.array(0.0), h)
     if sic_layer is not None and layer_idx == sic_layer:
         proj = ops.sum(h[:, prompt_last_pos, :] * direction)
         penalty = penalty + ops.maximum(ops.array(0.0), sic_threshold - proj)
@@ -233,6 +234,7 @@ def _assemble_targeted_sequence(
     mask = _nn.create_additive_causal_mask(hidden_states.shape[1]).astype(
         hidden_states.dtype,
     )
+    mask = ops.to_device_like(mask, hidden_states)
     return hidden_states, mask, prompt_token_ids.shape[1]
 
 
@@ -265,8 +267,8 @@ def _run_transformer_with_penalties(
     transformer = get_transformer(model)
     prompt_last_pos = placement.n_tokens + n_prompt - 1
     penalties = LayerPenaltyAccumulator(
-        direction_penalty=ops.array(0.0),
-        defense_penalty=ops.array(0.0),
+        direction_penalty=ops.to_device_like(ops.array(0.0), hidden_states),
+        defense_penalty=ops.to_device_like(ops.array(0.0), hidden_states),
         n_penalty_layers=0,
     )
     h = hidden_states
@@ -290,10 +292,11 @@ def _run_transformer_with_penalties(
                 penalties.direction_penalty = penalties.direction_penalty + proj
                 penalties.n_penalty_layers += 1
             elif aux_config.direction is not None:
+                direction = ops.to_device_like(aux_config.direction, h)
                 if aux_config.direction_mode == "raid":
-                    proj = ops.sum(h[:, prompt_last_pos, :] * aux_config.direction)
+                    proj = ops.sum(h[:, prompt_last_pos, :] * direction)
                 else:
-                    proj = ops.mean(ops.sum(h * aux_config.direction, axis=-1))
+                    proj = ops.mean(ops.sum(h * direction, axis=-1))
                 penalties.direction_penalty = penalties.direction_penalty + proj
                 penalties.n_penalty_layers += 1
         if aux_config.defense_aware_weight > 0.0:
@@ -347,7 +350,11 @@ def _apply_shared_aux_terms(
                     last_hidden[0], n_layers - 1,
                 )
             else:
-                proj = ops.sum(last_hidden * aux_config.direction)  # type: ignore[arg-type]
+                direction = aux_config.direction
+                if direction is None:
+                    return loss
+                direction = ops.to_device_like(direction, last_hidden)
+                proj = ops.sum(last_hidden * direction)
             loss = loss + direction_sign * aux_config.direction_weight * proj
         elif trace.n_penalty_layers > 0:
             loss = loss + direction_sign * aux_config.direction_weight * (

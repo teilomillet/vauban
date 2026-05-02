@@ -24,6 +24,7 @@ from vauban._forward import (
     make_cache,
     make_ssm_mask,
     select_mask,
+    to_model_device,
 )
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES
 from vauban.types import (
@@ -303,6 +304,7 @@ def _detect_adversarial_direction(
 
     transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
+    direction = ops.to_device_like(direction, h)
     ssm_mask = make_ssm_mask(transformer, h)
 
     for i, layer in enumerate(transformer.layers):
@@ -420,7 +422,7 @@ def _generate_with_messages(
     Like evaluate._generate() but takes a full messages list (enables
     system messages for the sanitization step).
     """
-    token_ids = encode_chat_prompt(tokenizer, messages)
+    token_ids = to_model_device(model, encode_chat_prompt(tokenizer, messages))
     generated: list[int] = []
 
     eos_token_id: int | None = getattr(tokenizer, "eos_token_id", None)
@@ -434,6 +436,6 @@ def _generate_with_messages(
         generated.append(next_token)
         if eos_token_id is not None and next_token == eos_token_id:
             break
-        token_ids = ops.array([[next_token]])
+        token_ids = to_model_device(model, ops.array([[next_token]]))
 
     return tokenizer.decode(generated)

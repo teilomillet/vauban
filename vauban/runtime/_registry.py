@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from vauban.runtime._protocols import ModelRuntime
     from vauban.runtime._types import BackendCapabilities, RuntimeBackendName
 
-SUPPORTED_RUNTIME_BACKENDS: tuple[RuntimeBackendName, ...] = ("mlx", "torch", "max")
+SUPPORTED_RUNTIME_BACKENDS: tuple[RuntimeBackendName, ...] = ("torch", "mlx", "max")
 
 
 def available_runtime_backends() -> tuple[RuntimeBackendName, ...]:
@@ -31,14 +31,14 @@ def runtime_capabilities(name: str | None = None) -> BackendCapabilities:
 def create_runtime(name: str | None = None) -> ModelRuntime:
     """Construct a concrete runtime implementation."""
     backend = _runtime_backend_name(name)
-    if backend == "mlx":
-        from vauban.runtime._mlx import MlxRuntime
-
-        return MlxRuntime()
     if backend == "torch":
         from vauban.runtime._torch import TorchRuntime
 
         return TorchRuntime()
+    if backend == "mlx":
+        from vauban.runtime._mlx import MlxRuntime
+
+        return MlxRuntime()
     msg = (
         f"Runtime backend {backend!r} has declared capabilities but no "
         "execution adapter yet"

@@ -9,8 +9,8 @@ Everything is driven by TOML configs. Write a config, run `vauban config.toml`, 
 
 ## Requirements
 
-- Apple Silicon Mac (M1 or later) for MLX, or Linux with an NVIDIA GPU for
-  PyTorch/CUDA
+- Linux, macOS, or Apple Silicon with PyTorch for the portable path; CUDA is
+  recommended for larger local audits
 - Python >= 3.12
 - [Pixi](https://pixi.sh/) for local and CI environments
 
@@ -25,7 +25,7 @@ pixi install -e torch-dev
 pixi run -e torch-dev backend-cuda
 ```
 
-On Apple Silicon, use:
+For MLX-specific legacy/reference checks on Apple Silicon, use:
 
 ```bash
 pixi install -e mlx-dev
@@ -39,12 +39,12 @@ pixi run -e torch-dev check-torch
 pixi run -e mlx-dev check
 ```
 
-`check-torch` is the current Torch backend-contract gate. The full legacy test
-suite still runs in the MLX environment while backend-neutral coverage is being
-expanded.
+`check-torch` is the portable backend-contract gate. The MLX environment remains
+available for legacy/reference checks.
 
-Use `backend = "torch"` in a TOML config for CUDA/PyTorch runs. If `backend` is
-omitted, the active `VAUBAN_BACKEND` environment variable selects the runtime.
+PyTorch is the default runtime. Omit `backend`, or set `backend = "torch"`, for
+portable CPU/CUDA/MPS-oriented runs. Use the MLX backend only for explicit
+legacy/reference checks.
 
 ## Your first run
 
@@ -52,7 +52,7 @@ Create a file called `run.toml`:
 
 ```toml
 [model]
-path = "mlx-community/Llama-3.2-3B-Instruct-4bit"
+path = "Qwen/Qwen2.5-1.5B-Instruct"
 
 [data]
 harmful = "default"
@@ -67,10 +67,10 @@ vauban run.toml
 
 This executes the full pipeline:
 
-1. **Load** — Downloads the model via `mlx_lm.load()`. Quantized models are auto-dequantized before measuring.
+1. **Load** — Downloads the model through the selected backend. PyTorch is the default portable backend.
 2. **Measure** — Runs the bundled harmful (128) and harmless (128) prompts through the model, collects per-layer activations at the last token position, computes the difference-in-means, and selects the layer with the highest cosine separation. Output: a refusal direction vector.
 3. **Cut** — For every layer, removes the refusal direction from `o_proj` and `down_proj` weights via rank-1 projection: `W = W - alpha * (W @ d) * d`.
-4. **Export** — Writes the modified weights plus all model files (config.json, tokenizer, etc.) to `output/`. The result is a complete directory loadable by `mlx_lm.load()`.
+4. **Export** — Writes the modified weights plus report artifacts to `output/`.
 
 After the run, `output/` contains:
 
@@ -83,12 +83,7 @@ output/
   model.safetensors
 ```
 
-Load the modified model directly:
-
-```python
-import mlx_lm
-model, tok = mlx_lm.load("output")
-```
+Inspect the generated report artifacts before making a behavior claim.
 
 ## Validate before running
 
@@ -104,7 +99,7 @@ actionable `fix:` hints — all without loading the model. Example output:
 
 ```
 Config:   run.toml
-Model:    mlx-community/Llama-3.2-3B-Instruct-4bit
+Model:    Qwen/Qwen2.5-1.5B-Instruct
 Pipeline: measure → cut → export + eval
 Output:   output
 
@@ -130,7 +125,7 @@ Extend your TOML to measure how much the surgery helped (and what it cost):
 
 ```toml
 [model]
-path = "mlx-community/Llama-3.2-3B-Instruct-4bit"
+path = "Qwen/Qwen2.5-1.5B-Instruct"
 
 [data]
 harmful = "default"
@@ -175,7 +170,7 @@ Surface mapping scans a diverse prompt set and records per-prompt projection str
 
 ```toml
 [model]
-path = "mlx-community/Llama-3.2-3B-Instruct-4bit"
+path = "Qwen/Qwen2.5-1.5B-Instruct"
 
 [data]
 harmful = "default"
@@ -354,23 +349,14 @@ The `run()` function handles the full pipeline. For custom workflows, use the in
 ### Measure + cut manually
 
 ```python
-import mlx_lm
-from mlx.utils import tree_flatten
-from vauban import measure, cut, export_model, load_prompts, default_prompt_paths
+from vauban import quick
 
-model, tok = mlx_lm.load("mlx-community/Llama-3.2-3B-Instruct-4bit")
-
-harmful = load_prompts(default_prompt_paths()[0])
-harmless = load_prompts(default_prompt_paths()[1])
-
-result = measure(model, tok, harmful, harmless)
+model, tok = quick.load("Qwen/Qwen2.5-1.5B-Instruct")
+result = quick.measure_direction(model, tok)
 print(f"Best layer: {result.layer_index}, d_model: {result.d_model}")
 
-weights = dict(tree_flatten(model.parameters()))
-target_layers = list(range(len(model.model.layers)))
-modified = cut(weights, result.direction, target_layers, alpha=1.0)
-
-export_model("mlx-community/Llama-3.2-3B-Instruct-4bit", modified, "output")
+probe = quick.probe_prompt(model, tok, "Explain why rainbows form.", result)
+print(probe)
 ```
 
 ### Probe a prompt

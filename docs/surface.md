@@ -14,9 +14,8 @@ Standard eval gives a single number: overall refusal rate. After abliteration on
 ## Quick Start
 
 ```python
-import mlx_lm
+from vauban import quick
 from vauban import (
-    measure,
     load_prompts,
     default_prompt_paths,
     load_surface_prompts,
@@ -25,12 +24,12 @@ from vauban import (
 )
 
 # Load model
-model, tok = mlx_lm.load("mlx-community/Trinity-Nano-Preview-8bit")
+model, tok = quick.load("Qwen/Qwen2.5-1.5B-Instruct")
 
 # Measure refusal direction
 harmful = load_prompts(default_prompt_paths()[0])[:16]
 harmless = load_prompts(default_prompt_paths()[1])[:16]
-d = measure(model, tok, harmful, harmless)
+d = quick.measure_direction(model, tok, harmful, harmless)
 
 # Map the surface
 prompts = load_surface_prompts(default_surface_path())
@@ -171,7 +170,7 @@ Add a `[surface]` section to your TOML config to run surface mapping automatical
 
 ```toml
 [model]
-path = "mlx-community/Llama-3.2-3B-Instruct-4bit"
+path = "Qwen/Qwen2.5-1.5B-Instruct"
 
 [data]
 harmful = "default"

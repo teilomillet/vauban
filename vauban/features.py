@@ -64,8 +64,11 @@ class SparseAutoencoder:
         Returns:
             Feature codes, shape (..., d_sae). Non-negative (ReLU).
         """
+        w_enc = ops.to_device_like(self.w_enc, x)
+        b_enc = ops.to_device_like(self.b_enc, x)
+        b_dec = ops.to_device_like(self.b_dec, x)
         return ops.maximum(
-            ops.matmul(x - self.b_dec, self.w_enc) + self.b_enc,
+            ops.matmul(x - b_dec, w_enc) + b_enc,
             ops.array(0.0),
         )
 
@@ -78,7 +81,9 @@ class SparseAutoencoder:
         Returns:
             Reconstructed activations, shape (..., d_model).
         """
-        return ops.matmul(codes, self.w_dec) + self.b_dec
+        w_dec = ops.to_device_like(self.w_dec, codes)
+        b_dec = ops.to_device_like(self.b_dec, codes)
+        return ops.matmul(codes, w_dec) + b_dec
 
     def forward(self, x: Array) -> tuple[Array, Array]:
         """Full encode-decode pass.
@@ -164,7 +169,8 @@ def train_sae(
         SAELayerResult with training metrics.
     """
     n_samples = activations.shape[0]
-    params = sae.parameters()
+    params = [ops.to_device_like(p, activations) for p in sae.parameters()]
+    sae.set_parameters(params)
     m_state = [ops.zeros_like(p) for p in params]
     v_state = [ops.zeros_like(p) for p in params]
     beta1 = 0.9
@@ -335,6 +341,7 @@ def feature_direction_alignment(
     Returns:
         List of cosine similarities, one per feature.
     """
+    direction = ops.to_device_like(direction, sae.w_dec)
     # w_dec shape: (d_sae, d_model)
     # dot products: (d_sae,)
     dots = ops.matmul(sae.w_dec, direction)

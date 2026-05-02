@@ -38,6 +38,7 @@ def probe(
 
     transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
+    direction = ops.to_device_like(direction, h)
 
     projections: list[float] = []
     ssm_mask = make_ssm_mask(transformer, h)
@@ -129,6 +130,7 @@ def _steered_forward(
     """
     transformer = get_transformer(model)
     h, mask = embed_and_mask(transformer, token_ids)
+    direction = ops.to_device_like(direction, h)
 
     proj_before: list[float] = []
     proj_after: list[float] = []

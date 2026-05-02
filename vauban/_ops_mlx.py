@@ -66,6 +66,17 @@ stop_gradient = _mx.stop_gradient
 # Evaluation
 eval = _mx.eval
 
+
+def to_device_like(x: _mx.array, reference: _mx.array) -> _mx.array:
+    """Return ``x`` on the same execution device as ``reference``.
+
+    MLX handles placement through unified-memory execution and stream
+    selection, so this is intentionally a no-op.
+    """
+    del reference
+    return x
+
+
 # Types / dtypes
 float32 = _mx.float32
 float16 = _mx.float16

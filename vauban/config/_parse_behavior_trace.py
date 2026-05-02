@@ -23,9 +23,13 @@ from vauban.config._parse_helpers import SectionReader, require_toml_table
 from vauban.evaluate import DEFAULT_REFUSAL_PHRASES
 from vauban.types import (
     BehaviorDiffMetricConfig,
+    BehaviorTraceActivationPrimitiveConfig,
+    BehaviorTraceActivationPrimitiveMode,
     BehaviorTraceConfig,
     BehaviorTracePromptConfig,
+    BehaviorTraceRuntimeProfileSweepConfig,
     RuntimeBackendConfigName,
+    RuntimeProfileSweepAxis,
 )
 
 if TYPE_CHECKING:
@@ -33,7 +37,20 @@ if TYPE_CHECKING:
 
 
 _RUNTIME_BACKENDS: tuple[RuntimeBackendConfigName, ...] = ("mlx", "torch", "max")
-_DEFAULT_RUNTIME_BACKEND: RuntimeBackendConfigName = "mlx"
+_DEFAULT_RUNTIME_BACKEND: RuntimeBackendConfigName = "torch"
+_PROFILE_SWEEP_AXES: tuple[RuntimeProfileSweepAxis, ...] = (
+    "token_count",
+    "batch_size",
+    "queue_depth",
+)
+_ACTIVATION_PRIMITIVE_MODES: tuple[BehaviorTraceActivationPrimitiveMode, ...] = (
+    "project",
+    "subtract",
+    "add",
+    "subspace_project",
+    "subspace_remove",
+    "subspace_add",
+)
 
 
 def _parse_behavior_trace(
@@ -141,6 +158,8 @@ def _parse_behavior_trace(
         ),
         collect_layers=collect_layers,
         return_logprobs=reader.boolean("return_logprobs", default=False),
+        activation_primitive=_parse_activation_primitive(reader.data),
+        runtime_profile_sweep=_parse_runtime_profile_sweep(reader.data),
         output_trace=_optional_path(
             base_dir,
             reader.optional_string("output_trace"),
@@ -154,6 +173,153 @@ def _parse_behavior_trace(
             default="behavior_trace_report.json",
         ),
     )
+
+
+def _parse_activation_primitive(
+    sec: TomlDict,
+) -> BehaviorTraceActivationPrimitiveConfig:
+    """Parse [behavior_trace.activation_primitive] settings."""
+    raw = sec.get("activation_primitive")
+    if raw is None:
+        return BehaviorTraceActivationPrimitiveConfig()
+    reader = SectionReader(
+        "[behavior_trace.activation_primitive]",
+        require_toml_table("[behavior_trace.activation_primitive]", raw),
+    )
+    layers = reader.int_list("layers", default=[])
+    _validate_collect_layers(layers)
+    mode = reader.literal(
+        "mode",
+        _ACTIVATION_PRIMITIVE_MODES,
+        default="project",
+    )
+    direction = reader.number_list("direction", default=[])
+    basis = _number_matrix(reader.data.get("basis"))
+    enabled = reader.boolean("enabled", default=False)
+    config = BehaviorTraceActivationPrimitiveConfig(
+        enabled=enabled,
+        mode=mode,
+        direction=direction,
+        basis=basis,
+        layers=layers,
+        alpha=reader.number("alpha", default=1.0),
+        name=reader.string("name", default="activation_projection"),
+    )
+    _validate_activation_primitive(config)
+    return config
+
+
+def _parse_runtime_profile_sweep(
+    sec: TomlDict,
+) -> BehaviorTraceRuntimeProfileSweepConfig:
+    """Parse [behavior_trace.runtime_profile_sweep] settings."""
+    raw = sec.get("runtime_profile_sweep")
+    if raw is None:
+        return BehaviorTraceRuntimeProfileSweepConfig()
+    reader = SectionReader(
+        "[behavior_trace.runtime_profile_sweep]",
+        require_toml_table("[behavior_trace.runtime_profile_sweep]", raw),
+    )
+    samples = reader.integer("samples", default=1)
+    if samples < 1:
+        msg = "[behavior_trace.runtime_profile_sweep].samples must be >= 1"
+        raise ValueError(msg)
+    warmup = reader.integer("warmup", default=0)
+    if warmup < 0:
+        msg = "[behavior_trace.runtime_profile_sweep].warmup must be >= 0"
+        raise ValueError(msg)
+    return BehaviorTraceRuntimeProfileSweepConfig(
+        enabled=reader.boolean("enabled", default=True),
+        axis=reader.literal(
+            "axis",
+            _PROFILE_SWEEP_AXES,
+            default="token_count",
+        ),
+        samples=samples,
+        warmup=warmup,
+        require_stable_artifacts=reader.boolean(
+            "require_stable_artifacts",
+            default=True,
+        ),
+    )
+
+
+def _number_matrix(raw: object) -> list[list[float]]:
+    """Read an optional matrix of numeric values."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        msg = (
+            "[behavior_trace.activation_primitive].basis must be a list of"
+            " numeric rows"
+        )
+        raise TypeError(msg)
+    matrix: list[list[float]] = []
+    for row in raw:
+        if not isinstance(row, list):
+            msg = (
+                "[behavior_trace.activation_primitive].basis rows must be"
+                " lists"
+            )
+            raise TypeError(msg)
+        values: list[float] = []
+        for item in row:
+            if not isinstance(item, int | float):
+                msg = (
+                    "[behavior_trace.activation_primitive].basis values must"
+                    " be numbers"
+                )
+                raise TypeError(msg)
+            values.append(float(item))
+        matrix.append(values)
+    return matrix
+
+
+def _validate_activation_primitive(
+    config: BehaviorTraceActivationPrimitiveConfig,
+) -> None:
+    """Reject invalid activation primitive declarations."""
+    if not config.enabled:
+        return
+    if not config.name.strip():
+        msg = "[behavior_trace.activation_primitive].name must not be empty"
+        raise ValueError(msg)
+    if config.alpha != config.alpha:
+        msg = "[behavior_trace.activation_primitive].alpha must be finite"
+        raise ValueError(msg)
+    if config.mode in ("project", "subtract", "add"):
+        if not config.direction:
+            msg = (
+                "[behavior_trace.activation_primitive].direction is required"
+                f" for mode {config.mode!r}"
+            )
+            raise ValueError(msg)
+        if config.basis:
+            msg = (
+                "[behavior_trace.activation_primitive].basis is only valid"
+                " for subspace modes"
+            )
+            raise ValueError(msg)
+        return
+    if not config.basis:
+        msg = (
+            "[behavior_trace.activation_primitive].basis is required for"
+            f" mode {config.mode!r}"
+        )
+        raise ValueError(msg)
+    if config.direction:
+        msg = (
+            "[behavior_trace.activation_primitive].direction is only valid"
+            " for rank-1 modes"
+        )
+        raise ValueError(msg)
+    row_width = len(config.basis[0]) if config.basis else 0
+    if row_width == 0:
+        msg = "[behavior_trace.activation_primitive].basis rows must not be empty"
+        raise ValueError(msg)
+    if any(len(row) != row_width for row in config.basis):
+        msg = "[behavior_trace.activation_primitive].basis rows must have equal length"
+        raise ValueError(msg)
 
 
 def _scorer_names(

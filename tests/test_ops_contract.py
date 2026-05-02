@@ -121,6 +121,14 @@ def test_array_equal(backend_ops: object) -> None:
     assert not backend_ops.array_equal(a, c)  # type: ignore[attr-defined]
 
 
+def test_to_device_like_preserves_shape(backend_ops: object) -> None:
+    """Device placement helper preserves tensor content shape."""
+    source = backend_ops.array([1.0, 2.0, 3.0])  # type: ignore[attr-defined]
+    reference = backend_ops.array([0.0])  # type: ignore[attr-defined]
+    placed = backend_ops.to_device_like(source, reference)  # type: ignore[attr-defined]
+    assert placed.shape == source.shape
+
+
 def test_tree_flatten(backend_ops: object) -> None:
     """tree_flatten produces (key, leaf) pairs."""
     tree = {"a": 1, "b": {"c": 2, "d": 3}}

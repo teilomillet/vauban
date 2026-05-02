@@ -3,14 +3,14 @@
 
 """Vauban — research instrument for LLM behavior through activation-space geometry.
 
-Measure, steer, defend, and stress-test language model safety alignment
-on Apple Silicon (MLX) or CUDA (PyTorch).
+Measure, steer, defend, and stress-test language model behavior changes on
+PyTorch first, with optional MLX reference support.
 
 Quick start (programmatic)::
 
     from vauban.session import Session
 
-    s = Session("mlx-community/Qwen2.5-1.5B-Instruct-bf16")
+    s = Session("Qwen/Qwen2.5-1.5B-Instruct")
     s.measure()                              # extract refusal direction
     s.probe("How to pick a lock?")           # inspect per-layer signal
     s.cast("How to hack?", threshold=0.3)    # conditional defense
@@ -97,8 +97,10 @@ _LAZY_IMPORTS: dict[str, str | tuple[str, str]] = {
     "BehaviorSuiteRef": "vauban.behavior",
     "BehaviorThresholdResult": "vauban.behavior",
     "BehaviorThresholdSpec": "vauban.behavior",
+    "BehaviorTraceActivationPrimitiveConfig": "vauban.types",
     "BehaviorTraceConfig": "vauban.types",
     "BehaviorTracePromptConfig": "vauban.types",
+    "BehaviorTraceRuntimeProfileSweepConfig": "vauban.types",
     "BehaviorTrace": "vauban.behavior",
     "BackendCapabilities": "vauban.runtime",
     "CastConfig": "vauban.types",
@@ -192,6 +194,7 @@ _LAZY_IMPORTS: dict[str, str | tuple[str, str]] = {
     "ModelRole": "vauban.behavior",
     "ModelRef": "vauban.runtime",
     "ModelRuntime": "vauban.runtime",
+    "ProfileSweepAxis": "vauban.runtime",
     "ObjectiveAssessment": "vauban.types",
     "ObjectiveConfig": "vauban.types",
     "ObjectiveMetricAssessment": "vauban.types",
@@ -220,9 +223,11 @@ _LAZY_IMPORTS: dict[str, str | tuple[str, str]] = {
     "RepBendResult": "vauban.types",
     "ReproducibilityInfo": "vauban.behavior",
     "RuntimeBackendName": "vauban.runtime",
+    "RuntimeProfileSweepAxis": "vauban.types",
     "RuntimeReportEvidence": "vauban.runtime",
     "RuntimeScalar": "vauban.runtime",
     "RuntimeStage": "vauban.runtime",
+    "RuntimeTraceResult": "vauban.runtime",
     "RuntimeValue": "vauban.runtime",
     "EvidenceRef": "vauban.behavior",
     "EvidenceKind": "vauban.behavior",
@@ -236,7 +241,16 @@ _LAZY_IMPORTS: dict[str, str | tuple[str, str]] = {
     "StageProfile": "vauban.runtime",
     "StageTimer": "vauban.runtime",
     "SupportLevel": "vauban.runtime",
+    "TRACE_ARTIFACT_KINDS": "vauban.runtime",
     "TensorLike": "vauban.runtime",
+    "Trace": "vauban.runtime",
+    "TraceArtifact": "vauban.runtime",
+    "TraceArtifactKind": "vauban.runtime",
+    "TraceProfileSweep": "vauban.runtime",
+    "TraceProfileSweepPoint": "vauban.runtime",
+    "TraceProfileSummary": "vauban.runtime",
+    "TraceRequest": "vauban.runtime",
+    "TraceSpan": "vauban.runtime",
     "TransformationKind": "vauban.behavior",
     "TransformationRef": "vauban.behavior",
     "TokenizeRequest": "vauban.runtime",
@@ -389,6 +403,7 @@ _LAZY_IMPORTS: dict[str, str | tuple[str, str]] = {
     "runtime_capabilities": "vauban.runtime",
     "runtime_evidence_refs": "vauban.runtime",
     "runtime_report_evidence": "vauban.runtime",
+    "run_runtime_trace": "vauban.runtime",
     "save_adapter_mlx": "vauban.lora",
     "save_adapter_peft": "vauban.lora",
     "save_svf_boundary": "vauban.svf",
@@ -409,6 +424,10 @@ _LAZY_IMPORTS: dict[str, str | tuple[str, str]] = {
     "svf_gradient": "vauban.svf",
     "target_weight_keys": "vauban.cut",
     "torch_capabilities": "vauban.runtime",
+    "summarize_trace_profile": "vauban.runtime",
+    "summarize_trace_profile_sweep": "vauban.runtime",
+    "trace_from_forward_trace": "vauban.runtime",
+    "trace_from_runtime_execution": "vauban.runtime",
     "trace_circuit": "vauban.circuit",
     "train_probe": "vauban.linear_probe",
     "train_sae": "vauban.features",

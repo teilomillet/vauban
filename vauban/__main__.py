@@ -111,7 +111,7 @@ def _run_init(args: list[str]) -> None:
         return
 
     mode = "default"
-    model = "mlx-community/Llama-3.2-3B-Instruct-4bit"
+    model = "Qwen/Qwen2.5-1.5B-Instruct"
     scenario: str | None = None
     output = "run.toml"
     force = False
@@ -313,7 +313,7 @@ def _set_backend_from_config(path: str) -> None:
         if isinstance(backend, str):
             os.environ["VAUBAN_BACKEND"] = backend
         elif "VAUBAN_BACKEND" not in os.environ:
-            os.environ["VAUBAN_BACKEND"] = "mlx"
+            os.environ["VAUBAN_BACKEND"] = "torch"
     except Exception:
         pass  # Fall through — config errors will surface in load_config()
 
