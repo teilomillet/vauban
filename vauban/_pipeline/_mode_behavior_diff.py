@@ -257,6 +257,7 @@ def _run_behavior_diff_mode(context: EarlyModeContext) -> None:
         1 for threshold in threshold_results
         if not threshold.passed and threshold.severity == "fail"
     )
+    release_gate = _release_gate_decision(threshold_results)
 
     log(
         (
@@ -276,6 +277,7 @@ def _run_behavior_diff_mode(context: EarlyModeContext) -> None:
             threshold.to_dict() for threshold in threshold_results
         ],
         "threshold_summary": threshold_summary,
+        "release_gate": release_gate,
     })
     if result.report is not None and result.report.reproducibility is not None:
         payload["reproducibility"] = result.report.reproducibility.to_dict()
@@ -295,6 +297,7 @@ def _run_behavior_diff_mode(context: EarlyModeContext) -> None:
         markdown_path.parent.mkdir(parents=True, exist_ok=True)
         markdown = render_behavior_report_markdown(result.report)
         markdown += _render_runtime_evidence_markdown(runtime_diff)
+        markdown += _render_release_gate_markdown(release_gate)
         markdown += _render_threshold_markdown(threshold_results)
         markdown_path.write_text(markdown, encoding="utf-8")
         report_files.append(str(markdown_path))
@@ -337,6 +340,54 @@ def _render_threshold_markdown(
         lines.append(
             f"- {status}: {result.metric} / {category} delta={delta}{reason}",
         )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _release_gate_decision(
+    threshold_results: tuple[BehaviorThresholdResult, ...],
+) -> dict[str, JsonValue]:
+    """Return the behavior-diff release decision implied by gates."""
+    failed = sum(
+        1 for result in threshold_results
+        if not result.passed and result.severity == "fail"
+    )
+    warned = sum(
+        1 for result in threshold_results
+        if not result.passed and result.severity == "warn"
+    )
+    if not threshold_results:
+        status = "needs_review"
+        action = "manual_review"
+        reason = "No behavior regression gates were configured."
+    elif failed > 0:
+        status = "blocked"
+        action = "do_not_ship"
+        reason = f"{failed} failing behavior regression gate(s)."
+    elif warned > 0:
+        status = "review"
+        action = "investigate_before_ship"
+        reason = f"{warned} warning behavior regression gate(s)."
+    else:
+        status = "passed"
+        action = "eligible_to_ship"
+        reason = "All configured behavior regression gates passed."
+    return {
+        "status": status,
+        "action": action,
+        "reason": reason,
+        "n_thresholds": len(threshold_results),
+        "n_failed": failed,
+        "n_warned": warned,
+    }
+
+
+def _render_release_gate_markdown(release_gate: dict[str, JsonValue]) -> str:
+    """Render the release gate decision as Markdown."""
+    lines = ["", "## Release Gate", ""]
+    lines.append(f"- Status: `{release_gate['status']}`")
+    lines.append(f"- Action: `{release_gate['action']}`")
+    lines.append(f"- Reason: {release_gate['reason']}")
     lines.append("")
     return "\n".join(lines)
 
@@ -401,17 +452,7 @@ def _load_runtime_evidence_diff(
         baseline.profile_sweep,
         candidate.profile_sweep,
     )
-    result["limitations"] = _json_string_list([
-        "Behavior diff consumed runtime sidecar summaries, not raw tensors.",
-        (
-            "This supports evidence-coverage checks, not activation-value"
-            " causal claims."
-        ),
-        (
-            "Profile counters are local-run observations; compare performance"
-            " only under a controlled sweep."
-        ),
-    ])
+    result["limitations"] = _runtime_evidence_limitations(baseline, candidate)
     return result
 
 
@@ -450,11 +491,7 @@ def _load_runtime_evidence_sidecar(path: Path) -> _RuntimeEvidenceSidecar:
             prompt.get("runtime"),
             f"{path}:runtime_evidence.prompts[{index}].runtime",
         )
-        access = _object_dict(
-            runtime_payload.get("access"),
-            f"{path}:runtime_evidence.prompts[{index}].runtime.access",
-        )
-        level = _optional_string(access.get("level"))
+        level = _runtime_access_level(runtime_payload, path, index)
         if level is not None:
             access_levels[level] = None
 
@@ -466,15 +503,18 @@ def _load_runtime_evidence_sidecar(path: Path) -> _RuntimeEvidenceSidecar:
         if isinstance(activation_shapes, dict):
             for layer in activation_shapes:
                 activation_layers[str(layer)] = None
-        if trace.get("logprobs_shape") is not None:
-            logprobs_prompt_ids.append(prompt_id)
+        has_logprobs = trace.get("logprobs_shape") is not None
         artifacts = trace.get("artifacts")
         if isinstance(artifacts, list):
+            if _artifact_kind_present(cast("list[object]", artifacts), "logprobs"):
+                has_logprobs = True
             _collect_trace_artifact_coverage(
                 cast("list[object]", artifacts),
                 artifact_kinds,
                 activation_layers,
             )
+        if has_logprobs:
+            logprobs_prompt_ids.append(prompt_id)
         profile_summary = trace.get("profile_summary")
         if isinstance(profile_summary, dict):
             summary = _object_dict(
@@ -549,6 +589,22 @@ def _load_runtime_evidence_sidecar(path: Path) -> _RuntimeEvidenceSidecar:
         ),
         profile_sweep=_load_runtime_profile_sweep(runtime, path),
     )
+
+
+def _runtime_access_level(
+    runtime_payload: dict[str, object],
+    path: Path,
+    prompt_index: int,
+) -> str | None:
+    """Return local-runtime or API endpoint access metadata."""
+    access_raw = runtime_payload.get("access")
+    if isinstance(access_raw, dict):
+        access = _object_dict(
+            access_raw,
+            f"{path}:runtime_evidence.prompts[{prompt_index}].runtime.access",
+        )
+        return _optional_string(access.get("level"))
+    return _optional_string(runtime_payload.get("access_level"))
 
 
 def _load_runtime_profile_sweep(
@@ -748,6 +804,19 @@ def _collect_trace_artifact_coverage(
             activation_layers[layer] = None
 
 
+def _artifact_kind_present(
+    artifacts: list[object],
+    target_kind: str,
+) -> bool:
+    """Return whether a trace artifact list includes the target kind."""
+    for artifact_raw in artifacts:
+        artifact = _object_dict(artifact_raw, "runtime.trace.artifacts[]")
+        kind = _optional_string(artifact.get("kind"))
+        if kind == target_kind:
+            return True
+    return False
+
+
 def _runtime_sidecar_evidence_refs(
     baseline_report: Path | None,
     candidate_report: Path | None,
@@ -769,6 +838,30 @@ def _runtime_sidecar_evidence_refs(
             description="Candidate behavior trace runtime-evidence sidecar.",
         ),
     )
+
+
+def _runtime_evidence_limitations(
+    baseline: _RuntimeEvidenceSidecar,
+    candidate: _RuntimeEvidenceSidecar,
+) -> list[JsonValue]:
+    """Return access-aware runtime sidecar limitations."""
+    limitations: list[JsonValue] = [
+        "Behavior diff consumed runtime sidecar summaries, not raw tensors.",
+        (
+            "This supports evidence-coverage checks, not activation-value"
+            " causal claims."
+        ),
+    ]
+    if baseline.backend == "api" and candidate.backend == "api":
+        limitations.append(
+            "API endpoint sidecars do not expose local runtime spans."
+        )
+    else:
+        limitations.append(
+            "Profile counters are local-run observations; compare performance"
+            " only under a controlled sweep."
+        )
+    return limitations
 
 
 def _render_runtime_evidence_markdown(
@@ -824,10 +917,15 @@ def _render_runtime_evidence_markdown(
     lines.append(
         "- Limitation: sidecars contain runtime summaries, not raw activation tensors.",
     )
-    lines.append(
-        "- Limitation: profile counters need controlled sweeps before"
-        " performance claims.",
-    )
+    if baseline.get("backend") == "api" and candidate.get("backend") == "api":
+        lines.append(
+            "- Limitation: API endpoint sidecars do not expose local runtime spans.",
+        )
+    else:
+        lines.append(
+            "- Limitation: profile counters need controlled sweeps before"
+            " performance claims.",
+        )
     lines.append("")
     return "\n".join(lines)
 

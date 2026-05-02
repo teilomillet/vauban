@@ -26,7 +26,7 @@ typecheck-torch = "ty check --python $CONDA_PREFIX --ignore unresolved-import --
 test = { cmd = "pytest -q", env = { PYTHONPATH = "." } }
 test-torch = { cmd = "pytest -q tests/test_model_backend.py tests/test_torch_backend_fake.py tests/test_config_loader.py tests/test_direction_cli.py tests/test_core_small_modules.py tests/test_ops_contract.py tests/test_runtime_trace_types.py", env = { PYTHONPATH = "." } }
 license-check = "python scripts/license_headers.py --check"
-docs = "mkdocs build"
+docs = "pixi run -e docs mkdocs build"
 build = "python -m build"
 check = { depends-on = ["lint", "typecheck", "license-check", "test"] }
 check-torch = { depends-on = ["lint", "typecheck-torch", "license-check", "test-torch"] }

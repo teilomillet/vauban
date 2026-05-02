@@ -107,10 +107,13 @@ nav:
     - Defense Complementarity: concepts/defense-complementarity.md
     - Surface Mapping: concepts/surface-mapping.md
   - Capabilities:
+    - Capability Map: capabilities/index.md
     - Understand Your Model: capabilities/understand-your-model.md
     - Defend Your Model: capabilities/defend-your-model.md
     - Stress-Test Defenses: capabilities/stress-test-defenses.md
     - Modify Weights: capabilities/modify-weights.md
+    - Change Release Gates: capabilities/change-release-gates.md
+    - Public Sector Adoption: capabilities/public-sector-adoption.md
     - Access Levels: capabilities/access-levels.md
   - Principles:
     - Attack-Defense Duality: principles/attack-defense-duality.md

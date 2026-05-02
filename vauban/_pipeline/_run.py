@@ -44,6 +44,14 @@ def run(config_path: str | Path) -> None:
     )
     if dispatch_early_mode("standalone", standalone_ctx):
         return
+    if (
+        config.behavior_trace is not None
+        and config.behavior_trace.runtime_backend == "api"
+    ):
+        from vauban._pipeline._mode_behavior_trace import _run_behavior_trace_mode
+
+        _run_behavior_trace_mode(standalone_ctx)
+        return
 
     log(
         f"Loading model {config.model_path}",

@@ -38,6 +38,7 @@ def load_config(path: str | Path) -> PipelineConfig:
     # [model] and [data] are optional for these.
     _standalone = (
         _is_standalone_api_eval(raw)
+        or _is_standalone_api_behavior_trace(raw)
         or _is_standalone_remote(raw)
         or _is_standalone_ai_act(raw)
         or _is_standalone_behavior_diff(raw)
@@ -287,6 +288,15 @@ def _is_standalone_api_eval(raw: TomlDict) -> bool:
     api_eval = cast("TomlDict", sec)
     token_text = api_eval.get("token_text")
     return isinstance(token_text, str) and bool(token_text)
+
+
+def _is_standalone_api_behavior_trace(raw: TomlDict) -> bool:
+    """Check whether [behavior_trace] targets an API endpoint."""
+    sec = raw.get("behavior_trace")
+    if not isinstance(sec, dict):
+        return False
+    behavior_trace = cast("TomlDict", sec)
+    return behavior_trace.get("runtime_backend") == "api"
 
 
 def _is_standalone_ai_act(raw: TomlDict) -> bool:

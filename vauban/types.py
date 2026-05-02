@@ -2029,7 +2029,7 @@ class BehaviorTracePromptConfig:
     tags: list[str] = field(default_factory=list)
 
 
-type RuntimeBackendConfigName = Literal["mlx", "torch", "max"]
+type RuntimeBackendConfigName = Literal["mlx", "torch", "max", "api"]
 type RuntimeProfileSweepAxis = Literal["token_count", "batch_size", "queue_depth"]
 type BehaviorTraceActivationPrimitiveMode = Literal[
     "project",
@@ -2066,6 +2066,19 @@ class BehaviorTraceActivationPrimitiveConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class BehaviorTraceApiConfig:
+    """OpenAI-compatible endpoint settings for API behavior traces."""
+
+    name: str
+    base_url: str
+    model: str
+    api_key_env: str
+    system_prompt: str | None = None
+    auth_header: str | None = None
+    timeout: int = 30
+
+
+@dataclass(frozen=True, slots=True)
 class BehaviorTraceConfig:
     """Configuration for collecting reusable behavior observation traces."""
 
@@ -2084,6 +2097,7 @@ class BehaviorTraceConfig:
     record_outputs: bool = False
     collect_runtime_evidence: bool = False
     runtime_backend: RuntimeBackendConfigName = "torch"
+    api: BehaviorTraceApiConfig | None = None
     collect_layers: list[int] = field(default_factory=list)
     return_logprobs: bool = False
     activation_primitive: BehaviorTraceActivationPrimitiveConfig = field(

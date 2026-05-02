@@ -237,6 +237,60 @@ def _runtime_report_json(
     }) + "\n"
 
 
+def _api_runtime_report_json(
+    *,
+    endpoint_name: str,
+    model: str,
+    prompt_id: str,
+) -> str:
+    """Return a tiny API behavior_trace JSON sidecar."""
+    return json.dumps({
+        "report_version": "behavior_trace_v1",
+        "runtime_evidence": {
+            "enabled": True,
+            "backend": "api",
+            "collect_layers": [],
+            "return_logprobs": True,
+            "profile_sweep": {
+                "status": "not_applicable",
+                "reason": "API behavior traces do not expose local runtime spans.",
+            },
+            "prompts": [
+                {
+                    "prompt_id": prompt_id,
+                    "runtime": {
+                        "backend": "api",
+                        "access_level": "endpoint",
+                        "endpoint": endpoint_name,
+                        "model": model,
+                        "return_logprobs": True,
+                        "trace": {
+                            "artifacts": [
+                                {
+                                    "id": "output_text",
+                                    "kind": "text",
+                                    "metadata": {"recorded": True},
+                                },
+                                {
+                                    "id": "logprobs",
+                                    "kind": "logprobs",
+                                    "metadata": {"token_count": 1},
+                                },
+                            ],
+                            "metadata": {
+                                "finish_reason": "stop",
+                                "logprobs": [
+                                    {"token": "Rainbows", "logprob": -0.1},
+                                ],
+                            },
+                        },
+                    },
+                },
+            ],
+        },
+    }) + "\n"
+
+
 def _write_fixture(tmp_path: Path) -> Path:
     """Write fixture traces and config, returning the config path."""
     traces_dir = tmp_path / "traces"
@@ -266,6 +320,29 @@ def _write_runtime_sidecars(tmp_path: Path) -> tuple[Path, Path]:
             backend="mlx",
             prompt_id="benign-001",
             layer="0",
+        ),
+    )
+    return baseline_report, candidate_report
+
+
+def _write_api_sidecars(tmp_path: Path) -> tuple[Path, Path]:
+    """Write tiny API sidecar reports for behavior_diff fixtures."""
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    baseline_report = reports_dir / "base_api_behavior_trace_report.json"
+    candidate_report = reports_dir / "candidate_api_behavior_trace_report.json"
+    baseline_report.write_text(
+        _api_runtime_report_json(
+            endpoint_name="baseline-api",
+            model="provider/model-baseline",
+            prompt_id="benign-001",
+        ),
+    )
+    candidate_report.write_text(
+        _api_runtime_report_json(
+            endpoint_name="candidate-api",
+            model="provider/model-candidate",
+            prompt_id="benign-001",
         ),
     )
     return baseline_report, candidate_report
@@ -339,6 +416,8 @@ def test_run_behavior_diff_writes_json_and_markdown(tmp_path: Path) -> None:
     assert "cannot_claim" in payload["report"]["access"]
     assert payload["threshold_summary"]["passed"] is True
     assert payload["thresholds"][0]["passed"] is True
+    assert payload["release_gate"]["status"] == "passed"
+    assert payload["release_gate"]["action"] == "eligible_to_ship"
     assert payload["reproducibility"]["tool_version"]
     assert payload["reproducibility"]["config_path"] == str(config_path)
     assert payload["reproducibility"]["output_dir"] == str(output_dir)
@@ -361,6 +440,8 @@ def test_run_behavior_diff_writes_json_and_markdown(tmp_path: Path) -> None:
     assert "Trace Diff Report" in markdown
     assert "## What This Report Can Claim" in markdown
     assert "## What This Report Cannot Claim" in markdown
+    assert "## Release Gate" in markdown
+    assert "Status: `passed`" in markdown
     assert "Regression Gates" in markdown
     assert "artifact_hashes" in markdown
 
@@ -420,6 +501,45 @@ def test_run_behavior_diff_consumes_runtime_sidecars(tmp_path: Path) -> None:
     assert "Shared runtime sweep points: 1" in markdown
 
 
+def test_run_behavior_diff_consumes_api_runtime_sidecars(tmp_path: Path) -> None:
+    """Endpoint behavior traces should be comparable as sidecar evidence."""
+    config_path = _write_fixture(tmp_path)
+    _write_api_sidecars(tmp_path)
+    config_path.write_text(
+        config_path.read_text().replace(
+            'candidate_trace = "traces/candidate.jsonl"',
+            (
+                'candidate_trace = "traces/candidate.jsonl"\n'
+                'baseline_report = "reports/base_api_behavior_trace_report.json"\n'
+                'candidate_report = "reports/candidate_api_behavior_trace_report.json"'
+            ),
+        ),
+    )
+
+    run(config_path)
+
+    payload = json.loads((tmp_path / "out/behavior_diff_report.json").read_text())
+    runtime_diff = payload["runtime_evidence_diff"]
+
+    assert runtime_diff["baseline"]["backend"] == "api"
+    assert runtime_diff["candidate"]["backend"] == "api"
+    assert runtime_diff["baseline"]["access_levels"] == ["endpoint"]
+    assert runtime_diff["shared_prompt_ids"] == ["benign-001"]
+    assert runtime_diff["shared_activation_layers"] == []
+    assert runtime_diff["shared_artifact_kinds"] == ["logprobs", "text"]
+    assert runtime_diff["baseline"]["n_logprobs_prompts"] == 1
+    assert runtime_diff["profile_sweep_diff"]["baseline_status"] == (
+        "not_applicable"
+    )
+
+    markdown = (tmp_path / "out/model_behavior_change_report.md").read_text()
+    assert "Baseline backend: api" in markdown
+    assert "Candidate backend: api" in markdown
+    assert "Shared activation layers: none" in markdown
+    assert "Shared trace artifact kinds: logprobs, text" in markdown
+    assert "API endpoint sidecars do not expose local runtime spans." in markdown
+
+
 def test_run_behavior_diff_fails_on_threshold_violation(tmp_path: Path) -> None:
     config_path = _write_fixture(tmp_path)
     text = config_path.read_text()
@@ -431,6 +551,8 @@ def test_run_behavior_diff_fails_on_threshold_violation(tmp_path: Path) -> None:
     payload = json.loads((tmp_path / "out/behavior_diff_report.json").read_text())
     assert payload["threshold_summary"]["passed"] is False
     assert payload["thresholds"][0]["passed"] is False
+    assert payload["release_gate"]["status"] == "blocked"
+    assert payload["release_gate"]["action"] == "do_not_ship"
 
 
 def test_run_behavior_diff_rejects_overstrong_claim_strength(

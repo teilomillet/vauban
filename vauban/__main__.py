@@ -165,7 +165,7 @@ def _run_init(args: list[str]) -> None:
     else:
         label = mode if mode != "default" else "measure → cut → export"
     sys.stderr.write(f"Created {output_path} ({label} mode)\n")
-    if mode == "ai_act":
+    if mode in ("ai_act", "public_sector_readiness"):
         sys.stderr.write(
             (
                 "Scaffolded draft AI Act evidence templates in"

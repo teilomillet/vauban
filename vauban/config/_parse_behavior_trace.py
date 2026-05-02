@@ -25,6 +25,7 @@ from vauban.types import (
     BehaviorDiffMetricConfig,
     BehaviorTraceActivationPrimitiveConfig,
     BehaviorTraceActivationPrimitiveMode,
+    BehaviorTraceApiConfig,
     BehaviorTraceConfig,
     BehaviorTracePromptConfig,
     BehaviorTraceRuntimeProfileSweepConfig,
@@ -36,7 +37,12 @@ if TYPE_CHECKING:
     from vauban.config._types import TomlDict
 
 
-_RUNTIME_BACKENDS: tuple[RuntimeBackendConfigName, ...] = ("mlx", "torch", "max")
+_RUNTIME_BACKENDS: tuple[RuntimeBackendConfigName, ...] = (
+    "mlx",
+    "torch",
+    "max",
+    "api",
+)
 _DEFAULT_RUNTIME_BACKEND: RuntimeBackendConfigName = "torch"
 _PROFILE_SWEEP_AXES: tuple[RuntimeProfileSweepAxis, ...] = (
     "token_count",
@@ -110,6 +116,25 @@ def _parse_behavior_trace(
     collect_layers = reader.int_list("collect_layers", default=[])
     _validate_collect_layers(collect_layers)
 
+    runtime_backend = reader.literal(
+        "runtime_backend",
+        _RUNTIME_BACKENDS,
+        default=_DEFAULT_RUNTIME_BACKEND,
+    )
+    api = _parse_api(reader.data)
+    if runtime_backend == "api" and api is None:
+        msg = (
+            '[behavior_trace] runtime_backend = "api" requires'
+            " [behavior_trace.api]"
+        )
+        raise ValueError(msg)
+    if runtime_backend != "api" and api is not None:
+        msg = (
+            "[behavior_trace.api] is only valid when"
+            ' runtime_backend = "api"'
+        )
+        raise ValueError(msg)
+
     return BehaviorTraceConfig(
         model_label=reader.string("model_label", default="model"),
         suite=suite_path,
@@ -151,11 +176,8 @@ def _parse_behavior_trace(
             "collect_runtime_evidence",
             default=False,
         ),
-        runtime_backend=reader.literal(
-            "runtime_backend",
-            _RUNTIME_BACKENDS,
-            default=_DEFAULT_RUNTIME_BACKEND,
-        ),
+        runtime_backend=runtime_backend,
+        api=api,
         collect_layers=collect_layers,
         return_logprobs=reader.boolean("return_logprobs", default=False),
         activation_primitive=_parse_activation_primitive(reader.data),
@@ -172,6 +194,30 @@ def _parse_behavior_trace(
             "json_filename",
             default="behavior_trace_report.json",
         ),
+    )
+
+
+def _parse_api(sec: TomlDict) -> BehaviorTraceApiConfig | None:
+    """Parse [behavior_trace.api] endpoint settings."""
+    raw = sec.get("api")
+    if raw is None:
+        return None
+    reader = SectionReader(
+        "[behavior_trace.api]",
+        require_toml_table("[behavior_trace.api]", raw),
+    )
+    timeout = reader.integer("timeout", default=30)
+    if timeout < 1:
+        msg = "[behavior_trace.api].timeout must be >= 1"
+        raise ValueError(msg)
+    return BehaviorTraceApiConfig(
+        name=reader.string("name"),
+        base_url=reader.string("base_url"),
+        model=reader.string("model"),
+        api_key_env=reader.string("api_key_env"),
+        system_prompt=reader.optional_string("system_prompt"),
+        auth_header=reader.optional_string("auth_header"),
+        timeout=timeout,
     )
 
 

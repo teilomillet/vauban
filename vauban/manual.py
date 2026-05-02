@@ -184,6 +184,13 @@ _EXAMPLE_NOTES: tuple[str, ...] = (
     "Use the checked-in canonical benchmark pack:",
     "  vauban --validate examples/benchmarks/share_doc.toml",
     "  vauban examples/benchmarks/share_doc.toml",
+    "Run an API endpoint change audit:",
+    "  vauban examples/endpoint_change_audit/baseline_trace.toml",
+    "  vauban examples/endpoint_change_audit/candidate_trace.toml",
+    "  vauban examples/endpoint_change_audit/diff.toml",
+    "Scaffold a public-sector deployer-readiness evidence pack:",
+    "  vauban init --mode public_sector_readiness --output readiness.toml",
+    "  vauban readiness.toml",
     "Validate before expensive runs:",
     "  vauban --validate run.toml",
     "Run default pipeline:",
@@ -864,6 +871,11 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 " the placeholders."
             ),
             (
+                "`vauban init --mode public_sector_readiness --output"
+                " readiness.toml` emits a deployer-oriented public-sector"
+                " starter that uses the same [ai_act] readiness engine."
+            ),
+            (
                 "When [ai_act].pdf_report = true, Vauban emits a combined PDF"
                 " report for executive and auditor review inside [output].dir."
             ),
@@ -876,6 +888,7 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
             " observations and emits a Model Behavior Change Report."
         ),
         early_return=True,
+        config_class="BehaviorDiffConfig",
         fields=(
             FieldSpec(
                 key="baseline_trace",
@@ -956,6 +969,23 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 constraints="string.",
             ),
             FieldSpec(
+                key="suite_version",
+                description="Optional version label for the behavior suite.",
+                constraints="string; optional.",
+            ),
+            FieldSpec(
+                key="suite_source",
+                description="Optional source path or URL for the behavior suite.",
+                constraints="string; optional.",
+            ),
+            FieldSpec(
+                key="safety_policy",
+                description="How examples are handled for the report.",
+                constraints=(
+                    'string; default: "aggregate_or_redacted_examples".'
+                ),
+            ),
+            FieldSpec(
                 key="transformation_kind",
                 description="Kind of model or system transformation audited.",
                 constraints=(
@@ -963,6 +993,32 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                     " checkpoint_update, prompt_template, quantization,"
                     " merge, adapter_merge, steering, endpoint_update,"
                     " evaluation_only, other."
+                ),
+            ),
+            FieldSpec(
+                key="transformation_summary",
+                description="Plain-language summary of the audited transformation.",
+                constraints="string; optional.",
+            ),
+            FieldSpec(
+                key="access_level",
+                description="Access tier available for this behavior diff.",
+                constraints=(
+                    "one of single_snapshot, black_box, paired_outputs,"
+                    " logprobs, weights, activations, base_and_modified,"
+                    " base_and_transformed; default: black_box."
+                ),
+            ),
+            FieldSpec(
+                key="claim_strength",
+                description=(
+                    "Optional explicit claim-strength override checked against"
+                    " access_level."
+                ),
+                constraints=(
+                    "one of behavioral_profile, black_box_behavioral_diff,"
+                    " distributional_diff, weight_diff, activation_diagnostic,"
+                    " model_change_audit; optional."
                 ),
             ),
             FieldSpec(
@@ -1000,6 +1056,11 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                     " outputs in Markdown."
                 ),
                 constraints="boolean; false by default.",
+            ),
+            FieldSpec(
+                key="markdown_report",
+                description="Whether to write the Markdown behavior-change report.",
+                constraints="boolean; true by default.",
             ),
             FieldSpec(
                 key="limitations",
@@ -1055,6 +1116,11 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 "Thresholds are evaluated after reports are written. A failing"
                 " threshold with severity='fail' exits the run non-zero, which"
                 " makes [behavior_diff] usable as behavior CI."
+            ),
+            (
+                "The JSON artifact includes release_gate with a narrow"
+                " passed/review/blocked/needs_review decision derived from"
+                " the configured thresholds."
             ),
         ),
     ),
@@ -1176,10 +1242,22 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
             FieldSpec(
                 key="runtime_backend",
                 description=(
-                    "Runtime adapter used for optional runtime evidence"
-                    " collection."
+                    "Runtime adapter used for trace collection and optional"
+                    " runtime evidence."
                 ),
-                constraints='one of "torch", "mlx", "max"; default: "torch".',
+                constraints='one of "torch", "mlx", "max", "api"; default: "torch".',
+            ),
+            FieldSpec(
+                key="api",
+                description=(
+                    "Nested [behavior_trace.api] endpoint settings for"
+                    " OpenAI-compatible API behavior traces."
+                ),
+                constraints=(
+                    'table required when runtime_backend = "api". Keys: name,'
+                    " base_url, model, api_key_env, optional system_prompt,"
+                    " optional auth_header, timeout >= 1."
+                ),
             ),
             FieldSpec(
                 key="collect_layers",
@@ -1244,8 +1322,9 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
         ),
         notes=(
             (
-                "Use this when you have local model access and want to create"
-                " trace files for later [behavior_diff] comparisons."
+                "Use this when you have local model access or API endpoint"
+                " access and want to create trace files for later"
+                " [behavior_diff] comparisons."
             ),
             (
                 "The emitted JSONL schema is the same observation schema read"
@@ -1261,6 +1340,11 @@ _SECTION_SPECS: tuple[SectionSpec, ...] = (
                 "Runtime evidence is opt-in and only affects the JSON sidecar;"
                 " it does not change generated outputs or the reusable JSONL"
                 " trace schema."
+            ),
+            (
+                "With runtime_backend = \"api\", Vauban records endpoint output"
+                " and optional logprobs only. It does not claim access to"
+                " weights, local activations, or causal internals."
             ),
         ),
     ),
@@ -4630,6 +4714,9 @@ _TOPIC_ALIASES: dict[str, str] = {
     "use-cases": "workflows",
     "guide": "workflows",
     "guides": "workflows",
+    "capability": "capabilities",
+    "capacity": "capabilities",
+    "capacities": "capabilities",
 }
 
 
@@ -4649,6 +4736,7 @@ def manual_topics() -> list[str]:
         "taxonomy",
         "datasets",
         "workflows",
+        "capabilities",
         *[spec.name for spec in _SECTION_SPECS],
     ]
 
@@ -4709,6 +4797,7 @@ _GENERAL_TOPICS: tuple[tuple[str, str], ...] = (
     ("formats", "Data file formats (JSONL, etc.)."),
     ("taxonomy", "Canonical harm category taxonomy."),
     ("datasets", "Bundled datasets and benchmarks."),
+    ("capabilities", "Capability map across TOML, Session, Python, and docs."),
 )
 
 _SECTION_DESCRIPTIONS: dict[str, str] = {
@@ -4773,6 +4862,7 @@ def render_manual(topic: str | None = None) -> str:
     include_taxonomy = normalized in ("all", "taxonomy")
     include_datasets = normalized in ("all", "datasets")
     include_workflows = normalized in ("all", "workflows")
+    include_capabilities = normalized in ("all", "capabilities")
 
     lines: list[str] = []
     lines.append("VAUBAN(1)")
@@ -4929,6 +5019,10 @@ def render_manual(topic: str | None = None) -> str:
         lines.append(_render_workflows_topic())
         lines.append("")
 
+    if include_capabilities:
+        lines.append(_render_capabilities_topic())
+        lines.append("")
+
     if selected:
         lines.append("CONFIG SECTIONS")
         for section in selected:
@@ -4966,6 +5060,56 @@ def render_manual(topic: str | None = None) -> str:
                     lines.append(f"      note: {note}")
 
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_capabilities_topic() -> str:
+    """Render the capability map across Vauban's public surfaces."""
+    from vauban.capabilities import capability_catalog
+
+    lines: list[str] = []
+    lines.append("CAPABILITY MAP")
+    lines.append(
+        "    One index for Vauban's TOML modes, Session tools, Python"
+        " entrypoints, runtime primitives, docs, and report artifacts.",
+    )
+    lines.append(
+        "    Use this when a capability exists but its entrypoint is not obvious.",
+    )
+    lines.append("")
+
+    for spec in capability_catalog():
+        lines.append(f"  {spec.name}")
+        lines.append(f"    question: {spec.question}")
+        lines.append(f"    description: {spec.description}")
+        lines.append(f"    use when: {spec.use_when}")
+        if spec.first_cli:
+            lines.append("    first CLI:")
+            for command in spec.first_cli:
+                lines.append(f"      {command}")
+        if spec.first_python:
+            lines.append("    first Python:")
+            for line in spec.first_python:
+                lines.append(f"      {line}")
+        if spec.proof:
+            lines.append(f"    proof: {spec.proof}")
+        lines.append(f"    surfaces: {', '.join(spec.surfaces())}")
+        if spec.toml_sections:
+            lines.append(f"    TOML: {', '.join(spec.toml_sections)}")
+        if spec.session_tools:
+            lines.append(f"    Session: {', '.join(spec.session_tools)}")
+        if spec.python_entrypoints:
+            lines.append(f"    Python: {', '.join(spec.python_entrypoints)}")
+        if spec.runtime_entrypoints:
+            lines.append(f"    Runtime: {', '.join(spec.runtime_entrypoints)}")
+        if spec.scripts:
+            lines.append(f"    Scripts: {', '.join(spec.scripts)}")
+        if spec.docs:
+            lines.append(f"    Docs: {', '.join(spec.docs)}")
+        if spec.artifacts:
+            lines.append(f"    Artifacts: {', '.join(spec.artifacts)}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip()
 
 
 def _render_taxonomy_topic() -> str:

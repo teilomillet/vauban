@@ -99,6 +99,11 @@ You have an OpenAI-compatible API endpoint. You can send prompts and receive com
 
 **API evaluation:**
 
+- **API behavior trace** — run `[behavior_trace]` with
+  `runtime_backend = "api"` against an OpenAI-compatible endpoint. This creates
+  reusable JSONL observations for later `[behavior_diff]` comparisons. If the
+  endpoint supports logprobs, set `return_logprobs = true` to attach
+  distributional evidence.
 - **API eval** — send pre-optimized adversarial tokens to the endpoint. Tests whether tokens optimized on a local model transfer to the remote target. Supports multi-turn conversations and follow-up prompts.
 
 **Prompt-level attacks:**
@@ -173,6 +178,7 @@ about internal mechanisms.
 | GAN loop | Yes | -- | -- |
 | Fusion | Yes | -- | -- |
 | API eval | -- | Yes | -- |
+| API behavior trace | -- | Yes | -- |
 | Jailbreak templates | Yes | Yes | Yes |
 | Classify | Yes | Yes | Yes |
 | Score | Yes | Yes | Yes |

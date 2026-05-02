@@ -234,6 +234,18 @@ runtime_backend = "torch"
 collect_layers = []
 return_logprobs = false
 
+# API endpoint traces are output/logprob evidence only. Uncomment this block
+# and remove [model] if you are tracing a model behind an OpenAI-compatible API.
+# runtime_backend = "api"
+# return_logprobs = true
+#
+# [behavior_trace.api]
+# name = "candidate-api"
+# base_url = "https://api.example.com/v1"
+# model = "provider/model-candidate"
+# api_key_env = "VAUBAN_API_KEY"
+# timeout = 30
+
 # Optional Torch activation projection evidence for collected layers.
 # [behavior_trace.activation_primitive]
 # enabled = false
@@ -551,6 +563,107 @@ eu_database_registration_record = "evidence/eu_database_registration.md"
 pdf_report = true
 # pdf_report_filename = "ai_act_report.pdf"
 """,
+    "public_sector_readiness": """\
+# Public-sector deployer-readiness starter kit.
+# This is an evidence-pack scaffold, not legal certification.
+# Attach Vauban behavior diffs, release gates, endpoint traces, or red-team
+# reports as technical evidence after those runs have actually executed.
+
+[output]
+dir = "output/public_sector_readiness"
+
+[ai_act]
+company_name = "Example Public Agency"
+system_name = "Public Service Assistant"
+intended_purpose = "Assists staff with public-service information requests."
+report_kind = "deployer_readiness"
+role = "deployer"
+sector = "public_administration"
+eu_market = true
+uses_general_purpose_ai = true
+
+# Public-facing deployer disclosures:
+interacts_with_natural_persons = true
+interaction_obvious_to_persons = true
+exposes_emotion_recognition_or_biometric_categorization = false
+uses_emotion_recognition = false
+uses_biometric_categorization = false
+emotion_recognition_medical_or_safety_exception = false
+biometric_categorization_infers_sensitive_traits = false
+uses_subliminal_manipulative_or_deceptive_techniques = false
+materially_distorts_behavior_causing_significant_harm = false
+exploits_age_disability_or_socioeconomic_vulnerabilities = false
+social_scoring_leading_to_detrimental_treatment = false
+individual_predictive_policing_based_solely_on_profiling = false
+untargeted_scraping_of_face_images = false
+real_time_remote_biometric_identification_for_law_enforcement = false
+real_time_remote_biometric_identification_exception_claimed = false
+publishes_text_on_matters_of_public_interest = true
+public_interest_text_human_review_or_editorial_control = true
+public_interest_text_editorial_responsibility = true
+deploys_deepfake_or_synthetic_media = false
+deepfake_creative_satirical_artistic_or_fictional_context = false
+
+# Conservative public-sector triage flags.
+# Keep these narrow: only enable high-risk flags that match the deployed use.
+provides_public_service = true
+public_sector_use = true
+# Prefer setting exact Annex III use cases when known.
+# annex_iii_use_cases = [
+#   "annex_iii_5_public_assistance_benefits",
+#   "annex_iii_5_essential_services_generic",
+# ]
+employment_or_workers_management = false
+education_or_vocational_training = false
+essential_private_or_public_service = false
+creditworthiness_or_credit_score_assessment = false
+life_or_health_insurance_risk_pricing = false
+emergency_first_response_dispatch = false
+law_enforcement_use = false
+migration_or_border_management_use = false
+administration_of_justice_or_democracy_use = false
+biometric_or_emotion_related_use = false
+uses_profiling_or_similarly_significant_decision_support = false
+annex_iii_narrow_procedural_task = false
+annex_iii_improves_completed_human_activity = false
+annex_iii_detects_decision_pattern_deviations = false
+annex_iii_preparatory_task = false
+annex_iii_does_not_materially_influence_decision_outcome = false
+workplace_deployment = false
+provides_input_data_for_high_risk_system = false
+makes_or_assists_decisions_about_natural_persons = false
+decision_with_legal_or_similarly_significant_effects = false
+annex_i_product_or_safety_component = false
+annex_i_third_party_conformity_assessment = false
+
+# Governance evidence paths. Draft files are scaffolded beside this config and
+# stay blocked until placeholders are replaced with agency-specific evidence.
+ai_literacy_record = "evidence/ai_literacy.md"
+transparency_notice = "evidence/transparency_notice.md"
+human_oversight_procedure = "evidence/human_oversight.md"
+incident_response_procedure = "evidence/incident_response.md"
+provider_documentation = "evidence/provider_docs.md"
+operation_monitoring_procedure = "evidence/operation_monitoring.md"
+input_data_governance_procedure = "evidence/input_data_governance.md"
+log_retention_procedure = "evidence/log_retention.md"
+employee_or_worker_representative_notice = "evidence/worker_notice.md"
+affected_person_notice = "evidence/affected_person_notice.md"
+explanation_request_procedure = "evidence/explanation_request.md"
+eu_database_registration_record = "evidence/eu_database_registration.md"
+
+# Attach executed Vauban reports, not placeholder files.
+technical_report_paths = []
+# Example:
+# technical_report_paths = [
+#   "output/endpoint_change_audit/report/behavior_diff_report.json",
+# ]
+
+risk_owner = "Public Sector AI Risk Owner"
+compliance_contact = "ai-governance@example.gov"
+# bundle_signature_secret_env = "VAUBAN_AI_ACT_SIGNING_SECRET"
+pdf_report = true
+pdf_report_filename = "public_sector_readiness_report.pdf"
+""",
     "api_eval": """\
 # Standalone API eval — tests pre-optimized tokens against remote endpoints.
 # No local model needed.
@@ -772,6 +885,7 @@ _NON_EARLY_MODE_DESCRIPTIONS: dict[str, str] = {
     "surface": "Before/after refusal surface mapping.",
     "detect": "Defense-hardening detection.",
     "scan": "Injection detection via per-token direction projection.",
+    "public_sector_readiness": "Public-sector deployer-readiness evidence pack.",
 }
 
 MODE_DESCRIPTIONS: dict[str, str] = {
@@ -974,7 +1088,7 @@ def init_config(
             raise FileExistsError(msg)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(content)
-        if effective_mode == "ai_act":
+        if effective_mode in ("ai_act", "public_sector_readiness"):
             _write_ai_act_supporting_files(output_path, force=force)
 
     return content

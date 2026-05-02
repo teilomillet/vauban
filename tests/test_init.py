@@ -130,6 +130,23 @@ class TestInitConfig:
             evidence_dir / "ai_literacy.md"
         ).read_text()
 
+    def test_public_sector_readiness_scaffolds_draft_evidence_templates(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Public-sector starter should create a deployer evidence pack."""
+        out = tmp_path / "public_sector_readiness.toml"
+        content = init_config("public_sector_readiness", output_path=out)
+
+        assert out.exists()
+        assert 'role = "deployer"' in content
+        assert "public_sector_use = true" in content
+        assert "legal certification" in content
+        evidence_dir = tmp_path / "evidence"
+        assert (evidence_dir / "ai_literacy.md").exists()
+        assert (evidence_dir / "operation_monitoring.md").exists()
+        assert (evidence_dir / "README.md").exists()
+
     def test_ai_act_supporting_files_skip_existing_without_force(
         self,
         tmp_path: Path,
@@ -227,6 +244,44 @@ class TestInitRoundtrip:
         assert article4["status"] == "unknown"
         missing_markers = article4["missing_markers"]
         assert isinstance(missing_markers, list)
+        assert "replace_scaffold_placeholders" in missing_markers
+
+    def test_public_sector_readiness_roundtrips_but_stays_blocked_until_filled(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Draft government onboarding evidence must not pass as real proof."""
+        from vauban.config import load_config
+        from vauban.config._validation import validate_config
+
+        out = tmp_path / "public_sector_readiness.toml"
+        init_config("public_sector_readiness", output_path=out)
+        assert validate_config(out) == []
+        config = load_config(out)
+        assert config.ai_act is not None
+        assert config.ai_act.role == "deployer"
+        assert config.ai_act.public_sector_use is True
+        assert config.ai_act.pdf_report_filename == (
+            "public_sector_readiness_report.pdf"
+        )
+
+        report, ledger, _library, _remediation = generate_deployer_readiness_bundle(
+            config.ai_act,
+        )
+
+        assert report["overall_status"] == "blocked"
+        controls = ledger["controls"]
+        assert isinstance(controls, list)
+        missing_markers: list[str] = []
+        for raw_entry in controls:
+            entry = _object_dict(raw_entry)
+            raw_markers = entry.get("missing_markers")
+            if isinstance(raw_markers, list):
+                missing_markers.extend(
+                    marker
+                    for marker in raw_markers
+                    if isinstance(marker, str)
+                )
         assert "replace_scaffold_placeholders" in missing_markers
 
     def test_scenario_scaffold_roundtrips_environment_fields(
@@ -339,6 +394,34 @@ class TestInitCli:
             sys,
             "argv",
             ["vauban", "init", "--mode", "ai_act", "--output", str(out)],
+        )
+        from vauban.__main__ import main
+
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        captured = capsys.readouterr()
+        assert "Scaffolded draft AI Act evidence templates" in captured.err
+        assert (tmp_path / "evidence" / "ai_literacy.md").exists()
+
+    def test_init_public_sector_readiness_mentions_scaffold(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        tmp_path: Path,
+    ) -> None:
+        out = tmp_path / "public_sector_readiness.toml"
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "vauban",
+                "init",
+                "--mode",
+                "public_sector_readiness",
+                "--output",
+                str(out),
+            ],
         )
         from vauban.__main__ import main
 

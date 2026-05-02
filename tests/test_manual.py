@@ -38,6 +38,7 @@ def test_topics_include_quickstart_and_sections() -> None:
     assert "quick" in topics
     assert "examples" in topics
     assert "print" in topics
+    assert "capabilities" in topics
     assert "ai_act" in topics
     assert "cut" in topics
     assert "softprompt" in topics
@@ -81,6 +82,8 @@ def test_examples_topic_contains_core_flows() -> None:
     assert "vauban init --mode default --output run.toml" in text
     assert "vauban --validate examples/benchmarks/share_doc.toml" in text
     assert "vauban examples/benchmarks/share_doc.toml" in text
+    assert "examples/endpoint_change_audit/diff.toml" in text
+    assert "vauban init --mode public_sector_readiness" in text
     assert "vauban diff runs/baseline runs/experiment_a" in text
     assert "vauban tree experiments/ --format mermaid" in text
 
@@ -90,6 +93,17 @@ def test_print_topic_contains_share_commands() -> None:
     assert "PRINTING AND SHARING" in text
     assert "vauban man > VAUBAN_MANUAL.txt" in text
     assert "lpr VAUBAN_MANUAL.txt" in text
+
+
+def test_capabilities_topic_contains_runtime_and_reports() -> None:
+    text = render_manual("capabilities")
+    assert "CAPABILITY MAP" in text
+    assert "use when:" in text
+    assert "first CLI:" in text
+    assert "proof:" in text
+    assert "model_behavior_change_reports" in text
+    assert "runtime_evidence_and_portability" in text
+    assert "behavior_trace" in text
 
 
 def test_section_topic_renders_only_requested_section() -> None:

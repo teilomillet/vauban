@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from typing import TYPE_CHECKING, cast
 
@@ -14,6 +15,7 @@ from vauban._pipeline._mode_common import (
     finish_mode_run,
     write_mode_report,
 )
+from vauban.api_trace import ApiTraceResponse, call_api_behavior_trace
 from vauban.behavior import (
     BehaviorObservation,
     BehaviorTrace,
@@ -48,7 +50,12 @@ from vauban.runtime import (
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from vauban.runtime import RuntimeReportEvidence, RuntimeTraceResult, TensorLike
+    from vauban.runtime import (
+        RuntimeBackendName,
+        RuntimeReportEvidence,
+        RuntimeTraceResult,
+        TensorLike,
+    )
     from vauban.types import (
         BehaviorTraceActivationPrimitiveConfig,
         BehaviorTraceConfig,
@@ -66,8 +73,6 @@ def _run_behavior_trace_mode(context: EarlyModeContext) -> None:
         msg = "[behavior_trace] section is required for behavior_trace mode"
         raise ValueError(msg)
 
-    model = cast("CausalLM", context.model)
-    tokenizer = cast("Tokenizer", context.tokenizer)
     log(
         (
             "Collecting behavior trace"
@@ -78,21 +83,38 @@ def _run_behavior_trace_mode(context: EarlyModeContext) -> None:
         elapsed=time.monotonic() - context.t0,
     )
 
-    observations = _collect_observations(model, tokenizer, trace_config)
     runtime_evidence: list[JsonValue] | None = None
     runtime_profile_sweep: JsonValue | None = None
-    if trace_config.collect_runtime_evidence:
+    if trace_config.runtime_backend == "api":
+        observations, runtime_evidence = _collect_api_observations(trace_config)
+        runtime_profile_sweep = {
+            "status": "not_applicable",
+            "reason": "API behavior traces do not expose local runtime spans.",
+        }
+        model_path = trace_config.api.model if trace_config.api is not None else ""
+    else:
+        if context.model is None or context.tokenizer is None:
+            msg = "local behavior traces require a loaded model and tokenizer"
+            raise ValueError(msg)
+        model = cast("CausalLM", context.model)
+        tokenizer = cast("Tokenizer", context.tokenizer)
+        observations = _collect_observations(model, tokenizer, trace_config)
+        model_path = context.config.model_path
+    if (
+        trace_config.collect_runtime_evidence
+        and trace_config.runtime_backend != "api"
+    ):
         runtime_evidence, runtime_profile_sweep = _collect_runtime_evidence(
             model,
             tokenizer,
             trace_config,
-            model_path=config.model_path,
+            model_path=model_path,
         )
     trace_path = _trace_path(context.config.output_dir, trace_config)
     trace = BehaviorTrace(
         trace_id=trace_path.stem,
         model_label=trace_config.model_label,
-        model_path=config.model_path,
+        model_path=model_path,
         suite_name=trace_config.suite_name,
         source_path=str(trace_path),
         observations=tuple(observations),
@@ -104,6 +126,7 @@ def _run_behavior_trace_mode(context: EarlyModeContext) -> None:
             "scorers": list(trace_config.scorers),
             "record_outputs": trace_config.record_outputs,
             "max_tokens": trace_config.max_tokens,
+            "runtime_backend": trace_config.runtime_backend,
         },
     )
     written_trace_path = write_behavior_trace(trace_path, trace)
@@ -181,6 +204,62 @@ def _collect_observations(
     return observations
 
 
+def _collect_api_observations(
+    config: BehaviorTraceConfig,
+) -> tuple[list[BehaviorObservation], list[JsonValue]]:
+    """Collect behavior observations from an OpenAI-compatible API endpoint."""
+    endpoint = config.api
+    if endpoint is None:
+        msg = '[behavior_trace] runtime_backend = "api" requires api settings'
+        raise ValueError(msg)
+    api_key = os.environ.get(endpoint.api_key_env)
+    if not api_key:
+        msg = (
+            f"Environment variable {endpoint.api_key_env!r} is not set"
+            " or empty — required for API behavior traces"
+        )
+        raise ValueError(msg)
+
+    observations: list[BehaviorObservation] = []
+    runtime_rows: list[JsonValue] = []
+    for prompt in config.prompts:
+        response = call_api_behavior_trace(
+            endpoint=endpoint,
+            api_key=api_key,
+            prompt=prompt.text,
+            max_tokens=config.max_tokens,
+            refusal_phrases=config.refusal_phrases,
+            return_logprobs=config.return_logprobs,
+        )
+        expected_behavior = cast("ExpectedBehavior", prompt.expected_behavior)
+        observations.append(
+            BehaviorObservation(
+                observation_id=f"{config.model_label}:{prompt.prompt_id}",
+                model_label=config.model_label,
+                prompt_id=prompt.prompt_id,
+                category=prompt.category,
+                prompt=_prompt_for_trace(prompt),
+                output_text=_output_for_trace(
+                    response.text,
+                    prompt.redaction,
+                    record_outputs=config.record_outputs,
+                ),
+                expected_behavior=expected_behavior,
+                refused=response.refused,
+                metrics=score_behavior_output(
+                    response.text,
+                    refused=response.refused,
+                    expected_behavior=expected_behavior,
+                    scorer_names=tuple(config.scorers),
+                ),
+                redaction=cast("ExampleRedaction", prompt.redaction),
+                metadata=_api_observation_metadata(config, prompt, response),
+            ),
+        )
+        runtime_rows.append(_api_runtime_evidence_row(config, prompt, response))
+    return observations, runtime_rows
+
+
 def _collect_runtime_evidence(
     model: CausalLM,
     tokenizer: Tokenizer,
@@ -190,9 +269,10 @@ def _collect_runtime_evidence(
 ) -> tuple[list[JsonValue], JsonValue]:
     """Collect opt-in runtime evidence for behavior trace report payloads."""
     runtime = create_runtime(config.runtime_backend)
+    backend = cast("RuntimeBackendName", config.runtime_backend)
     loaded = LoadedModel(
         ref=ModelRef(model_path),
-        backend=config.runtime_backend,
+        backend=backend,
         capabilities=runtime.capabilities,
         model=model,
         tokenizer=tokenizer,
@@ -256,6 +336,74 @@ def _collect_runtime_evidence(
         )
         rows.append(_runtime_evidence_row(prompt.prompt_id, package))
     return rows, _runtime_profile_sweep(config, traces)
+
+
+def _api_observation_metadata(
+    config: BehaviorTraceConfig,
+    prompt: BehaviorTracePromptConfig,
+    response: ApiTraceResponse,
+) -> dict[str, JsonValue]:
+    """Return endpoint metadata for one API behavior observation."""
+    endpoint = config.api
+    if endpoint is None:
+        return {}
+    metadata: dict[str, JsonValue] = {
+        "tags": list(prompt.tags),
+        "scorers": list(config.scorers),
+        "access_level": "endpoint",
+        "runtime_backend": "api",
+        "endpoint": endpoint.name,
+        "api_model": endpoint.model,
+        "return_logprobs": config.return_logprobs,
+    }
+    metadata.update(response.metadata())
+    return metadata
+
+
+def _api_runtime_evidence_row(
+    config: BehaviorTraceConfig,
+    prompt: BehaviorTracePromptConfig,
+    response: ApiTraceResponse,
+) -> dict[str, JsonValue]:
+    """Serialize endpoint evidence for the behavior trace JSON sidecar."""
+    endpoint = config.api
+    if endpoint is None:
+        msg = "API runtime evidence requires endpoint settings"
+        raise ValueError(msg)
+    artifacts: list[JsonValue] = [
+        {
+            "id": "output_text",
+            "kind": "text",
+            "metadata": {
+                "redaction": prompt.redaction,
+                "recorded": (
+                    config.record_outputs and prompt.redaction == "safe"
+                ),
+            },
+        },
+    ]
+    if response.logprobs:
+        artifacts.append({
+            "id": "logprobs",
+            "kind": "logprobs",
+            "metadata": {
+                "token_count": len(response.logprobs),
+            },
+        })
+    return {
+        "prompt_id": prompt.prompt_id,
+        "runtime": {
+            "backend": "api",
+            "access_level": "endpoint",
+            "endpoint": endpoint.name,
+            "model": endpoint.model,
+            "return_logprobs": config.return_logprobs,
+            "trace": {
+                "artifacts": artifacts,
+                "metadata": response.metadata(),
+            },
+        },
+    }
 
 
 def _runtime_trace_request(

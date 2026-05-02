@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 Teilo Millet
+# SPDX-License-Identifier: Apache-2.0
+
+[behavior_trace]
+runtime_backend = "api"
+model_label = "candidate-api"
+suite = "suite.toml"
+max_tokens = 80
+record_outputs = false
+return_logprobs = false
+output_trace = "../../output/examples/endpoint_change_audit/candidate_api.jsonl"
+json_filename = "candidate_behavior_trace_report.json"
+
+[behavior_trace.api]
+name = "candidate-api"
+base_url = "https://api.example.com/v1"
+model = "provider/model-candidate"
+api_key_env = "CANDIDATE_API_KEY"
+timeout = 30
+
+[output]
+dir = "../../output/examples/endpoint_change_audit"
