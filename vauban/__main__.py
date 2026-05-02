@@ -9,6 +9,8 @@ Usage:
     vauban schema [--output FILE]
     vauban init [--mode MODE] [--model PATH] [--scenario NAME] [--output FILE] [--force]
     vauban diff [--format text|markdown] [--threshold FLOAT] <dir_a> <dir_b>
+    vauban verify-bundle [--base-dir DIR] [--secret-env ENV]
+                         [--require-signature] <ai_act_integrity.json>
     vauban tree [directory] [--format text|mermaid] [--status STATUS] [--tag TAG]
     vauban man [topic]
 """
@@ -24,6 +26,8 @@ Usage: vauban [--validate] <config.toml>
        vauban init [--mode MODE] [--model PATH] [--scenario NAME]
                    [--output FILE] [--force]
        vauban diff [--format text|markdown] [--threshold FLOAT] <dir_a> <dir_b>
+       vauban verify-bundle [--base-dir DIR] [--secret-env ENV]
+                            [--require-signature] <ai_act_integrity.json>
        vauban tree [directory] [--format text|mermaid] [--status STATUS] [--tag TAG]
        vauban man [topic]
 
@@ -35,6 +39,7 @@ Commands:
   init            Generate a starter TOML config file.
   diff            Compare JSON reports from two output directories.
                   Use --threshold as a CI gate (exit 1 on large deltas).
+  verify-bundle   Verify an AI Act readiness integrity manifest and signatures.
   tree            Render the experiment lineage tree from TOML configs.
   man             Manual and workflow guides.
                   Start with 'vauban man workflows' to pick a goal.
@@ -60,6 +65,10 @@ _DIFF_USAGE = (
 )
 
 _SCHEMA_USAGE = "Usage: vauban schema [--output FILE]\n"
+_VERIFY_BUNDLE_USAGE = (
+    "Usage: vauban verify-bundle [--base-dir DIR] [--secret-env ENV]"
+    " [--require-signature] [--format text|json] <ai_act_integrity.json>\n"
+)
 _DIFF_HELP = (
     "Usage: vauban diff [--format text|markdown]"
     " [--threshold FLOAT] <dir_a> <dir_b>\n"
@@ -73,7 +82,15 @@ _DIFF_HELP = (
 
 def _command_suggestion(token: str) -> str | None:
     """Return a suggested command for typo'd subcommands."""
-    candidates = ("man", "init", "diff", "schema", "tree", "validate")
+    candidates = (
+        "man",
+        "init",
+        "diff",
+        "schema",
+        "tree",
+        "validate",
+        "verify-bundle",
+    )
     aliases = {"validate": "--validate"}
     matches = difflib.get_close_matches(token, candidates, n=1, cutoff=0.6)
     if not matches:
@@ -285,6 +302,81 @@ def _run_schema(args: list[str]) -> None:
     raise SystemExit(0)
 
 
+def _run_verify_bundle(args: list[str]) -> None:
+    """Handle ``vauban verify-bundle`` for AI Act integrity manifests."""
+    if len(args) == 1 and args[0] in ("--help", "-h"):
+        sys.stdout.write(_VERIFY_BUNDLE_USAGE)
+        raise SystemExit(0)
+
+    base_dir: Path | None = None
+    secret_env: str | None = None
+    require_signature = False
+    fmt = "text"
+    positional: list[str] = []
+
+    i = 0
+    while i < len(args):
+        if args[i] in ("--help", "-h"):
+            sys.stdout.write(_VERIFY_BUNDLE_USAGE)
+            raise SystemExit(0)
+        if args[i] == "--base-dir" and i + 1 < len(args):
+            base_dir = Path(args[i + 1])
+            i += 2
+            continue
+        if args[i] == "--secret-env" and i + 1 < len(args):
+            secret_env = args[i + 1]
+            i += 2
+            continue
+        if args[i] == "--require-signature":
+            require_signature = True
+            i += 1
+            continue
+        if args[i] == "--format" and i + 1 < len(args):
+            fmt = args[i + 1]
+            if fmt not in ("text", "json"):
+                sys.stderr.write(
+                    f"Error: --format must be 'text' or 'json', got {fmt!r}\n",
+                )
+                raise SystemExit(1)
+            i += 2
+            continue
+        if args[i].startswith("--"):
+            sys.stderr.write(f"Error: unexpected flag {args[i]!r}\n\n")
+            sys.stderr.write(_VERIFY_BUNDLE_USAGE)
+            raise SystemExit(1)
+        positional.append(args[i])
+        i += 1
+
+    if len(positional) != 1:
+        sys.stderr.write(
+            f"Error: expected 1 integrity manifest path, got {len(positional)}\n\n",
+        )
+        sys.stderr.write(_VERIFY_BUNDLE_USAGE)
+        raise SystemExit(1)
+
+    from vauban.integrity import (
+        format_integrity_verification,
+        verify_ai_act_integrity,
+    )
+
+    try:
+        result = verify_ai_act_integrity(
+            positional[0],
+            base_dir=base_dir,
+            secret_env=secret_env,
+            require_signature=require_signature,
+        )
+    except (OSError, ValueError) as exc:
+        sys.stderr.write(f"Error: {exc}\n")
+        raise SystemExit(1) from exc
+
+    if fmt == "json":
+        sys.stdout.write(json.dumps(result.to_dict(), indent=2) + "\n")
+    else:
+        sys.stdout.write(format_integrity_verification(result))
+    raise SystemExit(0 if result.passed else 1)
+
+
 def _run_tree(args: list[str]) -> None:
     """Handle ``vauban tree`` by delegating to the tree viewer CLI."""
     from vauban.tree import main as tree_main
@@ -363,6 +455,10 @@ def main() -> None:
 
     if args[0] == "schema":
         _run_schema(args[1:])
+        raise SystemExit(0)
+
+    if args[0] == "verify-bundle":
+        _run_verify_bundle(args[1:])
         raise SystemExit(0)
 
     if args[0] == "tree":

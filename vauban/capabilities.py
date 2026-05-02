@@ -426,9 +426,11 @@ _CATALOG: tuple[CapabilitySpec, ...] = (
         first_cli=(
             "vauban init --mode public_sector_readiness --output readiness.toml",
             "vauban readiness.toml",
+            "vauban verify-bundle output/public_sector_readiness/ai_act_integrity.json",
         ),
         first_python=(
             "from vauban.ai_act import generate_deployer_readiness_bundle",
+            "from vauban.integrity import verify_ai_act_integrity",
         ),
         proof=(
             "The AI Act readiness report, controls matrix, and risk register"
@@ -439,6 +441,7 @@ _CATALOG: tuple[CapabilitySpec, ...] = (
         python_entrypoints=(
             "generate_deployer_readiness_artifacts",
             "generate_deployer_readiness_bundle",
+            "verify_ai_act_integrity",
         ),
         docs=(
             "docs/capabilities/public-sector-adoption.md",

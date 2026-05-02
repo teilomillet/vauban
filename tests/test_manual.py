@@ -57,6 +57,7 @@ def test_commands_topic_contains_init_and_diff() -> None:
     assert "COMMANDS" in text
     assert "vauban init [--mode MODE]" in text
     assert "vauban diff" in text
+    assert "vauban verify-bundle" in text
     assert "vauban tree" in text
     assert "--format" in text
     assert "known modes:" in text
@@ -84,6 +85,7 @@ def test_examples_topic_contains_core_flows() -> None:
     assert "vauban examples/benchmarks/share_doc.toml" in text
     assert "examples/endpoint_change_audit/diff.toml" in text
     assert "vauban init --mode public_sector_readiness" in text
+    assert "examples/public_sector_pilot/behavior_diff.toml" in text
     assert "vauban diff runs/baseline runs/experiment_a" in text
     assert "vauban tree experiments/ --format mermaid" in text
 

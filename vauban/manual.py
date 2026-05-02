@@ -191,6 +191,13 @@ _EXAMPLE_NOTES: tuple[str, ...] = (
     "Scaffold a public-sector deployer-readiness evidence pack:",
     "  vauban init --mode public_sector_readiness --output readiness.toml",
     "  vauban readiness.toml",
+    "Run the offline public-sector pilot kit:",
+    "  vauban examples/public_sector_pilot/behavior_diff.toml",
+    "  vauban examples/public_sector_pilot/readiness.toml",
+    (
+        "  vauban verify-bundle"
+        " output/examples/public_sector_pilot/readiness/ai_act_integrity.json"
+    ),
     "Validate before expensive runs:",
     "  vauban --validate run.toml",
     "Run default pipeline:",
@@ -4883,6 +4890,10 @@ def render_manual(topic: str | None = None) -> str:
         " [--threshold FLOAT] <dir_a> <dir_b>",
     )
     lines.append(
+        "    vauban verify-bundle [--base-dir DIR] [--secret-env ENV]"
+        " [--require-signature] <ai_act_integrity.json>",
+    )
+    lines.append(
         "    vauban tree [directory]"
         " [--format text|mermaid] [--status STATUS] [--tag TAG]",
     )
@@ -4939,6 +4950,11 @@ def render_manual(topic: str | None = None) -> str:
             "      --threshold: CI gate; exit code 1 if any |delta| exceeds value.",
         )
         lines.append(f"      report files: {', '.join(_known_diff_reports())}")
+        lines.append(
+            "    vauban verify-bundle [--base-dir DIR] [--secret-env ENV]"
+            " [--require-signature] <ai_act_integrity.json>",
+        )
+        lines.append("      Verify AI Act readiness artifact hashes and signatures.")
         lines.append(
             "    vauban tree [directory]"
             " [--format text|mermaid] [--status STATUS] [--tag TAG]",

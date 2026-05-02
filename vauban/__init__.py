@@ -444,6 +444,7 @@ _LAZY_IMPORTS: dict[str, str | tuple[str, str]] = {
     "train_sae": "vauban.features",
     "train_sae_multi_layer": "vauban.features",
     "train_svf_boundary": "vauban.svf",
+    "verify_ai_act_integrity": "vauban.integrity",
     "write_config_schema": "vauban.config",
     "write_behavior_trace": "vauban.behavior",
 }

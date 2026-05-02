@@ -55,6 +55,7 @@ def test_commands_section_contains_format_flag() -> None:
     assert "--format" in output
     assert "--threshold" in output
     assert "CI gate" in output
+    assert "verify-bundle" in output
     assert "vauban tree" in output
 
 

@@ -37,6 +37,18 @@ The command writes `readiness.toml` plus draft evidence templates in
 engine. Replace the placeholder fields before treating the bundle as evidence.
 The same sequence is tracked in `examples/public_sector_readiness/`.
 
+For a complete offline dry run, use the pilot kit:
+
+```bash
+vauban examples/public_sector_pilot/behavior_diff.toml
+export VAUBAN_PILOT_SIGNING_SECRET="public-sector-pilot-demo-secret"
+vauban examples/public_sector_pilot/readiness.toml
+vauban verify-bundle \
+  --secret-env VAUBAN_PILOT_SIGNING_SECRET \
+  --require-signature \
+  output/examples/public_sector_pilot/readiness/ai_act_integrity.json
+```
+
 Run the readiness report:
 
 ```bash
@@ -126,6 +138,8 @@ For sensitive public-sector evaluations:
   them.
 - Use signed bundles when the agency needs artifact integrity checks:
   `bundle_signature_secret_env = "VAUBAN_AI_ACT_SIGNING_SECRET"`.
+- Verify archived readiness bundles with `vauban verify-bundle` before review
+  or procurement handoff.
 
 The goal is a reproducible evidence package a reviewer can challenge, not a
 generic trust badge.

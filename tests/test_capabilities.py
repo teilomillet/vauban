@@ -95,5 +95,7 @@ def test_compliance_capability_mentions_public_sector_starter() -> None:
     assert spec is not None
     assert spec.first_cli
     assert "public_sector_readiness" in spec.first_cli[0]
+    assert "verify-bundle" in spec.first_cli[2]
+    assert "verify_ai_act_integrity" in spec.python_entrypoints
     assert "docs/capabilities/public-sector-adoption.md" in spec.docs
     assert "public_sector_readiness_report.pdf" in spec.artifacts
